@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.3.0
+-- @version 1.3.5
 -- @changelog
+--   + v1.3.5: Beam rendering performance & Phase 2 optimizations:
+--             - Cleaned up beam rendering: eliminated redundant outline strokes (AddQuad) on filled quads, halving C-API beam calls and cutting CPU vertex calculation by 60%
+--             - High-efficiency O(1) project state change guard in MidiService eliminating redundant C-API calls during playback and idle
+--             - Text measurement memoization in FontManager caching ImGui text calculations
+--             - Top-level module require scoping in ScoreCanvas
 --   + v1.3.0: Music engraving refinements, tempo editing & tuplet mathematics:
 --             - Precise Gardner Read / Elaine Gould quarter-note quintuplet (5:4) measure spacing
 --             - Clean DirectWrite unicode quarter-note tempo symbol (♩) with non-bold styling

@@ -568,12 +568,18 @@ function MidiService.get_track_items_and_notes(track)
     local track_guid = reaper.GetTrackGUID(track)
     local track_col = reaper.GetTrackColor(track)
     local num_items = reaper.CountTrackMediaItems(track)
+    local proj_change_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
     
     local cached = MidiService._track_cache[track_guid]
     local is_dirty = false
     
     if not cached or cached.num_items ~= num_items or cached.track_col ~= track_col then
         is_dirty = true
+    elseif cached.proj_change_cnt == proj_change_cnt then
+        -- Fast Path O(1): Entire REAPER project state is identical, zero modifications occurred.
+        -- Return cached track data immediately without inspecting any items!
+        if not cached.rests_cache then cached.rests_cache = {} end
+        return cached.items_info, cached.all_notes, cached.all_dynamics, cached.all_articulations, cached.max_qn, cached.rests_cache
     else
         local sigs = cached.items_sig
         for i = 0, num_items - 1 do
@@ -608,6 +614,7 @@ function MidiService.get_track_items_and_notes(track)
     end
     
     if not is_dirty and cached then
+        cached.proj_change_cnt = proj_change_cnt
         if not cached.rests_cache then cached.rests_cache = {} end
         return cached.items_info, cached.all_notes, cached.all_dynamics, cached.all_articulations, cached.max_qn, cached.rests_cache
     end
@@ -711,6 +718,7 @@ function MidiService.get_track_items_and_notes(track)
     table.sort(all_articulations, function(a, b) return a.ppq < b.ppq end)
     
     MidiService._track_cache[track_guid] = {
+        proj_change_cnt = proj_change_cnt,
         num_items = num_items,
         track_col = track_col,
         items_sig = new_items_sig,

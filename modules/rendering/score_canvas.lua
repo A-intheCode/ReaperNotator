@@ -36,6 +36,13 @@ if not has_kss or not KeySignatureService then
     has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
 end
 
+local HairpinService = require("services.hairpin_service")
+local DynamicTextService = require("services.dynamic_text_service")
+local TextItemService = require("services.text_item_service")
+local PatternService = require("services.pattern_service")
+local SelectionService = require("services.selection_service")
+local StateModule = require("state")
+
 local function resolve_effective_key(state, track, item, qn)
     if has_kss and KeySignatureService and KeySignatureService.resolve_effective_key then
         local res = KeySignatureService.resolve_effective_key(state, track, item, qn)
@@ -400,12 +407,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     else
         for _, tdata in ipairs(active_tracks_data) do
             local trk_lbl = string.format("[%d] %s", tdata.idx, tdata.name or "Track")
-            local tw = 0
-            if reaper.APIExists("ImGui_CalcTextSize") then
-                tw = reaper.ImGui_CalcTextSize(ctx, trk_lbl)
-            else
-                tw = #trk_lbl * 7.5 * s
-            end
+            local tw = FontManager.calc_text_size(ctx, trk_lbl)
             if tw > max_hdr_text_w then max_hdr_text_w = tw end
             
             local trk_first_item = (tdata.items and tdata.items[1])
@@ -833,7 +835,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.cached_measure_map_sig = nil
                     state._track_clefs_cache = nil
                     state._cached_hdr_metrics = nil
-                    require("state").save_settings(state)
+                    StateModule.save_settings(state)
                     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
                     if reaper.UpdateArrange then reaper.UpdateArrange() end
                 end
@@ -1173,8 +1175,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
             end
         end
-        
-        local OctaveService = require("services.octave_service")
         
         local track_has_multi_staff_chan = false
         if is_grand then
@@ -1792,7 +1792,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         
         -- Hairpins (crescendo < & decrescendo >) for this track
         if (state.show_hairpins_layer ~= false) then
-            local HairpinService = require("services.hairpin_service")
             track_hairpins = HairpinService.get_hairpins_for_track(state, tdata.guid)
             local hp_open_h = 8.5 * s
         local hp_tip_h = 0.5 * s
@@ -2001,7 +2000,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         
         -- Dynamic texts (cresc. & dim. text tags with scalable length)
         if (state.show_dynamic_texts_layer ~= false) then
-            local DynamicTextService = require("services.dynamic_text_service")
             track_dtexts = DynamicTextService.get_dynamic_texts_for_track(state, tdata.guid)
             
             for _, dt in ipairs(track_dtexts) do
@@ -2098,11 +2096,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 -- Text size & rendering
                 local txt = dt.text or (dt.type == "crescendo" and "cresc." or "dim.")
                 local font_sz = math.floor(18 * s + 0.5)
-                local txt_w = #txt * (9.0 * s)
-                if reaper.APIExists("ImGui_CalcTextSize") then
-                    local tw, _ = reaper.ImGui_CalcTextSize(ctx, txt)
-                    if tw and tw > 0 then txt_w = tw end
-                end
+                local tw, _ = FontManager.calc_text_size(ctx, txt)
+                if tw and tw > 0 then txt_w = tw end
                 
                 local txt_x = x1
                 local txt_y = dt_y - (font_sz * 0.5)
@@ -2303,11 +2298,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     local txt_w = #label * (font_sz * 0.60)
                     local cur_fs = reaper.APIExists("ImGui_GetFontSize") and reaper.ImGui_GetFontSize(ctx) or 14.0
                     if not cur_fs or cur_fs <= 0 then cur_fs = 14.0 end
-                    if reaper.APIExists("ImGui_CalcTextSize") then
-                        local cw, ch = reaper.ImGui_CalcTextSize(ctx, label)
-                        if cw and cw > 0 then txt_w = cw * (font_sz / cur_fs) * (use_bold and 1.08 or 1.0) end
-                        if ch and ch > 0 then txt_h = ch * (font_sz / cur_fs) end
-                    end
+                    local cw, ch = FontManager.calc_text_size(ctx, label)
+                    if cw and cw > 0 then txt_w = cw * (font_sz / cur_fs) * (use_bold and 1.08 or 1.0) end
+                    if ch and ch > 0 then txt_h = ch * (font_sz / cur_fs) end
                     
                     local tx = dx
                     local ty = dy - (txt_h / 2)
@@ -2388,7 +2381,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
 
         -- Text items (freely movable text annotations below track in X and Y)
         if (state.show_text_items_layer ~= false) then
-            local TextItemService = require("services.text_item_service")
             local track_texts = TextItemService.get_text_items_for_track(state, tdata.guid)
             for _, ti in ipairs(track_texts) do
                 local cur_qn = ti.qn or 0.0
@@ -2429,14 +2421,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local txt_h = font_sz
                 local cur_fs = reaper.APIExists("ImGui_GetFontSize") and reaper.ImGui_GetFontSize(ctx) or 14.0
                 if not cur_fs or cur_fs <= 0 then cur_fs = 14.0 end
-                if reaper.APIExists("ImGui_CalcTextSize") then
-                    local cw, ch = reaper.ImGui_CalcTextSize(ctx, text_str)
-                    if cw and cw > 0 then
-                        txt_w = cw * (font_sz / cur_fs)
-                    end
-                    if ch and ch > 0 then
-                        txt_h = ch * (font_sz / cur_fs)
-                    end
+                local cw, ch = FontManager.calc_text_size(ctx, text_str)
+                if cw and cw > 0 then
+                    txt_w = cw * (font_sz / cur_fs)
+                end
+                if ch and ch > 0 then
+                    txt_h = ch * (font_sz / cur_fs)
                 end
                 
                 local bx0 = tx - 4 * s
@@ -2817,12 +2807,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 if is_hdr_hov then
                     reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
                     local tip = string.format("Track [%d]: %s (%d Items)\nClick: Focus track & select in REAPER", tdata.idx, tdata.name or "Track", tdata.items and #tdata.items or 0)
-                    local tw, th = 300, 48
-                    if reaper.APIExists("ImGui_CalcTextSize") then
-                        local cw, ch = reaper.ImGui_CalcTextSize(ctx, tip)
-                        tw = math.max(260, cw + 22)
-                        th = ch + 14
-                    end
+                    local cw, ch = FontManager.calc_text_size(ctx, tip)
+                    local tw = math.max(260, cw + 22)
+                    local th = ch + 14
                     local box_x0 = mouse_x + 14
                     local box_y0 = mouse_y - th - 6
                     if box_y0 < (win_y0 + 10) then
@@ -3248,7 +3235,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             
             -- Drop validation upon mouse release
             if reaper.ImGui_IsMouseReleased(ctx, 0) then
-                local PatternService = package.loaded["services.pattern_service"] or require("services.pattern_service")
                 PatternService.insert_pattern_into_track(target_tdata.track, snapped_qn, pat, midi_service)
                 state.status_msg = string.format("Pattern '%s' inserted onto track '%s'!", pat.name, target_tdata.track_name or "Track")
                 state.dragged_pattern = nil
@@ -3261,7 +3247,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     if reaper.ImGui_BeginDragDropTarget(ctx) then
         local ret, payload = reaper.ImGui_AcceptDragDropPayload(ctx, "NOTATOR_PATTERN")
         if ret then
-            local PatternService = package.loaded["services.pattern_service"] or require("services.pattern_service")
             local pat = PatternService.patterns_by_id[payload] or state.dragged_pattern
             if pat and active_tracks_data and #active_tracks_data > 0 then
                 local target_tdata = active_tracks_data[1]
@@ -3289,8 +3274,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         state.dragged_pattern = nil
         state.is_dragging_pattern = false
     end
-    
-    local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
 
     -- Right-click on score canvas / empty background reliably opens context menu
     if is_hovered and reaper.ImGui_IsMouseClicked(ctx, 1) then

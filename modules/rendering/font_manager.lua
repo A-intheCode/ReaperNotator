@@ -123,4 +123,29 @@ function FontManager.draw_glyph(draw_list, font, size, x, y, col, glyph)
     return true
 end
 
+FontManager._text_size_cache = {}
+FontManager._text_size_count = 0
+
+function FontManager.calc_text_size(ctx, text)
+    if not text or text == "" then return 0, 0 end
+    local cached = FontManager._text_size_cache[text]
+    if cached then
+        return cached[1], cached[2]
+    end
+    if reaper.APIExists("ImGui_CalcTextSize") then
+        local w, h = reaper.ImGui_CalcTextSize(ctx, text)
+        w = w or 0
+        h = h or 0
+        if FontManager._text_size_count >= 1000 then
+            FontManager._text_size_cache = {}
+            FontManager._text_size_count = 0
+        end
+        FontManager._text_size_cache[text] = { w, h }
+        FontManager._text_size_count = FontManager._text_size_count + 1
+        return w, h
+    end
+    return #text * 7.5, 14.0
+end
+
 return FontManager
+

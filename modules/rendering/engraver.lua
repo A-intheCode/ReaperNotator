@@ -1637,12 +1637,6 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
             x2, beam_y2 + dir * beam_h,
             x1, beam_y1 + dir * beam_h,
             beam_col)
-        reaper.ImGui_DrawList_AddQuad(draw_list,
-            x1, beam_y1,
-            x2, beam_y2,
-            x2, beam_y2 + dir * beam_h,
-            x1, beam_y1 + dir * beam_h,
-            beam_col, 1.0)
     else
         reaper.ImGui_DrawList_AddLine(draw_list, x1, beam_y1, x2, beam_y2, beam_col, beam_h)
     end
@@ -1669,7 +1663,6 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
                     local ey = (beam_y1 + slope * (ex - x1)) + offset_y
                     if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
                         reaper.ImGui_DrawList_AddQuadFilled(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col)
-                        reaper.ImGui_DrawList_AddQuad(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col, 1.0)
                     else
                         reaper.ImGui_DrawList_AddLine(draw_list, sx, sy, ex, ey, beam_col, beam_h)
                     end
@@ -1683,7 +1676,6 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
                     local ey = sy + slope * (stub_dir * stub_len)
                     if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
                         reaper.ImGui_DrawList_AddQuadFilled(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col)
-                        reaper.ImGui_DrawList_AddQuad(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col, 1.0)
                     else
                         reaper.ImGui_DrawList_AddLine(draw_list, sx, sy, ex, ey, beam_col, beam_h)
                     end
@@ -1699,7 +1691,6 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
                 local ey = (beam_y1 + slope * (ex - x1)) + offset_y
                 if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
                     reaper.ImGui_DrawList_AddQuadFilled(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col)
-                    reaper.ImGui_DrawList_AddQuad(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col, 1.0)
                 else
                     reaper.ImGui_DrawList_AddLine(draw_list, sx, sy, ex, ey, beam_col, beam_h)
                 end
@@ -1712,7 +1703,6 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
                 local ey = sy + slope * (stub_dir * stub_len)
                 if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
                     reaper.ImGui_DrawList_AddQuadFilled(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col)
-                    reaper.ImGui_DrawList_AddQuad(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col, 1.0)
                 else
                     reaper.ImGui_DrawList_AddLine(draw_list, sx, sy, ex, ey, beam_col, beam_h)
                 end

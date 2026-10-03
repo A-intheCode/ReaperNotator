@@ -24,3 +24,8 @@ Thumbs.db
 ehthumbs.db
 desktop.ini
 *.bak
+
+# Temporary / local exports
+Notation/
+*_print.xml
+
