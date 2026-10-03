@@ -2191,7 +2191,7 @@ function MidiService.convert_selected_to_tuplet(state, tuplet_type, active_track
     local min_start_qn = targets[1].start_qn
     local base_dur = state.active_dur or 1.0
     local def = Constants.TUPLET_DEFS and Constants.TUPLET_DEFS[tostring(tuplet_type)]
-    local factor = def and def.factor or (state.get_tuplet_factor and state:get_tuplet_factor() or (1.0 / count))
+    local factor = def and def.factor or (state.get_tuplet_factor and state:get_tuplet_factor() or (2.0 / 3.0))
     local tuplet_dur = base_dur * factor
     
     reaper.Undo_BeginBlock2(0)
@@ -2230,7 +2230,7 @@ function MidiService.create_tuplet_at_cursor(state, opt_tuplet_type, active_trac
     local Constants = require("constants")
     local def = Constants.TUPLET_DEFS and Constants.TUPLET_DEFS[tostring(tuplet_type)]
     local count = def and def.ratio_num or 3
-    local factor = def and def.factor or (1.0 / count)
+    local factor = def and def.factor or (2.0 / 3.0)
     
     -- If notes are already selected: convert them directly!
     local sel_cnt = state:count_selected_notes()
@@ -2253,7 +2253,7 @@ function MidiService.create_tuplet_at_cursor(state, opt_tuplet_type, active_trac
     
     local base_dur = state.active_dur or 1.0
     local tuplet_dur = base_dur * factor
-    local total_span = base_dur
+    local total_span = count * tuplet_dur
     
     local item, take = MidiService.get_or_create_item_at_qn(track, start_qn, total_span)
     if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then return false end

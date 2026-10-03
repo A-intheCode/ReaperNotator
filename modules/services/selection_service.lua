@@ -606,7 +606,7 @@ function SelectionService.render_menu_items(ctx, state, active_tracks_data, midi
         SelectionService.select_to_end(state, active_tracks_data, midi_service)
     end
     
-    if reaper.ImGui_MenuItem(ctx, ">> Select All on Track (Ctrl+A)") then
+    if reaper.ImGui_MenuItem(ctx, ">> Select All on Track (Ctrl+A)##selection_menu") then
         SelectionService.select_all_in_track(state, active_tracks_data, midi_service)
     end
 

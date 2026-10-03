@@ -263,14 +263,18 @@ local function sync_arrange_selection(state, project_tracks)
         local reaper_sel_item_cnt = reaper.CountSelectedMediaItems(0)
         
         if reaper_sel_trk_cnt > 1 then
-            state.selected_tracks = {}
+            if sel_trk_count <= 1 then
+                state.selected_tracks = {}
+            end
             for i = 0, reaper_sel_trk_cnt - 1 do
                 local st = reaper.GetSelectedTrack(0, i)
                 if st then state.selected_tracks[reaper.GetTrackGUID(st)] = true end
             end
             if clicked_trk then state.focused_track = clicked_trk end
         elseif reaper_sel_item_cnt > 1 then
-            state.selected_tracks = {}
+            if sel_trk_count <= 1 then
+                state.selected_tracks = {}
+            end
             for i = 0, reaper_sel_item_cnt - 1 do
                 local mi = reaper.GetSelectedMediaItem(0, i)
                 if mi then
@@ -282,12 +286,10 @@ local function sync_arrange_selection(state, project_tracks)
         else
             if clicked_trk then
                 local cguid = reaper.GetTrackGUID(clicked_trk)
-                if not state.selected_tracks[cguid] then
-                    if sel_trk_count <= 1 then
-                        state.selected_tracks = { [cguid] = true }
-                    else
-                        state.selected_tracks[cguid] = true
-                    end
+                if sel_trk_count <= 1 then
+                    state.selected_tracks = { [cguid] = true }
+                else
+                    state.selected_tracks[cguid] = true
                 end
                 state.focused_track = clicked_trk
             elseif project_tracks and #project_tracks > 0 and sel_trk_count == 0 then
@@ -325,7 +327,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local avail_w, avail_h = reaper.ImGui_GetContentRegionAvail(ctx)
     local s = state.zoom
     if FontManager and (not FontManager._fonts_ready or not FontManager.font_bold or not FontManager.font_italic or not FontManager.font_bold_italic) then
-        FontManager.init(ctx)
+        FontManager.init(ctx, state)
     end
     local font_music = (FontManager and FontManager.font_music) or (fonts and fonts.font_music)
     local font_main = (FontManager and FontManager.font_main) or (fonts and fonts.font_main)
@@ -407,7 +409,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             if tw > max_hdr_text_w then max_hdr_text_w = tw end
             
             local trk_first_item = (tdata.items and tdata.items[1])
-            local k_idx = resolve_effective_key(state, tdata.track, trk_first_item, 0)
+            local item_at_start = (trk_first_item and (trk_first_item.start_qn or 0) <= 0.1) and trk_first_item or nil
+            local k_idx = resolve_effective_key(state, tdata.track, item_at_start, 0)
             local kw = Engraver.get_key_signature_width(k_idx, s)
             if kw > max_key_sig_w then max_key_sig_w = kw end
         end
@@ -446,16 +449,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
     local total_score_h = 50 * s + chord_lane_h
-    if not state._track_clefs_cache or state._track_clefs_cache_cnt ~= proj_change_cnt then
-        state._track_clefs_cache = {}
-        state._track_clefs_cache_cnt = proj_change_cnt
-    end
     for _, tdata in ipairs(active_tracks_data) do
-        local trk_clef = state._track_clefs_cache[tdata.guid]
-        if not trk_clef then
-            trk_clef = get_track_clef(tdata.guid, tdata.notes, tdata.name, state)
-            state._track_clefs_cache[tdata.guid] = trk_clef
-        end
+        local trk_clef = get_track_clef(tdata.guid, tdata.notes, tdata.name, state)
         tdata.clef = trk_clef
         tdata.is_grand = (trk_clef == "grand")
         tdata.is_harp  = (trk_clef == "harp_3staff")
@@ -832,34 +827,37 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             if reaper.ImGui_BeginPopup(ctx, popup_id) then
                 reaper.ImGui_Text(ctx, "Select Clef:")
                 reaper.ImGui_Separator(ctx)
-                if reaper.ImGui_MenuItem(ctx, "🎼 Treble Clef", nil, track_clef == "treble") then
-                    state.track_clefs[tdata.guid] = "treble"
+                local function apply_canvas_clef(c_id)
+                    state.track_clefs[tdata.guid] = c_id
+                    state.cached_measure_map = nil
+                    state.cached_measure_map_sig = nil
+                    state._track_clefs_cache = nil
+                    state._cached_hdr_metrics = nil
                     require("state").save_settings(state)
+                    if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
+                    if reaper.UpdateArrange then reaper.UpdateArrange() end
+                end
+                if reaper.ImGui_MenuItem(ctx, "🎼 Treble Clef", nil, track_clef == "treble") then
+                    apply_canvas_clef("treble")
                 end
                 if reaper.ImGui_MenuItem(ctx, "𝄢 Bass Clef", nil, track_clef == "bass") then
-                    state.track_clefs[tdata.guid] = "bass"
-                    require("state").save_settings(state)
+                    apply_canvas_clef("bass")
                 end
                 if reaper.ImGui_MenuItem(ctx, "🎻 Alto Clef", nil, track_clef == "alto") then
-                    state.track_clefs[tdata.guid] = "alto"
-                    require("state").save_settings(state)
+                    apply_canvas_clef("alto")
                 end
                 if reaper.ImGui_MenuItem(ctx, "🎺 Tenor Clef", nil, track_clef == "tenor") then
-                    state.track_clefs[tdata.guid] = "tenor"
-                    require("state").save_settings(state)
+                    apply_canvas_clef("tenor")
                 end
                 if reaper.ImGui_MenuItem(ctx, "🎹 Grand Staff", nil, track_clef == "grand") then
-                    state.track_clefs[tdata.guid] = "grand"
-                    require("state").save_settings(state)
+                    apply_canvas_clef("grand")
                 end
                 if reaper.ImGui_MenuItem(ctx, "🪕 Harp / Organ (3 Staves)", nil, track_clef == "harp_3staff") then
-                    state.track_clefs[tdata.guid] = "harp_3staff"
-                    require("state").save_settings(state)
+                    apply_canvas_clef("harp_3staff")
                 end
                 reaper.ImGui_Separator(ctx)
                 if reaper.ImGui_MenuItem(ctx, "✨ Auto Detect", nil, not state.track_clefs[tdata.guid] or state.track_clefs[tdata.guid] == "auto") then
-                    state.track_clefs[tdata.guid] = "auto"
-                    require("state").save_settings(state)
+                    apply_canvas_clef("auto")
                 end
                 reaper.ImGui_Separator(ctx)
                 if reaper.ImGui_MenuItem(ctx, "🔍 Open Clef Drawer...", nil, false) then
@@ -895,7 +893,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             
             -- 2. Key signature between clef and time signature
             local trk_first_item = (tdata.items and tdata.items[1])
-            local eff_key_idx, eff_key_mode = resolve_effective_key(state, tdata.track, trk_first_item, 0)
+            local item_at_start = (trk_first_item and (trk_first_item.start_qn or 0) <= 0.1) and trk_first_item or nil
+            local eff_key_idx, eff_key_mode = resolve_effective_key(state, tdata.track, item_at_start, 0)
             local eff_ts_num, eff_ts_den = resolve_effective_time_sig(state, tdata.track, trk_first_item, 0)
             if type(eff_ts_num) == "table" then
                 eff_ts_den = eff_ts_num.denom or eff_ts_den
@@ -2017,9 +2016,35 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     elseif state.drag_dynamic_text_handle == "end" and state.drag_dynamic_text_target_qn then
                         cur_e = state.drag_dynamic_text_target_qn
                     elseif state.drag_dynamic_text_handle == "body" then
-                        local dur = dt.end_qn - dt.start_qn
-                        cur_s = (state.drag_dynamic_text_orig_start or dt.start_qn) + (state.drag_dynamic_text_delta_qn or 0)
-                        cur_e = cur_s + dur
+                        cur_s = dt.start_qn
+                        cur_e = dt.end_qn
+                    end
+                end
+                
+                -- Live preview: when dragging a dynamic marker, docked dynamic texts follow in real time
+                if state.is_dragging_dynamic and state.drag_dynamic and state.drag_dyn_target_qn and state.drag_dyn_start_qn then
+                    local drag_orig_qn = state.drag_dyn_start_qn
+                    local drag_cur_qn = state.drag_dyn_target_qn
+                    local d_trk = state.drag_dynamic.track
+                    local d_guid = d_trk and reaper.ValidatePtr(d_trk, "MediaTrack*") and reaper.GetTrackGUID(d_trk)
+                    if not d_guid or dt.track_guid == d_guid then
+                        local l_limit, r_limit = 0.0, 999999.0
+                        if state.dynamic_texts then
+                            for _, odt in ipairs(state.dynamic_texts) do
+                                if odt.id ~= dt.id and odt.track_guid == dt.track_guid then
+                                    local os = odt.start_qn or 0.0
+                                    local oe = odt.end_qn or (os + 1.0)
+                                    if os < dt.start_qn and oe > l_limit then l_limit = oe end
+                                    if os > dt.start_qn and os < r_limit then r_limit = os end
+                                end
+                            end
+                        end
+                        if math.abs(cur_s - drag_orig_qn) <= 0.35 then
+                            cur_s = math.max(l_limit, math.min(cur_e - 0.25, drag_cur_qn))
+                        end
+                        if math.abs(cur_e - drag_orig_qn) <= 0.35 then
+                            cur_e = math.min(r_limit, math.max(cur_s + 0.25, drag_cur_qn))
+                        end
                     end
                 end
                 
@@ -2027,7 +2052,29 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local raw_x1 = Engraver.qn_to_canvas_x(cur_s, margin_left, s, qn_per_measure, measure_map)
                 local raw_x2 = Engraver.qn_to_canvas_x(cur_e, margin_left, s, qn_per_measure, measure_map)
                 local x1 = raw_x1
-                local x2 = math.max(x1 + 15 * s, raw_x2)
+                local x2 = raw_x2
+                
+                -- Dynamic marker clearance: text and dashed line must NEVER overlap dynamic badges!
+                if tdata.dynamics then
+                    for _, d in ipairs(tdata.dynamics) do
+                        local _, dw, d_clean = get_dynamic_glyph_and_width(d.label, dyn_font_sz)
+                        local badge_hw = math.max(16 * s, (dw / 2) + 6 * s)
+                        local dx = Engraver.qn_to_canvas_x(d.qn, margin_left, s, qn_per_measure, measure_map)
+                        local d_left_bound = dx - badge_hw - 4.0 * s
+                        local d_right_bound = dx + badge_hw + 4.0 * s
+                        
+                        -- Marker is at or near start
+                        if math.abs(d.qn - cur_s) <= 0.35 or (cur_s <= d.qn and raw_x1 <= d_right_bound and d.qn < cur_e) then
+                            x1 = math.max(x1, d_right_bound)
+                        end
+                        
+                        -- Marker is at or near end
+                        if math.abs(d.qn - cur_e) <= 0.35 or (cur_e >= d.qn and raw_x2 >= d_left_bound and d.qn > cur_s) then
+                            x2 = math.min(x2, d_left_bound)
+                        end
+                    end
+                end
+                x2 = math.max(x1 + 15 * s, x2)
                 
                 -- Y positioning: dyn_base_y, displaced downward if low notes intersect range
                 local dt_y = dyn_base_y

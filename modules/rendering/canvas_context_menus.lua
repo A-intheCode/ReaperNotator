@@ -702,7 +702,7 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 end
             end
             
-            if reaper.ImGui_MenuItem(ctx, ">> Select All on Track (Ctrl+A)") then
+            if reaper.ImGui_MenuItem(ctx, ">> Select All on Track (Ctrl+A)##track_header") then
                 SelectionService.select_all_in_track(state, active_tracks_data, midi_service)
             end
             
@@ -862,21 +862,25 @@ function CanvasContextMenus.render_text_item_popup(ctx, state, midi_service, act
                     cti.style = "italic"
                     TextItemService.save_text_items(state)
                     reaper.Undo_OnStateChange2(0, "Notator: Change Text Style")
+                    if reaper.UpdateArrange then reaper.UpdateArrange() end
                 end
                 if reaper.ImGui_MenuItem(ctx, "Bold", nil, cur_style == "bold") then
                     cti.style = "bold"
                     TextItemService.save_text_items(state)
                     reaper.Undo_OnStateChange2(0, "Notator: Change Text Style")
+                    if reaper.UpdateArrange then reaper.UpdateArrange() end
                 end
                 if reaper.ImGui_MenuItem(ctx, "Bold Italic", nil, cur_style == "bold_italic") then
                     cti.style = "bold_italic"
                     TextItemService.save_text_items(state)
                     reaper.Undo_OnStateChange2(0, "Notator: Change Text Style")
+                    if reaper.UpdateArrange then reaper.UpdateArrange() end
                 end
                 if reaper.ImGui_MenuItem(ctx, "Regular", nil, cur_style == "regular") then
                     cti.style = "regular"
                     TextItemService.save_text_items(state)
                     reaper.Undo_OnStateChange2(0, "Notator: Change Text Style")
+                    if reaper.UpdateArrange then reaper.UpdateArrange() end
                 end
                 reaper.ImGui_EndMenu(ctx)
             end
@@ -889,6 +893,7 @@ function CanvasContextMenus.render_text_item_popup(ctx, state, midi_service, act
                         cti.font_size = sz
                         TextItemService.save_text_items(state)
                         reaper.Undo_OnStateChange2(0, "Notator: Change Text Font Size")
+                        if reaper.UpdateArrange then reaper.UpdateArrange() end
                     end
                 end
                 reaper.ImGui_Separator(ctx)
@@ -898,6 +903,7 @@ function CanvasContextMenus.render_text_item_popup(ctx, state, midi_service, act
                 if changed then
                     cti.font_size = new_sz
                     TextItemService.save_text_items(state)
+                    if reaper.UpdateArrange then reaper.UpdateArrange() end
                 end
                 if reaper.APIExists("ImGui_IsItemDeactivatedAfterEdit") and reaper.ImGui_IsItemDeactivatedAfterEdit(ctx) then
                     reaper.Undo_OnStateChange2(0, "Notator: Change Text Font Size")
@@ -1069,6 +1075,7 @@ function CanvasContextMenus.render_tempo_popup(ctx, state, midi_service, active_
             if reaper.ImGui_MenuItem(ctx, "✏ Edit BPM...") then
                 state.editing_tempo_marker = tm
                 state.editing_tempo_val = tostring(math.floor(tm.bpm or 120))
+                state._edit_tempo_marker_id = nil
                 reaper.ImGui_OpenPopup(ctx, "edit_tempo_popup")
             end
             
@@ -1089,6 +1096,170 @@ function CanvasContextMenus.render_tempo_popup(ctx, state, midi_service, active_
                 state.selected_tempo_marker = nil
                 state.context_tempo_marker = nil
             end
+        end
+        reaper.ImGui_EndPopup(ctx)
+    end
+end
+
+-- ==============================================================================
+-- 11b. EDIT TEMPO POPUP (Double-click or Context Menu)
+-- ==============================================================================
+function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
+    if reaper.ImGui_BeginPopup(ctx, "edit_tempo_popup") then
+        local tm = state.editing_tempo_marker or state.selected_tempo_marker or state.context_tempo_marker
+        if tm then
+            local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
+            
+            reaper.ImGui_TextColored(ctx, 0xF39C12FF, "⏱ Edit Tempo Marking")
+            reaper.ImGui_Separator(ctx)
+            
+            if tm.type == "absolute" then
+                if state._edit_tempo_label == nil or state._edit_tempo_marker_id ~= tm.id then
+                    state._edit_tempo_label = tm.label or ""
+                    state._edit_tempo_bpm = math.floor(tm.bpm or 120)
+                    state._edit_tempo_marker_id = tm.id
+                    state._edit_tempo_focus_done = false
+                end
+                
+                reaper.ImGui_Text(ctx, "Term / Label:")
+                reaper.ImGui_SetNextItemWidth(ctx, 160)
+                local changed_lbl, new_lbl = reaper.ImGui_InputText(ctx, "##edit_tempo_lbl", state._edit_tempo_label)
+                if changed_lbl then state._edit_tempo_label = new_lbl end
+                
+                local terms = { "Largo (50)", "Adagio (70)", "Andante (90)", "Moderato (110)", "Allegro (130)", "Presto (170)" }
+                if reaper.ImGui_BeginCombo(ctx, "##tempo_presets", "Presets...", reaper.ImGui_ComboFlags_NoArrowButton()) then
+                    for _, p in ipairs(terms) do
+                        local name, pbpm = p:match("([%a]+)%s+%((%d+)%)")
+                        if reaper.ImGui_Selectable(ctx, p, false) then
+                            state._edit_tempo_label = name
+                            state._edit_tempo_bpm = tonumber(pbpm) or 120
+                        end
+                    end
+                    reaper.ImGui_EndCombo(ctx)
+                end
+                
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_Text(ctx, "BPM (♩):")
+                reaper.ImGui_SetNextItemWidth(ctx, 160)
+                if not state._edit_tempo_focus_done then
+                    reaper.ImGui_SetKeyboardFocusHere(ctx)
+                    state._edit_tempo_focus_done = true
+                end
+                local changed_bpm, new_bpm = reaper.ImGui_InputInt(ctx, "##edit_tempo_bpm", state._edit_tempo_bpm, 1, 10)
+                if changed_bpm then
+                    state._edit_tempo_bpm = math.max(20, math.min(999, new_bpm))
+                end
+                
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_Separator(ctx)
+                
+                local apply = false
+                local is_enter = reaper.APIExists("ImGui_IsKeyPressed") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Enter())
+                if reaper.ImGui_Button(ctx, "OK", 75, 24) or is_enter then
+                    apply = true
+                end
+                reaper.ImGui_SameLine(ctx)
+                if reaper.ImGui_Button(ctx, "Cancel", 75, 24) then
+                    state.editing_tempo_marker = nil
+                    state._edit_tempo_marker_id = nil
+                    reaper.ImGui_CloseCurrentPopup(ctx)
+                end
+                
+                if apply then
+                    local final_bpm = state._edit_tempo_bpm or tm.bpm or 120
+                    local final_lbl = state._edit_tempo_label or ""
+                    tm.bpm = final_bpm
+                    tm.label = final_lbl
+                    tm.custom_bpm_only = (final_lbl == "")
+                    
+                    TempoService.save_markers(state)
+                    TempoService.sync_all_to_reaper(state)
+                    reaper.Undo_OnStateChange2(0, string.format("Notator: Edit Tempo to %d BPM", math.floor(final_bpm)))
+                    
+                    state.status_msg = string.format("Tempo set to: %s", tm:get_display_text())
+                    state.editing_tempo_marker = nil
+                    state._edit_tempo_marker_id = nil
+                    reaper.ImGui_CloseCurrentPopup(ctx)
+                end
+            else
+                if state._edit_tempo_target_bpm == nil or state._edit_tempo_marker_id ~= tm.id then
+                    state._edit_tempo_bpm = math.floor(tm.bpm or 120)
+                    state._edit_tempo_target_bpm = math.floor(tm.target_bpm or 140)
+                    state._edit_tempo_modifier = tm.modifier or ""
+                    state._edit_tempo_label = tm.label or "accel."
+                    state._edit_tempo_marker_id = tm.id
+                    state._edit_tempo_focus_done = false
+                end
+                
+                reaper.ImGui_Text(ctx, "Type:")
+                reaper.ImGui_SetNextItemWidth(ctx, 160)
+                local cur_type_display = (state._edit_tempo_modifier ~= "" and (state._edit_tempo_modifier .. " ") or "") .. state._edit_tempo_label
+                if reaper.ImGui_BeginCombo(ctx, "##edit_grad_type", cur_type_display) then
+                    local grad_presets = {
+                        { mod = "",       lbl = "accel.", bpm_add = 20 },
+                        { mod = "poco",   lbl = "accel.", bpm_add = 15 },
+                        { mod = "molto",  lbl = "accel.", bpm_add = 35 },
+                        { mod = "",       lbl = "rit.",   bpm_add = -20 },
+                        { mod = "poco",   lbl = "rit.",   bpm_add = -15 },
+                        { mod = "molto",  lbl = "rit.",   bpm_add = -35 },
+                        { mod = "",       lbl = "rall.",  bpm_add = -25 },
+                    }
+                    for _, gp in ipairs(grad_presets) do
+                        local full_name = (gp.mod ~= "" and (gp.mod .. " ") or "") .. gp.lbl
+                        if reaper.ImGui_Selectable(ctx, full_name, false) then
+                            state._edit_tempo_modifier = gp.mod
+                            state._edit_tempo_label = gp.lbl
+                            state._edit_tempo_target_bpm = math.max(20, math.min(999, state._edit_tempo_bpm + gp.bpm_add))
+                        end
+                    end
+                    reaper.ImGui_EndCombo(ctx)
+                end
+                
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_Text(ctx, "Start BPM:")
+                reaper.ImGui_SetNextItemWidth(ctx, 160)
+                local ch_sbpm, n_sbpm = reaper.ImGui_InputInt(ctx, "##edit_start_bpm", state._edit_tempo_bpm, 1, 10)
+                if ch_sbpm then state._edit_tempo_bpm = math.max(20, math.min(999, n_sbpm)) end
+                
+                reaper.ImGui_Text(ctx, "Target BPM:")
+                reaper.ImGui_SetNextItemWidth(ctx, 160)
+                local ch_tbpm, n_tbpm = reaper.ImGui_InputInt(ctx, "##edit_target_bpm", state._edit_tempo_target_bpm, 1, 10)
+                if ch_tbpm then state._edit_tempo_target_bpm = math.max(20, math.min(999, n_tbpm)) end
+                
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_Separator(ctx)
+                
+                local apply = false
+                local is_enter = reaper.APIExists("ImGui_IsKeyPressed") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Enter())
+                if reaper.ImGui_Button(ctx, "OK", 75, 24) or is_enter then
+                    apply = true
+                end
+                reaper.ImGui_SameLine(ctx)
+                if reaper.ImGui_Button(ctx, "Cancel", 75, 24) then
+                    state.editing_tempo_marker = nil
+                    state._edit_tempo_marker_id = nil
+                    reaper.ImGui_CloseCurrentPopup(ctx)
+                end
+                
+                if apply then
+                    tm.bpm = state._edit_tempo_bpm or tm.bpm
+                    tm.target_bpm = state._edit_tempo_target_bpm or tm.target_bpm
+                    tm.modifier = state._edit_tempo_modifier or tm.modifier
+                    tm.label = state._edit_tempo_label or tm.label
+                    tm.custom_target_bpm = true
+                    
+                    TempoService.save_markers(state)
+                    TempoService.sync_all_to_reaper(state)
+                    reaper.Undo_OnStateChange2(0, "Notator: Edit Gradual Tempo")
+                    
+                    state.status_msg = string.format("Gradual tempo set: %s (%d -> %d BPM)", tm:get_display_text(), math.floor(tm.bpm), math.floor(tm.target_bpm))
+                    state.editing_tempo_marker = nil
+                    state._edit_tempo_marker_id = nil
+                    reaper.ImGui_CloseCurrentPopup(ctx)
+                end
+            end
+        else
+            reaper.ImGui_CloseCurrentPopup(ctx)
         end
         reaper.ImGui_EndPopup(ctx)
     end
@@ -1170,6 +1341,7 @@ function CanvasContextMenus.render_all(ctx, state, midi_service, active_tracks_d
     CanvasContextMenus.render_dynamic_popup(ctx, state, midi_service, active_tracks_data, qn_per_measure)
     CanvasContextMenus.render_hairpin_popup(ctx, state, midi_service, active_tracks_data, qn_per_measure)
     CanvasContextMenus.render_tempo_popup(ctx, state, midi_service, active_tracks_data, qn_per_measure)
+    CanvasContextMenus.render_edit_tempo_popup(ctx, state)
     CanvasContextMenus.render_articulation_popup(ctx, state, midi_service, active_tracks_data, qn_per_measure)
 end
 

@@ -876,14 +876,10 @@ end
 -- @param state Notator state object
 function KeySignatureService.load(state)
     if not state then return end
-    local ok, str = reaper.GetProjExtState(0, "REAPER_Notator", "KEY_SIGNATURE")
-    if ok == 1 and str and str ~= "" then
-        local kidx, mode = str:match("^(%-?%d+)|?([%a%d_]*)")
-        if kidx then
-            state.key_signature = tonumber(kidx) or 0
-            state.key_signature_mode = (mode and mode ~= "") and mode or "major"
-        end
-    end
+    -- The user explicitly requested:
+    -- Default key signature must ALWAYS be C Major on startup.
+    state.key_signature = 0
+    state.key_signature_mode = "major"
 
     local ok_t, raw_t = reaper.GetProjExtState(0, "REAPER_Notator", "track_key_signatures")
     if ok_t == 1 and raw_t and raw_t ~= "" then

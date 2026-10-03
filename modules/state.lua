@@ -521,18 +521,14 @@ function State.new()
     end
     
     function self:get_tuplet_factor()
-        if self.tuplet_type == "3" or self.tuplet_type == 3 then
-            return 1.0 / 3.0
-        elseif self.tuplet_type == "5" or self.tuplet_type == 5 then
-            return 1.0 / 5.0
-        elseif self.tuplet_type == "6" or self.tuplet_type == 6 then
-            return 1.0 / 6.0
-        elseif self.tuplet_type == "7" or self.tuplet_type == 7 then
-            return 1.0 / 7.0
-        elseif self.tuplet_type == "8" or self.tuplet_type == 8 then
-            return 1.0 / 8.0
+        if self.tuplet_type then
+            local Constants = require("constants")
+            local def = Constants.TUPLET_DEFS and Constants.TUPLET_DEFS[tostring(self.tuplet_type)]
+            if def and def.factor then
+                return def.factor
+            end
         end
-        if self.is_triplet then return 1.0 / 3.0 end
+        if self.is_triplet then return 2.0 / 3.0 end
         return 1.0
     end
     
@@ -643,8 +639,10 @@ function State:load_settings()
     self.show_octaves_layer = load_bool("show_octaves_layer", true)
     self.show_tuplets_layer = load_bool("show_tuplets_layer", true)
     self.show_key_signatures = load_bool("show_key_signatures", false)
-    self.key_signature = load_num("key_signature", 0)
-    self.key_signature_mode = load_str("key_signature_mode", "major")
+    self.key_signature = 0 -- Always default to C Major on startup
+    self.key_signature_mode = "major"
+    reaper.DeleteExtState("REAPER_Notator", "key_signature", true)
+    reaper.DeleteExtState("REAPER_Notator", "key_signature_mode", true)
     self.show_text_items_layer = load_bool("show_text_items_layer", true)
     self.show_pedal_layer = load_bool("show_pedal_layer", true)
     self.show_dynamic_texts_layer = load_bool("show_dynamic_texts_layer", true)
@@ -773,8 +771,6 @@ function State.save_settings(self)
     save_val("show_octaves_layer", self.show_octaves_layer ~= false)
     save_val("show_tuplets_layer", self.show_tuplets_layer ~= false)
     save_val("show_key_signatures", self.show_key_signatures == true)
-    save_val("key_signature", self.key_signature or 0)
-    save_val("key_signature_mode", self.key_signature_mode or "major")
     save_val("show_text_items_layer", self.show_text_items_layer ~= false)
     save_val("show_pedal_layer", self.show_pedal_layer ~= false)
     save_val("show_dynamic_texts_layer", self.show_dynamic_texts_layer ~= false)

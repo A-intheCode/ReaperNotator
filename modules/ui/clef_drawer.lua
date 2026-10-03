@@ -30,6 +30,20 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
     -- Target Track Info
     local cur_trk = state.focused_track
     if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+        local sel_item = reaper.GetSelectedMediaItem(0, 0)
+        if sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") then
+            cur_trk = reaper.GetMediaItem_Track(sel_item)
+            state.focused_track = cur_trk
+        end
+    end
+    if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+        local sel_trk = reaper.GetSelectedTrack(0, 0)
+        if sel_trk and reaper.ValidatePtr(sel_trk, "MediaTrack*") then
+            cur_trk = sel_trk
+            state.focused_track = cur_trk
+        end
+    end
+    if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
         if state.selected_notes then
             for _, sn in pairs(state.selected_notes) do
                 if sn.track and reaper.ValidatePtr(sn.track, "MediaTrack*") then
@@ -39,9 +53,21 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
                 end
             end
         end
-        if (not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*")) and state.selected_note and state.selected_note.track and reaper.ValidatePtr(state.selected_note.track, "MediaTrack*") then
-            cur_trk = state.selected_note.track
-            state.focused_track = cur_trk
+    end
+    if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+        if state.selected_tracks then
+            for s_guid in pairs(state.selected_tracks) do
+                local trk_cnt = reaper.CountTracks(0)
+                for ti = 0, trk_cnt - 1 do
+                    local t = reaper.GetTrack(0, ti)
+                    if t and reaper.GetTrackGUID(t) == s_guid then
+                        cur_trk = t
+                        state.focused_track = cur_trk
+                        break
+                    end
+                end
+                if cur_trk then break end
+            end
         end
     end
 
@@ -107,8 +133,13 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
         if clicked then
             if cur_trk and trk_guid then
                 state.track_clefs[trk_guid] = clef.id
+                state.cached_measure_map = nil
+                state.cached_measure_map_sig = nil
+                state._track_clefs_cache = nil
+                state._cached_hdr_metrics = nil
                 state:save_settings()
                 if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
+                if reaper.UpdateArrange then reaper.UpdateArrange() end
                 state.status_msg = string.format("Track '%s': Clef set to %s", trk_name, clef.name)
             else
                 state.status_msg = string.format("Clef selected: %s (Focus a track to apply)", clef.name)

@@ -83,6 +83,9 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                         if reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
                             state.editing_tempo_marker = tm
                             state.editing_tempo_val = tostring(math.floor(tm.bpm or 120))
+                            state.is_dragging_tempo = false
+                            state.drag_tempo_marker = nil
+                            state._edit_tempo_marker_id = nil
                             reaper.ImGui_OpenPopup(ctx, "edit_tempo_popup")
                         end
                     end
@@ -98,10 +101,10 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                         reaper.ImGui_DrawList_AddRect(draw_list, bb_x0, bb_y0, bb_x1, bb_y1, 0xFF9F1C88, 3.0, 0, 1.0 * s)
                     end
                     
-                    -- Draw text (bold)
-                    local font_bold = (FontManager and FontManager.font_bold) or (fonts and fonts.font_bold)
-                    if font_bold and reaper.APIExists("ImGui_DrawList_AddTextEx") then
-                        reaper.ImGui_DrawList_AddTextEx(draw_list, font_bold, txt_sz, x1, tempo_y - 10 * s, tempo_text_col, disp_str)
+                    -- Draw text (regular, non-bold per user request)
+                    local font_regular = (FontManager and FontManager.font_main) or (fonts and fonts.font_main)
+                    if font_regular and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+                        reaper.ImGui_DrawList_AddTextEx(draw_list, font_regular, txt_sz, x1, tempo_y - 10 * s, tempo_text_col, disp_str)
                     else
                         reaper.ImGui_DrawList_AddText(draw_list, x1, tempo_y - 10 * s, tempo_text_col, disp_str)
                     end
@@ -150,6 +153,9 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                         if in_line and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
                             state.editing_tempo_marker = tm
                             state.editing_tempo_val = tostring(math.floor(tm.bpm or 120))
+                            state.is_dragging_tempo = false
+                            state.drag_tempo_marker = nil
+                            state._edit_tempo_marker_id = nil
                             reaper.ImGui_OpenPopup(ctx, "edit_tempo_popup")
                         end
                     end

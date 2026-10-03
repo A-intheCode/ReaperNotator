@@ -357,23 +357,21 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
     
     -- 2. Find dynamic markers on the same track
     local prev_dyn, next_dyn = nil, nil
-    local min_prev_dist, min_next_dist = 100000, 100000
+    local max_prev_dyn_qn = -1
+    local min_next_dyn_qn = 99999999
     local track_dyns = collect_track_dynamics(hp.track_guid, active_tracks_data)
     
     for _, d in ipairs(track_dyns) do
         -- Marker lies before or directly at the start
-        if d.qn <= s_qn + 0.15 then
-            local dist = s_qn - d.qn
-            if dist < min_prev_dist then
-                min_prev_dist = dist
+        if d.qn <= s_qn + 0.05 then
+            if d.qn > max_prev_dyn_qn then
+                max_prev_dyn_qn = d.qn
                 prev_dyn = d
             end
-        end
-        -- Marker lies after or directly at the end
-        if d.qn >= e_qn - 0.15 then
-            local dist = d.qn - e_qn
-            if dist < min_next_dist then
-                min_next_dist = dist
+        -- Marker lies strictly after the start
+        elseif d.qn > s_qn + 0.05 then
+            if d.qn < min_next_dyn_qn then
+                min_next_dyn_qn = d.qn
                 next_dyn = d
             end
         end
@@ -387,12 +385,12 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
         for _, dt in ipairs(state.dynamic_texts) do
             if dt.track_guid == hp.track_guid then
                 local dt_s = dt.start_qn or 0.0
-                if dt_s < s_qn then
+                if dt_s < s_qn - 0.05 then
                     if dt_s > max_prev_dt_start then
                         max_prev_dt_start = dt_s
                         prev_dt = dt
                     end
-                elseif dt_s > s_qn then
+                elseif dt_s > s_qn + 0.05 then
                     if dt_s < min_next_dt_start then
                         min_next_dt_start = dt_s
                         next_dt = dt
@@ -402,6 +400,24 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
         end
     end
     
+    -- 2c. Find articulations on the same track
+    local max_prev_art_qn = -1
+    local min_next_art_qn = 99999999
+    if active_tracks_data then
+        for _, tdata in ipairs(active_tracks_data) do
+            if tdata.guid == hp.track_guid and tdata.articulations then
+                for _, a in ipairs(tdata.articulations) do
+                    local aqn = a.qn or 0.0
+                    if aqn <= s_qn + 0.05 then
+                        if aqn > max_prev_art_qn then max_prev_art_qn = aqn end
+                    elseif aqn > s_qn + 0.05 then
+                        if aqn < min_next_art_qn then min_next_art_qn = aqn end
+                    end
+                end
+            end
+        end
+    end
+
     -- 3. Calculate strict physical bounds
     local l_bound = 0.0
     if prev_hp then
@@ -415,6 +431,9 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
         local pde = prev_dt.end_qn or (prev_dt.start_qn + 4.0)
         l_bound = math.max(l_bound, pde)
     end
+    if max_prev_art_qn >= 0 then
+        l_bound = math.max(l_bound, max_prev_art_qn)
+    end
     
     local r_bound = 999999.0
     if next_hp then
@@ -427,6 +446,9 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
     if next_dt then
         local nds = next_dt.start_qn or 0.0
         r_bound = math.min(r_bound, nds)
+    end
+    if min_next_art_qn < 99999999 then
+        r_bound = math.min(r_bound, min_next_art_qn)
     end
     
     return l_bound, r_bound, prev_hp, next_hp, prev_dyn, next_dyn, prev_dt, next_dt
@@ -655,6 +677,22 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
             else
                 val1 = math.floor(c1_s + (c1_e - c1_s) * ratio + 0.5)
                 val2 = math.floor(c11_s + (c11_e - c11_s) * ratio + 0.5)
+            end
+            
+            -- Note-level breathing phrasing
+            if state.dyn_phrasing_active then
+                local p_int = state.dyn_phrasing_intensity or 0.5
+                for _, n in ipairs(take_notes) do
+                    if cur >= n.start_ppq and cur <= n.end_ppq then
+                        local ndur = n.end_ppq - n.start_ppq
+                        local nprog = (ndur > 0) and ((cur - n.start_ppq) / ndur) or 0.5
+                        local breath = math.sin(nprog * math.pi)
+                        local breath_val = breath * (p_int * 14.0)
+                        val1 = val1 + breath_val
+                        val2 = val2 + breath_val
+                        break
+                    end
+                end
             end
             
             -- Bow swelling on notes >= quarter note

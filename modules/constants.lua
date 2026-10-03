@@ -143,11 +143,11 @@ Constants.SMUFL = {
 }
 
 Constants.TUPLET_DEFS = {
-    ["3"] = { name = "Triplet",    ratio_num = 3, ratio_den = 2, factor = 1.0 / 3.0, label = "3 Triplet (3:2)",   glyph = utf8.char(0xE883) },
-    ["5"] = { name = "Quintuplet",  ratio_num = 5, ratio_den = 4, factor = 1.0 / 5.0, label = "5 Quintuplet (5:4)", glyph = utf8.char(0xE885) },
-    ["6"] = { name = "Sextuplet",   ratio_num = 6, ratio_den = 4, factor = 1.0 / 6.0, label = "6 Sextuplet (6:4)",  glyph = utf8.char(0xE886) },
-    ["7"] = { name = "Septuplet",   ratio_num = 7, ratio_den = 4, factor = 1.0 / 7.0, label = "7 Septuplet (7:4)",  glyph = utf8.char(0xE887) },
-    ["8"] = { name = "Octuplet",    ratio_num = 8, ratio_den = 6, factor = 1.0 / 8.0, label = "8 Octuplet (8:6)",   glyph = utf8.char(0xE888) },
+    ["3"] = { name = "Triplet",    ratio_num = 3, ratio_den = 2, factor = 2.0 / 3.0, label = "3 Triplet (3:2)",   glyph = utf8.char(0xE883) },
+    ["5"] = { name = "Quintuplet",  ratio_num = 5, ratio_den = 4, factor = 4.0 / 5.0, label = "5 Quintuplet (5:4)", glyph = utf8.char(0xE885) },
+    ["6"] = { name = "Sextuplet",   ratio_num = 6, ratio_den = 4, factor = 4.0 / 6.0, label = "6 Sextuplet (6:4)",  glyph = utf8.char(0xE886) },
+    ["7"] = { name = "Septuplet",   ratio_num = 7, ratio_den = 4, factor = 4.0 / 7.0, label = "7 Septuplet (7:4)",  glyph = utf8.char(0xE887) },
+    ["8"] = { name = "Octuplet",    ratio_num = 8, ratio_den = 6, factor = 6.0 / 8.0, label = "8 Octuplet (8:6)",   glyph = utf8.char(0xE888) },
 }
 
 Constants.DYN_GLYPH_WIDTHS = {

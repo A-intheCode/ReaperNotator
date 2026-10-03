@@ -329,12 +329,12 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
         for _, other in ipairs(state.dynamic_texts) do
             if other.id ~= dt.id and other.track_guid == dt.track_guid then
                 local os = other.start_qn or 0.0
-                if os < s_qn then
+                if os < s_qn - 0.05 then
                     if os > max_prev_start then
                         max_prev_start = os
                         prev_dt = other
                     end
-                elseif os > s_qn then
+                elseif os > s_qn + 0.05 then
                     if os < min_next_start then
                         min_next_start = os
                         next_dt = other
@@ -352,12 +352,12 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
         for _, hp in ipairs(state.hairpins) do
             if hp.track_guid == dt.track_guid then
                 local hs = hp.start_qn or 0.0
-                if hs < s_qn then
+                if hs < s_qn - 0.05 then
                     if hs > max_prev_hp_start then
                         max_prev_hp_start = hs
                         prev_hp = hp
                     end
-                elseif hs > s_qn then
+                elseif hs > s_qn + 0.05 then
                     if hs < min_next_hp_start then
                         min_next_hp_start = hs
                         next_hp = hp
@@ -369,7 +369,8 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
 
     -- 3. Dynamic markers on the same track
     local prev_dyn, next_dyn = nil, nil
-    local min_prev_dist, min_next_dist = 100000, 100000
+    local max_prev_dyn_qn = -1
+    local min_next_dyn_qn = 99999999
     local track_dyns = {}
     if active_tracks_data then
         for _, tdata in ipairs(active_tracks_data) do
@@ -398,18 +399,33 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
     table.sort(track_dyns, function(a, b) return (a.qn or 0) < (b.qn or 0) end)
 
     for _, d in ipairs(track_dyns) do
-        if d.qn <= s_qn + 0.15 then
-            local dist = s_qn - d.qn
-            if dist < min_prev_dist then
-                min_prev_dist = dist
+        if d.qn <= s_qn + 0.05 then
+            if d.qn > max_prev_dyn_qn then
+                max_prev_dyn_qn = d.qn
                 prev_dyn = d
             end
-        end
-        if d.qn >= e_qn - 0.15 then
-            local dist = d.qn - e_qn
-            if dist < min_next_dist then
-                min_next_dist = dist
+        elseif d.qn > s_qn + 0.05 then
+            if d.qn < min_next_dyn_qn then
+                min_next_dyn_qn = d.qn
                 next_dyn = d
+            end
+        end
+    end
+
+    -- 4. Articulations on the same track
+    local max_prev_art_qn = -1
+    local min_next_art_qn = 99999999
+    if active_tracks_data then
+        for _, tdata in ipairs(active_tracks_data) do
+            if tdata.guid == dt.track_guid and tdata.articulations then
+                for _, a in ipairs(tdata.articulations) do
+                    local aqn = a.qn or 0.0
+                    if aqn <= s_qn + 0.05 then
+                        if aqn > max_prev_art_qn then max_prev_art_qn = aqn end
+                    elseif aqn > s_qn + 0.05 then
+                        if aqn < min_next_art_qn then min_next_art_qn = aqn end
+                    end
+                end
             end
         end
     end
@@ -426,6 +442,9 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
     if prev_dyn then
         l_bound = math.max(l_bound, prev_dyn.qn)
     end
+    if max_prev_art_qn >= 0 then
+        l_bound = math.max(l_bound, max_prev_art_qn)
+    end
 
     local r_bound = 999999.0
     if next_dt then
@@ -438,6 +457,9 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
     end
     if next_dyn then
         r_bound = math.min(r_bound, next_dyn.qn)
+    end
+    if min_next_art_qn < 99999999 then
+        r_bound = math.min(r_bound, min_next_art_qn)
     end
 
     return l_bound, r_bound, prev_dt, next_dt, prev_hp, next_hp, prev_dyn, next_dyn
@@ -590,6 +612,25 @@ function DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data
     local grid_ppq = (opt and opt.val) and math.floor(opt.val * 960 + 0.5) or 240
     if grid_ppq < 10 then grid_ppq = 60 end
 
+    -- Prepare take notes for phrasing, bow swelling and pitch stress
+    local take_notes = {}
+    local has_bow = (state.dyn_bow_intensity or 0) > 0
+    local _, note_cnt = reaper.MIDI_CountEvts(take)
+    for n = 0, (note_cnt or 0) - 1 do
+        local ok, _, _, s_ppq, e_ppq, _, pitch, vel = reaper.MIDI_GetNote(take, n)
+        if ok and e_ppq > start_ppq and s_ppq < end_ppq then
+            local s_qn = reaper.MIDI_GetProjQNFromPPQPos(take, s_ppq)
+            local e_qn = reaper.MIDI_GetProjQNFromPPQPos(take, e_ppq)
+            table.insert(take_notes, {
+                start_ppq = s_ppq,
+                end_ppq = e_ppq,
+                pitch = pitch,
+                vel = vel,
+                dur_qn = math.abs(e_qn - s_qn)
+            })
+        end
+    end
+
     local dur = end_ppq - start_ppq
     local steps = math.max(4, math.floor(dur / grid_ppq))
     local p_start = DynamicsEngine.get_pitch_at_ppq(take, start_ppq)
@@ -617,8 +658,53 @@ function DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data
             local base_v1 = math.floor(c1_s + (c1_e - c1_s) * cr + 0.5)
             local base_v2 = math.floor(c11_s + (c11_e - c11_s) * cr + 0.5)
 
-            local val1 = DynamicsEngine.get_smart_val(state, c1_s, c1_e, cr, delta, base_v1)
-            local val2 = DynamicsEngine.get_smart_val(state, c11_s, c11_e, cr, delta, base_v2)
+            local val1, val2
+            if state.dyn_phrasing_active then
+                val1 = DynamicsEngine.get_smart_val(state, c1_s, c1_e, cr, delta, base_v1)
+                val2 = DynamicsEngine.get_smart_val(state, c11_s, c11_e, cr, delta, base_v2)
+            else
+                val1 = base_v1
+                val2 = base_v2
+            end
+
+            -- Note-level breathing phrasing
+            if state.dyn_phrasing_active then
+                local p_int = state.dyn_phrasing_intensity or 0.5
+                for _, n in ipairs(take_notes) do
+                    if cur >= n.start_ppq and cur <= n.end_ppq then
+                        local ndur = n.end_ppq - n.start_ppq
+                        local nprog = (ndur > 0) and ((cur - n.start_ppq) / ndur) or 0.5
+                        local breath = math.sin(nprog * math.pi)
+                        local breath_val = breath * (p_int * 14.0)
+                        val1 = val1 + breath_val
+                        val2 = val2 + breath_val
+                        break
+                    end
+                end
+            end
+
+            -- Bow swelling on notes >= quarter note (dur_qn >= 0.90)
+            if has_bow then
+                for _, n in ipairs(take_notes) do
+                    if cur >= n.start_ppq and cur <= n.end_ppq and n.dur_qn >= 0.90 then
+                        local ndur = n.end_ppq - n.start_ppq
+                        local nprog = (ndur > 0) and ((cur - n.start_ppq) / ndur) or 0.5
+                        local bcurve = DynamicsEngine.calc_bow_curve and DynamicsEngine.calc_bow_curve(nprog, state.dyn_bow_pos) or math.sin(nprog * math.pi)
+                        local bmod = bcurve * ((state.dyn_bow_intensity or 0) * 22.0)
+                        val1 = val1 + bmod
+                        val2 = val2 + bmod
+                        break
+                    end
+                end
+            end
+
+            if s == 0 then
+                val1 = c1_s
+                val2 = c11_s
+            elseif s == steps or cur >= end_ppq then
+                val1 = c1_e
+                val2 = c11_e
+            end
 
             local f1 = math.max(0, math.min(127, math.floor(val1 + 0.5)))
             local f2 = math.max(0, math.min(127, math.floor(val2 + 0.5)))

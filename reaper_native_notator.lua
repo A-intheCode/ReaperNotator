@@ -1,7 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.1.0
+-- @version 1.3.0
 -- @changelog
+--   + v1.3.0: Music engraving refinements, tempo editing & tuplet mathematics:
+--             - Precise Gardner Read / Elaine Gould quarter-note quintuplet (5:4) measure spacing
+--             - Clean DirectWrite unicode quarter-note tempo symbol (♩) with non-bold styling
+--             - Direct double-click BPM editing popup with auto-focused numeric input
+--             - Robust ReaImGui context pointer validation preventing runtime crashes
+--             - Multi-track view persistence on MIDI item selection & instant clef redraw
+--             - Text item bold/italic formatting toggle bugfixes
 --   + v1.1.0: Major performance optimization for large scores (48+ tracks / orchestra templates):
 --             - Zero-overhead measure layout & key signature caching
 --             - O(N) note and rest bucketing for measure width calculations
@@ -160,6 +167,7 @@ end)
 -- 5. Main Render Loop (ReaImGui 60 FPS)
 local function loop()
     if not state.is_open then return end
+    if reaper.APIExists("ImGui_ValidatePtr") and not reaper.ImGui_ValidatePtr(ctx, "ImGui_Context*") then return end
 
     -- Project-specific data (tempo markers, octave lines, hairpins, pedals, text items, repeat marks & chord items):
     -- Check every frame if the active REAPER project changed or was reloaded

@@ -16,45 +16,57 @@ local FontManager = {
 }
 
 function FontManager.init(ctx, state)
-    local base_font_size = 20
     local os_type = PathService.get_os()
-    local function create_ui_font(size, family)
+    
+    local flag_none = reaper.APIExists("ImGui_FontFlags_None") and reaper.ImGui_FontFlags_None() or 0
+    local flag_bold = reaper.APIExists("ImGui_FontFlags_Bold") and reaper.ImGui_FontFlags_Bold() or 1
+    local flag_italic = reaper.APIExists("ImGui_FontFlags_Italic") and reaper.ImGui_FontFlags_Italic() or 2
+    local flag_bold_italic = flag_bold | flag_italic
+
+    local function load_styled_ui_font(flags, mac_family)
         local f = nil
+        
+        -- Strategy 1: Load via font family name + style flags (DirectWrite / FreeType with full Unicode fallback)
         if reaper.APIExists("ImGui_CreateFont") then
-            if family then
-                local ok, res = pcall(reaper.ImGui_CreateFont, family, size)
-                if ok and res then f = res end
-            end
-            if not f then
-                local ok, res = pcall(reaper.ImGui_CreateFont, "Segoe UI", size)
-                if ok and res then f = res end
-            end
-            if not f then
-                local fallbacks = (os_type == "macos") and {"Helvetica Neue", "Arial"} or {"DejaVu Sans", "Liberation Sans", "Arial"}
-                for _, fam in ipairs(fallbacks) do
-                    local ok, res = pcall(reaper.ImGui_CreateFont, fam, size)
-                    if ok and res then f = res break end
-                end
-            end
-            if not f then
-                local ok, res = pcall(reaper.ImGui_CreateFont, "sans-serif", size)
-                if ok and res then f = res end
+            local primary_family = (os_type == "macos" and mac_family) or "Segoe UI"
+            local ok, res = pcall(reaper.ImGui_CreateFont, primary_family, flags)
+            if ok and res and (not reaper.APIExists("ImGui_ValidatePtr") or reaper.ImGui_ValidatePtr(res, "ImGui_Font*")) then
+                f = res
             end
         end
+
+        -- Strategy 2: Standard OS Fallback font families with style flags
+        if not f and reaper.APIExists("ImGui_CreateFont") then
+            local fallbacks = (os_type == "macos") and {"Helvetica Neue", "Arial"} or {"Segoe UI", "DejaVu Sans", "Liberation Sans", "Arial", "sans-serif"}
+            for _, fam in ipairs(fallbacks) do
+                local ok, res = pcall(reaper.ImGui_CreateFont, fam, flags)
+                if ok and res and (not reaper.APIExists("ImGui_ValidatePtr") or reaper.ImGui_ValidatePtr(res, "ImGui_Font*")) then
+                    f = res
+                    break
+                end
+            end
+        end
+
         return f
     end
 
-    FontManager.font_main        = create_ui_font(base_font_size, "Segoe UI")
-    FontManager.font_big         = create_ui_font(28,             "Segoe UI Bold")
-    FontManager.font_bold        = create_ui_font(base_font_size, "Segoe UI Bold")
-    FontManager.font_italic      = create_ui_font(base_font_size, "Segoe UI Italic")
-    FontManager.font_bold_italic = create_ui_font(base_font_size, "Segoe UI Bold Italic")
+    FontManager.font_main        = load_styled_ui_font(flag_none,        "Helvetica Neue")
+    FontManager.font_bold        = load_styled_ui_font(flag_bold,        "Helvetica Neue")
+    FontManager.font_italic      = load_styled_ui_font(flag_italic,      "Helvetica Neue")
+    FontManager.font_bold_italic = load_styled_ui_font(flag_bold_italic, "Helvetica Neue")
+    FontManager.font_big         = FontManager.font_bold or FontManager.font_main
 
     local attached_fonts = {}
     local function safe_attach(f)
         if not f or not ctx or attached_fonts[f] then return end
-        pcall(reaper.ImGui_Attach, ctx, f)
-        attached_fonts[f] = true
+        if reaper.APIExists("ImGui_ValidatePtr") then
+            if not reaper.ImGui_ValidatePtr(ctx, "ImGui_Context*") then return end
+            if not reaper.ImGui_ValidatePtr(f, "ImGui_Font*") then return end
+        end
+        local ok = pcall(reaper.ImGui_Attach, ctx, f)
+        if ok then
+            attached_fonts[f] = true
+        end
     end
 
     safe_attach(FontManager.font_main)
@@ -77,17 +89,22 @@ function FontManager.init(ctx, state)
         if PathService.file_exists(path) then
             if reaper.APIExists("ImGui_CreateFontFromFile") then
                 local flags = reaper.APIExists("ImGui_FontFlags_None") and reaper.ImGui_FontFlags_None() or 0
-                local ok, mf = pcall(reaper.ImGui_CreateFontFromFile, path, 0, flags)
+                local ok, mf = pcall(reaper.ImGui_CreateFontFromFile, path, flags)
                 if not ok or not mf then
                     ok, mf = pcall(reaper.ImGui_CreateFontFromFile, path)
                 end
-                if ok and mf then FontManager.font_music = mf end
+                if ok and mf and (not reaper.APIExists("ImGui_ValidatePtr") or reaper.ImGui_ValidatePtr(mf, "ImGui_Font*")) then
+                    FontManager.font_music = mf
+                end
             elseif reaper.APIExists("ImGui_CreateFont") then
-                local ok, mf = pcall(reaper.ImGui_CreateFont, path, 40)
+                local flags = reaper.APIExists("ImGui_FontFlags_None") and reaper.ImGui_FontFlags_None() or 0
+                local ok, mf = pcall(reaper.ImGui_CreateFont, path, flags)
                 if not ok or not mf then
                     ok, mf = pcall(reaper.ImGui_CreateFont, path)
                 end
-                if ok and mf then FontManager.font_music = mf end
+                if ok and mf and (not reaper.APIExists("ImGui_ValidatePtr") or reaper.ImGui_ValidatePtr(mf, "ImGui_Font*")) then
+                    FontManager.font_music = mf
+                end
             end
             if FontManager.font_music then
                 safe_attach(FontManager.font_music)

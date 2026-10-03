@@ -276,18 +276,29 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     
     -- Horizontal scroll zone for all additional tools & buttons behind the layout dropdown
     reaper.ImGui_SameLine(ctx, 0, 10)
-    local scroll_flags = reaper.ImGui_WindowFlags_HorizontalScrollbar()
-    if reaper.APIExists("ImGui_WindowFlags_NoScrollWithMouse") then
-        scroll_flags = scroll_flags | reaper.ImGui_WindowFlags_NoScrollWithMouse()
+    local parent_avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
+    local dq_extra = (state.display_quantize and (3 + 52) or 0)
+    local total_needed_w = 105 + dq_extra + 6 + 100 + 6 + 175 + 6 + 125 + 6 + 115 + 8 + 78 + 6 + 78 + 6 + 110 + 6 + 95 + 6 + 86 + 6 + 26 + 6 + 26 + 6 + 26 + 10
+    local needs_scroll = (parent_avail_w < total_needed_w)
+
+    local scroll_flags = reaper.ImGui_WindowFlags_NoScrollbar()
+    if needs_scroll then
+        scroll_flags = reaper.ImGui_WindowFlags_HorizontalScrollbar()
+        if reaper.APIExists("ImGui_WindowFlags_NoScrollWithMouse") then
+            scroll_flags = scroll_flags | reaper.ImGui_WindowFlags_NoScrollWithMouse()
+        end
     end
+
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_WindowPadding(), 0, 0)
     if reaper.ImGui_BeginChild(ctx, "TopBarToolsScroll", 0, 44, 0, scroll_flags) then
         reaper.ImGui_SetScrollY(ctx, 0)
         -- Right-align buttons when enough space is available so settings sits against the right edge
-        local avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
-        local total_needed_w = 105 + (state.display_quantize and (3 + 52) or 0) + 6 + 100 + 6 + 170 + 6 + 125 + 6 + 115 + 8 + 78 + 6 + 110 + 6 + 95 + 6 + 86 + 6 + 26 + 6 + 26 + 6 + 26 + 6
-        if avail_w > total_needed_w then
-            reaper.ImGui_SetCursorPosX(ctx, avail_w - total_needed_w)
+        if not needs_scroll then
+            state._topbar_user_scrolled = false
+            local inside_avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
+            if inside_avail_w > total_needed_w then
+                reaper.ImGui_SetCursorPosX(ctx, inside_avail_w - total_needed_w)
+            end
         end
         
         -- Display Quantize Toggle
@@ -455,16 +466,40 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
             reaper.ImGui_SetTooltip(ctx, state.is_maximized and "Restore window (F11)" or "Maximize window (F11)")
         end
         
-        -- Horizontal scrolling via mouse wheel (lock vertical scrolling)
+        -- Horizontal scrolling via mouse wheel and scroll state management
         reaper.ImGui_SetScrollY(ctx, 0)
-        if reaper.ImGui_IsWindowHovered(ctx) then
-            local wh_y = reaper.ImGui_GetMouseWheel(ctx)
-            local wh_x = reaper.APIExists("ImGui_GetMouseWheelH") and reaper.ImGui_GetMouseWheelH(ctx) or 0
-            if wh_x ~= 0 or wh_y ~= 0 then
-                local s_amt = (wh_x ~= 0) and wh_x or wh_y
-                local cur_scroll = reaper.ImGui_GetScrollX(ctx)
-                reaper.ImGui_SetScrollX(ctx, cur_scroll - (s_amt * 40))
+        if needs_scroll then
+            local max_scroll_x = reaper.ImGui_GetScrollMaxX(ctx)
+            local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
+
+            if reaper.ImGui_IsWindowHovered(ctx) then
+                local wh_y = reaper.ImGui_GetMouseWheel(ctx)
+                local wh_x = reaper.APIExists("ImGui_GetMouseWheelH") and reaper.ImGui_GetMouseWheelH(ctx) or 0
+                if wh_x ~= 0 or wh_y ~= 0 then
+                    local s_amt = (wh_x ~= 0) and wh_x or wh_y
+                    cur_scroll_x = cur_scroll_x - (s_amt * 40)
+                    reaper.ImGui_SetScrollX(ctx, cur_scroll_x)
+                    if cur_scroll_x < (max_scroll_x - 5) then
+                        state._topbar_user_scrolled = true
+                    else
+                        state._topbar_user_scrolled = false
+                    end
+                end
             end
+
+            -- If user scrolled back near the right edge, re-enable sticky right alignment
+            if cur_scroll_x >= (max_scroll_x - 3) then
+                state._topbar_user_scrolled = false
+            elseif cur_scroll_x < (max_scroll_x - 10) and state._topbar_last_max_x == max_scroll_x then
+                state._topbar_user_scrolled = true
+            end
+
+            -- Default to scrolled all the way to the right so settings/tools are visible
+            if not state._topbar_user_scrolled and max_scroll_x > 0 then
+                reaper.ImGui_SetScrollX(ctx, max_scroll_x)
+            end
+
+            state._topbar_last_max_x = max_scroll_x
         end
 
         reaper.ImGui_EndChild(ctx)

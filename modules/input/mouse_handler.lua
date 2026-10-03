@@ -647,12 +647,13 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             local max_body_s = math.max(l_bound, r_bound - span)
             new_s = math.max(l_bound, math.min(max_body_s, new_s))
             if not is_shift then
-                if math.abs(new_s - l_bound) <= 0.35 then
+                if math.abs(new_s - l_bound) <= 0.35 or new_s <= l_bound then
                     new_s = l_bound
-                elseif math.abs((new_s + span) - r_bound) <= 0.35 then
+                elseif math.abs((new_s + span) - r_bound) <= 0.35 or (new_s + span) >= r_bound then
                     new_s = r_bound - span
                 end
             end
+            new_s = math.max(l_bound, math.min(max_body_s, new_s))
             hp.start_qn = new_s
             hp.end_qn = new_s + span
             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
@@ -786,12 +787,13 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             local max_body_s = math.max(l_bound, r_bound - span)
             new_s = math.max(l_bound, math.min(max_body_s, new_s))
             if not is_shift then
-                if math.abs(new_s - l_bound) <= 0.35 then
+                if math.abs(new_s - l_bound) <= 0.35 or new_s <= l_bound then
                     new_s = l_bound
-                elseif math.abs((new_s + span) - r_bound) <= 0.35 then
+                elseif math.abs((new_s + span) - r_bound) <= 0.35 or (new_s + span) >= r_bound then
                     new_s = r_bound - span
                 end
             end
+            new_s = math.max(l_bound, math.min(max_body_s, new_s))
             dt.start_qn = new_s
             dt.end_qn = new_s + span
             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
