@@ -10,6 +10,7 @@ import os
 import re
 import datetime
 from fpdf import FPDF
+from fpdf.enums import XPos, YPos
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS_DIR = os.path.join(REPO_ROOT, "docs")
@@ -29,10 +30,10 @@ MANUAL_DATA = [
             },
             {
                 "heading": "1.2 The Three-Column Workspace Layout",
-                "text": "The user interface is designed around an ergonomic three-column layout:\n"
-                        "  * Left Column (Sidebar Palette): Quick tools for note entry modes (pointer, pencil, text, eraser), rhythmic durations (whole to 32nd notes), augmentation dots, accidentals, tuplets, stem orientation, and articulation toggles.\n"
-                        "  * Center Column (Score Canvas): Infinite interactive notation canvas displaying visual staves, barlines, noteheads, stems, beams, ties, slurs, lyrics, and rehearsal marks.\n"
-                        "  * Right Column (Context Drawers & Tool Panels): Collapsible slide-out panels for Dynamics automation, Reaticulate banks, Tempo maps, Clef palettes, Key signatures, Pattern browser, Settings, and Page Print layout."
+                "text": "The user interface is designed around an ergonomic three-column layout:\n\n"
+                        "- Left Column (Sidebar Palette): Quick tools for note entry modes (pointer, pencil, text, eraser), rhythmic durations (whole to 32nd notes), augmentation dots, accidentals, tuplets, stem orientation, and articulation toggles.\n"
+                        "- Center Column (Score Canvas): Infinite interactive notation canvas displaying visual staves, barlines, noteheads, stems, beams, ties, slurs, lyrics, and rehearsal marks.\n"
+                        "- Right Column (Context Drawers & Tool Panels): Collapsible slide-out panels for Dynamics automation, Reaticulate banks, Tempo maps, Clef palettes, Key signatures, Pattern browser, Settings, and Page Print layout."
             },
             {
                 "heading": "1.3 Window Resizing & Docking",
@@ -51,17 +52,17 @@ MANUAL_DATA = [
             {
                 "heading": "2.2 Transport & Playhead Controls",
                 "text": "Functions:\n"
-                        "  * Rewind (|<): Instantly returns REAPER's edit cursor to measure 1.0 (time 0.0s).\n"
-                        "  * Play / Pause (> / ||): Starts timeline playback or pauses at the current cursor position. Key shortcut: Space.\n"
-                        "  * Stop: Halts playback and resets playhead according to REAPER's project settings.\n"
+                        "- Rewind (|<): Instantly returns REAPER's edit cursor to measure 1.0 (time 0.0s).\n"
+                        "- Play / Pause (> / ||): Starts timeline playback or pauses at the current cursor position. Key shortcut: Space.\n"
+                        "- Stop: Halts playback and resets playhead according to REAPER's project settings.\n"
                         "DAW Effect: Calls REAPER's CSurf_OnPlay, CSurf_OnStop, and SetEditCurPos directly, maintaining sample-accurate alignment with REAPER's master audio engine."
             },
             {
                 "heading": "2.3 Timeline & Meter Displays",
                 "text": "Functions:\n"
-                        "  * Measure.Beat Display: Real-time read-out of playhead position in musical bars, beats, and quarter-note ticks (e.g. '004.01.00').\n"
-                        "  * Time Signature Indicator: Active project meter (e.g. 4/4, 3/4, 6/8, 7/8).\n"
-                        "  * BPM Indicator: Project master tempo at the current playhead position.\n"
+                        "- Measure.Beat Display: Real-time read-out of playhead position in musical bars, beats, and quarter-note ticks (e.g. '004.01.00').\n"
+                        "- Time Signature Indicator: Active project meter (e.g. 4/4, 3/4, 6/8, 7/8).\n"
+                        "- BPM Indicator: Project master tempo at the current playhead position.\n"
                         "DAW Effect: Evaluates TimeMap_GetTimeSigAtTime on every frame to mirror timeline accelerandos, ritardandos, and time signature changes."
             },
             {
@@ -76,10 +77,10 @@ MANUAL_DATA = [
             {
                 "heading": "2.6 View Mode Selector",
                 "text": "Functions:\n"
-                        "  * Auto: Automatically detects instrument clef based on track naming heuristics and pitch registers.\n"
-                        "  * Treble Only: Forces single G-clef staff rendering.\n"
-                        "  * Bass Only: Forces single F-clef staff rendering.\n"
-                        "  * Grand Staff: Renders classic piano/harp grand staff (Treble upper, Bass lower) connected by curly brace."
+                        "- Auto: Automatically detects instrument clef based on track naming heuristics and pitch registers.\n"
+                        "- Treble Only: Forces single G-clef staff rendering.\n"
+                        "- Bass Only: Forces single F-clef staff rendering.\n"
+                        "- Grand Staff: Renders classic piano/harp grand staff (Treble upper, Bass lower) connected by curly brace."
             },
             {
                 "heading": "2.7 Track Picker & Visibility Filters",
@@ -94,53 +95,53 @@ MANUAL_DATA = [
             {
                 "heading": "3.1 Note Entry & Pitch Snapping",
                 "text": "Functions:\n"
-                        "  * Click on Staff: Inserts a new note with the duration selected in the sidebar at the nearest diatonic line or space.\n"
-                        "  * Ledger Lines: When moving beyond the 5 staff lines, Notator automatically calculates and renders standard-compliant ledger lines above or below the staff.\n"
+                        "- Click on Staff: Inserts a new note with the duration selected in the sidebar at the nearest diatonic line or space.\n"
+                        "- Ledger Lines: When moving beyond the 5 staff lines, Notator automatically calculates and renders standard-compliant ledger lines above or below the staff.\n"
                         "DAW Effect: Inserts a new MIDI note event into the focused track's active MIDI take via REAPER's MIDI_InsertNote API."
             },
             {
                 "heading": "3.2 Note Duration & Augmentation Dots",
                 "text": "Functions:\n"
-                        "  * Note Values: Supports 1/1 (Whole), 1/2 (Half), 1/4 (Quarter), 1/8 (Eighth), 1/16 (16th), and 1/32 (32nd) notes.\n"
-                        "  * Augmentation Dot: Toggles 1.5x duration expansion. A dotted quarter note spans 1.5 quarter notes (3 eighths).\n"
+                        "- Note Values: Supports 1/1 (Whole), 1/2 (Half), 1/4 (Quarter), 1/8 (Eighth), 1/16 (16th), and 1/32 (32nd) notes.\n"
+                        "- Augmentation Dot: Toggles 1.5x duration expansion. A dotted quarter note spans 1.5 quarter notes (3 eighths).\n"
                         "DAW Effect: Sets note start and end positions accurately in Quarter Note (QN) timeline units."
             },
             {
                 "heading": "3.3 Accidentals (Sharps, Flats, Naturals)",
                 "text": "Functions:\n"
-                        "  * Flat (b): Decreases chromatic pitch by 1 semitone (-1).\n"
-                        "  * Natural (nat): Cancels preceding sharp/flat accidentals according to Western music engraving conventions (0).\n"
-                        "  * Sharp (#): Increases chromatic pitch by 1 semitone (+1).\n"
+                        "- Flat (b): Decreases chromatic pitch by 1 semitone (-1).\n"
+                        "- Natural (nat): Cancels preceding sharp/flat accidentals according to Western music engraving conventions (0).\n"
+                        "- Sharp (#): Increases chromatic pitch by 1 semitone (+1).\n"
                         "DAW Effect: Transposes the underlying MIDI note number (0-127) and tags visual notation accidentals."
             },
             {
                 "heading": "3.4 Note Manipulation (Move, Pitch, Length)",
                 "text": "Functions:\n"
-                        "  * Horizontal Drag: Moves notes forward or backward in time, snapping to the selected rhythmic grid (e.g. 1/4, 1/8, 1/16).\n"
-                        "  * Vertical Drag: Transposes note pitch chromatically. Moving noteheads automatically updates accidentals.\n"
-                        "  * End-Edge Drag: Lengthens or shortens note duration by pulling the right edge of the notehead.\n"
-                        "  * Arrow Keys: Up/Down transposes by semitones (Shift+Up/Down by octaves). Left/Right moves by grid increments.\n"
+                        "- Horizontal Drag: Moves notes forward or backward in time, snapping to the selected rhythmic grid (e.g. 1/4, 1/8, 1/16).\n"
+                        "- Vertical Drag: Transposes note pitch chromatically. Moving noteheads automatically updates accidentals.\n"
+                        "- End-Edge Drag: Lengthens or shortens note duration by pulling the right edge of the notehead.\n"
+                        "- Arrow Keys: Up/Down transposes by semitones (Shift+Up/Down by octaves). Left/Right moves by grid increments.\n"
                         "DAW Effect: Calls MIDI_SetNote to update pitch, QN start, and QN end in real time with undo history."
             },
             {
                 "heading": "3.5 Multi-Note Selection & Marquee Tool",
                 "text": "Functions:\n"
-                        "  * Marquee / Box Selection: Click and drag on empty canvas space to draw a selection rectangle encompassing multiple notes across measures and staves.\n"
-                        "  * Shift + Click: Add individual notes to selection.\n"
-                        "  * Delete / Backspace: Deletes all currently selected notes simultaneously.\n"
+                        "- Marquee / Box Selection: Click and drag on empty canvas space to draw a selection rectangle encompassing multiple notes across measures and staves.\n"
+                        "- Shift + Click: Add individual notes to selection.\n"
+                        "- Delete / Backspace: Deletes all currently selected notes simultaneously.\n"
                         "DAW Effect: Multi-note batch deletion and batch transposition with atomic REAPER undo block."
             },
             {
                 "heading": "3.6 Second-Interval Collision & Voice Separation",
                 "text": "Functions:\n"
-                        "  * Second Intervals (Seconds): Notes placed on adjacent staff degrees in the same chord automatically offset horizontally (left/right) according to Elaine Gould engraving rules to prevent notehead collisions.\n"
-                        "  * Multi-Voice Stems: Polyphonic voices automatically flip stems (Voice 1 stems up, Voice 2 stems down)."
+                        "- Second Intervals (Seconds): Notes placed on adjacent staff degrees in the same chord automatically offset horizontally (left/right) according to Elaine Gould engraving rules to prevent notehead collisions.\n"
+                        "- Multi-Voice Stems: Polyphonic voices automatically flip stems (Voice 1 stems up, Voice 2 stems down)."
             },
             {
                 "heading": "3.7 Standard Gould Rests",
                 "text": "Functions:\n"
-                        "  * Empty Measure Rests: Empty measures automatically display a centered whole-measure rest glyph.\n"
-                        "  * Rhythmic Rest Decomposition: Gaps between notes decompose into standard rests (quarter, eighth, 16th rests) strictly aligned to the meter division."
+                        "- Empty Measure Rests: Empty measures automatically display a centered whole-measure rest glyph.\n"
+                        "- Rhythmic Rest Decomposition: Gaps between notes decompose into standard rests (quarter, eighth, 16th rests) strictly aligned to the meter division."
             }
         ]
     },
@@ -173,41 +174,41 @@ MANUAL_DATA = [
             {
                 "heading": "5.1 Standard Dynamic Levels (ppp to fff)",
                 "text": "Functions: The Dynamics Drawer features 10 one-click dynamic badges:\n"
-                        "  * ppp (Pianississimo) -> Velocity ~20, CC ~25\n"
-                        "  * pp (Pianissimo) -> Velocity ~35, CC ~40\n"
-                        "  * p (Piano) -> Velocity ~50, CC ~55\n"
-                        "  * mp (Mezzo-piano) -> Velocity ~65, CC ~68\n"
-                        "  * mf (Mezzo-forte) -> Velocity ~80, CC ~82\n"
-                        "  * f (Forte) -> Velocity ~95, CC ~98\n"
-                        "  * ff (Fortissimo) -> Velocity ~110, CC ~112\n"
-                        "  * fff (Fortississimo) -> Velocity ~125, CC ~127\n"
-                        "  * sfz (Sforzando) / fp (Forte-piano): Sudden accent followed by immediate decay.\n"
+                        "- ppp (Pianississimo) -> Velocity ~20, CC ~25\n"
+                        "- pp (Pianissimo) -> Velocity ~35, CC ~40\n"
+                        "- p (Piano) -> Velocity ~50, CC ~55\n"
+                        "- mp (Mezzo-piano) -> Velocity ~65, CC ~68\n"
+                        "- mf (Mezzo-forte) -> Velocity ~80, CC ~82\n"
+                        "- f (Forte) -> Velocity ~95, CC ~98\n"
+                        "- ff (Fortissimo) -> Velocity ~110, CC ~112\n"
+                        "- fff (Fortississimo) -> Velocity ~125, CC ~127\n"
+                        "- sfz (Sforzando) / fp (Forte-piano): Sudden accent followed by immediate decay.\n"
                         "DAW Effect: Inserts dynamic text markings on the score and scales note velocities and continuous controller points."
             },
             {
                 "heading": "5.2 Multi-Target CC Automation",
                 "text": "Functions: Dynamics can write continuous automation curves to:\n"
-                        "  * CC1 (Modulation Wheel) - Standard for orchestral dynamics in cinematic sample libraries.\n"
-                        "  * CC11 (Expression) - Secondary loudness / timbre controller.\n"
-                        "  * CC7 (Main Volume) - Master channel volume.\n"
-                        "  * Velocity Only - Traditional keyboard velocity scaling.\n"
+                        "- CC1 (Modulation Wheel) - Standard for orchestral dynamics in cinematic sample libraries.\n"
+                        "- CC11 (Expression) - Secondary loudness / timbre controller.\n"
+                        "- CC7 (Main Volume) - Master channel volume.\n"
+                        "- Velocity Only - Traditional keyboard velocity scaling.\n"
                         "DAW Effect: Generates dense, sample-accurate MIDI CC curves in REAPER's MIDI take envelope."
             },
             {
                 "heading": "5.3 Hairpins (Crescendo & Diminuendo)",
                 "text": "Functions:\n"
-                        "  * Crescendo (<): Visual opening wedge representing gradual increase in loudness.\n"
-                        "  * Diminuendo (>): Visual closing wedge representing gradual decrease in loudness.\n"
-                        "  * Dual Drag Handles: Circular handles at the start and end of hairpins allow exact quarter-note positioning.\n"
-                        "  * Curvature Selection: Toggle between linear ramps and exponential curves for organic acoustic swelling.\n"
+                        "- Crescendo (<): Visual opening wedge representing gradual increase in loudness.\n"
+                        "- Diminuendo (>): Visual closing wedge representing gradual decrease in loudness.\n"
+                        "- Dual Drag Handles: Circular handles at the start and end of hairpins allow exact quarter-note positioning.\n"
+                        "- Curvature Selection: Toggle between linear ramps and exponential curves for organic acoustic swelling.\n"
                         "DAW Effect: Inscribes smooth CC ramps between the bounding dynamic levels."
             },
             {
                 "heading": "5.4 Bow Swell Function & Bow Position Slider",
                 "text": "Functions:\n"
-                        "  * Bow Swell Mode: Simulates acoustic string and brass swelling where a single sustained note or phrase swells up to a climax and decays back down.\n"
-                        "  * Bow Position Slider (0.0 to 1.0, default 0.5): Configures the exact peak inflection point of the swell per MIDI item. Setting 0.5 places the peak in the exact center; setting 0.8 creates an expressive late swell; setting 0.2 creates an explosive early swell.\n"
-                        "  * Per-Item Tuning: Bow swell parameters can be customized individually per MIDI item.\n"
+                        "- Bow Swell Mode: Simulates acoustic string and brass swelling where a single sustained note or phrase swells up to a climax and decays back down.\n"
+                        "- Bow Position Slider (0.0 to 1.0, default 0.5): Configures the exact peak inflection point of the swell per MIDI item. Setting 0.5 places the peak in the exact center; setting 0.8 creates an expressive late swell; setting 0.2 creates an explosive early swell.\n"
+                        "- Per-Item Tuning: Bow swell parameters can be customized individually per MIDI item.\n"
                         "DAW Effect: Calculates an asymmetric Bezier CC curve mapped directly into REAPER's CC lane."
             },
             {
@@ -227,8 +228,8 @@ MANUAL_DATA = [
             {
                 "heading": "6.2 Visual Playing Technique Glyphs",
                 "text": "Functions: Provides an instant-access drawer for score playing techniques:\n"
-                        "  * Staccato (dot), Staccatissimo (wedge), Accent (>), Marcato (^), Tenuto (-)\n"
-                        "  * Pizzicato (pizz.), Arco, Con Sordino, Sul Ponticello, Col Legno, Tremolo, Harmonics (o)\n"
+                        "- Staccato (dot), Staccatissimo (wedge), Accent (>), Marcato (^), Tenuto (-)\n"
+                        "- Pizzicato (pizz.), Arco, Con Sordino, Sul Ponticello, Col Legno, Tremolo, Harmonics (o)\n"
                         "Placement: Notator automatically positions articulation marks above noteheads for stems-down notes, or below noteheads for stems-up notes according to standard engraving conventions."
             },
             {
@@ -250,15 +251,15 @@ MANUAL_DATA = [
             {
                 "heading": "7.2 Three Historical Engraving Styles",
                 "text": "Functions:\n"
-                        "  * Classic: Ped. symbol at start, dashed horizontal line, and asterisk (*) at release.\n"
-                        "  * Bracket: Modern square brackets (|---|) with vertical hooks.\n"
-                        "  * Notch / Mixed: Combines Ped. marking with inverted 'V' notches for continuous pedal retakes."
+                        "- Classic: Ped. symbol at start, dashed horizontal line, and asterisk (*) at release.\n"
+                        "- Bracket: Modern square brackets (|---|) with vertical hooks.\n"
+                        "- Notch / Mixed: Combines Ped. marking with inverted 'V' notches for continuous pedal retakes."
             },
             {
                 "heading": "7.3 Dual Handles & Pause / Break Retakes",
                 "text": "Functions:\n"
-                        "  * Start & End Handles: Drag circular handles to adjust pedal engage and release times.\n"
-                        "  * Pause / Retake Points: Right-click on the pedal line to insert pedal breaks (quick release and re-engage) without creating multiple separate items.\n"
+                        "- Start & End Handles: Drag circular handles to adjust pedal engage and release times.\n"
+                        "- Pause / Retake Points: Right-click on the pedal line to insert pedal breaks (quick release and re-engage) without creating multiple separate items.\n"
                         "DAW Effect: Writes CC64 value 127 at engage, momentary 0 at retakes, and 0 at final release."
             }
         ]
@@ -286,10 +287,10 @@ MANUAL_DATA = [
             {
                 "heading": "9.1 Visual Score Simplification",
                 "text": "Functions: For extreme high or low passages that would otherwise require excessive ledger lines, octave shift lines simplify score reading:\n"
-                        "  * 8va (Ottava Alta): Notes sound 1 octave higher than written.\n"
-                        "  * 8vb (Ottava Bassa): Notes sound 1 octave lower than written.\n"
-                        "  * 15ma (Quindicesima Alta): Notes sound 2 octaves higher.\n"
-                        "  * 15mb (Quindicesima Bassa): Notes sound 2 octaves lower."
+                        "- 8va (Ottava Alta): Notes sound 1 octave higher than written.\n"
+                        "- 8vb (Ottava Bassa): Notes sound 1 octave lower than written.\n"
+                        "- 15ma (Quindicesima Alta): Notes sound 2 octaves higher.\n"
+                        "- 15mb (Quindicesima Bassa): Notes sound 2 octaves lower."
             },
             {
                 "heading": "9.2 Visual vs. Sounding Pitch",
@@ -316,8 +317,8 @@ MANUAL_DATA = [
             {
                 "heading": "10.2 One-Click Insertion & Capture",
                 "text": "Functions:\n"
-                        "  * Insert Pattern: Clicking any pattern card instantly inserts the musical motif at REAPER's edit cursor on the selected track.\n"
-                        "  * Capture Selection: Select any group of notes on your canvas and click 'Save Pattern' to store it in your custom library for future scoring projects."
+                        "- Insert Pattern: Clicking any pattern card instantly inserts the musical motif at REAPER's edit cursor on the selected track.\n"
+                        "- Capture Selection: Select any group of notes on your canvas and click 'Save Pattern' to store it in your custom library for future scoring projects."
             }
         ]
     },
@@ -349,7 +350,7 @@ MANUAL_DATA = [
             },
             {
                 "heading": "12.3 Exporting Scores",
-                "text": "Functions: Click 'Export MusicXML' to save your REAPER project as a standard `.musicxml` file ready for publication, live orchestral recording sessions, or further engraving."
+                "text": "Functions: Click 'Export MusicXML' to save your REAPER project as a standard .musicxml file ready for publication, live orchestral recording sessions, or further engraving."
             }
         ]
     },
@@ -360,9 +361,9 @@ MANUAL_DATA = [
             {
                 "heading": "13.1 Print Modal & Layout Setup",
                 "text": "Functions: Dedicated Print Settings dialog accessible from the top bar tools:\n"
-                        "  * Paper Sizes: Standard A4, A3, Letter, Tabloid.\n"
-                        "  * Orientation: Landscape (standard for orchestral conductor scores) or Portrait (standard for solo instrumental parts).\n"
-                        "  * Systems per Page: Configure how many measures or systems appear per page."
+                        "- Paper Sizes: Standard A4, A3, Letter, Tabloid.\n"
+                        "- Orientation: Landscape (standard for orchestral conductor scores) or Portrait (standard for solo instrumental parts).\n"
+                        "- Systems per Page: Configure how many measures or systems appear per page."
             },
             {
                 "heading": "13.2 Metadata & Publishing Header",
@@ -400,9 +401,9 @@ MANUAL_DATA = [
     }
 ]
 
-# 1. Generate Markdown Documentation
+# Write Markdown Documentation
 with open(MD_PATH, "w", encoding="utf-8") as md:
-    md.write("# REAPER-Notator — Official User Manual & Function Reference\n\n")
+    md.write("# REAPER-Notator - Official User Manual & Function Reference\n\n")
     md.write(f"**Version:** 1.0.1  \n**Date:** {datetime.datetime.now().strftime('%Y-%m-%d')}  \n**License:** GNU General Public License v3.0  \n\n")
     md.write("---\n\n## Table of Contents\n\n")
     for chap in MANUAL_DATA:
@@ -420,17 +421,17 @@ with open(MD_PATH, "w", encoding="utf-8") as md:
 
 print(f"Generated Markdown manual: {MD_PATH}")
 
-# 2. Generate PDF Documentation
+# Modern PDF Generator with fpdf2
 class ManualPDF(FPDF):
     def header(self):
         if self.page_no() == 1:
-            return # Cover page has custom header
+            return
         self.set_font("Helvetica", "B", 8)
         self.set_text_color(100, 116, 139) # Slate 500
-        self.cell(0, 7, "REAPER-Notator  |  Official User Manual & Function Reference", 0, 0, "L")
-        self.cell(0, 7, "v1.0.1", 0, 1, "R")
+        self.cell(self.epw * 0.7, 7, "REAPER-Notator  -  Official User Manual & Function Reference", new_x=XPos.RIGHT, new_y=YPos.TOP)
+        self.cell(self.epw * 0.3, 7, "v1.0.1", align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_draw_color(226, 232, 240)
-        self.line(10, 14, 200, 14)
+        self.line(self.l_margin, 14, self.w - self.r_margin, 14)
         self.ln(5)
 
     def footer(self):
@@ -439,139 +440,171 @@ class ManualPDF(FPDF):
         self.set_y(-12)
         self.set_font("Helvetica", "I", 8)
         self.set_text_color(148, 163, 184)
-        self.cell(0, 8, f"Page {self.page_no()}/{{nb}}  -  REAPER-Notator Documentation", 0, 0, "C")
+        self.cell(self.epw, 8, f"Page {self.page_no()}/{{nb}}  -  REAPER-Notator Documentation", align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
 pdf = ManualPDF(orientation="P", unit="mm", format="A4")
+pdf.set_margins(left=14, top=14, right=14)
 pdf.alias_nb_pages()
 pdf.set_auto_page_break(auto=True, margin=15)
 
 # --- COVER / TITLE PAGE ---
 pdf.add_page()
-pdf.ln(25)
+pdf.ln(20)
 
 # Accent Banner
 pdf.set_fill_color(249, 115, 22) # Orange 500
-pdf.rect(10, 30, 8, 40, "F")
+pdf.rect(14, 30, 8, 40, "F")
 
-pdf.set_xy(24, 30)
-pdf.set_font("Helvetica", "B", 32)
+pdf.set_xy(28, 30)
+pdf.set_font("Helvetica", "B", 30)
 pdf.set_text_color(15, 23, 42) # Slate 900
-pdf.cell(0, 14, "REAPER-Notator", 0, 1, "L")
+pdf.cell(pdf.epw - 14, 13, "REAPER-Notator", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-pdf.set_xy(24, 46)
-pdf.set_font("Helvetica", "", 16)
+pdf.set_x(28)
+pdf.set_font("Helvetica", "", 15)
 pdf.set_text_color(71, 85, 105) # Slate 600
-pdf.cell(0, 8, "Complete User Manual & Functional Reference", 0, 1, "L")
+pdf.cell(pdf.epw - 14, 8, "Complete User Manual & Functional Reference", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-pdf.set_xy(24, 56)
+pdf.set_x(28)
 pdf.set_font("Helvetica", "I", 10)
 pdf.set_text_color(100, 116, 139)
-pdf.cell(0, 6, "Native Score Editing, Engraving & DAW Automation for Cockos REAPER", 0, 1, "L")
+pdf.cell(pdf.epw - 14, 6, "Native Score Editing, Engraving & DAW Automation for Cockos REAPER", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-pdf.ln(35)
+pdf.ln(30)
 
 # Metadata Info Box
+pdf.set_x(14)
+box_y = pdf.get_y()
 pdf.set_fill_color(248, 250, 252)
 pdf.set_draw_color(226, 232, 240)
-pdf.rect(15, 90, 180, 38, "DF")
+pdf.rect(14, box_y, pdf.epw, 36, "DF")
 
-pdf.set_xy(20, 95)
-pdf.set_font("Helvetica", "B", 10)
-pdf.set_text_color(30, 41, 59)
-pdf.cell(40, 6, "Version:", 0, 0)
-pdf.set_font("Helvetica", "", 10)
-pdf.cell(100, 6, "v1.0.1 (Production Release)", 0, 1)
+items = [
+    ("Version:", "v1.0.1 (Production Release)"),
+    ("Release Date:", datetime.datetime.now().strftime("%B %d, %Y")),
+    ("Compatibility:", "Cockos REAPER v7.0+ (Windows, macOS, Linux) with ReaImGui"),
+    ("License:", "GNU General Public License v3.0 (GPL-3.0)")
+]
 
-pdf.set_xy(20, 102)
-pdf.set_font("Helvetica", "B", 10)
-pdf.cell(40, 6, "Release Date:", 0, 0)
-pdf.set_font("Helvetica", "", 10)
-pdf.cell(100, 6, datetime.datetime.now().strftime("%B %d, %Y"), 0, 1)
+for idx, (lbl, val) in enumerate(items):
+    pdf.set_xy(18, box_y + 4 + idx * 7.5)
+    pdf.set_font("Helvetica", "B", 9.5)
+    pdf.set_text_color(30, 41, 59)
+    pdf.cell(35, 6, lbl, new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.set_font("Helvetica", "", 9.5)
+    pdf.set_text_color(71, 85, 105)
+    pdf.cell(pdf.epw - 40, 6, val, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
-pdf.set_xy(20, 109)
-pdf.set_font("Helvetica", "B", 10)
-pdf.cell(40, 6, "Compatibility:", 0, 0)
-pdf.set_font("Helvetica", "", 10)
-pdf.cell(100, 6, "Cockos REAPER v7.0+ (Windows, macOS, Linux) with ReaImGui", 0, 1)
-
-pdf.set_xy(20, 116)
-pdf.set_font("Helvetica", "B", 10)
-pdf.cell(40, 6, "License:", 0, 0)
-pdf.set_font("Helvetica", "", 10)
-pdf.cell(100, 6, "GNU General Public License v3.0 (GPL-3.0)", 0, 1)
-
-pdf.ln(25)
+pdf.set_y(box_y + 42)
 
 # Executive Table of Contents Box
-pdf.set_font("Helvetica", "B", 14)
+pdf.set_font("Helvetica", "B", 13)
 pdf.set_text_color(30, 41, 59)
-pdf.cell(0, 8, "Manual Contents Summary", 0, 1, "L")
+pdf.cell(pdf.epw, 8, "Manual Contents Summary", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 pdf.ln(2)
 
-pdf.set_font("Helvetica", "", 9.5)
-pdf.set_text_color(51, 65, 85)
+pdf.set_font("Helvetica", "", 9)
 for chap in MANUAL_DATA:
-    pdf.cell(12, 6, f"Ch. {chap['chapter']}:", 0, 0, "R")
-    pdf.cell(140, 6, f"  {chap['title']}", 0, 1, "L")
+    pdf.set_font("Helvetica", "B", 9)
+    pdf.set_text_color(234, 88, 12)
+    pdf.cell(14, 5.5, f"Ch. {chap['chapter']}:", align="R", new_x=XPos.RIGHT, new_y=YPos.TOP)
+    pdf.set_font("Helvetica", "", 9)
+    pdf.set_text_color(51, 65, 85)
+    pdf.cell(pdf.epw - 14, 5.5, f"  {chap['title']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
 # --- CHAPTER PAGES ---
 for chap in MANUAL_DATA:
     pdf.add_page()
     
-    # Chapter Header
+    # Chapter Banner
+    curr_y = pdf.get_y()
     pdf.set_fill_color(30, 41, 59)
-    pdf.rect(10, pdf.get_y(), 190, 12, "F")
-    pdf.set_font("Helvetica", "B", 12)
+    pdf.rect(pdf.l_margin, curr_y, pdf.epw, 10, "F")
+    pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(255, 255, 255)
-    pdf.set_xy(14, pdf.get_y() + 2)
-    pdf.cell(0, 8, f"Chapter {chap['chapter']}: {chap['title']}", 0, 1, "L")
-    pdf.ln(6)
+    pdf.set_xy(pdf.l_margin + 4, curr_y + 1)
+    pdf.cell(pdf.epw - 8, 8, f"Chapter {chap['chapter']}: {chap['title']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.set_y(curr_y + 14)
     
     for sec in chap["sections"]:
+        # Check space before section heading
+        if pdf.get_y() > 255:
+            pdf.add_page()
+            pdf.ln(5)
+            
         # Section Heading
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_text_color(234, 88, 12) # Amber / Orange
-        pdf.cell(0, 6, sec["heading"], 0, 1, "L")
+        pdf.cell(pdf.epw, 6, sec["heading"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.ln(1)
         
-        # Section Content
+        # Section Body
         pdf.set_font("Helvetica", "", 8.5)
         pdf.set_text_color(30, 41, 59)
         
-        text_lines = sec["text"].split("\n")
+        raw_text = sec["text"]
+        lines = raw_text.split("\n")
         in_table = False
         table_rows = []
         
-        for tline in text_lines:
-            if tline.startswith("|"):
+        for l in lines:
+            line_str = l.strip()
+            if not line_str:
+                pdf.ln(2)
+                continue
+                
+            if line_str.startswith("|"):
                 in_table = True
-                if not re.match(r"^\|[\s\-:]+\|$", tline):
-                    cols = [c.strip() for c in tline.split("|")[1:-1]]
+                if not re.match(r"^\|[\s\-:]+\|$", line_str):
+                    cols = [c.strip() for c in line_str.split("|")[1:-1]]
                     table_rows.append(cols)
                 continue
             elif in_table:
                 in_table = False
             
-            # Normal text block
-            pdf.multi_cell(190, 4.5, tline)
+            # Format bullet points with slight indent
+            if line_str.startswith("-") or line_str.startswith("*") or line_str.startswith("-"):
+                bullet_text = line_str.lstrip("-*-").strip()
+                pdf.set_x(pdf.l_margin + 3)
+                pdf.set_text_color(234, 88, 12)
+                pdf.cell(4, 4.5, "-", new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.set_text_color(30, 41, 59)
+                pdf.multi_cell(pdf.epw - 7, 4.5, bullet_text, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            elif line_str.startswith("DAW Effect:"):
+                # Callout style for DAW effect
+                pdf.set_fill_color(241, 245, 249)
+                pdf.set_draw_color(203, 213, 225)
+                callout_y = pdf.get_y() + 1
+                pdf.set_y(callout_y)
+                pdf.set_font("Helvetica", "B", 8.5)
+                pdf.set_text_color(15, 23, 42)
+                pdf.cell(24, 4.5, "DAW Effect: ", new_x=XPos.RIGHT, new_y=YPos.TOP)
+                pdf.set_font("Helvetica", "", 8.5)
+                pdf.set_text_color(51, 65, 85)
+                pdf.multi_cell(pdf.epw - 24, 4.5, line_str[11:].strip(), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+            else:
+                pdf.multi_cell(pdf.epw, 4.5, line_str, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         
-        # If section had a table, render styled grid
+        # Render table if present
         if table_rows:
             pdf.ln(2)
             pdf.set_font("Helvetica", "B", 8)
-            pdf.set_fill_color(241, 245, 249)
+            pdf.set_fill_color(30, 41, 59)
+            pdf.set_text_color(255, 255, 255)
             
-            col_widths = [40, 45, 105]
+            col_widths = [36, 42, pdf.epw - 78]
             for col_idx, col_name in enumerate(table_rows[0]):
-                pdf.cell(col_widths[col_idx], 6, col_name, 1, 0, "L", fill=True)
+                pdf.cell(col_widths[col_idx], 6, f" {col_name}", 1, 0, "L", fill=True)
             pdf.ln(6)
             
-            pdf.set_font("Helvetica", "", 7.5)
+            pdf.set_font("Helvetica", "", 8)
             for r_idx, row in enumerate(table_rows[1:]):
                 bg = 255 if r_idx % 2 == 0 else 248
                 pdf.set_fill_color(bg, bg, bg)
+                pdf.set_text_color(30, 41, 59)
                 for col_idx, cell in enumerate(row):
-                    pdf.cell(col_widths[col_idx], 5.5, f" {cell}", 1, 0, "L", fill=True)
-                pdf.ln(5.5)
+                    pdf.cell(col_widths[col_idx], 5.2, f" {cell}", 1, 0, "L", fill=True)
+                pdf.ln(5.2)
             pdf.ln(2)
             
         pdf.ln(3)

@@ -1,4 +1,4 @@
-# REAPER-Notator — Official User Manual & Function Reference
+# REAPER-Notator - Official User Manual & Function Reference
 
 **Version:** 1.0.1  
 **Date:** 2026-10-03  
@@ -34,9 +34,10 @@ REAPER-Notator is a native, professional music scoring, notation editing, and en
 ### 1.2 The Three-Column Workspace Layout
 
 The user interface is designed around an ergonomic three-column layout:
-  * Left Column (Sidebar Palette): Quick tools for note entry modes (pointer, pencil, text, eraser), rhythmic durations (whole to 32nd notes), augmentation dots, accidentals, tuplets, stem orientation, and articulation toggles.
-  * Center Column (Score Canvas): Infinite interactive notation canvas displaying visual staves, barlines, noteheads, stems, beams, ties, slurs, lyrics, and rehearsal marks.
-  * Right Column (Context Drawers & Tool Panels): Collapsible slide-out panels for Dynamics automation, Reaticulate banks, Tempo maps, Clef palettes, Key signatures, Pattern browser, Settings, and Page Print layout.
+
+- Left Column (Sidebar Palette): Quick tools for note entry modes (pointer, pencil, text, eraser), rhythmic durations (whole to 32nd notes), augmentation dots, accidentals, tuplets, stem orientation, and articulation toggles.
+- Center Column (Score Canvas): Infinite interactive notation canvas displaying visual staves, barlines, noteheads, stems, beams, ties, slurs, lyrics, and rehearsal marks.
+- Right Column (Context Drawers & Tool Panels): Collapsible slide-out panels for Dynamics automation, Reaticulate banks, Tempo maps, Clef palettes, Key signatures, Pattern browser, Settings, and Page Print layout.
 
 ### 1.3 Window Resizing & Docking
 
@@ -53,17 +54,17 @@ Located in the upper left corner, displaying 'REAPER Notator' alongside the acti
 ### 2.2 Transport & Playhead Controls
 
 Functions:
-  * Rewind (|<): Instantly returns REAPER's edit cursor to measure 1.0 (time 0.0s).
-  * Play / Pause (> / ||): Starts timeline playback or pauses at the current cursor position. Key shortcut: Space.
-  * Stop: Halts playback and resets playhead according to REAPER's project settings.
+- Rewind (|<): Instantly returns REAPER's edit cursor to measure 1.0 (time 0.0s).
+- Play / Pause (> / ||): Starts timeline playback or pauses at the current cursor position. Key shortcut: Space.
+- Stop: Halts playback and resets playhead according to REAPER's project settings.
 DAW Effect: Calls REAPER's CSurf_OnPlay, CSurf_OnStop, and SetEditCurPos directly, maintaining sample-accurate alignment with REAPER's master audio engine.
 
 ### 2.3 Timeline & Meter Displays
 
 Functions:
-  * Measure.Beat Display: Real-time read-out of playhead position in musical bars, beats, and quarter-note ticks (e.g. '004.01.00').
-  * Time Signature Indicator: Active project meter (e.g. 4/4, 3/4, 6/8, 7/8).
-  * BPM Indicator: Project master tempo at the current playhead position.
+- Measure.Beat Display: Real-time read-out of playhead position in musical bars, beats, and quarter-note ticks (e.g. '004.01.00').
+- Time Signature Indicator: Active project meter (e.g. 4/4, 3/4, 6/8, 7/8).
+- BPM Indicator: Project master tempo at the current playhead position.
 DAW Effect: Evaluates TimeMap_GetTimeSigAtTime on every frame to mirror timeline accelerandos, ritardandos, and time signature changes.
 
 ### 2.4 Audition Preview (Note Audio on Click)
@@ -78,10 +79,10 @@ Function: When active, the score canvas scrolls horizontally in real time to kee
 ### 2.6 View Mode Selector
 
 Functions:
-  * Auto: Automatically detects instrument clef based on track naming heuristics and pitch registers.
-  * Treble Only: Forces single G-clef staff rendering.
-  * Bass Only: Forces single F-clef staff rendering.
-  * Grand Staff: Renders classic piano/harp grand staff (Treble upper, Bass lower) connected by curly brace.
+- Auto: Automatically detects instrument clef based on track naming heuristics and pitch registers.
+- Treble Only: Forces single G-clef staff rendering.
+- Bass Only: Forces single F-clef staff rendering.
+- Grand Staff: Renders classic piano/harp grand staff (Treble upper, Bass lower) connected by curly brace.
 
 ### 2.7 Track Picker & Visibility Filters
 
@@ -94,53 +95,53 @@ Function: Opens a multi-track routing popover allowing the user to select which 
 ### 3.1 Note Entry & Pitch Snapping
 
 Functions:
-  * Click on Staff: Inserts a new note with the duration selected in the sidebar at the nearest diatonic line or space.
-  * Ledger Lines: When moving beyond the 5 staff lines, Notator automatically calculates and renders standard-compliant ledger lines above or below the staff.
+- Click on Staff: Inserts a new note with the duration selected in the sidebar at the nearest diatonic line or space.
+- Ledger Lines: When moving beyond the 5 staff lines, Notator automatically calculates and renders standard-compliant ledger lines above or below the staff.
 DAW Effect: Inserts a new MIDI note event into the focused track's active MIDI take via REAPER's MIDI_InsertNote API.
 
 ### 3.2 Note Duration & Augmentation Dots
 
 Functions:
-  * Note Values: Supports 1/1 (Whole), 1/2 (Half), 1/4 (Quarter), 1/8 (Eighth), 1/16 (16th), and 1/32 (32nd) notes.
-  * Augmentation Dot: Toggles 1.5x duration expansion. A dotted quarter note spans 1.5 quarter notes (3 eighths).
+- Note Values: Supports 1/1 (Whole), 1/2 (Half), 1/4 (Quarter), 1/8 (Eighth), 1/16 (16th), and 1/32 (32nd) notes.
+- Augmentation Dot: Toggles 1.5x duration expansion. A dotted quarter note spans 1.5 quarter notes (3 eighths).
 DAW Effect: Sets note start and end positions accurately in Quarter Note (QN) timeline units.
 
 ### 3.3 Accidentals (Sharps, Flats, Naturals)
 
 Functions:
-  * Flat (b): Decreases chromatic pitch by 1 semitone (-1).
-  * Natural (nat): Cancels preceding sharp/flat accidentals according to Western music engraving conventions (0).
-  * Sharp (#): Increases chromatic pitch by 1 semitone (+1).
+- Flat (b): Decreases chromatic pitch by 1 semitone (-1).
+- Natural (nat): Cancels preceding sharp/flat accidentals according to Western music engraving conventions (0).
+- Sharp (#): Increases chromatic pitch by 1 semitone (+1).
 DAW Effect: Transposes the underlying MIDI note number (0-127) and tags visual notation accidentals.
 
 ### 3.4 Note Manipulation (Move, Pitch, Length)
 
 Functions:
-  * Horizontal Drag: Moves notes forward or backward in time, snapping to the selected rhythmic grid (e.g. 1/4, 1/8, 1/16).
-  * Vertical Drag: Transposes note pitch chromatically. Moving noteheads automatically updates accidentals.
-  * End-Edge Drag: Lengthens or shortens note duration by pulling the right edge of the notehead.
-  * Arrow Keys: Up/Down transposes by semitones (Shift+Up/Down by octaves). Left/Right moves by grid increments.
+- Horizontal Drag: Moves notes forward or backward in time, snapping to the selected rhythmic grid (e.g. 1/4, 1/8, 1/16).
+- Vertical Drag: Transposes note pitch chromatically. Moving noteheads automatically updates accidentals.
+- End-Edge Drag: Lengthens or shortens note duration by pulling the right edge of the notehead.
+- Arrow Keys: Up/Down transposes by semitones (Shift+Up/Down by octaves). Left/Right moves by grid increments.
 DAW Effect: Calls MIDI_SetNote to update pitch, QN start, and QN end in real time with undo history.
 
 ### 3.5 Multi-Note Selection & Marquee Tool
 
 Functions:
-  * Marquee / Box Selection: Click and drag on empty canvas space to draw a selection rectangle encompassing multiple notes across measures and staves.
-  * Shift + Click: Add individual notes to selection.
-  * Delete / Backspace: Deletes all currently selected notes simultaneously.
+- Marquee / Box Selection: Click and drag on empty canvas space to draw a selection rectangle encompassing multiple notes across measures and staves.
+- Shift + Click: Add individual notes to selection.
+- Delete / Backspace: Deletes all currently selected notes simultaneously.
 DAW Effect: Multi-note batch deletion and batch transposition with atomic REAPER undo block.
 
 ### 3.6 Second-Interval Collision & Voice Separation
 
 Functions:
-  * Second Intervals (Seconds): Notes placed on adjacent staff degrees in the same chord automatically offset horizontally (left/right) according to Elaine Gould engraving rules to prevent notehead collisions.
-  * Multi-Voice Stems: Polyphonic voices automatically flip stems (Voice 1 stems up, Voice 2 stems down).
+- Second Intervals (Seconds): Notes placed on adjacent staff degrees in the same chord automatically offset horizontally (left/right) according to Elaine Gould engraving rules to prevent notehead collisions.
+- Multi-Voice Stems: Polyphonic voices automatically flip stems (Voice 1 stems up, Voice 2 stems down).
 
 ### 3.7 Standard Gould Rests
 
 Functions:
-  * Empty Measure Rests: Empty measures automatically display a centered whole-measure rest glyph.
-  * Rhythmic Rest Decomposition: Gaps between notes decompose into standard rests (quarter, eighth, 16th rests) strictly aligned to the meter division.
+- Empty Measure Rests: Empty measures automatically display a centered whole-measure rest glyph.
+- Rhythmic Rest Decomposition: Gaps between notes decompose into standard rests (quarter, eighth, 16th rests) strictly aligned to the meter division.
 
 ---
 
@@ -169,41 +170,41 @@ Functions: Pressing the 'X' key instantly flips the stem direction of selected n
 ### 5.1 Standard Dynamic Levels (ppp to fff)
 
 Functions: The Dynamics Drawer features 10 one-click dynamic badges:
-  * ppp (Pianississimo) -> Velocity ~20, CC ~25
-  * pp (Pianissimo) -> Velocity ~35, CC ~40
-  * p (Piano) -> Velocity ~50, CC ~55
-  * mp (Mezzo-piano) -> Velocity ~65, CC ~68
-  * mf (Mezzo-forte) -> Velocity ~80, CC ~82
-  * f (Forte) -> Velocity ~95, CC ~98
-  * ff (Fortissimo) -> Velocity ~110, CC ~112
-  * fff (Fortississimo) -> Velocity ~125, CC ~127
-  * sfz (Sforzando) / fp (Forte-piano): Sudden accent followed by immediate decay.
+- ppp (Pianississimo) -> Velocity ~20, CC ~25
+- pp (Pianissimo) -> Velocity ~35, CC ~40
+- p (Piano) -> Velocity ~50, CC ~55
+- mp (Mezzo-piano) -> Velocity ~65, CC ~68
+- mf (Mezzo-forte) -> Velocity ~80, CC ~82
+- f (Forte) -> Velocity ~95, CC ~98
+- ff (Fortissimo) -> Velocity ~110, CC ~112
+- fff (Fortississimo) -> Velocity ~125, CC ~127
+- sfz (Sforzando) / fp (Forte-piano): Sudden accent followed by immediate decay.
 DAW Effect: Inserts dynamic text markings on the score and scales note velocities and continuous controller points.
 
 ### 5.2 Multi-Target CC Automation
 
 Functions: Dynamics can write continuous automation curves to:
-  * CC1 (Modulation Wheel) - Standard for orchestral dynamics in cinematic sample libraries.
-  * CC11 (Expression) - Secondary loudness / timbre controller.
-  * CC7 (Main Volume) - Master channel volume.
-  * Velocity Only - Traditional keyboard velocity scaling.
+- CC1 (Modulation Wheel) - Standard for orchestral dynamics in cinematic sample libraries.
+- CC11 (Expression) - Secondary loudness / timbre controller.
+- CC7 (Main Volume) - Master channel volume.
+- Velocity Only - Traditional keyboard velocity scaling.
 DAW Effect: Generates dense, sample-accurate MIDI CC curves in REAPER's MIDI take envelope.
 
 ### 5.3 Hairpins (Crescendo & Diminuendo)
 
 Functions:
-  * Crescendo (<): Visual opening wedge representing gradual increase in loudness.
-  * Diminuendo (>): Visual closing wedge representing gradual decrease in loudness.
-  * Dual Drag Handles: Circular handles at the start and end of hairpins allow exact quarter-note positioning.
-  * Curvature Selection: Toggle between linear ramps and exponential curves for organic acoustic swelling.
+- Crescendo (<): Visual opening wedge representing gradual increase in loudness.
+- Diminuendo (>): Visual closing wedge representing gradual decrease in loudness.
+- Dual Drag Handles: Circular handles at the start and end of hairpins allow exact quarter-note positioning.
+- Curvature Selection: Toggle between linear ramps and exponential curves for organic acoustic swelling.
 DAW Effect: Inscribes smooth CC ramps between the bounding dynamic levels.
 
 ### 5.4 Bow Swell Function & Bow Position Slider
 
 Functions:
-  * Bow Swell Mode: Simulates acoustic string and brass swelling where a single sustained note or phrase swells up to a climax and decays back down.
-  * Bow Position Slider (0.0 to 1.0, default 0.5): Configures the exact peak inflection point of the swell per MIDI item. Setting 0.5 places the peak in the exact center; setting 0.8 creates an expressive late swell; setting 0.2 creates an explosive early swell.
-  * Per-Item Tuning: Bow swell parameters can be customized individually per MIDI item.
+- Bow Swell Mode: Simulates acoustic string and brass swelling where a single sustained note or phrase swells up to a climax and decays back down.
+- Bow Position Slider (0.0 to 1.0, default 0.5): Configures the exact peak inflection point of the swell per MIDI item. Setting 0.5 places the peak in the exact center; setting 0.8 creates an expressive late swell; setting 0.2 creates an explosive early swell.
+- Per-Item Tuning: Bow swell parameters can be customized individually per MIDI item.
 DAW Effect: Calculates an asymmetric Bezier CC curve mapped directly into REAPER's CC lane.
 
 ### 5.5 Phrasing & Shaping Bypass
@@ -221,8 +222,8 @@ Functions: REAPER-Notator automatically scans REAPER's user directory for Reatic
 ### 6.2 Visual Playing Technique Glyphs
 
 Functions: Provides an instant-access drawer for score playing techniques:
-  * Staccato (dot), Staccatissimo (wedge), Accent (>), Marcato (^), Tenuto (-)
-  * Pizzicato (pizz.), Arco, Con Sordino, Sul Ponticello, Col Legno, Tremolo, Harmonics (o)
+- Staccato (dot), Staccatissimo (wedge), Accent (>), Marcato (^), Tenuto (-)
+- Pizzicato (pizz.), Arco, Con Sordino, Sul Ponticello, Col Legno, Tremolo, Harmonics (o)
 Placement: Notator automatically positions articulation marks above noteheads for stems-down notes, or below noteheads for stems-up notes according to standard engraving conventions.
 
 ### 6.3 DAW Automation Impact
@@ -242,15 +243,15 @@ Functions: Renders continuous piano sustain pedal markings positioned below the 
 ### 7.2 Three Historical Engraving Styles
 
 Functions:
-  * Classic: Ped. symbol at start, dashed horizontal line, and asterisk (*) at release.
-  * Bracket: Modern square brackets (|---|) with vertical hooks.
-  * Notch / Mixed: Combines Ped. marking with inverted 'V' notches for continuous pedal retakes.
+- Classic: Ped. symbol at start, dashed horizontal line, and asterisk (*) at release.
+- Bracket: Modern square brackets (|---|) with vertical hooks.
+- Notch / Mixed: Combines Ped. marking with inverted 'V' notches for continuous pedal retakes.
 
 ### 7.3 Dual Handles & Pause / Break Retakes
 
 Functions:
-  * Start & End Handles: Drag circular handles to adjust pedal engage and release times.
-  * Pause / Retake Points: Right-click on the pedal line to insert pedal breaks (quick release and re-engage) without creating multiple separate items.
+- Start & End Handles: Drag circular handles to adjust pedal engage and release times.
+- Pause / Retake Points: Right-click on the pedal line to insert pedal breaks (quick release and re-engage) without creating multiple separate items.
 DAW Effect: Writes CC64 value 127 at engage, momentary 0 at retakes, and 0 at final release.
 
 ---
@@ -274,10 +275,10 @@ DAW Effect: Generates a continuous gradual tempo ramp in REAPER, smoothly accele
 ### 9.1 Visual Score Simplification
 
 Functions: For extreme high or low passages that would otherwise require excessive ledger lines, octave shift lines simplify score reading:
-  * 8va (Ottava Alta): Notes sound 1 octave higher than written.
-  * 8vb (Ottava Bassa): Notes sound 1 octave lower than written.
-  * 15ma (Quindicesima Alta): Notes sound 2 octaves higher.
-  * 15mb (Quindicesima Bassa): Notes sound 2 octaves lower.
+- 8va (Ottava Alta): Notes sound 1 octave higher than written.
+- 8vb (Ottava Bassa): Notes sound 1 octave lower than written.
+- 15ma (Quindicesima Alta): Notes sound 2 octaves higher.
+- 15mb (Quindicesima Bassa): Notes sound 2 octaves lower.
 
 ### 9.2 Visual vs. Sounding Pitch
 
@@ -302,8 +303,8 @@ Functions: Slide-out pattern browser organized into 8 orchestral categories:
 ### 10.2 One-Click Insertion & Capture
 
 Functions:
-  * Insert Pattern: Clicking any pattern card instantly inserts the musical motif at REAPER's edit cursor on the selected track.
-  * Capture Selection: Select any group of notes on your canvas and click 'Save Pattern' to store it in your custom library for future scoring projects.
+- Insert Pattern: Clicking any pattern card instantly inserts the musical motif at REAPER's edit cursor on the selected track.
+- Capture Selection: Select any group of notes on your canvas and click 'Save Pattern' to store it in your custom library for future scoring projects.
 
 ---
 
@@ -331,7 +332,7 @@ Functions: Click 'Import MusicXML' to load orchestral scores created in external
 
 ### 12.3 Exporting Scores
 
-Functions: Click 'Export MusicXML' to save your REAPER project as a standard `.musicxml` file ready for publication, live orchestral recording sessions, or further engraving.
+Functions: Click 'Export MusicXML' to save your REAPER project as a standard .musicxml file ready for publication, live orchestral recording sessions, or further engraving.
 
 ---
 
@@ -340,9 +341,9 @@ Functions: Click 'Export MusicXML' to save your REAPER project as a standard `.m
 ### 13.1 Print Modal & Layout Setup
 
 Functions: Dedicated Print Settings dialog accessible from the top bar tools:
-  * Paper Sizes: Standard A4, A3, Letter, Tabloid.
-  * Orientation: Landscape (standard for orchestral conductor scores) or Portrait (standard for solo instrumental parts).
-  * Systems per Page: Configure how many measures or systems appear per page.
+- Paper Sizes: Standard A4, A3, Letter, Tabloid.
+- Orientation: Landscape (standard for orchestral conductor scores) or Portrait (standard for solo instrumental parts).
+- Systems per Page: Configure how many measures or systems appear per page.
 
 ### 13.2 Metadata & Publishing Header
 

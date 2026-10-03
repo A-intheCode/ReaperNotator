@@ -80,16 +80,6 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ---
 
-## Documentation
-
-Comprehensive documentation and references are available in the [`docs/`](docs/) directory:
-
-- 📄 **[Official User Manual & Functional Reference (PDF)](docs/reaper_notator_user_manual.pdf)** — Full 14-chapter publication-grade PDF manual explaining every feature, DAW effect, and musical engraving workflow.
-- 📖 **[User Manual Online (Markdown)](docs/user_manual.md)** — Web-friendly Markdown version for quick browsing on GitHub.
-- 📊 **[Codebase Architecture & Volume Statistics (PDF)](docs/reaper_notator_codebase_statistics.pdf)** — Detailed statistical breakdown of all 64 source modules and system files.
-
----
-
 ## License
 
 This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.  
