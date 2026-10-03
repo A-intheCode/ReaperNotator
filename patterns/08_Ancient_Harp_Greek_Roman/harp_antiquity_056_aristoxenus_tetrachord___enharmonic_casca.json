@@ -1,0 +1,166 @@
+{
+  "id": "harp_antiquity_056_aristoxenus_tetrachord___enharmonic_casca",
+  "name": "Aristoxenus Tetrachord - Enharmonic Cascade",
+  "category": "08_Ancient_Harp_Greek_Roman",
+  "bars": 4,
+  "time_sig": {
+    "num": 3,
+    "denom": 4
+  },
+  "tempo_hint": 64,
+  "clef": "grand",
+  "notes": [
+    {
+      "pitch": 31,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 69,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 0.0,
+      "dur_qn": 0.9,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 1.0,
+      "dur_qn": 0.9,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 2.0,
+      "dur_qn": 0.9,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 31,
+      "start_qn": 3.0,
+      "dur_qn": 2.0,
+      "vel": 79,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.0,
+      "dur_qn": 2.0,
+      "vel": 79,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 3.0,
+      "dur_qn": 0.9,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 4.0,
+      "dur_qn": 0.9,
+      "vel": 99,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 5.0,
+      "dur_qn": 0.9,
+      "vel": 85,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 91,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 76,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 6.0,
+      "dur_qn": 0.9,
+      "vel": 77,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 7.0,
+      "dur_qn": 0.9,
+      "vel": 87,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 8.0,
+      "dur_qn": 0.9,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 9.0,
+      "dur_qn": 2.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 9.0,
+      "dur_qn": 0.9,
+      "vel": 79,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 10.0,
+      "dur_qn": 0.9,
+      "vel": 93,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 11.0,
+      "dur_qn": 0.9,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

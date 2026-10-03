@@ -1,0 +1,238 @@
+{
+  "id": "harp_antiquity_136_arpeggiato_sacrum___temple_dedication",
+  "name": "Arpeggiato Sacrum - Temple Dedication",
+  "category": "08_Ancient_Harp_Greek_Roman",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 64,
+  "clef": "grand",
+  "notes": [
+    {
+      "pitch": 48,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 83,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 0.0,
+      "dur_qn": 0.9,
+      "vel": 78,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 1.0,
+      "dur_qn": 0.9,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 79,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 2.0,
+      "dur_qn": 0.9,
+      "vel": 78,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 3.0,
+      "dur_qn": 0.9,
+      "vel": 100,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 82,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 73,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 4.0,
+      "dur_qn": 0.9,
+      "vel": 99,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 5.0,
+      "dur_qn": 0.9,
+      "vel": 89,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 79,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 80,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 6.0,
+      "dur_qn": 0.9,
+      "vel": 97,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 7.0,
+      "dur_qn": 0.9,
+      "vel": 98,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 8.0,
+      "dur_qn": 2.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 8.0,
+      "dur_qn": 0.9,
+      "vel": 93,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 9.0,
+      "dur_qn": 0.9,
+      "vel": 91,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 10.0,
+      "dur_qn": 2.0,
+      "vel": 84,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 10.0,
+      "dur_qn": 2.0,
+      "vel": 80,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 10.0,
+      "dur_qn": 0.9,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 11.0,
+      "dur_qn": 0.9,
+      "vel": 85,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 12.0,
+      "dur_qn": 2.0,
+      "vel": 82,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 12.0,
+      "dur_qn": 0.9,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 13.0,
+      "dur_qn": 0.9,
+      "vel": 89,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 14.0,
+      "dur_qn": 2.0,
+      "vel": 83,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 14.0,
+      "dur_qn": 0.9,
+      "vel": 84,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 15.0,
+      "dur_qn": 0.9,
+      "vel": 94,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

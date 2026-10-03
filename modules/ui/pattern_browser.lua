@@ -223,6 +223,9 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
     
     if reaper.ImGui_BeginChild(ctx, "PatternBrowserMainPane", width, height, child_border, pane_flags) then
         
+        -- Check background pattern download status
+        PatternService.check_download_progress(state)
+        
         -- ======================================================================
         -- 1. HEADER / TOOLBAR (Search, preview instrument, capture & close)
         -- ======================================================================
@@ -297,6 +300,28 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Reload library from disk")
+        end
+        
+        -- Button: 1-Click Factory Library Download / Update
+        reaper.ImGui_SameLine(ctx, 0, 8)
+        if PatternService.is_downloading then
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0xD35400AA)
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0xE67E22FF)
+            reaper.ImGui_Button(ctx, "⏳ Downloading...##PatDl", 155, 23)
+            reaper.ImGui_PopStyleColor(ctx, 2)
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Downloading and installing 1,200 patterns...")
+            end
+        else
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x2E86ABAA)
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x33A1DEFF)
+            if reaper.ImGui_Button(ctx, "📥 Download Library (1200)", 185, 23) then
+                PatternService.start_factory_download(state)
+            end
+            reaper.ImGui_PopStyleColor(ctx, 2)
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Download & extract 1,200 curated factory patterns (Ancient Harp, Strings, Brass, Piano, Woodwinds)")
+            end
         end
         
         -- Tile zoom control (60% to 160%)
@@ -396,8 +421,55 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
             end
             
             if #filtered_patterns == 0 then
-                reaper.ImGui_SetCursorPosY(ctx, reaper.ImGui_GetCursorPosY(ctx) + 20)
-                reaper.ImGui_TextColored(ctx, 0x8892B0FF, "  No matching patterns found in this category.")
+                if #PatternService.patterns == 0 then
+                    -- HERO BANNER FOR EMPTY FACTORY LIBRARY
+                    reaper.ImGui_SetCursorPosY(ctx, reaper.ImGui_GetCursorPosY(ctx) + 16)
+                    reaper.ImGui_SetCursorPosX(ctx, reaper.ImGui_GetCursorPosX(ctx) + 16)
+                    
+                    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ChildBg(), 0x1F2430FF)
+                    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Border(), 0x3D4A66FF)
+                    local hero_w = math.max(300, grid_w - 32)
+                    if reaper.ImGui_BeginChild(ctx, "EmptyPatHero", hero_w, 235, child_border) then
+                        reaper.ImGui_SetCursorPosY(ctx, 16)
+                        reaper.ImGui_SetCursorPosX(ctx, 20)
+                        reaper.ImGui_TextColored(ctx, 0xF39C12FF, "🎼 REAPER-Notator Factory Pattern Library")
+                        
+                        reaper.ImGui_SetCursorPosY(ctx, 42)
+                        reaper.ImGui_SetCursorPosX(ctx, 20)
+                        reaper.ImGui_TextColored(ctx, 0xCCD6F6FF, "The Factory Library contains 1,200 curated orchestral, ancient harp & cinematic patterns:")
+                        
+                        reaper.ImGui_SetCursorPosY(ctx, 64)
+                        reaper.ImGui_SetCursorPosX(ctx, 28)
+                        reaper.ImGui_TextColored(ctx, 0x8892B0FF, "• 150x Ancient Greek & Roman Harp (Dorian, Phrygian, Lydian, Hymns & Processions)\n• 150x Cinematic Piano & Arpeggios\n• 300x Strings (Staccato, Ostinatos & Pizzicato)\n• 150x Epic Brass & Horns\n• 150x Woodwinds & Textures\n• 300x Cinematic & Counter Melodies")
+                        
+                        reaper.ImGui_SetCursorPosY(ctx, 175)
+                        reaper.ImGui_SetCursorPosX(ctx, 20)
+                        
+                        if PatternService.is_downloading then
+                            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0xD35400FF)
+                            reaper.ImGui_Button(ctx, "⏳ Downloading and extracting 1,200 patterns... please wait", 400, 32)
+                            reaper.ImGui_PopStyleColor(ctx, 1)
+                        else
+                            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x27AE60EE)
+                            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2ECC71FF)
+                            if reaper.ImGui_Button(ctx, "📥 1-Click Install Factory Patterns (1,200 Patterns)", 400, 32) then
+                                PatternService.start_factory_download(state)
+                            end
+                            reaper.ImGui_PopStyleColor(ctx, 2)
+                        end
+                        
+                        if PatternService.download_error then
+                            reaper.ImGui_SameLine(ctx, 0, 12)
+                            reaper.ImGui_TextColored(ctx, 0xE74C3CFF, PatternService.download_error)
+                        end
+                        
+                        reaper.ImGui_EndChild(ctx)
+                    end
+                    reaper.ImGui_PopStyleColor(ctx, 2)
+                else
+                    reaper.ImGui_SetCursorPosY(ctx, reaper.ImGui_GetCursorPosY(ctx) + 20)
+                    reaper.ImGui_TextColored(ctx, 0x8892B0FF, "  No matching patterns found in this category.")
+                end
             else
                 -- Responsive grid calculation
                 local zoom = state.pattern_card_zoom or 1.0

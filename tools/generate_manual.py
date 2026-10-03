@@ -335,25 +335,33 @@ MANUAL_DATA = [
     },
     {
         "chapter": 10,
-        "title": "Orchestral Pattern Browser",
+        "title": "Orchestral Pattern Browser & 1-Click Library",
         "sections": [
             {
-                "heading": "10.1 Built-in Cinematic Pattern Library",
-                "text": "Functions: Slide-out pattern browser organized into 8 orchestral categories:\n"
-                        "  1. Strings Staccato (rhythmic ostinatos, driving cinema pulses)\n"
-                        "  2. Strings Pizzicato (delicate melodic textures)\n"
-                        "  3. Brass Blockbuster (epic fanfares, heroic intervals)\n"
-                        "  4. Cinematic Melodies (expressive themes)\n"
-                        "  5. Counter Melodies (supporting orchestral counterpoint)\n"
-                        "  6. Woodwinds Textures (rapid arpeggios, atmospheric runs)\n"
-                        "  7. Cinematic Piano (flowing ballads, introspective etudes)\n"
-                        "  8. Custom User Patterns (user-created motifs)"
+                "heading": "10.1 Curated 1,200 Pattern Factory Library",
+                "text": "Functions: Slide-out pattern browser organized into 8 orchestral categories (1,200 factory patterns total):\n"
+                        "- 1. Strings Staccato (150x driving cinema pulses, ostinatos)\n"
+                        "- 2. Strings Pizzicato (150x delicate plucks, agile grooves)\n"
+                        "- 3. Brass Blockbuster (150x epic horn fanfares, low brass power)\n"
+                        "- 4. Cinematic Melodies (150x soaring lyrical themes)\n"
+                        "- 5. Counter Melodies (150x rich orchestral counterpoint)\n"
+                        "- 6. Woodwinds Textures (150x runs, fluttering textures)\n"
+                        "- 7. Cinematic Piano (150x flowing arpeggios, grand staff ballads)\n"
+                        "- 8. Ancient Greek & Roman Harp (150x modal hymns, Delphic paeans, Sapphic strophes, Dorian/Phrygian/Lydian processions)\n"
+                        "- 9. Custom User Patterns (user-captured motifs and items)"
             },
             {
-                "heading": "10.2 One-Click Insertion & Capture",
+                "heading": "10.2 One-Click Insertion, Drag & Drop & Audio Audition",
                 "text": "Functions:\n"
-                        "- Insert Pattern: Clicking any pattern card instantly inserts the musical motif at REAPER's edit cursor on the selected track.\n"
-                        "- Capture Selection: Select any group of notes on your canvas and click 'Save Pattern' to store it in your custom library for future scoring projects."
+                        "- Drag & Drop: Drag any pattern tile directly onto the score canvas with golden ghost-preview.\n"
+                        "- Audio Audition: Audition motifs in real-time through any selected REAPER instrument track.\n"
+                        "- Capture Selection: Select any REAPER MIDI item and click 'Capture REAPER Item' to store it permanently."
+            },
+            {
+                "heading": "10.3 In-App 1-Click Factory Library Downloader",
+                "text": "Functions: Integrated one-click downloader built into the browser toolbar and empty-state banner.\n"
+                        "- 1-Click Install: Downloads and unpacks the entire 1,200 pattern library (820 KB compressed) in one second without leaving REAPER.\n"
+                        "- Offline Archive Support: Automatically unpacks local patterns.zip on first launch if present."
             }
         ]
     },

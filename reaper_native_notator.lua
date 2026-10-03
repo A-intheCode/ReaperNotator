@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.3.6
+-- @version 1.3.7
 -- @changelog
 --   + v1.3.6: Fix crash in sidebar.lua when track pointer is invalid or deleted (MediaTrack expected in GetTrackGUID)
 --   + v1.3.5: Beam rendering performance & Phase 2 optimizations:

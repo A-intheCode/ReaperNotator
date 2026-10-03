@@ -25,9 +25,11 @@ PatternService.CATEGORY_META = {
     ["05_Counter_Melodies"] = { label = "✨ Counter Melodies & Lines", order = 5 },
     ["06_Woodwinds_Textures"] = { label = "🌪 Woodwinds & Textures", order = 6 },
     ["07_Cinematic_Piano"] = { label = "🎹 Cinematic Piano & Arpeggios", order = 7 },
-    ["08_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 8 },
-    ["07_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 8 }, -- Fallback
-    ["06_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 8 }  -- Fallback
+    ["08_Ancient_Harp_Greek_Roman"] = { label = "🏛 Harp - Ancient Greek & Roman", order = 8 },
+    ["09_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 9 },
+    ["08_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 9 }, -- Fallback
+    ["07_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 9 }, -- Fallback
+    ["06_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 9 }  -- Fallback
 }
 
 --- Determines absolute base path of patterns directory
@@ -37,6 +39,21 @@ end
 
 --- Initializes the pattern system and scans all patterns on disk
 function PatternService.init()
+    local base_dir = PatternService.get_base_dir()
+    local has_sub = false
+    if reaper.APIExists("EnumerateSubdirectories") then
+        local sub = reaper.EnumerateSubdirectories(base_dir, 0)
+        if sub and sub ~= "" then has_sub = true end
+    end
+    
+    if not has_sub then
+        local s_dir = PathService.get_script_dir()
+        if PathService.file_exists(s_dir .. "/patterns.zip") or PathService.file_exists(s_dir .. "/../patterns.zip") or PathService.file_exists("D:/programmieren/REAPER-Notator/patterns.zip") then
+            -- Auto-extract from existing local archive
+            PatternService.start_factory_download(nil)
+        end
+    end
+    
     PatternService.scan_library()
 end
 
@@ -458,6 +475,104 @@ function PatternService.update_preview(audio_preview)
     -- Stop when entire pattern duration has completed
     if elapsed >= (p.total_time + 0.5) and #p.active_sounding == 0 then
         PatternService.stop_preview(audio_preview)
+    end
+end
+
+PatternService.is_downloading = false
+PatternService.download_status = nil
+PatternService.download_error = nil
+PatternService.download_start_time = 0
+
+--- Triggers 1-click in-app download and extraction of the factory pattern library
+--- @param state table|nil
+function PatternService.start_factory_download(state)
+    if PatternService.is_downloading then return end
+    
+    local s_dir = PathService.get_script_dir()
+    local target_patterns_dir = PathService.get_patterns_dir(state)
+    
+    -- Ensure target directory exists
+    reaper.RecursiveCreateDirectory(target_patterns_dir, 0)
+    
+    local marker_file = PathService.normalize(s_dir .. "/.pattern_dl_status.txt")
+    -- Remove any stale marker file
+    os.remove(marker_file)
+    
+    PatternService.is_downloading = true
+    PatternService.download_status = "downloading"
+    PatternService.download_error = nil
+    PatternService.download_start_time = reaper.time_precise()
+    
+    local os_type = PathService.get_os()
+    local cmd = ""
+    
+    if os_type == "windows" then
+        local target_parent = PathService.normalize(s_dir):gsub("/", "\\")
+        local status_path = marker_file:gsub("/", "\\")
+        local local_zip1 = (s_dir .. "/patterns.zip"):gsub("/", "\\")
+        local local_zip2 = (s_dir .. "/../patterns.zip"):gsub("/", "\\")
+        local local_zip3 = "D:\\programmieren\\REAPER-Notator\\patterns.zip"
+        
+        local ps_script = string.format([[$ProgressPreference = 'SilentlyContinue'; $statusFile = '%s'; $targetParent = '%s'; $localZip1 = '%s'; $localZip2 = '%s'; $localZip3 = '%s'; try { if (Test-Path $localZip1) { $srcZip = $localZip1 } elseif (Test-Path $localZip2) { $srcZip = $localZip2 } elseif (Test-Path $localZip3) { $srcZip = $localZip3 } else { $srcZip = Join-Path $env:TEMP 'notator_patterns.zip'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip' -OutFile $srcZip; } Expand-Archive -Path $srcZip -DestinationPath $targetParent -Force; Set-Content -Path $statusFile -Value 'OK:1200'; } catch { Set-Content -Path $statusFile -Value ('ERROR:' + $_.Exception.Message); }]],
+            status_path, target_parent, local_zip1, local_zip2, local_zip3)
+            
+        -- Execute via background PowerShell without command prompt window
+        cmd = string.format('start /b powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command "%s"', ps_script)
+        os.execute(cmd)
+    else
+        -- macOS / Linux
+        local target_parent = PathService.normalize(s_dir)
+        local status_path = marker_file
+        local local_zip1 = s_dir .. "/patterns.zip"
+        local local_zip2 = s_dir .. "/../patterns.zip"
+        
+        local sh_script = string.format([[STATUS='%s'; TARGET='%s'; ZIP='/tmp/notator_patterns.zip'; if [ -f '%s' ]; then unzip -o '%s' -d "$TARGET" && echo "OK:1200" > "$STATUS"; elif [ -f '%s' ]; then unzip -o '%s' -d "$TARGET" && echo "OK:1200" > "$STATUS"; else curl -L 'https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip' -o "$ZIP" && unzip -o "$ZIP" -d "$TARGET" && rm -f "$ZIP" && echo "OK:1200" > "$STATUS" || echo "ERROR:Download failed" > "$STATUS"; fi]],
+            status_path, target_parent, local_zip1, local_zip1, local_zip2, local_zip2)
+            
+        cmd = string.format('sh -c "%s" &', sh_script:gsub('"', '\\"'))
+        os.execute(cmd)
+    end
+end
+
+--- Checks if the background download and extraction process has completed
+--- @param state table|nil
+function PatternService.check_download_progress(state)
+    if not PatternService.is_downloading then return end
+    
+    local s_dir = PathService.get_script_dir()
+    local marker_file = PathService.normalize(s_dir .. "/.pattern_dl_status.txt")
+    
+    local f = io.open(marker_file, "r")
+    if f then
+        local content = f:read("*a") or ""
+        f:close()
+        os.remove(marker_file)
+        
+        PatternService.is_downloading = false
+        if content:match("^OK") then
+            PatternService.download_status = "success"
+            PatternService.download_error = nil
+            PatternService.scan_library()
+            if state then
+                state.status_msg = "Successfully installed 1,200 Factory Patterns!"
+            end
+        else
+            PatternService.download_status = "error"
+            PatternService.download_error = content:gsub("^ERROR:", "")
+            if state then
+                state.status_msg = "Pattern download failed: " .. (PatternService.download_error or "Unknown error")
+            end
+        end
+    else
+        -- Timeout after 45 seconds
+        if reaper.time_precise() - PatternService.download_start_time > 45.0 then
+            PatternService.is_downloading = false
+            PatternService.download_status = "timeout"
+            PatternService.download_error = "Download timed out after 45 seconds."
+            if state then
+                state.status_msg = "Pattern download timed out."
+            end
+        end
     end
 end
 
