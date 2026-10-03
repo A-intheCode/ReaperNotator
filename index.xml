@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.0.0" author="A-intheCode" time="2026-10-03T14:12:21Z">
+      <version name="1.0.1" author="A-intheCode" time="2026-10-03T14:31:11Z">
         <changelog><![CDATA[
++ v1.0.1: Add TopBar version display & automated versioning
 + v1.0.0: Initial public release
 - Full SMuFL glyph font rendering (Bravura)
 - Standard-compliant automatic beaming & rhythm division
