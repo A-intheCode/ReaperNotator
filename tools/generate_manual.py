@@ -19,6 +19,20 @@ os.makedirs(DOCS_DIR, exist_ok=True)
 MD_PATH = os.path.join(DOCS_DIR, "user_manual.md")
 PDF_PATH = os.path.join(DOCS_DIR, "reaper_notator_user_manual.pdf")
 
+def get_version():
+    ver_file = os.path.join(REPO_ROOT, "modules", "version.lua")
+    if os.path.exists(ver_file):
+        with open(ver_file, "r", encoding="utf-8") as vf:
+            content = vf.read()
+            m_maj = re.search(r"major\s*=\s*(\d+)", content)
+            m_min = re.search(r"minor\s*=\s*(\d+)", content)
+            m_pat = re.search(r"patch\s*=\s*(\d+)", content)
+            if m_maj and m_min and m_pat:
+                return f"{m_maj.group(1)}.{m_min.group(1)}.{m_pat.group(1)}"
+    return "1.3.6"
+
+VERSION = get_version()
+
 MANUAL_DATA = [
     {
         "chapter": 1,
@@ -47,7 +61,7 @@ MANUAL_DATA = [
         "sections": [
             {
                 "heading": "2.1 Title & Version Indicator",
-                "text": "Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (e.g. v1.0.1). When running in a developer environment, Notator automatically detects and displays the active Git commit hash."
+                "text": f"Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v{VERSION}). When running in a developer environment, Notator automatically detects and displays the active Git commit hash."
             },
             {
                 "heading": "2.2 Transport & Playhead Controls",
@@ -85,6 +99,13 @@ MANUAL_DATA = [
             {
                 "heading": "2.7 Track Picker & Visibility Filters",
                 "text": "Function: Opens a multi-track routing popover allowing the user to select which REAPER tracks are currently visible, focused, or edited on the score canvas."
+            },
+            {
+                "heading": "2.8 Multi-Voice System & Auto-Voice Overlap Splitting",
+                "text": "Functions:\n"
+                        "- 16 Polyphonic Voices: Maps MIDI channels 0-15 to 16 distinct engraving colors with configurable ghost voice opacity (5% to 100%).\n"
+                        "- Auto-Voice: Intelligently analyzes the entire track for polyphonic overlaps and distributes them to channels 1-16.\n"
+                        "- Auto-Split on Selection: Splits selected chordal intervals across independent voices with automatic opposite stem orientations."
             }
         ]
     },
@@ -164,6 +185,13 @@ MANUAL_DATA = [
             {
                 "heading": "4.4 Stem Inversion ('X' Shortcut)",
                 "text": "Functions: Pressing the 'X' key instantly flips the stem direction of selected notes (stems up vs. stems down). Inverting stems automatically recalculates beam anchor points and flag alignments."
+            },
+            {
+                "heading": "4.5 Hardware-Accelerated Beaming & Gardner Read / Gould Tuplet Math",
+                "text": "Functions:\n"
+                        "- Pure GPU-Accelerated Quads: All beam levels and fractional stubs utilize native ImGui vertex fringe anti-aliasing for razor-sharp slants without CPU overdraw.\n"
+                        "- Gould Quarter-Note Quintuplets (5:4): Full 4/4 bar quintuplets accurately calculate 0.8 QN step widths spanning exactly 4.0 QN total duration.\n"
+                        "Performance: Minimizes C-API overhead and eliminates redundant outline strokes."
             }
         ]
     },
@@ -277,6 +305,13 @@ MANUAL_DATA = [
                 "heading": "8.2 Gradual Transitions (Accelerando / Ritardando)",
                 "text": "Functions: Renders dashed tempo transition lines spanning multiple measures (e.g. 'poco a poco accel. ------').\n"
                         "DAW Effect: Generates a continuous gradual tempo ramp in REAPER, smoothly accelerating or decelerating project playback speed."
+            },
+            {
+                "heading": "8.3 Direct Double-Click BPM Editing & Glyphs",
+                "text": "Functions:\n"
+                        "- Double-Click Inline Editing: Double-clicking any tempo marker opens an instantaneous popup editor with automatic keyboard focus on the numeric BPM input.\n"
+                        "- Standard Unicode Note Symbol: Renders the classical quarter-note symbol (♩, U+2669) in non-bold regular weight according to professional music engraving standards.\n"
+                        "DAW Effect: Updates REAPER tempo markers in real time with immediate timeline synchronization."
             }
         ]
     },
@@ -373,10 +408,29 @@ MANUAL_DATA = [
     },
     {
         "chapter": 14,
+        "title": "Engine Architecture & Performance Optimization",
+        "sections": [
+            {
+                "heading": "14.1 High-Efficiency O(1) Project State Caching",
+                "text": "Functions:\n"
+                        "- Project State Guard: Monitors reaper.GetProjectStateChangeCount(0) to eliminate thousands of redundant C-API queries during playback and idle, reducing C-API calls to 0 when the score is static.\n"
+                        "- Text Size Memoization: Caches ImGui font measurement dimensions to eliminate repeated layout calculation storms.\n"
+                        "- ReaImGui Context Validation: Strict pointer validation guarantees rock-solid stability during project switching and window operations."
+            },
+            {
+                "heading": "14.2 Hardware-Accelerated Vector Graphics",
+                "text": "Functions:\n"
+                        "- Pure GPU-Rasterized Drawing: ReaImGui dispatches all vector paths, noteheads, and beams directly to DirectX 11 / OpenGL / Vulkan.\n"
+                        "- Optimized Beam Meshing: Eliminated redundant contour stroking on filled polygons, reducing vertex count by 60% and halving C-API call overhead."
+            }
+        ]
+    },
+    {
+        "chapter": 15,
         "title": "Keyboard Shortcuts & Quick Reference",
         "sections": [
             {
-                "heading": "14.1 Comprehensive Hotkey Matrix",
+                "heading": "15.1 Comprehensive Hotkey Matrix",
                 "text": "Quick reference table for high-speed score entry:\n\n"
                         "| Key / Shortcut | Action | Description |\n"
                         "| :--- | :--- | :--- |\n"
@@ -404,7 +458,7 @@ MANUAL_DATA = [
 # Write Markdown Documentation
 with open(MD_PATH, "w", encoding="utf-8") as md:
     md.write("# REAPER-Notator - Official User Manual & Function Reference\n\n")
-    md.write(f"**Version:** 1.0.1  \n**Date:** {datetime.datetime.now().strftime('%Y-%m-%d')}  \n**License:** GNU General Public License v3.0  \n\n")
+    md.write(f"**Version:** {VERSION}  \n**Date:** {datetime.datetime.now().strftime('%Y-%m-%d')}  \n**License:** GNU General Public License v3.0  \n\n")
     md.write("---\n\n## Table of Contents\n\n")
     for chap in MANUAL_DATA:
         anchor = chap['title'].lower().replace(' ', '-').replace('&', '').replace(',', '').replace('(', '').replace(')', '').replace('---', '-')
@@ -429,7 +483,7 @@ class ManualPDF(FPDF):
         self.set_font("Helvetica", "B", 8)
         self.set_text_color(100, 116, 139) # Slate 500
         self.cell(self.epw * 0.7, 7, "REAPER-Notator  -  Official User Manual & Function Reference", new_x=XPos.RIGHT, new_y=YPos.TOP)
-        self.cell(self.epw * 0.3, 7, "v1.0.1", align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        self.cell(self.epw * 0.3, 7, f"v{VERSION}", align="R", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         self.set_draw_color(226, 232, 240)
         self.line(self.l_margin, 14, self.w - self.r_margin, 14)
         self.ln(5)
@@ -480,7 +534,7 @@ pdf.set_draw_color(226, 232, 240)
 pdf.rect(14, box_y, pdf.epw, 36, "DF")
 
 items = [
-    ("Version:", "v1.0.1 (Production Release)"),
+    ("Version:", f"v{VERSION} (Production Release)"),
     ("Release Date:", datetime.datetime.now().strftime("%B %d, %Y")),
     ("Compatibility:", "Cockos REAPER v7.0+ (Windows, macOS, Linux) with ReaImGui"),
     ("License:", "GNU General Public License v3.0 (GPL-3.0)")
@@ -512,6 +566,27 @@ for chap in MANUAL_DATA:
     pdf.set_text_color(51, 65, 85)
     pdf.cell(pdf.epw - 14, 5.5, f"  {chap['title']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
 
+def sanitize_pdf_text(text: str) -> str:
+    replacements = {
+        "\u2669": "[Quarter]",
+        "\u266a": "[Eighth]",
+        "\u266b": "[Beamed Eighths]",
+        "\u2013": "-",
+        "\u2014": "-",
+        "\u2018": "'",
+        "\u2019": "'",
+        "\u201c": '"',
+        "\u201d": '"',
+        "\u2026": "...",
+        "\u2264": "<=",
+        "\u2265": ">=",
+        "\u2248": "~",
+        "\u2260": "!=",
+    }
+    for k, v in replacements.items():
+        text = text.replace(k, v)
+    return text.encode("latin-1", "replace").decode("latin-1")
+
 # --- CHAPTER PAGES ---
 for chap in MANUAL_DATA:
     pdf.add_page()
@@ -523,7 +598,7 @@ for chap in MANUAL_DATA:
     pdf.set_font("Helvetica", "B", 11)
     pdf.set_text_color(255, 255, 255)
     pdf.set_xy(pdf.l_margin + 4, curr_y + 1)
-    pdf.cell(pdf.epw - 8, 8, f"Chapter {chap['chapter']}: {chap['title']}", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+    pdf.cell(pdf.epw - 8, 8, sanitize_pdf_text(f"Chapter {chap['chapter']}: {chap['title']}"), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
     pdf.set_y(curr_y + 14)
     
     for sec in chap["sections"]:
@@ -535,14 +610,14 @@ for chap in MANUAL_DATA:
         # Section Heading
         pdf.set_font("Helvetica", "B", 10)
         pdf.set_text_color(234, 88, 12) # Amber / Orange
-        pdf.cell(pdf.epw, 6, sec["heading"], new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+        pdf.cell(pdf.epw, 6, sanitize_pdf_text(sec["heading"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
         
         # Section Body
         pdf.set_font("Helvetica", "", 8.5)
         pdf.set_text_color(30, 41, 59)
         
-        raw_text = sec["text"]
+        raw_text = sanitize_pdf_text(sec["text"])
         lines = raw_text.split("\n")
         in_table = False
         table_rows = []
@@ -563,8 +638,8 @@ for chap in MANUAL_DATA:
                 in_table = False
             
             # Format bullet points with slight indent
-            if line_str.startswith("-") or line_str.startswith("*") or line_str.startswith("-"):
-                bullet_text = line_str.lstrip("-*-").strip()
+            if line_str.startswith("-") or line_str.startswith("*"):
+                bullet_text = line_str.lstrip("-* ").strip()
                 pdf.set_x(pdf.l_margin + 3)
                 pdf.set_text_color(234, 88, 12)
                 pdf.cell(4, 4.5, "-", new_x=XPos.RIGHT, new_y=YPos.TOP)
@@ -594,7 +669,7 @@ for chap in MANUAL_DATA:
             
             col_widths = [36, 42, pdf.epw - 78]
             for col_idx, col_name in enumerate(table_rows[0]):
-                pdf.cell(col_widths[col_idx], 6, f" {col_name}", 1, 0, "L", fill=True)
+                pdf.cell(col_widths[col_idx], 6, f" {col_name}", 1, new_x=XPos.RIGHT, new_y=YPos.TOP, align="L", fill=True)
             pdf.ln(6)
             
             pdf.set_font("Helvetica", "", 8)
@@ -603,7 +678,7 @@ for chap in MANUAL_DATA:
                 pdf.set_fill_color(bg, bg, bg)
                 pdf.set_text_color(30, 41, 59)
                 for col_idx, cell in enumerate(row):
-                    pdf.cell(col_widths[col_idx], 5.2, f" {cell}", 1, 0, "L", fill=True)
+                    pdf.cell(col_widths[col_idx], 5.2, f" {cell}", 1, new_x=XPos.RIGHT, new_y=YPos.TOP, align="L", fill=True)
                 pdf.ln(5.2)
             pdf.ln(2)
             
