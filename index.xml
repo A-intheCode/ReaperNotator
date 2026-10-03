@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.3.7" author="A-intheCode" time="2026-10-03T21:57:28Z">
+      <version name="1.3.8" author="A-intheCode" time="2026-10-03T22:04:28Z">
         <changelog><![CDATA[
++ v1.3.8: Remove patterns.zip from package manifest; strictly on-demand in-app download
 + v1.3.7: In-App 1-Click Pattern Downloader, 150 Ancient Greek & Roman Harp Patterns, patterns.zip packaging for ReaPack
 + v1.3.6: Fix crash in sidebar.lua when track pointer is invalid or deleted (MediaTrack expected in GetTrackGUID)
 + v1.3.5: Beam rendering performance & Phase 2 optimizations:
