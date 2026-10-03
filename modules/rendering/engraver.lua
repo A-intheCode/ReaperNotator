@@ -78,12 +78,61 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
     end
     
     local dq = (state and state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001) and state.display_quantize_grid or nil
-    -- Pre-generate rests per track so they are factored into measure width calculation
+    -- Pre-generate or retrieve cached rests per track so they are factored into measure width calculation
     local rests_by_track = {}
+    local r_key = string.format("%d_%.3f_%s", num_m + 1, bpi, tostring(dq))
     for _, tdata in ipairs(active_tracks_data or {}) do
-        rests_by_track[tdata] = Engraver.generate_voice_rests(tdata.notes or {}, num_m + 1, bpi, dq)
+        local r_cache = tdata.rests_cache
+        local tr_rests = r_cache and r_cache[r_key]
+        if not tr_rests then
+            tr_rests = Engraver.generate_voice_rests(tdata.notes or {}, num_m + 1, bpi, dq)
+            if r_cache then
+                r_cache[r_key] = tr_rests
+            end
+        end
+        rests_by_track[tdata] = tr_rests
     end
     
+    -- O(N) note and rest bucketing by measure
+    local track_notes_by_bar = {}
+    local track_rests_by_bar = {}
+    for _, tdata in ipairs(active_tracks_data or {}) do
+        local notes_by_bar = {}
+        track_notes_by_bar[tdata] = notes_by_bar
+        if tdata.notes and #tdata.notes > 0 then
+            for _, n in ipairs(tdata.notes) do
+                local m = math.floor(n.start_qn / bpi + 0.0001)
+                if m >= 0 and m <= num_m then
+                    local b_list = notes_by_bar[m]
+                    if not b_list then
+                        b_list = {}
+                        notes_by_bar[m] = b_list
+                    end
+                    table.insert(b_list, n)
+                end
+            end
+        end
+
+        local rests_by_bar = {}
+        track_rests_by_bar[tdata] = rests_by_bar
+        local tr_rests = rests_by_track[tdata]
+        if tr_rests and #tr_rests > 0 then
+            for _, r in ipairs(tr_rests) do
+                if not r.is_full_measure then
+                    local m = math.floor(r.start_qn / bpi + 0.0001)
+                    if m >= 0 and m <= num_m then
+                        local r_list = rests_by_bar[m]
+                        if not r_list then
+                            r_list = {}
+                            rests_by_bar[m] = r_list
+                        end
+                        table.insert(r_list, r)
+                    end
+                end
+            end
+        end
+    end
+
     -- For each measure from 0 to num_m
     for m = 0, num_m do
         local m_start_qn = m * bpi
@@ -94,63 +143,59 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
         -- Check all active tracks for note density, accidentals, dots, and rests in measure m
         for _, tdata in ipairs(active_tracks_data or {}) do
             local onsets = {}
-            if tdata.notes and #tdata.notes > 0 then
-                -- Collect all unique note onsets in this measure
-                for _, n in ipairs(tdata.notes) do
-                    if n.start_qn >= m_start_qn - 0.001 and n.start_qn < m_end_qn - 0.001 then
-                        local rounded_qn = math.floor(n.start_qn * 32.0 + 0.5) / 32.0
-                        local rel_qn = math.floor((n.start_qn - m_start_qn) * 32.0 + 0.5) / 32.0
-                        m_combined_onsets[rel_qn] = true
-                        if not onsets[rounded_qn] then
-                            onsets[rounded_qn] = {
-                                qn = n.start_qn,
-                                has_acc = false,
-                                has_dot = false,
-                                count = 0,
-                                is_rest = false
-                            }
-                        end
-                        local o = onsets[rounded_qn]
-                        o.count = o.count + 1
-                        
-                        -- Check accidentals
-                        local k = n.key or (n.get_key and n:get_key())
-                        local pref_acc = state and state.note_accidentals and state.note_accidentals[k]
-                        if pref_acc == nil and state and state.note_accidentals and n.take then
-                            local id_k = string.format("%s_%s_%.3f", tostring(n.take or "0"), tostring(n.idx), n.start_qn)
-                            pref_acc = state.note_accidentals[id_k]
-                        end
-                        local p_mod = n.pitch % 12
-                        local is_black = (p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10)
-                        if pref_acc == 1 or pref_acc == -1 or pref_acc == 2 or (is_black and pref_acc ~= 0) then
-                            o.has_acc = true
-                        end
-                        
-                        -- Check augmentation dots
-                        if Engraver.is_dotted_duration(n.dur_qn) then
-                            o.has_dot = true
-                        end
+            local bar_notes = track_notes_by_bar[tdata] and track_notes_by_bar[tdata][m]
+            if bar_notes then
+                for _, n in ipairs(bar_notes) do
+                    local rounded_qn = math.floor(n.start_qn * 32.0 + 0.5) / 32.0
+                    local rel_qn = math.floor((n.start_qn - m_start_qn) * 32.0 + 0.5) / 32.0
+                    m_combined_onsets[rel_qn] = true
+                    if not onsets[rounded_qn] then
+                        onsets[rounded_qn] = {
+                            qn = n.start_qn,
+                            has_acc = false,
+                            has_dot = false,
+                            count = 0,
+                            is_rest = false
+                        }
+                    end
+                    local o = onsets[rounded_qn]
+                    o.count = o.count + 1
+                    
+                    -- Check accidentals
+                    local k = n.key or (n.get_key and n:get_key())
+                    local pref_acc = state and state.note_accidentals and state.note_accidentals[k]
+                    if pref_acc == nil and state and state.note_accidentals and n.take then
+                        local id_k = string.format("%s_%s_%.3f", tostring(n.take or "0"), tostring(n.idx), n.start_qn)
+                        pref_acc = state.note_accidentals[id_k]
+                    end
+                    local p_mod = n.pitch % 12
+                    local is_black = (p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10)
+                    if pref_acc == 1 or pref_acc == -1 or pref_acc == 2 or (is_black and pref_acc ~= 0) then
+                        o.has_acc = true
+                    end
+                    
+                    -- Check augmentation dots
+                    if Engraver.is_dotted_duration(n.dur_qn) then
+                        o.has_dot = true
                     end
                 end
             end
             
-            -- Include rests (e.g. 16th / 32nd rests) in space allocation!
-            local tr_rests = rests_by_track[tdata]
-            if tr_rests then
-                for _, r in ipairs(tr_rests) do
-                    if not r.is_full_measure and r.start_qn >= m_start_qn - 0.001 and r.start_qn < m_end_qn - 0.001 then
-                        local rounded_qn = math.floor(r.start_qn * 32.0 + 0.5) / 32.0
-                        local rel_qn = math.floor((r.start_qn - m_start_qn) * 32.0 + 0.5) / 32.0
-                        m_combined_onsets[rel_qn] = true
-                        if not onsets[rounded_qn] then
-                            onsets[rounded_qn] = {
-                                qn = r.start_qn,
-                                has_acc = false,
-                                has_dot = false,
-                                count = 1,
-                                is_rest = true
-                            }
-                        end
+            -- Include rests (e.g. 16th / 32nd rests) in space allocation
+            local bar_rests = track_rests_by_bar[tdata] and track_rests_by_bar[tdata][m]
+            if bar_rests then
+                for _, r in ipairs(bar_rests) do
+                    local rounded_qn = math.floor(r.start_qn * 32.0 + 0.5) / 32.0
+                    local rel_qn = math.floor((r.start_qn - m_start_qn) * 32.0 + 0.5) / 32.0
+                    m_combined_onsets[rel_qn] = true
+                    if not onsets[rounded_qn] then
+                        onsets[rounded_qn] = {
+                            qn = r.start_qn,
+                            has_acc = false,
+                            has_dot = false,
+                            count = 1,
+                            is_rest = true
+                        }
                     end
                 end
             end

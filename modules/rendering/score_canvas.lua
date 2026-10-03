@@ -353,10 +353,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     timesig_denom = (timesig_denom and timesig_denom > 0) and timesig_denom or 4
     local qn_per_measure = timesig_num * (4 / timesig_denom)
     local bpi = qn_per_measure
+    local proj_change_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
     
     for _, t in ipairs(project_tracks) do
         if state.selected_tracks[t.guid] then
-            local items, trk_notes, dyns, arts, trk_max_qn = midi_service.get_track_items_and_notes(t.track)
+            local items, trk_notes, dyns, arts, trk_max_qn, r_cache = midi_service.get_track_items_and_notes(t.track)
             if trk_max_qn and trk_max_qn > max_proj_qn then
                 max_proj_qn = trk_max_qn
             else
@@ -372,7 +373,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 col = t.col,
                 items = items,
                 notes = trk_notes,
-                dynamics = dyns, articulations = arts
+                dynamics = dyns, articulations = arts,
+                rests_cache = r_cache
             })
         end
     end
@@ -386,45 +388,74 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local total_measures = math.max(16, math.ceil(max_proj_qn / qn_per_measure) + 2)
     local measure_w, pad_left, pad_right, usable_w = Engraver.get_measure_layout(s, qn_per_measure)
     
-    -- Dynamically calculate optimal track header width based on track names
+    -- Dynamically calculate optimal track header width and key signature width based on track names (cached)
+    local hdr_cache_key = string.format("%d_%.3f_%d", #active_tracks_data, s, proj_change_cnt)
     local max_hdr_text_w = 85 * s
-    for _, tdata in ipairs(active_tracks_data) do
-        local trk_lbl = string.format("[%d] %s", tdata.idx, tdata.name or "Track")
-        local tw = 0
-        if reaper.APIExists("ImGui_CalcTextSize") then
-            tw = reaper.ImGui_CalcTextSize(ctx, trk_lbl)
-        else
-            tw = #trk_lbl * 7.5 * s
+    local max_key_sig_w = 0
+    if state._cached_hdr_metrics and state._cached_hdr_metrics.key == hdr_cache_key then
+        max_hdr_text_w = state._cached_hdr_metrics.max_hdr_text_w
+        max_key_sig_w = state._cached_hdr_metrics.max_key_sig_w
+    else
+        for _, tdata in ipairs(active_tracks_data) do
+            local trk_lbl = string.format("[%d] %s", tdata.idx, tdata.name or "Track")
+            local tw = 0
+            if reaper.APIExists("ImGui_CalcTextSize") then
+                tw = reaper.ImGui_CalcTextSize(ctx, trk_lbl)
+            else
+                tw = #trk_lbl * 7.5 * s
+            end
+            if tw > max_hdr_text_w then max_hdr_text_w = tw end
+            
+            local trk_first_item = (tdata.items and tdata.items[1])
+            local k_idx = resolve_effective_key(state, tdata.track, trk_first_item, 0)
+            local kw = Engraver.get_key_signature_width(k_idx, s)
+            if kw > max_key_sig_w then max_key_sig_w = kw end
         end
-        if tw > max_hdr_text_w then max_hdr_text_w = tw end
+        local proj_k = (state and state.key_signature) or 0
+        local proj_kw = Engraver.get_key_signature_width(proj_k, s)
+        if proj_kw > max_key_sig_w then max_key_sig_w = proj_kw end
+        
+        state._cached_hdr_metrics = {
+            key = hdr_cache_key,
+            max_hdr_text_w = max_hdr_text_w,
+            max_key_sig_w = max_key_sig_w
+        }
     end
     -- At least 130 * s, at most 190 * s, so that "Double Bass" and long names fit completely
     local hdr_w = math.max(130 * s, math.min(190 * s, max_hdr_text_w + 24 * s))
     local hdr_x0 = canvas_p0_x + 6 * s
     local hdr_x1 = hdr_x0 + hdr_w
     local system_start_x = hdr_x1 + 14 * s
-    local max_key_sig_w = 0
-    for _, tdata in ipairs(active_tracks_data) do
-        local trk_first_item = (tdata.items and tdata.items[1])
-        local k_idx = resolve_effective_key(state, tdata.track, trk_first_item, 0)
-        local kw = Engraver.get_key_signature_width(k_idx, s)
-        if kw > max_key_sig_w then max_key_sig_w = kw end
-    end
-    local proj_k = (state and state.key_signature) or 0
-    local proj_kw = Engraver.get_key_signature_width(proj_k, s)
-    if proj_kw > max_key_sig_w then max_key_sig_w = proj_kw end
 
     local margin_left = system_start_x + 68 * s + max_key_sig_w
     
-    -- Dynamic measure width calculation (automatically scales wide measures with dense notation across all tracks)
-    local measure_map = Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_measure, margin_left, s, state)
+    -- Dynamic measure width calculation (cached across frames)
+    local mmap_sig = string.format("%.3f_%d_%.3f_%.2f_%d_%d_%d_%s",
+        s, total_measures, qn_per_measure, margin_left, proj_change_cnt, #active_tracks_data,
+        (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid))
+    local measure_map = nil
+    if state.cached_measure_map and state.cached_measure_map_sig == mmap_sig then
+        measure_map = state.cached_measure_map
+    else
+        measure_map = Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_measure, margin_left, s, state)
+        state.cached_measure_map = measure_map
+        state.cached_measure_map_sig = mmap_sig
+    end
     state.measure_map = measure_map
     local staff_end_x = (measure_map.starts[total_measures] or (margin_left + total_measures * measure_w)) + 40 * s
     
     local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
     local total_score_h = 50 * s + chord_lane_h
+    if not state._track_clefs_cache or state._track_clefs_cache_cnt ~= proj_change_cnt then
+        state._track_clefs_cache = {}
+        state._track_clefs_cache_cnt = proj_change_cnt
+    end
     for _, tdata in ipairs(active_tracks_data) do
-        local trk_clef = get_track_clef(tdata.guid, tdata.notes, tdata.name, state)
+        local trk_clef = state._track_clefs_cache[tdata.guid]
+        if not trk_clef then
+            trk_clef = get_track_clef(tdata.guid, tdata.notes, tdata.name, state)
+            state._track_clefs_cache[tdata.guid] = trk_clef
+        end
         tdata.clef = trk_clef
         tdata.is_grand = (trk_clef == "grand")
         tdata.is_harp  = (trk_clef == "harp_3staff")

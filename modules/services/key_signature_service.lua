@@ -405,19 +405,45 @@ end
 function KeySignatureService.resolve_effective_key(state, track, item, qn)
     -- 1st Priority: Item key
     if item then
-        local isig = (type(item) == "table" and not qn and item.key_sig) or KeySignatureService.get_item_key_sig(item, nil, qn)
-        if not isig and type(item) == "table" and item.key_sig then isig = item.key_sig end
+        if type(item) == "table" then
+            if not qn or not item.key_sig_events or #item.key_sig_events == 0 then
+                local isig = item.key_sig
+                if isig and isig.key_idx ~= nil then
+                    return { idx = isig.key_idx, key_idx = isig.key_idx, mode = isig.mode or "major" }
+                elseif isig and isig.idx ~= nil then
+                    return { idx = isig.idx, key_idx = isig.idx, mode = isig.mode or "major" }
+                end
+            else
+                -- Resolve from item.key_sig_events in memory without C-API calls
+                local target_ppq = 0
+                if item.take and reaper.ValidatePtr(item.take, "MediaItem_Take*") and reaper.TakeIsMIDI(item.take) then
+                    target_ppq = reaper.MIDI_GetPPQPosFromProjQN(item.take, qn)
+                end
+                local best_evt = nil
+                for _, evt in ipairs(item.key_sig_events) do
+                    if evt.ppq <= target_ppq + 5 then
+                        best_evt = evt
+                    end
+                end
+                if best_evt then
+                    return { idx = best_evt.key_idx, key_idx = best_evt.key_idx, mode = best_evt.mode or "major" }
+                elseif item.key_sig then
+                    local kidx = item.key_sig.key_idx or item.key_sig.idx or 0
+                    return { idx = kidx, key_idx = kidx, mode = item.key_sig.mode or "major" }
+                end
+            end
+        end
+        local isig = KeySignatureService.get_item_key_sig(item, nil, qn)
         if isig and isig.key_idx ~= nil then
-            if type(item) == "table" and not qn then item.key_sig = isig end
             return { idx = isig.key_idx, key_idx = isig.key_idx, mode = isig.mode or "major" }
         elseif isig and isig.idx ~= nil then
-            if type(item) == "table" and not qn then item.key_sig = isig end
             return { idx = isig.idx, key_idx = isig.idx, mode = isig.mode or "major" }
         end
     elseif track and qn then
         -- Find item at position qn on this track
+        local is_table_track = (type(track) == "table" and track.items)
         local found_item = nil
-        if type(track) == "table" and track.items then
+        if is_table_track then
             for _, it in ipairs(track.items) do
                 local s_qn = it.start_qn or 0
                 local e_qn = it.end_qn or s_qn
@@ -425,6 +451,22 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
                     found_item = it
                     break
                 end
+            end
+            if found_item then
+                return KeySignatureService.resolve_effective_key(state, nil, found_item, qn)
+            else
+                -- Not inside any item on this track: check track key or fall back directly to project key (ZERO C-API calls)
+                local guid = track.guid or (track.track and reaper.ValidatePtr(track.track, "MediaTrack*") and reaper.GetTrackGUID(track.track))
+                if guid and state and state.track_key_signatures and state.track_key_signatures[guid] then
+                    local tsig = state.track_key_signatures[guid]
+                    if type(tsig) == "table" then
+                        local kidx = tsig.idx or tsig.key_idx or 0
+                        return { idx = kidx, key_idx = kidx, mode = tsig.mode or "major" }
+                    end
+                end
+                local p_idx = (state and state.key_signature) or 0
+                local p_mode = (state and state.key_signature_mode) or "major"
+                return { idx = p_idx, key_idx = p_idx, mode = p_mode }
             end
         end
         if not found_item then
@@ -528,9 +570,79 @@ function KeySignatureService.get_measure_key_signature_changes(state, active_tra
 
     local scale = s or 1.0
     local qn_per_m = (bpi and bpi > 0) and bpi or 4.0
+    local proj_k = (state and state.key_signature) or 0
+    local proj_mode = (state and state.key_signature_mode) or "major"
+    local proj_change = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
 
-    -- Pass 1: Measure-by-measure comparison (center of measure vs. center of previous measure)
-    for m = 1, total_measures do
+    -- Cache check on state
+    if state and state._cached_k_changes and
+       state._cached_k_changes_cnt == proj_change and
+       state._cached_k_changes_num_trk == #active_tracks and
+       state._cached_k_changes_tot_m == total_measures and
+       state._cached_k_changes_bpi == bpi and
+       math.abs((state._cached_k_changes_s or 1.0) - scale) < 0.001 and
+       state._cached_k_changes_key == proj_k and
+       state._cached_k_changes_mode == proj_mode then
+        return state._cached_k_changes
+    end
+
+    -- Fast pass: find candidate measures where key signature could change
+    local candidate_measures = {}
+    local has_any_custom_key = false
+
+    for t_idx, trk_entry in ipairs(active_tracks) do
+        local items = (type(trk_entry) == "table" and trk_entry.items) or {}
+        local guid = (type(trk_entry) == "table" and trk_entry.guid) or (trk_entry and reaper.ValidatePtr(trk_entry, "MediaTrack*") and reaper.GetTrackGUID(trk_entry))
+        if guid and state and state.track_key_signatures and state.track_key_signatures[guid] then
+            has_any_custom_key = true
+        end
+
+        for _, it in ipairs(items) do
+            local s_qn = it.start_qn or 0
+            local e_qn = it.end_qn or s_qn
+            local it_k = (it.key_sig and (it.key_sig.idx or it.key_sig.key_idx)) or proj_k
+            if it_k ~= proj_k or (it.key_sig_events and #it.key_sig_events > 0) then
+                has_any_custom_key = true
+            end
+            local m_start = math.floor((s_qn / qn_per_m) + 0.05)
+            local m_end   = math.floor((e_qn / qn_per_m) + 0.05)
+            if m_start >= 1 and m_start <= total_measures then
+                candidate_measures[m_start] = true
+            end
+            if m_end >= 1 and m_end <= total_measures then
+                candidate_measures[m_end] = true
+            end
+            if it.key_sig_events then
+                for _, evt in ipairs(it.key_sig_events) do
+                    local eq_qn = s_qn
+                    if it.take and reaper.ValidatePtr(it.take, "MediaItem_Take*") then
+                        eq_qn = reaper.MIDI_GetProjQNFromPPQPos(it.take, evt.ppq)
+                    end
+                    local m_evt = math.floor((eq_qn / qn_per_m) + 0.05)
+                    if m_evt >= 1 and m_evt <= total_measures then
+                        candidate_measures[m_evt] = true
+                    end
+                end
+            end
+        end
+    end
+
+    if not has_any_custom_key then
+        if state then
+            state._cached_k_changes = changes
+            state._cached_k_changes_cnt = proj_change
+            state._cached_k_changes_num_trk = #active_tracks
+            state._cached_k_changes_tot_m = total_measures
+            state._cached_k_changes_bpi = bpi
+            state._cached_k_changes_s = scale
+            state._cached_k_changes_key = proj_k
+            state._cached_k_changes_mode = proj_mode
+        end
+        return changes
+    end
+
+    -- Evaluate ONLY candidate measures where key boundaries exist
+    for m in pairs(candidate_measures) do
         local qn_curr = (m + 0.5) * qn_per_m
         local qn_prev = (m - 0.5) * qn_per_m
         local change_info = nil
@@ -581,58 +693,15 @@ function KeySignatureService.get_measure_key_signature_changes(state, active_tra
         end
     end
 
-    -- Pass 2: Direct item position check across all tracks
-    -- Ensures that item boundary changes (e.g. Bar 17 C major -> G major) are always captured
-    for t_idx, trk_entry in ipairs(active_tracks) do
-        local trk = (type(trk_entry) == "table" and trk_entry.track) or trk_entry
-        local guid = (type(trk_entry) == "table" and trk_entry.guid) or (trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.GetTrackGUID(trk))
-        local items = (type(trk_entry) == "table" and trk_entry.items) or {}
-
-        for _, it in ipairs(items) do
-            local s_qn = it.start_qn or 0
-            local item_m = math.floor((s_qn / qn_per_m) + 0.05)
-            if item_m >= 1 and item_m <= total_measures then
-                local k_item = KeySignatureService.resolve_effective_key(state, trk_entry, it, s_qn + 0.1)
-                local k_prev = KeySignatureService.resolve_effective_key(state, trk_entry, nil, (item_m - 0.5) * qn_per_m)
-                local c_idx = k_item and (k_item.idx or k_item.key_idx) or 0
-                local p_idx = k_prev and (k_prev.idx or k_prev.key_idx) or 0
-
-                if c_idx ~= p_idx then
-                    local change_info = changes[item_m]
-                    if not change_info then
-                        change_info = {
-                            measure = item_m,
-                            qn = item_m * qn_per_m,
-                            tracks = {},
-                            has_change = true,
-                            max_kw = 0
-                        }
-                        changes[item_m] = change_info
-                    end
-                    local t_info = {
-                        curr_idx = c_idx,
-                        prev_idx = p_idx,
-                        mode = k_item and k_item.mode or "major"
-                    }
-                    change_info.tracks[trk_entry] = t_info
-                    change_info.tracks[t_idx] = t_info
-                    if trk and trk ~= trk_entry then
-                        change_info.tracks[trk] = t_info
-                    end
-                    if guid then
-                        change_info.tracks[guid] = t_info
-                    end
-
-                    local kw = math.abs(c_idx) * (9.5 * scale)
-                    if c_idx == 0 and p_idx ~= 0 then
-                        kw = math.abs(p_idx) * (9.5 * scale)
-                    end
-                    if kw > (change_info.max_kw or 0) then
-                        change_info.max_kw = kw
-                    end
-                end
-            end
-        end
+    if state then
+        state._cached_k_changes = changes
+        state._cached_k_changes_cnt = proj_change
+        state._cached_k_changes_num_trk = #active_tracks
+        state._cached_k_changes_tot_m = total_measures
+        state._cached_k_changes_bpi = bpi
+        state._cached_k_changes_s = scale
+        state._cached_k_changes_key = proj_k
+        state._cached_k_changes_mode = proj_mode
     end
 
     return changes

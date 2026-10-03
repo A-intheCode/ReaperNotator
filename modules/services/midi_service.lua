@@ -69,18 +69,13 @@ local function get_take_hash(take)
     local h = nil
     if reaper.APIExists("MIDI_GetHash2") then
         local ok, h2 = reaper.MIDI_GetHash2(take, false)
-        if ok and h2 and h2 ~= "" then h = h2 end
+        if ok and h2 and h2 ~= "" then return h2 end
     elseif reaper.APIExists("MIDI_GetHash") then
         local ok, h1 = reaper.MIDI_GetHash(take, false, "")
-        if ok and h1 and h1 ~= "" then h = h1 end
+        if ok and h1 and h1 ~= "" then return h1 end
     end
     local _, notecnt, cccnt, textcnt = reaper.MIDI_CountEvts(take)
-    local proj_change = reaper.GetProjectStateChangeCount(0)
-    if h then
-        return string.format("%s_%d", h, proj_change)
-    else
-        return string.format("%d_%d_%d_%d", notecnt, cccnt, textcnt, proj_change)
-    end
+    return string.format("%d_%d_%d", notecnt, cccnt, textcnt)
 end
 
 function MidiService.get_project_midi_tracks()
@@ -306,7 +301,41 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             if ch_c and pc_c then
                 table.insert(chase_events_list, { ppq = ppq, chan = tonumber(ch_c) or 0, pc = tonumber(pc_c) })
             end
+            
+            -- Extract key signatures (NOTATOR_KEY_SIG <key_idx> <mode> or native key <val>)
+            local idx_s, mode_s = msg:match("NOTATOR_KEY_SIG%s+(%-?%d+)%s*([%a%d_]*)")
+            if not idx_s then
+                local nat_idx = msg:match("^key%s+(%-?%d+)")
+                if nat_idx then
+                    idx_s = nat_idx
+                    mode_s = "major"
+                end
+            end
+            if idx_s then
+                item_obj.key_sig_events = item_obj.key_sig_events or {}
+                table.insert(item_obj.key_sig_events, { ppq = ppq, key_idx = tonumber(idx_s), idx = tonumber(idx_s), mode = (mode_s and mode_s ~= "") and mode_s or "major" })
+            end
+            
+            -- Extract time signatures (NOTATOR_TIME_SIG <num> <denom> or native time <num>/<denom>)
+            local ts_num_s, ts_den_s = msg:match("NOTATOR_TIME_SIG%s+(%d+)%s+(%d+)")
+            if not ts_num_s then
+                ts_num_s, ts_den_s = msg:match("^time%s+(%d+)/(%d+)")
+            end
+            if ts_num_s and ts_den_s then
+                item_obj.time_sig_events = item_obj.time_sig_events or {}
+                table.insert(item_obj.time_sig_events, { ppq = ppq, num = tonumber(ts_num_s), denom = tonumber(ts_den_s) })
+            end
         end
+    end
+    
+    -- If item_obj.key_sig was not populated via P_EXT, initialize from first key event
+    if not item_obj.key_sig and item_obj.key_sig_events and #item_obj.key_sig_events > 0 then
+        local first_k = item_obj.key_sig_events[1]
+        item_obj.key_sig = { idx = first_k.key_idx, key_idx = first_k.key_idx, mode = first_k.mode }
+    end
+    if not item_obj.time_sig and item_obj.time_sig_events and #item_obj.time_sig_events > 0 then
+        local first_t = item_obj.time_sig_events[1]
+        item_obj.time_sig = { num = first_t.num, denom = first_t.denom }
     end
     
     -- Read all notes with strict respect to item boundaries & loops
@@ -579,7 +608,8 @@ function MidiService.get_track_items_and_notes(track)
     end
     
     if not is_dirty and cached then
-        return cached.items_info, cached.all_notes, cached.all_dynamics, cached.all_articulations, cached.max_qn
+        if not cached.rests_cache then cached.rests_cache = {} end
+        return cached.items_info, cached.all_notes, cached.all_dynamics, cached.all_articulations, cached.max_qn, cached.rests_cache
     end
     
     -- Cache miss: re-parse track
@@ -688,10 +718,11 @@ function MidiService.get_track_items_and_notes(track)
         all_notes = all_notes,
         all_dynamics = all_dynamics,
         all_articulations = all_articulations,
-        max_qn = max_qn
+        max_qn = max_qn,
+        rests_cache = {}
     }
     
-    return items_info, all_notes, all_dynamics, all_articulations, max_qn
+    return items_info, all_notes, all_dynamics, all_articulations, max_qn, MidiService._track_cache[track_guid].rests_cache
 end
 
 function MidiService.sync_selection_to_reaper(state, active_tracks_data)
