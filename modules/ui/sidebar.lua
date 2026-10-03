@@ -294,9 +294,12 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
     end
     
     local function handle_art_btn(art_id)
-        if state:count_selected_notes() > 0 or state.selected_note then
+        if (state.selected_articulations and state:count_selected_articulations() > 0) or state.selected_articulation then
+            midi_service.delete_selected_articulations(state)
+            state.active_articulation = nil
+        elseif state:count_selected_notes() > 0 or state.selected_note then
             midi_service.toggle_selected_articulation(state, art_id or "none")
-            state.active_articulation = state.selected_note and normalize_art(state.selected_note.articulation)
+            state.active_articulation = (art_id and state.selected_note) and normalize_art(state.selected_note.articulation) or nil
         else
             local norm_clicked = normalize_art(art_id)
             state.active_articulation = (cur_art == norm_clicked) and nil or norm_clicked
@@ -404,12 +407,15 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
         reaper.ImGui_SetTooltip(ctx, "Scale Transpose: Snap/transpose selected notes to any scale or mode.")
     end
     
-    if reaper.ImGui_Button(ctx, "♯♭ Key Signatures...", -1, 26) then
-        state.show_key_signatures = true
-        state.show_clefs = false
-        state.show_dynamics = false
-        state.show_tempo = false
-        state.show_articulations_drawer = false
+    local is_keys_active = (state.show_key_signatures == true)
+    if toggle_btn(ctx, "♯♭ Key Signatures...", is_keys_active, -1, 26, 0xFF9F1CFF) then
+        state.show_key_signatures = not state.show_key_signatures
+        if state.show_key_signatures then
+            state.show_clefs = false
+            state.show_dynamics = false
+            state.show_tempo = false
+            state.show_articulations_drawer = false
+        end
     end
     if reaper.ImGui_IsItemHovered(ctx) then
         reaper.ImGui_SetTooltip(ctx, "Key & Time Signature Drawer:\nBrowse and set key signatures (7♭ to 7♯) and time signatures per MIDI item, track or project.")
@@ -442,8 +448,20 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
     reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "REPEAT MARKS (%)")
     local cur_time = reaper.GetCursorPosition()
     local cur_qn = reaper.TimeMap2_timeToQN(0, cur_time)
+    local _, cur_m = reaper.TimeMap2_timeToBeats(0, cur_time)
+    cur_m = cur_m or math.floor(cur_qn / 4.0)
+    
     local cur_trk = state.focused_track
-    local cur_m = math.floor(cur_qn / 4.0)
+    if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+        cur_trk = reaper.GetSelectedTrack(0, 0)
+        if not cur_trk and active_tracks_data and active_tracks_data[1] then
+            cur_trk = active_tracks_data[1].track
+        end
+    end
+    if cur_trk and reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+        state.focused_track = cur_trk
+    end
+    
     local has_rep = false
     if cur_trk and reaper.ValidatePtr(cur_trk, "MediaTrack*") then
         local RepeatService = require("services.repeat_service")
@@ -457,7 +475,7 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
             local RepeatService = require("services.repeat_service")
             RepeatService.toggle_repeat_mark(state, cur_trk, cur_m, active_tracks_data)
         else
-            state.status_msg = "Please focus a track first to set Repeat Mark!"
+            state.status_msg = "Please focus or select a track first to set Repeat Mark!"
         end
     end
     if reaper.ImGui_IsItemHovered(ctx) then

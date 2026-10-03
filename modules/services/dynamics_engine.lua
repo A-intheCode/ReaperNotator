@@ -248,6 +248,9 @@ function DynamicsEngine.load_item_modulators(item, state)
     
     local ok, str = reaper.GetSetMediaItemInfo_String(item, "P_EXT:notator_dyn_mod", "", false)
     if ok and str and str ~= "" then
+        -- Default reset before loading item string
+        state.dyn_bow_intensity = 0.0
+        state.dyn_bow_pos = 0.50
         for pair in str:gmatch("([^|]+)") do
             local k, v = pair:match("([^=]+)=(.*)")
             if k and v then
@@ -258,8 +261,8 @@ function DynamicsEngine.load_item_modulators(item, state)
                 elseif k == "p_int" then state.dyn_phrasing_intensity = tonumber(v) or state.dyn_phrasing_intensity
                 elseif k == "h_int" then state.dyn_humanize_intensity = tonumber(v) or state.dyn_humanize_intensity
                 elseif k == "stress" then state.dyn_stress_factor = tonumber(v) or state.dyn_stress_factor
-                elseif k == "bow" then state.dyn_bow_intensity = tonumber(v) or state.dyn_bow_intensity
-                elseif k == "bow_pos" then state.dyn_bow_pos = tonumber(v) or state.dyn_bow_pos
+                elseif k == "bow" then state.dyn_bow_intensity = tonumber(v) or 0.0
+                elseif k == "bow_pos" then state.dyn_bow_pos = tonumber(v) or 0.50
                 elseif k == "vel_sens" then state.dyn_vel_sensitivity = tonumber(v) or state.dyn_vel_sensitivity
                 elseif k == "m2m" then
                     local is_on = (v == "1" or v == "true")
@@ -273,11 +276,35 @@ function DynamicsEngine.load_item_modulators(item, state)
             end
         end
     else
-        -- Fallback to parent track
+        -- Unconfigured / New item: ALWAYS reset item-specific modulators to clean defaults (Phrasing ON by default)
+        state.dyn_bow_intensity = 0.0
+        state.dyn_bow_pos = 0.50
+        state.dyn_phrasing_active = true
+        state.dyn_phrasing_intensity = 0.50
+        state.dyn_humanize_intensity = 0.30
+        state.dyn_stress_factor = 0.50
+        state.dyn_vel_sensitivity = 0.80
+        state.dyn_marker_blending = false
+        state.dyn_bypass_cc = false
+        if state.item_marker_blending then state.item_marker_blending[ikey] = false end
+        if state.item_bypass_cc then state.item_bypass_cc[ikey] = false end
+
+        -- Only inherit track-level CC routing if available
         local parent_trk = reaper.GetMediaItemTrack(item)
         if parent_trk and reaper.ValidatePtr(parent_trk, "MediaTrack*") then
-            DynamicsEngine.load_track_modulators(parent_trk, state)
+            local ok_t, str_t = reaper.GetSetMediaTrackInfo_String(parent_trk, "P_EXT:notator_dyn_mod", "", false)
+            if ok_t and str_t and str_t ~= "" then
+                for pair in str_t:gmatch("([^|]+)") do
+                    local k, v = pair:match("([^=]+)=(.*)")
+                    if k == "cc_a" then state.dyn_cc_a = tonumber(v) or state.dyn_cc_a
+                    elseif k == "cc_b" then state.dyn_cc_b = tonumber(v) or state.dyn_cc_b
+                    elseif k == "grid" then state.dyn_grid_idx = tonumber(v) or state.dyn_grid_idx
+                    end
+                end
+            end
         end
+        -- Persist clean defaults to item so it has its own record
+        DynamicsEngine.save_item_modulators(item, state)
     end
 end
 
@@ -293,27 +320,27 @@ function DynamicsEngine.save_item_modulators(item, state)
         state.dyn_cc_a or 1,
         state.dyn_cc_b or 11,
         state.dyn_grid_idx or 4,
-        state.dyn_phrasing_active and 1 or 0,
-        state.dyn_phrasing_intensity or 0.35,
-        state.dyn_humanize_intensity or 0.15,
-        state.dyn_stress_factor or 0.20,
+        (state.dyn_phrasing_active ~= false) and 1 or 0,
+        state.dyn_phrasing_intensity or 0.50,
+        state.dyn_humanize_intensity or 0.30,
+        state.dyn_stress_factor or 0.50,
         state.dyn_bow_intensity or 0.0,
         state.dyn_bow_pos or 0.50,
-        state.dyn_vel_sensitivity or 0.30,
+        state.dyn_vel_sensitivity or 0.80,
         is_m2m and 1 or 0,
         is_bypass and 1 or 0
     )
     reaper.GetSetMediaItemInfo_String(item, "P_EXT:notator_dyn_mod", str, true)
-    
-    local parent_trk = reaper.GetMediaItemTrack(item)
-    if parent_trk and reaper.ValidatePtr(parent_trk, "MediaTrack*") then
-        DynamicsEngine.save_track_modulators(parent_trk, state)
-    end
 end
 
 function DynamicsEngine.load_track_modulators(track, state)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return end
     local guid = reaper.GetTrackGUID(track)
+    
+    -- Always reset item-specific modulators to clean defaults when focused on track level
+    state.dyn_bow_intensity = 0.0
+    state.dyn_bow_pos = 0.50
+    state.dyn_phrasing_active = true
     
     -- Load track-specific blending from cache or default (OFF by default)
     local track_m2m = (state and state.dyn_marker_blending == true)
@@ -334,8 +361,6 @@ function DynamicsEngine.load_track_modulators(track, state)
                 elseif k == "p_int" then state.dyn_phrasing_intensity = tonumber(v) or state.dyn_phrasing_intensity
                 elseif k == "h_int" then state.dyn_humanize_intensity = tonumber(v) or state.dyn_humanize_intensity
                 elseif k == "stress" then state.dyn_stress_factor = tonumber(v) or state.dyn_stress_factor
-                elseif k == "bow" then state.dyn_bow_intensity = tonumber(v) or state.dyn_bow_intensity
-                elseif k == "bow_pos" then state.dyn_bow_pos = tonumber(v) or state.dyn_bow_pos
                 elseif k == "vel_sens" then state.dyn_vel_sensitivity = tonumber(v) or state.dyn_vel_sensitivity
                 elseif k == "m2m" then
                     local is_on = (v == "1" or v == "true")
@@ -359,17 +384,15 @@ end
 function DynamicsEngine.save_track_modulators(track, state)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return end
     local is_m2m = DynamicsEngine.get_track_marker_blending(track, state)
-    local str = string.format("cc_a=%d|cc_b=%d|grid=%d|phr=%d|p_int=%.2f|h_int=%.2f|stress=%.2f|bow=%.2f|bow_pos=%.2f|vel_sens=%.2f|m2m=%d|bypass_cc=%d",
+    local str = string.format("cc_a=%d|cc_b=%d|grid=%d|phr=%d|p_int=%.2f|h_int=%.2f|stress=%.2f|bow=0.00|bow_pos=0.50|vel_sens=%.2f|m2m=%d|bypass_cc=%d",
         state.dyn_cc_a or 1,
         state.dyn_cc_b or 11,
         state.dyn_grid_idx or 4,
-        state.dyn_phrasing_active and 1 or 0,
-        state.dyn_phrasing_intensity or 0.35,
-        state.dyn_humanize_intensity or 0.15,
-        state.dyn_stress_factor or 0.20,
-        state.dyn_bow_intensity or 0.0,
-        state.dyn_bow_pos or 0.50,
-        state.dyn_vel_sensitivity or 0.30,
+        (state.dyn_phrasing_active ~= false) and 1 or 0,
+        state.dyn_phrasing_intensity or 0.50,
+        state.dyn_humanize_intensity or 0.30,
+        state.dyn_stress_factor or 0.50,
+        state.dyn_vel_sensitivity or 0.80,
         is_m2m and 1 or 0,
         (state.dyn_bypass_cc == true) and 1 or 0
     )

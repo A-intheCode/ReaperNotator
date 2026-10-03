@@ -551,6 +551,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local text_item_hovered_this_frame = nil
     local chord_hovered_this_frame = nil
     local chord_handle_hovered_this_frame = nil
+    local hov = {}
     
     local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
     local cur_band_top = canvas_p0_y + 40 * s + chord_lane_h
@@ -2124,7 +2125,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         -- HOLDING / SUSTAIN PEDAL LINES (CC64 - Delegated to CanvasPedalRenderer)
         -- ----------------------------------------------------------------------
         if CanvasPedalRenderer and CanvasPedalRenderer.render_track_pedals then
-            CanvasPedalRenderer.render_track_pedals(ctx, draw_list, state, fonts, tdata, staff_bottom_y, s, margin_left, qn_per_measure, measure_map, is_hovered, mouse_x, mouse_y, hov)
+            hov.note = note_hovered_this_frame
+            hov.dyn = dyn_hovered_this_frame
+            hov.hairpin = hairpin_hovered_this_frame
+            hov.dynamic_text = dynamic_text_hovered_this_frame
+            hov.text_item = text_item_hovered_this_frame
+            hov = CanvasPedalRenderer.render_track_pedals(ctx, draw_list, state, fonts, tdata, staff_bottom_y, s, margin_left, qn_per_measure, measure_map, is_hovered, mouse_x, mouse_y, hov) or hov
             if hov and hov.pedal then
                 pedal_hovered_this_frame = hov.pedal
                 pedal_handle_hovered_this_frame = hov.pedal_handle

@@ -866,6 +866,11 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                     break
                 end
             end
+        elseif state.drag_pedal_handle == "body" then
+            state.drag_pedal_pauses_orig = {}
+            for _, p in ipairs(state.hovered_pedal.pauses or {}) do
+                state.drag_pedal_pauses_orig[p.id] = p.qn
+            end
         end
         
         state:clear_selection()
@@ -904,12 +909,14 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             state.drag_pedal_delta_qn = delta_qn
             local span = (orig_e or (orig_s + 4.0)) - orig_s
             local new_s = math.max(0, orig_s + delta_qn)
-            local shift_diff = new_s - pm.start_qn
+            local effective_delta = new_s - orig_s
             pm.start_qn = new_s
             pm.end_qn = new_s + span
             
+            local orig_pauses = state.drag_pedal_pauses_orig or {}
             for _, p in ipairs(pm.pauses or {}) do
-                p.qn = math.max(new_s + 0.05, math.min(pm.end_qn - 0.05, p.qn + shift_diff))
+                local p_orig = orig_pauses[p.id] or p.qn
+                p.qn = math.max(new_s + 0.05, math.min(pm.end_qn - 0.05, p_orig + effective_delta))
             end
             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
             

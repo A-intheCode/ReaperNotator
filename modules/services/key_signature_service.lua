@@ -49,11 +49,58 @@ end
 -- ==============================================================================
 
 --- Reads the key signature of a MIDI item from P_EXT or type 15 take events.
+-- If qn is provided and take is valid, resolves the active key signature at or before position qn.
 -- @param item MediaItem* or MidiItem wrapper
 -- @param take MediaItem_Take* (optional)
+-- @param qn number (optional quarter-note position)
 -- @return table { idx = number, key_idx = number, mode = string } or nil
-function KeySignatureService.get_item_key_sig(item, take)
+function KeySignatureService.get_item_key_sig(item, take, qn)
     local real_item, real_take = resolve_item_and_take(item, take)
+
+    -- If qn is provided and real_take is valid MIDI take, look for the active Type 15 notation event at or before qn
+    if qn and real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
+        local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
+        local _, _, _, text_cnt = reaper.MIDI_CountEvts(real_take)
+        local best_evt = nil
+        local best_ppq = -1
+        local first_evt = nil
+        local first_ppq = math.huge
+
+        for ti = 0, text_cnt - 1 do
+            local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(real_take, ti)
+            if ok and etype == 15 then
+                local idx_s, mode_s = msg:match("^NOTATOR_KEY_SIG%s+(%-?%d+)%s*([%a%d_]*)")
+                local kidx, kmode = nil, nil
+                if idx_s then
+                    kidx = tonumber(idx_s)
+                    kmode = (mode_s and mode_s ~= "") and mode_s or "major"
+                else
+                    local nat_idx = msg:match("^key%s+(%-?%d+)")
+                    if nat_idx then
+                        kidx = tonumber(nat_idx)
+                        kmode = "major"
+                    end
+                end
+
+                if kidx ~= nil then
+                    if ppq < first_ppq then
+                        first_ppq = ppq
+                        first_evt = { idx = kidx, key_idx = kidx, mode = kmode }
+                    end
+                    if ppq <= target_ppq + 5 and ppq >= best_ppq then
+                        best_ppq = ppq
+                        best_evt = { idx = kidx, key_idx = kidx, mode = kmode }
+                    end
+                end
+            end
+        end
+
+        if best_evt then
+            return best_evt, best_evt.mode
+        elseif first_evt then
+            return first_evt, first_evt.mode
+        end
+    end
 
     -- 1st attempt: MediaItem P_EXT:notator_key_sig ("<key_idx>|<mode>")
     if real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
@@ -93,8 +140,8 @@ function KeySignatureService.get_item_key_sig(item, take)
 end
 
 --- Writes a key signature to a MIDI item and its take.
--- Writes at PPQ 0 in take: type 15 "NOTATOR_KEY_SIG <key_idx> <mode>" and "key <val>".
--- Writes on MediaItem: P_EXT:notator_key_sig as "<key_idx>|<mode>".
+-- Writes at PPQ 0 (or at_qn if specified) in take: type 15 "NOTATOR_KEY_SIG <key_idx> <mode>" and "key <val>".
+-- Writes on MediaItem: P_EXT:notator_key_sig as "<key_idx>|<mode>" (for initial key sig).
 -- If auto_respell == true: calls KeySignatureService.respell_item_notes.
 -- @param state Notator state object
 -- @param item MediaItem* or MidiItem wrapper
@@ -102,21 +149,32 @@ end
 -- @param key_idx Key signature index from -7 to +7
 -- @param mode "major" or "minor"
 -- @param auto_respell boolean
-function KeySignatureService.set_item_key_sig(state, item, take, key_idx, mode, auto_respell)
+-- @param at_qn number (optional quarter-note position for mid-item key changes)
+function KeySignatureService.set_item_key_sig(state, item, take, key_idx, mode, auto_respell, at_qn)
     local real_item, real_take = resolve_item_and_take(item, take)
     local kidx = tonumber(key_idx) or 0
     kidx = math.max(-7, math.min(7, kidx))
     local kmode = (mode and mode ~= "") and mode or "major"
+    local is_mid_item = (at_qn and at_qn > 0.001)
 
-    -- 1. Update take type 15 notation events at PPQ 0
+    -- 1. Update take type 15 notation events
     if real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
+        local target_ppq = is_mid_item and math.floor(reaper.MIDI_GetPPQPosFromProjQN(real_take, at_qn) + 0.5) or 0
         local _, _, _, text_cnt = reaper.MIDI_CountEvts(real_take)
         local to_del = {}
         for ti = 0, text_cnt - 1 do
             local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(real_take, ti)
             if ok and etype == 15 then
                 if msg:match("^NOTATOR_KEY_SIG") or msg:match("^key%s+%-?%d+") then
-                    table.insert(to_del, ti)
+                    if is_mid_item then
+                        if math.abs(ppq - target_ppq) < 15 then
+                            table.insert(to_del, ti)
+                        end
+                    else
+                        if ppq < 15 then
+                            table.insert(to_del, ti)
+                        end
+                    end
                 end
             end
         end
@@ -128,14 +186,14 @@ function KeySignatureService.set_item_key_sig(state, item, take, key_idx, mode, 
         end
 
         local notator_msg = string.format("NOTATOR_KEY_SIG %d %s", kidx, kmode)
-        reaper.MIDI_InsertTextSysexEvt(real_take, false, false, 0, 15, notator_msg)
+        reaper.MIDI_InsertTextSysexEvt(real_take, false, false, target_ppq, 15, notator_msg)
         local native_msg = string.format("key %d", kidx)
-        reaper.MIDI_InsertTextSysexEvt(real_take, false, false, 0, 15, native_msg)
+        reaper.MIDI_InsertTextSysexEvt(real_take, false, false, target_ppq, 15, native_msg)
         reaper.MIDI_Sort(real_take)
     end
 
     -- 2. Set MediaItem P_EXT:notator_key_sig
-    if real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
+    if not is_mid_item and real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
         local ext_str = string.format("%d|%s", kidx, kmode)
         reaper.GetSetMediaItemInfo_String(real_item, "P_EXT:notator_key_sig", ext_str, true)
     end
@@ -177,11 +235,52 @@ end
 -- ==============================================================================
 
 --- Reads the time signature of a MIDI item from P_EXT or type 15 take events.
+-- If qn is provided and take is valid, resolves the active time signature at or before position qn.
 -- @param item MediaItem* or MidiItem wrapper
 -- @param take MediaItem_Take* (optional)
+-- @param qn number (optional quarter-note position)
 -- @return table { num = number, denom = number } or nil
-function KeySignatureService.get_item_time_sig(item, take)
+function KeySignatureService.get_item_time_sig(item, take, qn)
     local real_item, real_take = resolve_item_and_take(item, take)
+
+    -- If qn is provided and real_take is valid MIDI take, look for the active Type 15 notation event at or before qn
+    if qn and real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
+        local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
+        local _, _, _, text_cnt = reaper.MIDI_CountEvts(real_take)
+        local best_evt = nil
+        local best_ppq = -1
+        local first_evt = nil
+        local first_ppq = math.huge
+
+        for ti = 0, text_cnt - 1 do
+            local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(real_take, ti)
+            if ok and etype == 15 then
+                local num_s, den_s = msg:match("^NOTATOR_TIME_SIG%s+(%d+)%s+(%d+)")
+                if not num_s then
+                    num_s, den_s = msg:match("^time%s+(%d+)/(%d+)")
+                end
+                if num_s and den_s then
+                    local n_num = tonumber(num_s)
+                    local n_den = tonumber(den_s)
+                    local t_entry = make_timesig_table(n_num, n_den)
+                    if ppq < first_ppq then
+                        first_ppq = ppq
+                        first_evt = t_entry
+                    end
+                    if ppq <= target_ppq + 5 and ppq >= best_ppq then
+                        best_ppq = ppq
+                        best_evt = t_entry
+                    end
+                end
+            end
+        end
+
+        if best_evt then
+            return best_evt, best_evt.num, best_evt.denom
+        elseif first_evt then
+            return first_evt, first_evt.num, first_evt.denom
+        end
+    end
 
     -- 1st attempt: MediaItem P_EXT:notator_time_sig ("<num>|<denom>")
     if real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
@@ -222,27 +321,38 @@ function KeySignatureService.get_item_time_sig(item, take)
 end
 
 --- Writes a time signature to a MIDI item and its take.
--- Writes at PPQ 0 in take: type 15 "NOTATOR_TIME_SIG <num> <denom>" and "time <num>/<denom>".
--- Writes on MediaItem: P_EXT:notator_time_sig as "<num>|<denom>".
+-- Writes at PPQ 0 (or at_qn) in take: type 15 "NOTATOR_TIME_SIG <num> <denom>" and "time <num>/<denom>".
+-- Writes on MediaItem: P_EXT:notator_time_sig as "<num>|<denom>" (for initial time sig).
 -- @param state Notator state object
 -- @param item MediaItem* or MidiItem wrapper
 -- @param take MediaItem_Take* (optional)
 -- @param num Numerator (e.g. 4)
 -- @param denom Denominator (e.g. 4)
-function KeySignatureService.set_item_time_sig(state, item, take, num, denom)
+-- @param at_qn number (optional quarter-note position)
+function KeySignatureService.set_item_time_sig(state, item, take, num, denom, at_qn)
     local real_item, real_take = resolve_item_and_take(item, take)
     local t_num = tonumber(num) or 4
     local t_den = tonumber(denom) or 4
+    local is_mid_item = (at_qn and at_qn > 0.001)
 
-    -- 1. Update take type 15 notation events at PPQ 0
+    -- 1. Update take type 15 notation events
     if real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
+        local target_ppq = is_mid_item and math.floor(reaper.MIDI_GetPPQPosFromProjQN(real_take, at_qn) + 0.5) or 0
         local _, _, _, text_cnt = reaper.MIDI_CountEvts(real_take)
         local to_del = {}
         for ti = 0, text_cnt - 1 do
             local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(real_take, ti)
             if ok and etype == 15 then
                 if msg:match("^NOTATOR_TIME_SIG") or msg:match("^time%s+%d+/%d+") then
-                    table.insert(to_del, ti)
+                    if is_mid_item then
+                        if math.abs(ppq - target_ppq) < 15 then
+                            table.insert(to_del, ti)
+                        end
+                    else
+                        if ppq < 15 then
+                            table.insert(to_del, ti)
+                        end
+                    end
                 end
             end
         end
@@ -254,14 +364,14 @@ function KeySignatureService.set_item_time_sig(state, item, take, num, denom)
         end
 
         local notator_msg = string.format("NOTATOR_TIME_SIG %d %d", t_num, t_den)
-        reaper.MIDI_InsertTextSysexEvt(real_take, false, false, 0, 15, notator_msg)
+        reaper.MIDI_InsertTextSysexEvt(real_take, false, false, target_ppq, 15, notator_msg)
         local native_msg = string.format("time %d/%d", t_num, t_den)
-        reaper.MIDI_InsertTextSysexEvt(real_take, false, false, 0, 15, native_msg)
+        reaper.MIDI_InsertTextSysexEvt(real_take, false, false, target_ppq, 15, native_msg)
         reaper.MIDI_Sort(real_take)
     end
 
     -- 2. Set MediaItem P_EXT:notator_time_sig
-    if real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
+    if not is_mid_item and real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
         local ext_str = string.format("%d|%d", t_num, t_den)
         reaper.GetSetMediaItemInfo_String(real_item, "P_EXT:notator_time_sig", ext_str, true)
     end
@@ -295,12 +405,13 @@ end
 function KeySignatureService.resolve_effective_key(state, track, item, qn)
     -- 1st Priority: Item key
     if item then
-        local isig = (type(item) == "table" and item.key_sig) or KeySignatureService.get_item_key_sig(item)
+        local isig = (type(item) == "table" and not qn and item.key_sig) or KeySignatureService.get_item_key_sig(item, nil, qn)
+        if not isig and type(item) == "table" and item.key_sig then isig = item.key_sig end
         if isig and isig.key_idx ~= nil then
-            if type(item) == "table" then item.key_sig = isig end
+            if type(item) == "table" and not qn then item.key_sig = isig end
             return { idx = isig.key_idx, key_idx = isig.key_idx, mode = isig.mode or "major" }
         elseif isig and isig.idx ~= nil then
-            if type(item) == "table" then item.key_sig = isig end
+            if type(item) == "table" and not qn then item.key_sig = isig end
             return { idx = isig.idx, key_idx = isig.idx, mode = isig.mode or "major" }
         end
     elseif track and qn then
@@ -336,12 +447,13 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
             end
         end
         if found_item then
-            local isig = (type(found_item) == "table" and found_item.key_sig) or KeySignatureService.get_item_key_sig(found_item)
+            local isig = (type(found_item) == "table" and not qn and found_item.key_sig) or KeySignatureService.get_item_key_sig(found_item, nil, qn)
+            if not isig and type(found_item) == "table" and found_item.key_sig then isig = found_item.key_sig end
             if isig and isig.key_idx ~= nil then
-                if type(found_item) == "table" then found_item.key_sig = isig end
+                if type(found_item) == "table" and not qn then found_item.key_sig = isig end
                 return { idx = isig.key_idx, key_idx = isig.key_idx, mode = isig.mode or "major" }
             elseif isig and isig.idx ~= nil then
-                if type(found_item) == "table" then found_item.key_sig = isig end
+                if type(found_item) == "table" and not qn then found_item.key_sig = isig end
                 return { idx = isig.idx, key_idx = isig.idx, mode = isig.mode or "major" }
             end
         end
@@ -384,7 +496,8 @@ end
 function KeySignatureService.resolve_effective_time_sig(state, track, item, qn)
     -- 1st Priority: Item time sig
     if item then
-        local tsig = (type(item) == "table" and item.time_sig) or KeySignatureService.get_item_time_sig(item)
+        local tsig = (type(item) == "table" and not qn and item.time_sig) or KeySignatureService.get_item_time_sig(item, nil, qn)
+        if not tsig and type(item) == "table" and item.time_sig then tsig = item.time_sig end
         if tsig and tsig.num and tsig.denom then
             return make_timesig_table(tsig.num, tsig.denom), tsig.num, tsig.denom
         end

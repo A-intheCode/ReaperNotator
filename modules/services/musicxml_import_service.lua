@@ -280,6 +280,12 @@ function MusicXmlImportService.import_file(file_path, state, options)
         return false, "Failed to parse MusicXML syntax."
     end
 
+    -- Reset bow swelling to 0.0 and bow position to 0.50 on import
+    if state then
+        state.dyn_bow_intensity = 0.0
+        state.dyn_bow_pos = 0.50
+    end
+
     -- 1. Extract Part List & Track Names
     local part_list_node = get_first_child(dom, "part-list")
     local part_names = {}
@@ -327,6 +333,9 @@ function MusicXmlImportService.import_file(file_path, state, options)
 
     local total_notes_imported = 0
     local total_measures_imported = 0
+    local do_import_keys = (options.import_keys ~= false)
+    local score_initial_key_sig = nil
+    local score_initial_time_sig = nil
 
     -- Tracking active directions across measures
     local active_wedges = {}
@@ -357,7 +366,9 @@ function MusicXmlImportService.import_file(file_path, state, options)
         local track_notes = {}
         local track_dynamics = {}
         local item_key_sigs = {}
+        local item_key_sigs_list = {}
         local item_time_sigs = {}
+        local item_time_sigs_list = {}
         local pending_text_arts = {}
         local open_ties = {} -- [string.format("%d_%d", chan, pitch)] = { start_qn, dur_qn, ... }
         local cur_m_start_qn = 0.0
@@ -382,27 +393,42 @@ function MusicXmlImportService.import_file(file_path, state, options)
                     end
 
                     local key_node = get_first_child(child, "key")
-                    if key_node then
+                    if key_node and do_import_keys then
                         local fifths_node = get_first_child(key_node, "fifths")
                         if fifths_node then
                             cur_key_idx = tonumber(get_text(fifths_node)) or 0
+                        else
+                            local cancel_node = get_first_child(key_node, "cancel")
+                            if cancel_node then
+                                cur_key_idx = 0
+                            end
                         end
                         local mode_node = get_first_child(key_node, "mode")
                         if mode_node then
                             cur_key_mode = get_text(mode_node) or "major"
                         end
-                        item_key_sigs[m_idx] = { idx = cur_key_idx, mode = cur_key_mode }
+                        local kentry = { idx = cur_key_idx, mode = cur_key_mode, start_qn = m_start_qn, m_idx = m_idx }
+                        item_key_sigs[m_idx] = kentry
+                        table.insert(item_key_sigs_list, kentry)
+                        if not score_initial_key_sig then
+                            score_initial_key_sig = { idx = cur_key_idx, mode = cur_key_mode }
+                        end
                     end
 
                     local time_node = get_first_child(child, "time")
-                    if time_node then
+                    if time_node and do_import_keys then
                         local beats_node = get_first_child(time_node, "beats")
                         local beat_type_node = get_first_child(time_node, "beat-type")
                         if beats_node and beat_type_node then
                             timesig_num = tonumber(get_text(beats_node)) or 4
                             timesig_denom = tonumber(get_text(beat_type_node)) or 4
                             bpi = timesig_num * (4.0 / timesig_denom)
-                            item_time_sigs[m_idx] = { num = timesig_num, denom = timesig_denom }
+                            local tentry = { num = timesig_num, denom = timesig_denom, start_qn = m_start_qn, m_idx = m_idx }
+                            item_time_sigs[m_idx] = tentry
+                            table.insert(item_time_sigs_list, tentry)
+                            if not score_initial_time_sig then
+                                score_initial_time_sig = { num = timesig_num, denom = timesig_denom }
+                            end
                         end
                     end
 
@@ -937,6 +963,18 @@ function MusicXmlImportService.import_file(file_path, state, options)
             cur_m_start_qn = cur_m_start_qn + bpi
         end
 
+        -- Inherit score-level initial key/time signatures if this part did not define them explicitly
+        if do_import_keys and #item_key_sigs_list == 0 and score_initial_key_sig then
+            local inherited_k = { idx = score_initial_key_sig.idx, mode = score_initial_key_sig.mode, start_qn = 0.0, m_idx = 1 }
+            item_key_sigs[1] = inherited_k
+            table.insert(item_key_sigs_list, inherited_k)
+        end
+        if do_import_keys and #item_time_sigs_list == 0 and score_initial_time_sig then
+            local inherited_t = { num = score_initial_time_sig.num, denom = score_initial_time_sig.denom, start_qn = 0.0, m_idx = 1 }
+            item_time_sigs[1] = inherited_t
+            table.insert(item_time_sigs_list, inherited_t)
+        end
+
         -- Auto-close dangling directions for this part at score end
         for w_key, w_data in pairs(active_wedges) do
             if w_data and w_data.pi == pi then
@@ -1065,23 +1103,87 @@ function MusicXmlImportService.import_file(file_path, state, options)
                         end
                     end
 
-                    -- Apply initial Key Signature to item
-                    if item_key_sigs[1] then
-                        KeySignatureService.set_item_key_sig(state, item, take, item_key_sigs[1].idx, item_key_sigs[1].mode, false)
+                    -- Save default item modulators (ensuring bow swelling is 0.0 and bow position 0.50)
+                    local DynamicsEngine = package.loaded["services.dynamics_engine"] or require("services.dynamics_engine")
+                    if DynamicsEngine and DynamicsEngine.save_item_modulators then
+                        DynamicsEngine.save_item_modulators(item, state)
+                    end
+
+                    -- Apply Key Signature and Time Signature to item and take
+                    local init_key = item_key_sigs[1] or item_key_sigs_list[1] or score_initial_key_sig
+                    if do_import_keys and init_key then
+                        KeySignatureService.set_item_key_sig(state, item, take, init_key.idx, init_key.mode, false)
                         if state then
-                            state.selected_key_sig = item_key_sigs[1].idx
-                            state.selected_key_mode = item_key_sigs[1].mode
+                            if state.key_signature == nil or state.key_signature == 0 then
+                                state.key_signature = init_key.idx
+                                state.key_signature_mode = init_key.mode or "major"
+                            end
+                            state.show_key_signatures = true
+                            state.selected_key_sig = init_key.idx
+                            state.selected_key_mode = init_key.mode or "major"
+                            if trk_guid and trk_guid ~= "" then
+                                if not state.track_key_signatures then state.track_key_signatures = {} end
+                                state.track_key_signatures[trk_guid] = { idx = init_key.idx, key_idx = init_key.idx, mode = init_key.mode or "major" }
+                            end
                         end
                     end
-                    if item_time_sigs[1] then
-                        KeySignatureService.set_item_time_sig(state, item, take, item_time_sigs[1].num, item_time_sigs[1].denom)
+
+                    -- Insert mid-piece key signature changes
+                    if do_import_keys and #item_key_sigs_list > 0 then
+                        for _, ks in ipairs(item_key_sigs_list) do
+                            if ks.start_qn and ks.start_qn > 0.001 then
+                                KeySignatureService.set_item_key_sig(state, item, take, ks.idx, ks.mode or "major", false, ks.start_qn)
+                            end
+                        end
+                    end
+
+                    local init_time = item_time_sigs[1] or item_time_sigs_list[1] or score_initial_time_sig
+                    if do_import_keys and init_time then
+                        KeySignatureService.set_item_time_sig(state, item, take, init_time.num, init_time.denom)
                         if state then
-                            state.time_sig_num = item_time_sigs[1].num
-                            state.time_sig_denom = item_time_sigs[1].denom
+                            if state.time_sig_num == nil or state.time_sig_num == 4 then
+                                state.time_sig_num = init_time.num
+                                state.time_sig_denom = init_time.denom
+                            end
+                        end
+                    end
+
+                    -- Insert mid-piece time signature changes
+                    if do_import_keys and #item_time_sigs_list > 0 then
+                        for _, ts in ipairs(item_time_sigs_list) do
+                            if ts.start_qn and ts.start_qn > 0.001 then
+                                KeySignatureService.set_item_time_sig(state, item, take, ts.num, ts.denom, ts.start_qn)
+                            end
                         end
                     end
                 end
             end
+        end
+    end
+
+    -- Synchronize score-wide key and time signatures into state and REAPER
+    if do_import_keys then
+        if score_initial_key_sig and state then
+            state.key_signature = score_initial_key_sig.idx
+            state.key_signature_mode = score_initial_key_sig.mode or "major"
+            state.show_key_signatures = true
+            state.selected_key_sig = score_initial_key_sig.idx
+            state.selected_key_mode = score_initial_key_sig.mode or "major"
+        end
+
+        if score_initial_time_sig then
+            if state then
+                state.time_sig_num = score_initial_time_sig.num
+                state.time_sig_denom = score_initial_time_sig.denom
+            end
+            local cur_bpm = reaper.Master_GetTempo() or 120.0
+            for _, itm in ipairs(imported_tempo_markers) do
+                if itm.qn and itm.qn < 0.001 and itm.bpm then
+                    cur_bpm = itm.bpm
+                    break
+                end
+            end
+            reaper.SetTempoTimeSigMarker(0, -1, 0.0, -1, -1, cur_bpm, score_initial_time_sig.num, score_initial_time_sig.denom, false)
         end
     end
 

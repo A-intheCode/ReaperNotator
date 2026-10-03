@@ -1,7 +1,9 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.0.1
+-- @version 1.0.2
 -- @changelog
+--   + v1.0.2: Fix MusicXML key signature import, mid-score modulations, pedal mark scaling & dynamics default bow intensity
+--   + v1.0.1: Add TopBar version display & automated versioning
 --   + v1.0.0: Initial public release
 -- @about
 --   # REAPER-Notator

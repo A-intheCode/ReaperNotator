@@ -131,11 +131,13 @@ function CanvasPedalRenderer.render_track_pedals(ctx, draw_list, state, fonts, t
         local can_hover = is_hovered and not is_blocked and not is_dragging_any
         
         if can_hover and not hov.pedal then
+            local handle_hit_r = 12.0 * s
+            local pause_hit_r = 10.0 * s
             -- Check pause handles first
             for _, p in ipairs(pm.pauses or {}) do
                 local px = Engraver.qn_to_canvas_x(p.qn, margin_left, s, qn_per_measure, measure_map)
                 local dist_p = math.sqrt((mouse_x - px)^2 + (mouse_y - ped_y)^2)
-                if dist_p <= 8.0 * s then
+                if dist_p <= pause_hit_r then
                     hovered_pause_id = p.id
                     hov.pedal = pm
                     hov.pedal_handle = "pause_" .. p.id
@@ -145,10 +147,10 @@ function CanvasPedalRenderer.render_track_pedals(ctx, draw_list, state, fonts, t
             end
             
             if not hovered_pause_id then
-                if dist_h1 <= 8.0 * s then
+                if dist_h1 <= handle_hit_r then
                     hov.pedal = pm
                     hov.pedal_handle = "start"
-                elseif dist_h2 <= 8.0 * s then
+                elseif dist_h2 <= handle_hit_r then
                     hov.pedal = pm
                     hov.pedal_handle = "end"
                 elseif in_body then
@@ -159,8 +161,17 @@ function CanvasPedalRenderer.render_track_pedals(ctx, draw_list, state, fonts, t
         end
         
         local is_hov = (hov.pedal and hov.pedal.id == pm.id)
-        if is_hov and hov.pedal_pause then
-            hovered_pause_id = hov.pedal_pause.id
+        if is_hov then
+            state.hovered_pedal = pm
+            state.hovered_pedal_handle = hov.pedal_handle
+            if hov.pedal_pause then
+                hovered_pause_id = hov.pedal_pause.id
+            end
+            if hov.pedal_handle == "start" or hov.pedal_handle == "end" or (hov.pedal_handle and hov.pedal_handle:find("^pause_")) then
+                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeEW())
+            elseif hov.pedal_handle == "body" then
+                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+            end
         end
         
         -- Context menu on right-click
@@ -302,14 +313,17 @@ function CanvasPedalRenderer.render_track_pedals(ctx, draw_list, state, fonts, t
             reaper.ImGui_DrawList_AddLine(draw_list, x2, ped_y, x2, ped_y - hook_h, col_pedal, line_w)
         end
         
-        -- Dual handles (start & end) on selection or hover
-        if is_selected or is_hov then
+        -- Dual handles (start & end) on selection, hover or active drag
+        local is_dragging_this = state.is_dragging_pedal and state.drag_pedal and state.drag_pedal.id == pm.id
+        if is_selected or is_hov or is_dragging_this then
             local h_rad = 4.5 * s
-            local h1_c = (hov.pedal_handle == "start" and is_hov) and 0xFF9F1CFF or 0x3498DBFF
+            local is_h1_act = (hov.pedal_handle == "start" and is_hov) or (is_dragging_this and state.drag_pedal_handle == "start")
+            local is_h2_act = (hov.pedal_handle == "end" and is_hov) or (is_dragging_this and state.drag_pedal_handle == "end")
+            local h1_c = is_h1_act and 0xFF9F1CFF or 0x3498DBFF
             reaper.ImGui_DrawList_AddCircleFilled(draw_list, h1_x, h1_y, h_rad, h1_c)
             reaper.ImGui_DrawList_AddCircle(draw_list, h1_x, h1_y, h_rad + 1.0, 0xFFFFFFFF, 0, 1.0)
             
-            local h2_c = (hov.pedal_handle == "end" and is_hov) and 0xFF9F1CFF or 0x2ECC71FF
+            local h2_c = is_h2_act and 0xFF9F1CFF or 0x2ECC71FF
             reaper.ImGui_DrawList_AddCircleFilled(draw_list, h2_x, h2_y, h_rad, h2_c)
             reaper.ImGui_DrawList_AddCircle(draw_list, h2_x, h2_y, h_rad + 1.0, 0xFFFFFFFF, 0, 1.0)
         end

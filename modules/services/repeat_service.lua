@@ -407,7 +407,10 @@ end
 
 -- Synchronizes all repeat markers across all tracks (e.g. after note edits)
 function RepeatService.sync_all(state)
-    if not state.repeat_marks or #state.repeat_marks == 0 then return end
+    if not state.repeat_marks or #state.repeat_marks == 0 then
+        state.status_msg = "No Repeat Marks in project to sync."
+        return
+    end
     -- Sort ascending by measure number so chains of repeats cascade properly
     local sorted = {}
     for _, rm in ipairs(state.repeat_marks) do table.insert(sorted, rm) end
