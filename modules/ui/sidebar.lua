@@ -260,24 +260,33 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
         return low
     end
     
-    local active_track = state.focused_track
-    if not active_track and state.selected_note and state.selected_note.track then
+    local active_track = nil
+    if state.focused_track and reaper.ValidatePtr(state.focused_track, "MediaTrack*") then
+        active_track = state.focused_track
+    elseif state.selected_note and state.selected_note.track and reaper.ValidatePtr(state.selected_note.track, "MediaTrack*") then
         active_track = state.selected_note.track
-    end
-    if not active_track and state.selected_notes then
+    elseif state.selected_notes then
         for _, sn in pairs(state.selected_notes) do
-            if sn.track then active_track = sn.track break end
+            if sn.track and reaper.ValidatePtr(sn.track, "MediaTrack*") then
+                active_track = sn.track
+                break
+            end
         end
     end
     if not active_track then
-        active_track = reaper.GetSelectedTrack(0, 0)
+        local sel_trk = reaper.GetSelectedTrack(0, 0)
+        if sel_trk and reaper.ValidatePtr(sel_trk, "MediaTrack*") then
+            active_track = sel_trk
+        elseif active_tracks_data and active_tracks_data[1] and active_tracks_data[1].track and reaper.ValidatePtr(active_tracks_data[1].track, "MediaTrack*") then
+            active_track = active_tracks_data[1].track
+        end
     end
     
     local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
     local all_banks = ReaticulateParser.get_all_banks()
-    local track_guid = active_track and reaper.GetTrackGUID(active_track)
+    local track_guid = (active_track and reaper.ValidatePtr(active_track, "MediaTrack*")) and reaper.GetTrackGUID(active_track) or nil
     local trk_override = track_guid and state.track_articulation_banks and state.track_articulation_banks[track_guid]
-    local active_bank = active_track and ReaticulateParser.get_bank_for_track(active_track, all_banks, trk_override)
+    local active_bank = (active_track and reaper.ValidatePtr(active_track, "MediaTrack*")) and ReaticulateParser.get_bank_for_track(active_track, all_banks, trk_override) or nil
     
     local function is_art_supported(art_id)
         if not active_bank then return true end

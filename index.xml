@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.3.5" author="A-intheCode" time="2026-10-03T21:22:00Z">
+      <version name="1.3.6" author="A-intheCode" time="2026-10-03T21:27:00Z">
         <changelog><![CDATA[
++ v1.3.6: Fix crash in sidebar.lua when track pointer is invalid or deleted (MediaTrack expected in GetTrackGUID)
 + v1.3.5: Beam rendering performance & Phase 2 optimizations:
           - Cleaned up beam rendering: eliminated redundant outline strokes (AddQuad) on filled quads
           - High-efficiency O(1) project state change guard in MidiService eliminating redundant C-API calls
