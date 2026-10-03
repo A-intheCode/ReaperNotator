@@ -1,6 +1,10 @@
 # Private notes and internal planning
 TODO
 scratch/
+docs/codebase_statistics.md
+docs/user_manual.md
+codebase_statistics.md
+user_manual.md
 
 # Python cache & temporary files
 __pycache__/
