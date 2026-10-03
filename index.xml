@@ -98,7 +98,6 @@
         <source file="modules/ui/top_bar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/top_bar.lua</source>
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
-        <source file="patterns.zip">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip</source>
       </version>
     </reapack>
   </category>

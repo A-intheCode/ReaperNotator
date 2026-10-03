@@ -39,21 +39,6 @@ end
 
 --- Initializes the pattern system and scans all patterns on disk
 function PatternService.init()
-    local base_dir = PatternService.get_base_dir()
-    local has_sub = false
-    if reaper.APIExists("EnumerateSubdirectories") then
-        local sub = reaper.EnumerateSubdirectories(base_dir, 0)
-        if sub and sub ~= "" then has_sub = true end
-    end
-    
-    if not has_sub then
-        local s_dir = PathService.get_script_dir()
-        if PathService.file_exists(s_dir .. "/patterns.zip") or PathService.file_exists(s_dir .. "/../patterns.zip") or PathService.file_exists("D:/programmieren/REAPER-Notator/patterns.zip") then
-            -- Auto-extract from existing local archive
-            PatternService.start_factory_download(nil)
-        end
-    end
-    
     PatternService.scan_library()
 end
 
