@@ -1,0 +1,86 @@
+{
+  "id": "brass_cinema_braam_swell",
+  "name": "Cinema Braam & Horn Swell",
+  "category": "03_Brass_Blockbuster",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 80,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 29,
+      "start_qn": 0.0,
+      "dur_qn": 2.5,
+      "vel": 124,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 0.0,
+      "dur_qn": 2.5,
+      "vel": 120,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 2.5,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 56,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 55,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 90,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 27,
+      "start_qn": 8.0,
+      "dur_qn": 2.5,
+      "vel": 122,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 8.0,
+      "dur_qn": 2.5,
+      "vel": 118,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 10.5,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 53,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 110,
+      "chan": 0,
+      "art": null
+    }
+  ]
+}

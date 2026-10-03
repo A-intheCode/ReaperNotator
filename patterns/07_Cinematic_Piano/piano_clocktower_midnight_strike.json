@@ -1,0 +1,206 @@
+{
+  "id": "piano_clocktower_midnight_strike",
+  "name": "Piano Clocktower Midnight Strike",
+  "category": "07_Cinematic_Piano",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 117,
+  "clef": "grand",
+  "notes": [
+    {
+      "pitch": 36,
+      "start_qn": 0.0,
+      "dur_qn": 2.5,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 0.0,
+      "dur_qn": 2.5,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 1.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 84,
+      "start_qn": 1.0,
+      "dur_qn": 1.5,
+      "vel": 94,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 87,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 86,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 4.0,
+      "dur_qn": 2.5,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 4.0,
+      "dur_qn": 2.5,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 5.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 87,
+      "start_qn": 5.0,
+      "dur_qn": 1.5,
+      "vel": 94,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 78,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 90,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 86,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 31,
+      "start_qn": 8.0,
+      "dur_qn": 2.5,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 8.0,
+      "dur_qn": 2.5,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 9.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 91,
+      "start_qn": 9.0,
+      "dur_qn": 1.5,
+      "vel": 94,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 82,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 94,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 86,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 34,
+      "start_qn": 12.0,
+      "dur_qn": 2.5,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 12.0,
+      "dur_qn": 2.5,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 13.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 82,
+      "start_qn": 13.0,
+      "dur_qn": 1.5,
+      "vel": 94,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 15.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 85,
+      "start_qn": 15.0,
+      "dur_qn": 1.0,
+      "vel": 86,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

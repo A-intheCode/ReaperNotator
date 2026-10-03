@@ -1,0 +1,126 @@
+{
+  "id": "abyssal_tuba_roar",
+  "name": "Abyssal Tuba Roar",
+  "category": "03_Brass_Blockbuster",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 76,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 33,
+      "start_qn": 0.0,
+      "dur_qn": 3.5,
+      "vel": 125,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 40,
+      "start_qn": 0.0,
+      "dur_qn": 3.5,
+      "vel": 120,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 0.0,
+      "dur_qn": 3.5,
+      "vel": 118,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 4.0,
+      "dur_qn": 0.5,
+      "vel": 110,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 5.0,
+      "dur_qn": 0.5,
+      "vel": 105,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.0,
+      "dur_qn": 1.0,
+      "vel": 115,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 120,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 8.0,
+      "dur_qn": 3.5,
+      "vel": 125,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 40,
+      "start_qn": 8.0,
+      "dur_qn": 3.5,
+      "vel": 120,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 8.0,
+      "dur_qn": 3.5,
+      "vel": 118,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 12.0,
+      "dur_qn": 0.5,
+      "vel": 110,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 13.0,
+      "dur_qn": 0.5,
+      "vel": 105,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 14.0,
+      "dur_qn": 1.0,
+      "vel": 115,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 15.0,
+      "dur_qn": 1.0,
+      "vel": 120,
+      "voice": 1,
+      "art": "accent"
+    }
+  ]
+}

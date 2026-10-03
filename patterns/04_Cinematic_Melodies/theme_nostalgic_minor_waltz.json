@@ -1,0 +1,118 @@
+{
+  "id": "theme_nostalgic_minor_waltz",
+  "name": "Nostalgic Minor Waltz",
+  "category": "04_Cinematic_Melodies",
+  "bars": 8,
+  "time_sig": {
+    "num": 3,
+    "denom": 4
+  },
+  "tempo_hint": 90,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 60,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 100,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 63,
+      "start_qn": 2.0,
+      "dur_qn": 1.0,
+      "vel": 105,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 62,
+      "start_qn": 3.0,
+      "dur_qn": 2.0,
+      "vel": 95,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 60,
+      "start_qn": 5.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 59,
+      "start_qn": 6.0,
+      "dur_qn": 3.0,
+      "vel": 92,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 55,
+      "start_qn": 9.0,
+      "dur_qn": 3.0,
+      "vel": 85,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 63,
+      "start_qn": 12.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 67,
+      "start_qn": 14.0,
+      "dur_qn": 1.0,
+      "vel": 112,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 65,
+      "start_qn": 15.0,
+      "dur_qn": 2.0,
+      "vel": 100,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 63,
+      "start_qn": 17.0,
+      "dur_qn": 1.0,
+      "vel": 95,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 62,
+      "start_qn": 18.0,
+      "dur_qn": 2.0,
+      "vel": 98,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 59,
+      "start_qn": 20.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 60,
+      "start_qn": 21.0,
+      "dur_qn": 3.0,
+      "vel": 95,
+      "chan": 0,
+      "art": null
+    }
+  ]
+}

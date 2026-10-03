@@ -1,0 +1,334 @@
+{
+  "id": "piano_relentless_drama_pulse_78",
+  "name": "Piano Relentless Drama Pulse 7/8",
+  "category": "07_Cinematic_Piano",
+  "bars": 4,
+  "time_sig": {
+    "num": 7,
+    "denom": 8
+  },
+  "tempo_hint": 144,
+  "clef": "grand",
+  "notes": [
+    {
+      "pitch": 33,
+      "start_qn": 0.0,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 0.0,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 0.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 1.0,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 1.5,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 1.5,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 2.0,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 2.5,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 2.5,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 3.0,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 3.5,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 3.5,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 4.0,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 4.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 5.0,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 5.0,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 5.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 6.0,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 6.0,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 6.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 7.0,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 7.0,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 7.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 8.0,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 8.5,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 8.5,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 9.0,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 9.5,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 9.5,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 10.0,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 10.5,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 10.5,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 11.0,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 11.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 12.0,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 12.0,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 12.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 33,
+      "start_qn": 13.0,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 13.0,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 13.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    }
+  ]
+}

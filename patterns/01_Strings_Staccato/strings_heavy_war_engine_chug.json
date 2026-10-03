@@ -1,0 +1,782 @@
+{
+  "id": "strings_heavy_war_engine_chug",
+  "name": "Heavy War Engine Chug",
+  "category": "01_Strings_Staccato",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 145,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 38,
+      "start_qn": 0.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 0.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 0.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 0.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 0.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 0.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 1.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 1.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 1.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 1.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 1.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 1.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 2.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 3.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 4.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 4.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 4.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 4.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 4.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 4.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 5.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 5.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 5.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 5.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 5.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 5.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 6.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 7.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 7.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 7.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 7.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 7.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 7.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 8.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 8.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 8.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 8.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 8.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 8.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 9.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 9.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 9.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 9.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 9.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 9.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 10.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 10.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 10.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 10.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 10.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 10.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 11.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 11.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 11.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 11.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 11.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 11.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 12.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 12.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 12.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 12.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 12.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 12.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 13.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 13.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 13.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 13.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 13.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 13.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 14.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 14.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 14.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 14.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 14.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 14.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.0,
+      "dur_qn": 0.14,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.167,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.333,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 15.5,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.667,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.833,
+      "dur_qn": 0.14,
+      "vel": 82,
+      "chan": 0,
+      "art": "staccato"
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "id": "pizz_mischief_waltz_38",
+  "name": "Mischief Waltz 3/8",
+  "category": "02_Strings_Pizzicato",
+  "bars": 4,
+  "time_sig": {
+    "num": 3,
+    "denom": 8
+  },
+  "tempo_hint": 135,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 52,
+      "start_qn": 0.0,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 0.5,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 1.0,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 1.5,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 2.0,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 2.5,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 3.0,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 3.5,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 4.0,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 4.5,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 5.0,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 5.5,
+      "dur_qn": 0.375,
+      "vel": 92,
+      "chan": 0,
+      "art": "staccato"
+    }
+  ]
+}

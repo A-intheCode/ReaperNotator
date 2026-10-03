@@ -1,0 +1,110 @@
+{
+  "id": "pizz_marionette_danse_macabre",
+  "name": "Marionette Danse Macabre",
+  "category": "02_Strings_Pizzicato",
+  "bars": 4,
+  "time_sig": {
+    "num": 3,
+    "denom": 4
+  },
+  "tempo_hint": 118,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 45,
+      "start_qn": 0.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 1.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 2.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 3.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 4.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 5.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 6.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 7.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 8.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 40,
+      "start_qn": 9.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 56,
+      "start_qn": 10.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 11.0,
+      "dur_qn": 0.7,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    }
+  ]
+}

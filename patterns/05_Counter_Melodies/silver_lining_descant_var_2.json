@@ -1,0 +1,142 @@
+{
+  "id": "silver_lining_descant_var_2",
+  "name": "Silver Lining Descant Var. 2",
+  "category": "05_Counter_Melodies",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 88,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 70,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 1.5,
+      "dur_qn": 0.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 2.0,
+      "dur_qn": 1.0,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 4.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 5.5,
+      "dur_qn": 0.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 6.0,
+      "dur_qn": 1.0,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 9.5,
+      "dur_qn": 0.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 78,
+      "start_qn": 10.0,
+      "dur_qn": 1.0,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 12.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 78,
+      "start_qn": 13.5,
+      "dur_qn": 0.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 80,
+      "start_qn": 14.0,
+      "dur_qn": 1.0,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 78,
+      "start_qn": 15.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    }
+  ]
+}

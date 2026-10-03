@@ -1,0 +1,270 @@
+{
+  "id": "ww_bassoon_staccato_mischief_motif_6",
+  "name": "Woodwinds Bassoon Staccato Mischief Motif 6",
+  "category": "06_Woodwinds_Textures",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 116,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 46,
+      "start_qn": 0.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 0.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 1.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 1.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 2.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 2.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 3.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 3.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 4.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 4.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 5.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 5.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 6.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 6.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 7.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 7.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 8.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 8.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 9.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 9.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 10.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 10.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 11.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 11.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 12.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 12.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 13.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 13.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 14.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 14.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 15.0,
+      "dur_qn": 0.3,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 15.5,
+      "dur_qn": 0.3,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    }
+  ]
+}

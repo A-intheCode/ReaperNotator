@@ -1,0 +1,102 @@
+{
+  "id": "brass_triadic_hero_fanfare",
+  "name": "Triadic Hero Fanfare",
+  "category": "03_Brass_Blockbuster",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 116,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 55,
+      "start_qn": 0.0,
+      "dur_qn": 0.33,
+      "vel": 110,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 0.33,
+      "dur_qn": 0.33,
+      "vel": 110,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 0.66,
+      "dur_qn": 0.34,
+      "vel": 115,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 1.0,
+      "dur_qn": 2.0,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 105,
+      "chan": 0,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 115,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 58,
+      "start_qn": 6.0,
+      "dur_qn": 1.0,
+      "vel": 100,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 62,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 110,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 60,
+      "start_qn": 8.0,
+      "dur_qn": 3.0,
+      "vel": 118,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 62,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 105,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 55,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 125,
+      "chan": 0,
+      "art": null
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<ScorePrintSettings version="1.0">
+    <Metadata>
+        <Title>ThePacific_OST_importtest</Title>
+        <Subtitle>Full Score for Orchestra</Subtitle>
+        <Composer>Composer</Composer>
+        <Arranger></Arranger>
+        <Date>2026</Date>
+        <Copyright>© 2026 All Rights Reserved</Copyright>
+        <StyleTemplate>classical</StyleTemplate>
+    </Metadata>
+    <OrchestratorNotes><![CDATA[Score in C (Concert Pitch).
+All instruments sound as written except standard octave transpositions:
+- Piccolo sounds 8va higher
+- Contrabass and Contrabassoon sound 8vb lower
+
+Performance Instructions:
+- Strings: Molto espressivo e legato unless marked otherwise.
+- Brass: Observe dynamic balance in tutti sections.
+- Woodwinds: Adhere strictly to phrase and breath marks.]]></OrchestratorNotes>
+    <Layout>
+        <BarsPerPage>5</BarsPerPage>
+        <PaperSize>A4</PaperSize>
+        <Orientation>landscape</Orientation>
+        <TwoPageSpread>true</TwoPageSpread>
+        <IncludeCover>true</IncludeCover>
+        <IncludeNotesPage>true</IncludeNotesPage>
+        <ShowMeasureNumbers>true</ShowMeasureNumbers>
+        <ShowTrackNames>true</ShowTrackNames>
+        <ShowChords>true</ShowChords>
+    </Layout>
+    <TargetTracks>
+    </TargetTracks>
+</ScorePrintSettings>

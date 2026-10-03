@@ -1,0 +1,206 @@
+{
+  "id": "piano_epic_trailer_intro_pulse_mv_2",
+  "name": "Piano Epic Trailer Intro Pulse Movement 2",
+  "category": "07_Cinematic_Piano",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 82,
+  "clef": "grand",
+  "notes": [
+    {
+      "pitch": 31,
+      "start_qn": 0.0,
+      "dur_qn": 2.5,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 0.0,
+      "dur_qn": 2.5,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 1.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 91,
+      "start_qn": 1.0,
+      "dur_qn": 1.5,
+      "vel": 94,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 82,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 94,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 86,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 34,
+      "start_qn": 4.0,
+      "dur_qn": 2.5,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 4.0,
+      "dur_qn": 2.5,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 5.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 82,
+      "start_qn": 5.0,
+      "dur_qn": 1.5,
+      "vel": 94,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 85,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 86,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 8.0,
+      "dur_qn": 2.5,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 8.0,
+      "dur_qn": 2.5,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 9.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 86,
+      "start_qn": 9.0,
+      "dur_qn": 1.5,
+      "vel": 94,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 89,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 86,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 12.0,
+      "dur_qn": 2.5,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 12.0,
+      "dur_qn": 2.5,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 13.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 89,
+      "start_qn": 13.0,
+      "dur_qn": 1.5,
+      "vel": 94,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 80,
+      "start_qn": 15.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 92,
+      "start_qn": 15.0,
+      "dur_qn": 1.0,
+      "vel": 86,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

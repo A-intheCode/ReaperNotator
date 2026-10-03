@@ -1,0 +1,142 @@
+{
+  "id": "brass_triumphant_citadel_horns_version_4",
+  "name": "Epic Brass Triumphant Citadel Horns Version 4",
+  "category": "03_Brass_Blockbuster",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 86,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 62,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 8.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 8.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 10.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 10.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 12.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 12.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 14.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 14.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    }
+  ]
+}

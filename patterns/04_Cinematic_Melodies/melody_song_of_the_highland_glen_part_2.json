@@ -1,0 +1,286 @@
+{
+  "id": "melody_song_of_the_highland_glen_part_2",
+  "name": "Theme Song of the Highland Glen Part 2",
+  "category": "04_Cinematic_Melodies",
+  "bars": 8,
+  "time_sig": {
+    "num": 3,
+    "denom": 4
+  },
+  "tempo_hint": 82,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 48,
+      "start_qn": 0.0,
+      "dur_qn": 24.0,
+      "vel": 80,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 0.0,
+      "dur_qn": 24.0,
+      "vel": 76,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 1.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 2.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 3.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 3.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 4.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 5.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 6.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 6.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 7.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 9.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 9.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 10.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 11.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 12.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 12.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 13.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 14.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 15.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 15.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 16.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 17.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 18.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 18.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 19.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 20.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 21.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 21.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 22.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 23.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 24.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    }
+  ]
+}

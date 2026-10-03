@@ -1,0 +1,142 @@
+{
+  "id": "morning_mist_oboe_counter_var_2",
+  "name": "Morning Mist Oboe Counter Var. 2",
+  "category": "05_Counter_Melodies",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 80,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 62,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 1.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 2.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 3.5,
+      "dur_qn": 0.5,
+      "vel": 85,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 4.0,
+      "dur_qn": 1.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 5.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 6.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 7.5,
+      "dur_qn": 0.5,
+      "vel": 85,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 9.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 10.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 11.5,
+      "dur_qn": 0.5,
+      "vel": 85,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 12.0,
+      "dur_qn": 1.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 13.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 14.0,
+      "dur_qn": 1.5,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 15.5,
+      "dur_qn": 0.5,
+      "vel": 85,
+      "voice": 1,
+      "art": "normal"
+    }
+  ]
+}

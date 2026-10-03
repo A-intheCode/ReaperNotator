@@ -1,0 +1,142 @@
+{
+  "id": "ww_oboe_soliloquy_in_the_rain_motif_3",
+  "name": "Woodwinds Oboe Soliloquy in the Rain Motif 3",
+  "category": "06_Woodwinds_Textures",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 73,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 53,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 1.5,
+      "dur_qn": 0.5,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 56,
+      "start_qn": 2.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 4.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 5.5,
+      "dur_qn": 0.5,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 6.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 56,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 9.5,
+      "dur_qn": 0.5,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 10.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 56,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 12.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 13.5,
+      "dur_qn": 0.5,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 14.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 15.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

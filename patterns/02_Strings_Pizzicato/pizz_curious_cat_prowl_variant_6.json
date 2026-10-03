@@ -1,0 +1,142 @@
+{
+  "id": "pizz_curious_cat_prowl_variant_6",
+  "name": "Pizzicato Curious Cat Prowl Variant 6",
+  "category": "02_Strings_Pizzicato",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 106,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 43,
+      "start_qn": 0.0,
+      "dur_qn": 0.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 1.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 2.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 49,
+      "start_qn": 3.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 4.0,
+      "dur_qn": 0.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 5.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 6.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 7.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 8.0,
+      "dur_qn": 0.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 9.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 10.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 49,
+      "start_qn": 11.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 12.0,
+      "dur_qn": 0.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 13.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 14.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 15.0,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    }
+  ]
+}

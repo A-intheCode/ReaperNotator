@@ -1,0 +1,270 @@
+{
+  "id": "strings_tactical_action_54",
+  "name": "Tactical 5/4 Action Pulse",
+  "category": "01_Strings_Staccato",
+  "bars": 4,
+  "time_sig": {
+    "num": 5,
+    "denom": 4
+  },
+  "tempo_hint": 160,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 43,
+      "start_qn": 0.0,
+      "dur_qn": 0.4,
+      "vel": 112,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 0.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 1.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 2.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 3.0,
+      "dur_qn": 0.4,
+      "vel": 112,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 3.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 4.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 4.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 5.0,
+      "dur_qn": 0.4,
+      "vel": 112,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 5.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 6.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 7.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 8.0,
+      "dur_qn": 0.4,
+      "vel": 112,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 8.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 9.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 9.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 10.0,
+      "dur_qn": 0.4,
+      "vel": 112,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 10.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 11.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 12.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 13.0,
+      "dur_qn": 0.4,
+      "vel": 112,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 13.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 14.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 14.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.0,
+      "dur_qn": 0.4,
+      "vel": 112,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 42,
+      "start_qn": 16.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 17.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 18.0,
+      "dur_qn": 0.4,
+      "vel": 112,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 18.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 19.0,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 42,
+      "start_qn": 19.5,
+      "dur_qn": 0.4,
+      "vel": 90,
+      "chan": 0,
+      "art": "staccato"
+    }
+  ]
+}

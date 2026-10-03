@@ -1,0 +1,94 @@
+{
+  "id": "sovereign_horn_weaving_var_3",
+  "name": "Sovereign Horn Weaving Var. 3",
+  "category": "05_Counter_Melodies",
+  "bars": 4,
+  "time_sig": {
+    "num": 3,
+    "denom": 4
+  },
+  "tempo_hint": 86,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 64,
+      "start_qn": 0.0,
+      "dur_qn": 2.5,
+      "vel": 100,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 2.5,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 3.0,
+      "dur_qn": 1.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 4.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 5.0,
+      "dur_qn": 2.0,
+      "vel": 98,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 6.0,
+      "dur_qn": 2.5,
+      "vel": 100,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 8.5,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 9.0,
+      "dur_qn": 1.5,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 10.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 11.0,
+      "dur_qn": 2.0,
+      "vel": 98,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

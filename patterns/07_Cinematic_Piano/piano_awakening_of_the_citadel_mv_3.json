@@ -1,0 +1,910 @@
+{
+  "id": "piano_awakening_of_the_citadel_mv_3",
+  "name": "Piano Awakening of the Citadel Movement 3",
+  "category": "07_Cinematic_Piano",
+  "bars": 16,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 77,
+  "clef": "grand",
+  "notes": [
+    {
+      "pitch": 43,
+      "start_qn": 0.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 1.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 66,
+      "start_qn": 1.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 2.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 35,
+      "start_qn": 4.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 42,
+      "start_qn": 5.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 4.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 5.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 6.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 8.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 9.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 54,
+      "start_qn": 10.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 9.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 10.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 42,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 49,
+      "start_qn": 13.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 14.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 12.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 13.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 14.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 15.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 16.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 17.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 18.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 16.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 66,
+      "start_qn": 17.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 18.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 19.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 20.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 21.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 22.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 20.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 21.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 22.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 23.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 24.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 25.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 26.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 24.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 25.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 26.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 27.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 35,
+      "start_qn": 28.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 42,
+      "start_qn": 29.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 30.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 28.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 29.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 30.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 31.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 32.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 33.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 54,
+      "start_qn": 34.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 32.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 66,
+      "start_qn": 33.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 34.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 35.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 42,
+      "start_qn": 36.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 49,
+      "start_qn": 37.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 38.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 36.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 37.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 38.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 39.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 40.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 41.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 61,
+      "start_qn": 42.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 40.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 41.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 42.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 43.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 44.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 45.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 46.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 44.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 45.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 46.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 47.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 48.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 49.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 59,
+      "start_qn": 50.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 48.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 66,
+      "start_qn": 49.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 50.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 51.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 35,
+      "start_qn": 52.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 42,
+      "start_qn": 53.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 54.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 52.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 53.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 54.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 55.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 56.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 57.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 54,
+      "start_qn": 58.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 56.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 57.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 58.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 59.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 42,
+      "start_qn": 60.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 49,
+      "start_qn": 61.0,
+      "dur_qn": 3.0,
+      "vel": 78,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 62.0,
+      "dur_qn": 2.0,
+      "vel": 75,
+      "voice": 2,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 60.0,
+      "dur_qn": 1.5,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 61.5,
+      "dur_qn": 0.5,
+      "vel": 84,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 62.0,
+      "dur_qn": 1.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 63.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

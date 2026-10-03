@@ -1,0 +1,174 @@
+{
+  "id": "brass_heroic_trumpet_fanfare_call",
+  "name": "Epic Brass Heroic Trumpet Fanfare Call",
+  "category": "03_Brass_Blockbuster",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 112,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 51,
+      "start_qn": 0.0,
+      "dur_qn": 0.5,
+      "vel": 115,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 0.5,
+      "dur_qn": 0.5,
+      "vel": 108,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 1.0,
+      "dur_qn": 1.0,
+      "vel": 118,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 2.0,
+      "dur_qn": 1.5,
+      "vel": 122,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 3.5,
+      "dur_qn": 0.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 4.0,
+      "dur_qn": 0.5,
+      "vel": 115,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 4.5,
+      "dur_qn": 0.5,
+      "vel": 108,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 5.0,
+      "dur_qn": 1.0,
+      "vel": 118,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 6.0,
+      "dur_qn": 1.5,
+      "vel": 122,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 7.5,
+      "dur_qn": 0.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 8.0,
+      "dur_qn": 0.5,
+      "vel": 115,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 8.5,
+      "dur_qn": 0.5,
+      "vel": 108,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 9.0,
+      "dur_qn": 1.0,
+      "vel": 118,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 10.0,
+      "dur_qn": 1.5,
+      "vel": 122,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 11.5,
+      "dur_qn": 0.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 12.0,
+      "dur_qn": 0.5,
+      "vel": 115,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 12.5,
+      "dur_qn": 0.5,
+      "vel": 108,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 13.0,
+      "dur_qn": 1.0,
+      "vel": 118,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 14.0,
+      "dur_qn": 1.5,
+      "vel": 122,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 15.5,
+      "dur_qn": 0.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "normal"
+    }
+  ]
+}

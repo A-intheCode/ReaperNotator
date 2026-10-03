@@ -1,0 +1,270 @@
+{
+  "id": "piano_valkyrie_piano_gallop",
+  "name": "Piano Valkyrie Piano Gallop",
+  "category": "07_Cinematic_Piano",
+  "bars": 4,
+  "time_sig": {
+    "num": 12,
+    "denom": 8
+  },
+  "tempo_hint": 127,
+  "clef": "grand",
+  "notes": [
+    {
+      "pitch": 41,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 1.5,
+      "dur_qn": 1.5,
+      "vel": 88,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 0.0,
+      "dur_qn": 0.45,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 0.5,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 1.0,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 1.5,
+      "dur_qn": 0.45,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 2.0,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 2.5,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 44,
+      "start_qn": 3.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 4.5,
+      "dur_qn": 1.5,
+      "vel": 88,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 3.0,
+      "dur_qn": 0.45,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 3.5,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 4.0,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 80,
+      "start_qn": 4.5,
+      "dur_qn": 0.45,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 5.0,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 5.5,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 6.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 7.5,
+      "dur_qn": 1.5,
+      "vel": 88,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 6.0,
+      "dur_qn": 0.45,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 6.5,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 7.0,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 7.5,
+      "dur_qn": 0.45,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 8.0,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 8.5,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 9.0,
+      "dur_qn": 1.5,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 10.5,
+      "dur_qn": 1.5,
+      "vel": 88,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 9.0,
+      "dur_qn": 0.45,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 9.5,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 10.0,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 10.5,
+      "dur_qn": 0.45,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 11.0,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 11.5,
+      "dur_qn": 0.45,
+      "vel": 80,
+      "voice": 1,
+      "art": "normal"
+    }
+  ]
+}

@@ -1,0 +1,110 @@
+{
+  "id": "theme_ominous_low_string_cantus",
+  "name": "Ominous Low String Cantus",
+  "category": "04_Cinematic_Melodies",
+  "bars": 8,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 90,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 43,
+      "start_qn": 0.0,
+      "dur_qn": 3.0,
+      "vel": 95,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 44,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 102,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 43,
+      "start_qn": 4.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 46,
+      "start_qn": 8.0,
+      "dur_qn": 3.0,
+      "vel": 105,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 47,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 108,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 46,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 41,
+      "start_qn": 16.0,
+      "dur_qn": 3.0,
+      "vel": 100,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 42,
+      "start_qn": 19.0,
+      "dur_qn": 1.0,
+      "vel": 104,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 41,
+      "start_qn": 20.0,
+      "dur_qn": 4.0,
+      "vel": 92,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 39,
+      "start_qn": 24.0,
+      "dur_qn": 2.0,
+      "vel": 102,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 38,
+      "start_qn": 26.0,
+      "dur_qn": 2.0,
+      "vel": 98,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 43,
+      "start_qn": 28.0,
+      "dur_qn": 4.0,
+      "vel": 90,
+      "chan": 0,
+      "art": null
+    }
+  ]
+}

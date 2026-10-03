@@ -1,0 +1,142 @@
+{
+  "id": "pizz_snap_accent_suspense",
+  "name": "Snap Accent Suspense",
+  "category": "02_Strings_Pizzicato",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 95,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 37,
+      "start_qn": 0.0,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 49,
+      "start_qn": 1.5,
+      "dur_qn": 0.175,
+      "vel": 120,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 37,
+      "start_qn": 2.0,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 49,
+      "start_qn": 3.75,
+      "dur_qn": 0.175,
+      "vel": 120,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 37,
+      "start_qn": 4.0,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 5.5,
+      "dur_qn": 0.175,
+      "vel": 120,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 37,
+      "start_qn": 6.0,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 7.5,
+      "dur_qn": 0.35,
+      "vel": 120,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 35,
+      "start_qn": 8.0,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 47,
+      "start_qn": 9.5,
+      "dur_qn": 0.175,
+      "vel": 120,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 35,
+      "start_qn": 10.0,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 47,
+      "start_qn": 11.75,
+      "dur_qn": 0.175,
+      "vel": 120,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 32,
+      "start_qn": 12.0,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 44,
+      "start_qn": 13.5,
+      "dur_qn": 0.175,
+      "vel": 120,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 32,
+      "start_qn": 14.0,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 37,
+      "start_qn": 15.0,
+      "dur_qn": 0.7,
+      "vel": 85,
+      "chan": 0,
+      "art": "staccato"
+    }
+  ]
+}

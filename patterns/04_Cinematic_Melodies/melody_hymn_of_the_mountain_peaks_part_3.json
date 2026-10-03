@@ -1,0 +1,206 @@
+{
+  "id": "melody_hymn_of_the_mountain_peaks_part_3",
+  "name": "Theme Hymn of the Mountain Peaks Part 3",
+  "category": "04_Cinematic_Melodies",
+  "bars": 8,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 74,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 60,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 2.0,
+      "dur_qn": 1.5,
+      "vel": 104,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 3.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 6.0,
+      "dur_qn": 1.5,
+      "vel": 104,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 7.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 8.0,
+      "dur_qn": 2.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 10.0,
+      "dur_qn": 1.5,
+      "vel": 104,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 11.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 12.0,
+      "dur_qn": 2.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 14.0,
+      "dur_qn": 1.5,
+      "vel": 104,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 15.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 16.0,
+      "dur_qn": 2.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 78,
+      "start_qn": 18.0,
+      "dur_qn": 1.5,
+      "vel": 104,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 19.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 20.0,
+      "dur_qn": 2.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 66,
+      "start_qn": 22.0,
+      "dur_qn": 1.5,
+      "vel": 104,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 23.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 24.0,
+      "dur_qn": 2.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 26.0,
+      "dur_qn": 1.5,
+      "vel": 104,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 27.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 28.0,
+      "dur_qn": 2.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 30.0,
+      "dur_qn": 1.5,
+      "vel": 104,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 31.5,
+      "dur_qn": 0.5,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    }
+  ]
+}

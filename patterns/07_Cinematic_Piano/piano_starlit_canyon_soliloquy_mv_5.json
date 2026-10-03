@@ -1,0 +1,334 @@
+{
+  "id": "piano_starlit_canyon_soliloquy_mv_5",
+  "name": "Piano Starlit Canyon Soliloquy Movement 5",
+  "category": "07_Cinematic_Piano",
+  "bars": 8,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 62,
+  "clef": "grand",
+  "notes": [
+    {
+      "pitch": 36,
+      "start_qn": 0.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 0.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 0.5,
+      "dur_qn": 3.5,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 1.0,
+      "dur_qn": 3.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 4.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 4.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 4.5,
+      "dur_qn": 3.5,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 5.0,
+      "dur_qn": 3.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 8.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 8.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 8.5,
+      "dur_qn": 3.5,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 81,
+      "start_qn": 9.0,
+      "dur_qn": 3.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 83,
+      "start_qn": 10.0,
+      "dur_qn": 2.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 34,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 12.5,
+      "dur_qn": 3.5,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 84,
+      "start_qn": 13.0,
+      "dur_qn": 3.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 86,
+      "start_qn": 14.0,
+      "dur_qn": 2.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 16.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 16.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 16.5,
+      "dur_qn": 3.5,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 17.0,
+      "dur_qn": 3.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 78,
+      "start_qn": 18.0,
+      "dur_qn": 2.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 20.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 20.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 20.5,
+      "dur_qn": 3.5,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 21.0,
+      "dur_qn": 3.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 81,
+      "start_qn": 22.0,
+      "dur_qn": 2.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 24.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 24.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 24.5,
+      "dur_qn": 3.5,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 25.0,
+      "dur_qn": 3.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 76,
+      "start_qn": 26.0,
+      "dur_qn": 2.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 39,
+      "start_qn": 28.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 28.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 28.5,
+      "dur_qn": 3.5,
+      "vel": 82,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 29.0,
+      "dur_qn": 3.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 30.0,
+      "dur_qn": 2.0,
+      "vel": 92,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

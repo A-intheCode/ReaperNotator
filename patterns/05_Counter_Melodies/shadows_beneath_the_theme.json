@@ -1,0 +1,142 @@
+{
+  "id": "shadows_beneath_the_theme",
+  "name": "Shadows Beneath the Theme",
+  "category": "05_Counter_Melodies",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 76,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 60,
+      "start_qn": 0.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 1.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 2.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 3.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 4.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 66,
+      "start_qn": 5.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 6.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 7.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 8.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 9.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 10.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 11.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 12.0,
+      "dur_qn": 1.0,
+      "vel": 90,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 13.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 14.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 15.5,
+      "dur_qn": 0.5,
+      "vel": 86,
+      "voice": 1,
+      "art": "normal"
+    }
+  ]
+}

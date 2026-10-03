@@ -1,0 +1,22 @@
+# Private notes and internal planning
+TODO
+scratch/
+
+# Python cache & temporary files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Editor and IDE configurations
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+.agents/
+
+# Operating system files
+.DS_Store
+Thumbs.db
+ehthumbs.db
+desktop.ini
+*.bak

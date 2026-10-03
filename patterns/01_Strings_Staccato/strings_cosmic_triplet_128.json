@@ -1,0 +1,398 @@
+{
+  "id": "strings_cosmic_triplet_128",
+  "name": "Cosmic Triplet Ostinato 12/8",
+  "category": "01_Strings_Staccato",
+  "bars": 4,
+  "time_sig": {
+    "num": 12,
+    "denom": 8
+  },
+  "tempo_hint": 126,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 45,
+      "start_qn": 0.0,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 0.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 1.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 1.5,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 2.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 2.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 3.0,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 3.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 4.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 4.5,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 5.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 5.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 6.0,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 6.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 7.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 7.5,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 8.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 8.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 9.0,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 9.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 10.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 10.5,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 11.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 11.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 12.0,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 12.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 13.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 13.5,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 14.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 14.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 15.0,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 15.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 16.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 16.5,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 17.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 17.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 40,
+      "start_qn": 18.0,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 18.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 19.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 40,
+      "start_qn": 19.5,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 20.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 20.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 40,
+      "start_qn": 21.0,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 21.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 22.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 40,
+      "start_qn": 22.5,
+      "dur_qn": 0.42,
+      "vel": 105,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 64,
+      "start_qn": 23.0,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 23.5,
+      "dur_qn": 0.42,
+      "vel": 88,
+      "chan": 0,
+      "art": "staccato"
+    }
+  ]
+}

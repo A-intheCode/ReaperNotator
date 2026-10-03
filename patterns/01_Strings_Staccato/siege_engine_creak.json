@@ -1,0 +1,206 @@
+{
+  "id": "siege_engine_creak",
+  "name": "Siege Engine Creak",
+  "category": "01_Strings_Staccato",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 114,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 43,
+      "start_qn": 0.0,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 0.75,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 1.5,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 2.0,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 2.75,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 3.25,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 4.0,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 4.75,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 5.5,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 6.0,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 6.75,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 7.25,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 8.0,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 8.75,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 9.5,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 10.0,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 10.75,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 11.25,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 12.0,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 12.75,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 13.5,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 14.0,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 14.75,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 15.25,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    }
+  ]
+}

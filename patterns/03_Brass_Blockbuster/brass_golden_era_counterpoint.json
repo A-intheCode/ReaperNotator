@@ -1,0 +1,102 @@
+{
+  "id": "brass_golden_era_counterpoint",
+  "name": "Golden Era Brass Counterpoint",
+  "category": "03_Brass_Blockbuster",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 84,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 58,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 100,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 62,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 60,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 98,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 63,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 102,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 62,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 65,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 112,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 60,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 95,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 63,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 98,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 58,
+      "start_qn": 8.0,
+      "dur_qn": 4.0,
+      "vel": 110,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 62,
+      "start_qn": 8.0,
+      "dur_qn": 4.0,
+      "vel": 115,
+      "chan": 0,
+      "art": null
+    },
+    {
+      "pitch": 58,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 105,
+      "chan": 0,
+      "art": null
+    }
+  ]
+}

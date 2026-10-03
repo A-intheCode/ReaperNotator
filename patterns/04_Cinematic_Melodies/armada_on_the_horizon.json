@@ -1,0 +1,142 @@
+{
+  "id": "armada_on_the_horizon",
+  "name": "Armada on the Horizon",
+  "category": "04_Cinematic_Melodies",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 88,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 70,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 1.5,
+      "dur_qn": 0.5,
+      "vel": 85,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 2.0,
+      "dur_qn": 1.0,
+      "vel": 96,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 3.0,
+      "dur_qn": 1.0,
+      "vel": 104,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 82,
+      "start_qn": 4.0,
+      "dur_qn": 2.5,
+      "vel": 112,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 80,
+      "start_qn": 6.5,
+      "dur_qn": 0.5,
+      "vel": 95,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 78,
+      "start_qn": 7.0,
+      "dur_qn": 1.0,
+      "vel": 100,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 77,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 102,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 73,
+      "start_qn": 9.5,
+      "dur_qn": 0.5,
+      "vel": 90,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 10.0,
+      "dur_qn": 1.0,
+      "vel": 94,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 11.0,
+      "dur_qn": 1.0,
+      "vel": 88,
+      "voice": 1,
+      "art": "normal"
+    },
+    {
+      "pitch": 70,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 95,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 0.0,
+      "dur_qn": 4.0,
+      "vel": 82,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 56,
+      "start_qn": 4.0,
+      "dur_qn": 4.0,
+      "vel": 86,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 54,
+      "start_qn": 8.0,
+      "dur_qn": 4.0,
+      "vel": 85,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 12.0,
+      "dur_qn": 4.0,
+      "vel": 88,
+      "voice": 2,
+      "art": "tenuto"
+    }
+  ]
+}

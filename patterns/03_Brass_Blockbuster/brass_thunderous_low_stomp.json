@@ -1,0 +1,174 @@
+{
+  "id": "brass_thunderous_low_stomp",
+  "name": "Thunderous Low Brass Stomp",
+  "category": "03_Brass_Blockbuster",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 125,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 38,
+      "start_qn": 0.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 0.5,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 1.5,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 3.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 4.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 4.5,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 5.5,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 7.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 34,
+      "start_qn": 8.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 34,
+      "start_qn": 8.5,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 9.5,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 34,
+      "start_qn": 10.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 11.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 12.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 12.5,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 40,
+      "start_qn": 13.5,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 14.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.0,
+      "dur_qn": 0.35,
+      "vel": 125,
+      "chan": 0,
+      "art": "accent"
+    }
+  ]
+}

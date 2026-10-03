@@ -1,0 +1,270 @@
+{
+  "id": "brass_imperial_horn_choral_version_8",
+  "name": "Epic Brass Imperial Horn Choral Version 8",
+  "category": "03_Brass_Blockbuster",
+  "bars": 8,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 76,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 58,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 0.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 2.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 4.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 6.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 8.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 8.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 10.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 10.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 12.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 12.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 14.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 14.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 16.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 16.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 58,
+      "start_qn": 18.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 46,
+      "start_qn": 18.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 20.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 20.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 22.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 22.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 24.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 51,
+      "start_qn": 24.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 26.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 53,
+      "start_qn": 26.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 28.0,
+      "dur_qn": 2.0,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 55,
+      "start_qn": 28.0,
+      "dur_qn": 2.0,
+      "vel": 105,
+      "voice": 2,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 69,
+      "start_qn": 30.0,
+      "dur_qn": 2.0,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 30.0,
+      "dur_qn": 2.0,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    }
+  ]
+}
