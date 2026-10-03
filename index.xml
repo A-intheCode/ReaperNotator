@@ -20,6 +20,7 @@
         <source file="README.md">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/README.md</source>
         <source file="modules/constants.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/constants.lua</source>
         <source file="modules/state.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/state.lua</source>
+        <source file="modules/version.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/version.lua</source>
         <source file="modules/classes/chord_item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/chord_item.lua</source>
         <source file="modules/classes/dynamic.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/dynamic.lua</source>
         <source file="modules/classes/dynamic_text.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/dynamic_text.lua</source>

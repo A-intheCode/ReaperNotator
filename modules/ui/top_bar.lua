@@ -38,8 +38,12 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     timesig_denom = (timesig_denom and timesig_denom > 0) and timesig_denom or 4
     bpm = (bpm and bpm > 0) and bpm or 120
     
-    -- Title
+    -- Title & Version
+    reaper.ImGui_BeginGroup(ctx)
     reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "REAPER Notator")
+    local ver_str = state.version or "v1.0.0"
+    reaper.ImGui_TextDisabled(ctx, ver_str)
+    reaper.ImGui_EndGroup(ctx)
     reaper.ImGui_SameLine(ctx, 0, 14)
     
     -- Transport buttons

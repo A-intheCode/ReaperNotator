@@ -4,10 +4,12 @@
 -- ==============================================================================
 
 local State = {}
+local Constants = package.loaded["constants"] or require("constants")
 
 function State.new()
     local self = {
         is_open = true,
+        version = Constants.VERSION_DISPLAY or "v1.0.0",
         view_mode = "auto",       -- "auto", "treble", "bass", "grand"
         zoom = 1.0,              -- 0.6 to 2.0
         scroll_factor = 3.0,

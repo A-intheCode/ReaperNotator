@@ -5,6 +5,10 @@
 
 local Constants = {}
 
+local Version = package.loaded["version"] or require("version")
+Constants.VERSION = Version.SEMVER
+Constants.VERSION_DISPLAY = Version.get_display_string()
+
 -- SMuFL (Standard Music Font Layout) character mapping for authentic music engraving
 Constants.SMUFL = {
     -- Clefs
