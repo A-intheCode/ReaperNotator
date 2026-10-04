@@ -358,13 +358,18 @@ local function split_notes_into_monophonic_voices(notes, base_voice_offset)
 end
 
 local function emit_note_notations(emit, cn, trk_clef)
-    local has_tied = cn.tie_start or cn.tie_stop
     local art = cn.articulation and tostring(cn.articulation):lower()
+    local is_arp = cn.arpeggio or (art and (art == "arpeggio" or art:find("arpegg")))
+    local has_tied = cn.tie_start or cn.tie_stop
     local has_art = art and art ~= "" and art ~= "none"
 
-    if not has_tied and not has_art then return end
+    if not has_tied and not has_art and not is_arp then return end
 
     emit('        <notations>\n')
+    if is_arp then
+        local arp_dir = (cn.arpeggio == "down" or (art and art:find("down"))) and "down" or "up"
+        emit('          <arpeggiate direction="%s"/>\n', arp_dir)
+    end
     if cn.tie_stop then emit('          <tied type="stop"/>\n') end
     if cn.tie_start then
         local p = cn.pitch or 60
@@ -895,6 +900,44 @@ function MusicXmlExportService.export_project(state, options)
                             emit('        <offset>%d</offset>\n', offset_div)
                         end
                         emit('        <sound tempo="%d"/>\n', tp.bpm)
+                        emit('      </direction>\n')
+                    end
+                end
+            end
+
+            -- ------------------------------------------------------------------
+            -- Rehearsal Marks & Navigation (<rehearsal>, <segno>, <coda>, D.C./D.S.)
+            -- ------------------------------------------------------------------
+            if pi == 1 and state.rehearsal_marks then
+                for _, rm in ipairs(state.rehearsal_marks) do
+                    if rm.measure == m - 1 then
+                        emit('      <direction placement="above">\n')
+                        emit('        <direction-type>\n')
+                        if rm.type == "letter" or rm.type == "number" or rm.type == "custom" then
+                            emit('          <rehearsal>%s</rehearsal>\n', xml_escape(rm.label or "A"))
+                            emit('        </direction-type>\n')
+                        elseif rm.type == "segno" then
+                            emit('          <segno/>\n')
+                            emit('        </direction-type>\n')
+                        elseif rm.type == "coda" then
+                            emit('          <coda/>\n')
+                            emit('        </direction-type>\n')
+                        elseif rm.type == "dc" or rm.type == "dc_al_fine" then
+                            emit('          <words font-weight="bold">%s</words>\n', xml_escape(rm.label or "D.C."))
+                            emit('        </direction-type>\n')
+                            emit('        <sound dacapo="yes"/>\n')
+                        elseif rm.type == "ds" or rm.type == "ds_al_coda" then
+                            emit('          <words font-weight="bold">%s</words>\n', xml_escape(rm.label or "D.S."))
+                            emit('        </direction-type>\n')
+                            emit('        <sound dalsegno="yes"/>\n')
+                        elseif rm.type == "fine" then
+                            emit('          <words font-weight="bold">Fine</words>\n')
+                            emit('        </direction-type>\n')
+                            emit('        <sound fine="yes"/>\n')
+                        else
+                            emit('          <rehearsal>%s</rehearsal>\n', xml_escape(rm.label or "A"))
+                            emit('        </direction-type>\n')
+                        end
                         emit('      </direction>\n')
                     end
                 end

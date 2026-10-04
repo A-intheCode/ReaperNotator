@@ -33,6 +33,7 @@ function State.new()
         show_tempo_layer = true,       -- Show tempo markers
         show_octaves_layer = true,     -- Show octave lines (8va/8vb)
         show_tuplets_layer = true,     -- Show tuplets / triplets (3, 5, etc.)
+        show_rehearsal_lane = true,    -- Show rehearsal marks lane [A], [B]...
         show_key_signatures = false,   -- Show key signature accidentals on staff
         key_signature = 0,             -- Key signature index (-7 to +7, 0 = C major / A minor)
         key_signature_mode = "major",  -- "major" | "minor"
@@ -100,6 +101,20 @@ function State.new()
         selected_pedals = {},
         selected_text_items = {},
         selected_octave_lines = {},
+        
+        -- Rehearsal marks & Navigation
+        rehearsal_marks = {},
+        selected_rehearsal_mark = nil,
+        hovered_rehearsal_mark = nil,
+        context_rehearsal_mark = nil,
+        context_rehearsal_measure = 0,
+
+        -- Score-wide Fermatas
+        fermatas = {},
+        selected_fermata = nil,
+        hovered_fermata = nil,
+        context_fermata = nil,
+
         selection_bounds = nil,
         selection_is_to_end = false,
         selection_filter = {

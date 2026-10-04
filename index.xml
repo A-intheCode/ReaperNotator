@@ -6,8 +6,14 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.3.8" author="A-intheCode" time="2026-10-03T22:04:28Z">
+      <version name="1.4.0" author="A-intheCode" time="2026-10-04T13:30:00Z">
         <changelog><![CDATA[
++ v1.4.0: Major notation & engraving features:
+          - Score-wide vertical Fermatas (standard, short, long, very long) with tempomap slowdown dip & dual-persistence
+          - Dynamic Rehearsal Marks ([A], [B]...) with auto-sequencing, between Chord lane & bar numbers, and navigation marks (D.C., D.S., Segno, Coda, Fine)
+          - Arpeggiated chords (wavy line engraving & non-destructive micro-strumming playback offset)
+          - Full MusicXML 4.0 lossless import and export integration for fermatas, rehearsal marks, navigation, and arpeggios
+          - Removed Print PDF button from bottom bar while preserving internal exporter
 + v1.3.8: Remove patterns.zip from package manifest; strictly on-demand in-app download
 + v1.3.7: In-App 1-Click Pattern Downloader, 150 Ancient Greek & Roman Harp Patterns, patterns.zip packaging for ReaPack
 + v1.3.6: Fix crash in sidebar.lua when track pointer is invalid or deleted (MediaTrack expected in GetTrackGUID)
@@ -41,11 +47,13 @@
         <source file="modules/classes/chord_item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/chord_item.lua</source>
         <source file="modules/classes/dynamic.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/dynamic.lua</source>
         <source file="modules/classes/dynamic_text.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/dynamic_text.lua</source>
+        <source file="modules/classes/fermata.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/fermata.lua</source>
         <source file="modules/classes/hairpin.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/hairpin.lua</source>
         <source file="modules/classes/item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/item.lua</source>
         <source file="modules/classes/note.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/note.lua</source>
         <source file="modules/classes/octave_line.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/octave_line.lua</source>
         <source file="modules/classes/pedal_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/pedal_mark.lua</source>
+        <source file="modules/classes/rehearsal_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/rehearsal_mark.lua</source>
         <source file="modules/classes/tempo_marker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/tempo_marker.lua</source>
         <source file="modules/classes/text_item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/text_item.lua</source>
         <source file="modules/classes/track.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/track.lua</source>
@@ -62,6 +70,7 @@
         <source file="modules/services/clipboard_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/clipboard_service.lua</source>
         <source file="modules/services/dynamic_text_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/dynamic_text_service.lua</source>
         <source file="modules/services/dynamics_engine.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/dynamics_engine.lua</source>
+        <source file="modules/services/fermata_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/fermata_service.lua</source>
         <source file="modules/services/hairpin_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/hairpin_service.lua</source>
         <source file="modules/services/json_helper.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/json_helper.lua</source>
         <source file="modules/services/key_signature_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/key_signature_service.lua</source>
@@ -75,6 +84,7 @@
         <source file="modules/services/pedal_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/pedal_service.lua</source>
         <source file="modules/services/print_settings_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/print_settings_service.lua</source>
         <source file="modules/services/reaticulate_parser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/reaticulate_parser.lua</source>
+        <source file="modules/services/rehearsal_mark_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/rehearsal_mark_service.lua</source>
         <source file="modules/services/repeat_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/repeat_service.lua</source>
         <source file="modules/services/scale_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/scale_service.lua</source>
         <source file="modules/services/selection_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/selection_service.lua</source>

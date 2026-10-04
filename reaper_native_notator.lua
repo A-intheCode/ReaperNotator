@@ -1,7 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.3.8
+-- @version 1.4.0
 -- @changelog
+--   + v1.4.0: Major notation & engraving features:
+--             - Score-wide vertical Fermatas (standard, short, long, very long) with tempomap slowdown dip & dual-persistence
+--             - Dynamic Rehearsal Marks ([A], [B]...) with auto-sequencing, between Chord lane & bar numbers, and navigation marks (D.C., D.S., Segno, Coda, Fine)
+--             - Arpeggiated chords (wavy line engraving & non-destructive micro-strumming playback offset)
+--             - Full MusicXML 4.0 lossless import and export integration for fermatas, rehearsal marks, navigation, and arpeggios
+--             - Removed Print PDF button from bottom bar while preserving internal exporter
+--   + v1.3.8: Dual-persistence and maintenance updates
 --   + v1.3.6: Fix crash in sidebar.lua when track pointer is invalid or deleted (MediaTrack expected in GetTrackGUID)
 --   + v1.3.5: Beam rendering performance & Phase 2 optimizations:
 --             - Cleaned up beam rendering: eliminated redundant outline strokes (AddQuad) on filled quads, halving C-API beam calls and cutting CPU vertex calculation by 60%
@@ -125,6 +132,8 @@ local DynamicTextService  = require("services.dynamic_text_service")
 local PedalService        = require("services.pedal_service")
 local TextItemService     = require("services.text_item_service")
 local RepeatService       = require("services.repeat_service")
+local FermataService      = require("services.fermata_service")
+local RehearsalMarkService= require("services.rehearsal_mark_service")
 local AudioPreview        = require("services.audio_preview")
 local PatternService      = require("services.pattern_service")
 local PatternBrowser      = require("ui.pattern_browser")
@@ -146,6 +155,8 @@ DynamicTextService.load_dynamic_texts(state)
 PedalService.load_pedals(state)
 TextItemService.load_text_items(state)
 RepeatService.load_repeat_marks(state)
+FermataService.load_fermatas(state)
+RehearsalMarkService.load_marks(state)
 ScaleService.load_chord_items(state)
 PrintSettingsService.load_settings(state)
 KeySignatureService.load(state)
@@ -163,6 +174,8 @@ reaper.atexit(function()
     PedalService.save_pedals(state)
     TextItemService.save_text_items(state)
     RepeatService.save_repeat_marks(state)
+    FermataService.save_fermatas(state)
+    RehearsalMarkService.save_marks(state)
     ScaleService.save_chord_items(state)
     PrintSettingsService.save_settings(state)
     KeySignatureService.save(state)
@@ -191,6 +204,8 @@ local function loop()
         PedalService.load_pedals(state)
         TextItemService.load_text_items(state)
         RepeatService.load_repeat_marks(state)
+        FermataService.load_fermatas(state)
+        RehearsalMarkService.load_marks(state)
         ScaleService.load_chord_items(state)
         PrintSettingsService.load_settings(state)
         MidiService.cleanup_orphaned_score_elements(state)

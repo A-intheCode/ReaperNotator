@@ -1967,6 +1967,132 @@ function Engraver.draw_articulation(draw_list, art_id, x, y, s, col, font_music,
         reaper.ImGui_DrawList_AddLine(draw_list, x - 5.5*s, y - 3.5*s, x + 5.5*s, y, art_col, 1.8 * s)
         reaper.ImGui_DrawList_AddLine(draw_list, x - 5.5*s, y + 3.5*s, x + 5.5*s, y, art_col, 1.8 * s)
         return
+    elseif art_id == "fermata" then
+        Engraver.draw_fermata(draw_list, x, y, s, art_col, font_music, not is_above, "standard")
+        return
+    end
+end
+
+function Engraver.draw_fermata(draw_list, x, y, s, col, font_music, is_below, ferm_type)
+    local f_col = col or Constants.COLORS.notehead_black or 0x111111FF
+    local font_sz = math.floor(38 * s + 0.5)
+    local glyph = nil
+    if ferm_type == "short" then
+        glyph = is_below and SMUFL.fermataShortBelow or SMUFL.fermataShortAbove
+    elseif ferm_type == "long" then
+        glyph = is_below and SMUFL.fermataLongBelow or SMUFL.fermataLongAbove
+    elseif ferm_type == "very_long" then
+        glyph = is_below and SMUFL.fermataVeryLongBelow or SMUFL.fermataVeryLongAbove
+    else
+        glyph = is_below and SMUFL.fermataBelow or SMUFL.fermataAbove
+    end
+
+    if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") and glyph then
+        local pos_x = x - (11 * s)
+        local pos_y = is_below and (y - 5 * s) or (y - (font_sz * 0.72))
+        local ok = pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_music, font_sz, pos_x, pos_y, f_col, glyph)
+        if ok then return end
+    end
+
+    -- Vector fallback: Arc + Dot
+    local r = 8.0 * s
+    local dot_r = 2.2 * s
+    if is_below then
+        reaper.ImGui_DrawList_PathClear(draw_list)
+        reaper.ImGui_DrawList_PathArcTo(draw_list, x, y - 2*s, r, 0, math.pi)
+        reaper.ImGui_DrawList_PathStroke(draw_list, f_col, 0, 2.0 * s)
+        reaper.ImGui_DrawList_AddCircleFilled(draw_list, x, y + 2*s, dot_r, f_col)
+    else
+        reaper.ImGui_DrawList_PathClear(draw_list)
+        reaper.ImGui_DrawList_PathArcTo(draw_list, x, y + 2*s, r, math.pi, 2 * math.pi)
+        reaper.ImGui_DrawList_PathStroke(draw_list, f_col, 0, 2.0 * s)
+        reaper.ImGui_DrawList_AddCircleFilled(draw_list, x, y - 2*s, dot_r, f_col)
+    end
+end
+
+function Engraver.draw_rehearsal_mark(draw_list, x, y, s, label, is_selected, is_hovered, font_bold, m_type)
+    label = label or "A"
+    m_type = m_type or "letter"
+
+    local is_symbol = (m_type == "segno" or m_type == "coda")
+    local txt_len = #label
+    local box_w = math.max(26 * s, (txt_len * 11 * s) + 14 * s)
+    local box_h = 24 * s
+    local x0 = x - (box_w / 2)
+    local y0 = y - (box_h / 2)
+    local x1 = x0 + box_w
+    local y1 = y0 + box_h
+
+    local bg_col = Constants.COLORS.rehearsal_box_bg or 0x242832EE
+    local border_col = is_selected and (Constants.COLORS.selection_gold or 0xFF9F1CFF)
+                     or (is_hovered and 0xFFB300FF or (Constants.COLORS.rehearsal_border or 0xE67E22FF))
+    local text_col = is_selected and (Constants.COLORS.selection_gold or 0xFF9F1CFF)
+                   or (Constants.COLORS.rehearsal_text or 0xFFFFFFFF)
+
+    if is_symbol then
+        -- Draw symbol with prominent engraving size without surrounding box
+        if is_hovered or is_selected then
+            reaper.ImGui_DrawList_AddCircleFilled(draw_list, x, y, 16 * s, 0xFF9F1C33)
+        end
+        local f_sz = 26 * s
+        local tx = x - 8 * s
+        local ty = y - 13 * s
+        if font_bold and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+            pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_bold, f_sz, tx, ty, border_col, label)
+        else
+            reaper.ImGui_DrawList_AddText(draw_list, tx, ty, border_col, label)
+        end
+    else
+        -- Classical boxed rehearsal frame (Elaine Gould standard)
+        reaper.ImGui_DrawList_AddRectFilled(draw_list, x0, y0, x1, y1, bg_col, 4.0 * s)
+        reaper.ImGui_DrawList_AddRect(draw_list, x0, y0, x1, y1, border_col, 4.0 * s, 0, 2.0 * s)
+
+        local f_sz = 15 * s
+        local tx = x0 + (box_w - (txt_len * 8.5 * s)) / 2
+        local ty = y0 + (box_h - f_sz) / 2
+        if font_bold and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+            pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_bold, f_sz, tx, ty, text_col, label)
+        else
+            reaper.ImGui_DrawList_AddText(draw_list, tx, ty, text_col, label)
+        end
+    end
+end
+
+function Engraver.draw_arpeggio(draw_list, x, y_top, y_bottom, s, col, font_music, dir)
+    local arp_col = col or Constants.COLORS.notehead_black or 0x111111FF
+    local wave_h = 7.0 * s
+    local amp = 3.2 * s
+    local total_h = math.max(wave_h * 2, y_bottom - y_top + 6 * s)
+    local num_waves = math.max(2, math.floor(total_h / wave_h + 0.5))
+    local start_y = y_top - 3 * s
+
+    for i = 0, num_waves - 1 do
+        local cy = start_y + (i * wave_h)
+        local y_end = cy + wave_h
+        -- Smooth S-curve (cubic bezier)
+        reaper.ImGui_DrawList_AddBezierCubic(draw_list,
+            x, cy,
+            x - amp, cy + (wave_h * 0.25),
+            x + amp, cy + (wave_h * 0.75),
+            x, y_end,
+            arp_col, 1.8 * s)
+    end
+
+    -- Direction arrow if explicitly specified
+    if dir == "down" then
+        local arrow_y = start_y + (num_waves * wave_h)
+        reaper.ImGui_DrawList_AddTriangleFilled(draw_list,
+            x - 3.5 * s, arrow_y,
+            x + 3.5 * s, arrow_y,
+            x, arrow_y + 6.5 * s,
+            arp_col)
+    elseif dir == "up" then
+        local arrow_y = start_y
+        reaper.ImGui_DrawList_AddTriangleFilled(draw_list,
+            x - 3.5 * s, arrow_y,
+            x + 3.5 * s, arrow_y,
+            x, arrow_y - 6.5 * s,
+            arp_col)
     end
 end
 

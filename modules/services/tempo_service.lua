@@ -492,6 +492,38 @@ function TempoService.sync_all_to_reaper(state)
         end
     end
     
+    -- Incorporate score-wide fermata tempo dips (Playback hold)
+    if state.fermatas and #state.fermatas > 0 then
+        table.sort(target_points, function(a, b) return a.qn < b.qn end)
+        for _, ferm in ipairs(state.fermatas) do
+            if ferm.playback_mode ~= "visual_only" then
+                local base_bpm = 120
+                for _, pt in ipairs(target_points) do
+                    if pt.qn <= ferm.qn + 0.05 then
+                        base_bpm = pt.bpm or base_bpm
+                    else
+                        break
+                    end
+                end
+                local hold_fac = ferm.hold_factor or 1.5
+                local ferm_bpm = math.max(15, math.floor((base_bpm / hold_fac) + 0.5))
+                local ferm_end_qn = ferm.qn + 1.0
+                table.insert(target_points, {
+                    qn         = ferm.qn,
+                    bpm        = ferm_bpm,
+                    linear     = false,
+                    is_fermata = true
+                })
+                table.insert(target_points, {
+                    qn                 = ferm_end_qn,
+                    bpm                = base_bpm,
+                    linear             = false,
+                    is_fermata_restore = true
+                })
+            end
+        end
+    end
+
     -- Sort chronologically
     table.sort(target_points, function(a, b)
         return a.qn < b.qn

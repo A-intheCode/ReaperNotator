@@ -84,6 +84,27 @@ Constants.SMUFL = {
     marcato           = utf8.char(0xE4AC), -- Marcato ^
     harmonic          = utf8.char(0xE614), -- Flageolet / Harmonic circle (SMuFL stringsHarmonic)
     
+    -- Fermatas (SMuFL U+E4C0 ff.)
+    fermataAbove          = utf8.char(0xE4C0), -- Standard fermata above 𝄐
+    fermataBelow          = utf8.char(0xE4C1), -- Inverted fermata below
+    fermataShortAbove     = utf8.char(0xE4C4), -- Short (triangular) fermata above
+    fermataShortBelow     = utf8.char(0xE4C5), -- Short fermata below
+    fermataLongAbove      = utf8.char(0xE4C6), -- Long (square) fermata above
+    fermataLongBelow      = utf8.char(0xE4C7), -- Long fermata below
+    fermataVeryLongAbove  = utf8.char(0xE4C8), -- Very long fermata above
+    fermataVeryLongBelow  = utf8.char(0xE4C9), -- Very long fermata below
+    
+    -- Navigation & Repeats (SMuFL U+E040 ff.)
+    segno                 = utf8.char(0xE047), -- Segno sign 𝄋
+    coda                  = utf8.char(0xE048), -- Coda sign 𝄌
+    codaSquare            = utf8.char(0xE049),
+    daCapo                = utf8.char(0xE046),
+    
+    -- Arpeggio / Arpeggiato (SMuFL U+E63C ff.)
+    arpeggiatoUp          = utf8.char(0xE63C), -- Arpeggio wavy line (upward)
+    arpeggiatoDown        = utf8.char(0xE63D), -- Arpeggio wavy line with arrow down
+    arpeggiato            = utf8.char(0xE63C), -- Standard arpeggiato
+    
     -- Time signature digits (SMuFL U+E080 ff.)
     timeSig0          = utf8.char(0xE080),
     timeSig1          = utf8.char(0xE081),
@@ -218,7 +239,11 @@ Constants.COLORS = {
     text_dark        = 0x1A1A1AFF,
     text_muted       = 0x777777FF,
     beam_color       = 0x111111FF,
-    art_text         = 0x1A1A1AFF
+    art_text         = 0x1A1A1AFF,
+    rehearsal_box_bg = 0x242832EE,
+    rehearsal_border = 0xE67E22FF,
+    rehearsal_text   = 0xFFFFFFFF,
+    fermata_col      = 0x111111FF
 }
 
 -- 16 Voices color palette (MIDI note channels 1 to 16)

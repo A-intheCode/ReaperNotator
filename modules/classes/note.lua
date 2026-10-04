@@ -20,6 +20,7 @@ function MidiNote.new(data)
     self.track        = data.track
     self.articulation = data.articulation
     self.stem_dir     = data.stem_dir
+    self.arpeggio     = data.arpeggio
     self.key          = self:get_key()
     return self
 end

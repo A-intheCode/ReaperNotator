@@ -677,4 +677,147 @@ function CanvasDecorations.draw_chord_scale_lane(ctx, draw_list, state, fonts, s
     end
 end
 
+-- ==============================================================================
+-- 4. REHEARSAL MARKS & NAVIGATION LANE (Placed between Chord Track & Bar Numbers)
+-- ==============================================================================
+function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, canvas_p0_x, canvas_p0_y, staff_end_x, margin_left, system_start_x, hdr_x0, hdr_x1, qn_per_measure, measure_map, cull_min_x, cull_max_x, is_hovered, mouse_x, mouse_y, hov)
+    local rm_hovered_this_frame = nil
+
+    if (state.show_rehearsal_lane ~= false) then
+        local chord_h = (state.show_chord_lane ~= false) and (42 * s) or 0
+        local lane_y0 = canvas_p0_y + 40 * s + chord_h
+        local lane_h = 28 * s
+        local lane_y1 = lane_y0 + lane_h
+        local lane_mid_y = lane_y0 + (lane_h / 2)
+
+        local line_x0 = math.max(system_start_x, cull_min_x)
+        local line_x1 = math.min(staff_end_x, cull_max_x)
+        if line_x0 < line_x1 then
+            -- Subtle lane separator line
+            reaper.ImGui_DrawList_AddLine(draw_list, line_x0, lane_y1, line_x1, lane_y1, 0x5BC0DE22, 1.0 * s)
+        end
+
+        -- Header badge on sticky left header
+        local badge_x0 = hdr_x0 or canvas_p0_x
+        local badge_x1 = hdr_x1 or (canvas_p0_x + 60 * s)
+        local is_badge_hov = is_hovered and (mouse_x >= badge_x0 and mouse_x <= badge_x1 and mouse_y >= lane_y0 and mouse_y <= lane_y1)
+        local badge_bg = is_badge_hov and 0x34495ECC or 0x242730DD
+        local badge_bdr = is_badge_hov and 0xE67E22FF or 0xE67E2266
+        reaper.ImGui_DrawList_AddRectFilled(draw_list, badge_x0, lane_y0 + 1 * s, badge_x1, lane_y1 - 1 * s, badge_bg, 3.0)
+        reaper.ImGui_DrawList_AddRect(draw_list, badge_x0, lane_y0 + 1 * s, badge_x1, lane_y1 - 1 * s, badge_bdr, 3.0, 0, 1.0 * s)
+        reaper.ImGui_DrawList_AddText(draw_list, badge_x0 + 6 * s, lane_mid_y - 6 * s, 0xE67E22FF, "🔖 MARKS")
+
+        if is_badge_hov then
+            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+            reaper.ImGui_SetTooltip(ctx, "Rehearsal & Navigation Marks\nDouble-click in lane to add mark [A], [B]...\nRight-click for options")
+            if reaper.ImGui_IsMouseClicked(ctx, 1) then
+                state.context_rehearsal_measure = 0
+                reaper.ImGui_OpenPopup(ctx, "rehearsal_lane_context_popup")
+            end
+        end
+
+        -- Double click in lane to create rehearsal mark
+        local in_lane = is_hovered and (mouse_x >= system_start_x and mouse_x <= staff_end_x and mouse_y >= lane_y0 and mouse_y <= lane_y1)
+        if in_lane and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) and not state.hovered_rehearsal_mark then
+            local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, 1.0, measure_map)
+            local target_m = math.floor(target_qn / qn_per_measure)
+            local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+            RehearsalMarkService.add_mark(state, target_m, "letter")
+        end
+        if in_lane and reaper.ImGui_IsMouseClicked(ctx, 1) and not state.hovered_rehearsal_mark then
+            local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, 1.0, measure_map)
+            state.context_rehearsal_measure = math.floor(target_qn / qn_per_measure)
+            reaper.ImGui_OpenPopup(ctx, "rehearsal_lane_context_popup")
+        end
+
+        -- Render rehearsal marks
+        local font_bold = fonts and fonts.bold
+        for _, rm in ipairs(state.rehearsal_marks or {}) do
+            local rx = Engraver.cursor_qn_to_canvas_x(rm.qn, margin_left, s, qn_per_measure, measure_map)
+            if rx >= cull_min_x - 40 * s and rx <= cull_max_x + 40 * s then
+                local is_selected = (state.selected_rehearsal_mark and state.selected_rehearsal_mark.id == rm.id)
+                local is_mark_hov = is_hovered and (math.abs(mouse_x - rx) <= 16 * s and math.abs(mouse_y - lane_mid_y) <= 12 * s)
+
+                if is_mark_hov then
+                    rm_hovered_this_frame = rm
+                    reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+                    reaper.ImGui_SetTooltip(ctx, string.format("Rehearsal Mark: %s (Bar %d)\nRight-click to change type or delete", rm.label, rm.measure + 1))
+
+                    if reaper.ImGui_IsMouseClicked(ctx, 0) then
+                        state.selected_rehearsal_mark = rm
+                    end
+                    if reaper.ImGui_IsMouseClicked(ctx, 1) then
+                        state.context_rehearsal_mark = rm
+                        reaper.ImGui_OpenPopup(ctx, "rehearsal_mark_item_context_popup")
+                    end
+                end
+
+                Engraver.draw_rehearsal_mark(draw_list, rx, lane_mid_y, s, rm.label, is_selected, is_mark_hov, font_bold, rm.type)
+            end
+        end
+    end
+
+    state.hovered_rehearsal_mark = rm_hovered_this_frame
+    if hov then hov.rehearsal_mark = rm_hovered_this_frame end
+end
+
+-- ==============================================================================
+-- 5. SCORE-WIDE VERTICAL FERMATAS
+-- ==============================================================================
+function CanvasDecorations.draw_fermatas(ctx, draw_list, state, fonts, active_tracks_data, s, margin_left, qn_per_measure, measure_map, cull_min_x, cull_max_x, is_hovered, mouse_x, mouse_y, hov)
+    local ferm_hovered_this_frame = nil
+
+    if (state.show_articulations_layer ~= false) and state.fermatas and #state.fermatas > 0 then
+        local font_music = fonts and fonts.music
+        local ferm_col = state.invert_mode and 0xEEEEEEFF or (Constants.COLORS.fermata_col or 0x111111FF)
+
+        for _, ferm in ipairs(state.fermatas) do
+            local fx = Engraver.cursor_qn_to_canvas_x(ferm.qn, margin_left, s, qn_per_measure, measure_map)
+            if fx >= cull_min_x - 30 * s and fx <= cull_max_x + 30 * s then
+                local is_selected = (state.selected_fermata and state.selected_fermata.id == ferm.id)
+
+                -- Draw vertically across each active visible track
+                local top_fermata_y = nil
+                for t_idx, tdata in ipairs(active_tracks_data) do
+                    if tdata.is_visible_vertically and tdata.staff_top_y then
+                        local fy = tdata.staff_top_y - 12 * s
+                        if not top_fermata_y then top_fermata_y = fy end
+
+                        local col = is_selected and (Constants.COLORS.selection_gold or 0xFF9F1CFF) or ferm_col
+                        Engraver.draw_fermata(draw_list, fx, fy, s, col, font_music, false, ferm.type)
+
+                        if tdata.is_grand and tdata.bass_bottom_y then
+                            local fy_bass = tdata.bass_bottom_y + 14 * s
+                            Engraver.draw_fermata(draw_list, fx, fy_bass, s, col, font_music, true, ferm.type)
+                        end
+                    end
+                end
+
+                -- Top-most handle & hover zone
+                if top_fermata_y then
+                    local is_hov = is_hovered and (math.abs(mouse_x - fx) <= 14 * s and math.abs(mouse_y - top_fermata_y) <= 14 * s)
+                    if is_hov then
+                        ferm_hovered_this_frame = ferm
+                        reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+                        reaper.ImGui_DrawList_AddCircle(draw_list, fx, top_fermata_y, 14 * s, Constants.COLORS.selection_gold, 0, 1.8 * s)
+                        local pb_mode = (ferm.playback_mode == "visual_only") and "Visual only" or string.format("Tempomap dip (%.1fx hold)", ferm.hold_factor or 1.5)
+                        reaper.ImGui_SetTooltip(ctx, string.format("Fermata: %s\nBar %d (Beat %.1f)\nPlayback: %s\nRight-click for options", ferm.type or "standard", ferm.measure + 1, (ferm.beat_rel or 0) + 1, pb_mode))
+
+                        if reaper.ImGui_IsMouseClicked(ctx, 0) then
+                            state.selected_fermata = ferm
+                        end
+                        if reaper.ImGui_IsMouseClicked(ctx, 1) then
+                            state.context_fermata = ferm
+                            reaper.ImGui_OpenPopup(ctx, "fermata_context_popup")
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    state.hovered_fermata = ferm_hovered_this_frame
+    if hov then hov.fermata = ferm_hovered_this_frame end
+end
+
 return CanvasDecorations

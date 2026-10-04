@@ -281,6 +281,7 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     -- Read articulations & stem directions (Type 15 Sysex/Text)
     local note_arts_list = {}
     local note_stems_list = {}
+    local note_arpeggios_list = {}
     local chase_events_list = {}
     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
     for ti = 0, text_cnt - 1 do
@@ -289,6 +290,9 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             local p, ch, art = msg:match("NOTE%s+(%d+)%s+(%d+)%s+a%s+([%a%d_]+)")
             if p and art then
                 table.insert(note_arts_list, { ppq = ppq, pitch = tonumber(p), chan = tonumber(ch) or 0, art = art })
+                if art:lower():find("arpegg") or art:lower():find("arp") then
+                    table.insert(note_arpeggios_list, { ppq = ppq, dir = art:lower():find("down") and "down" or "up" })
+                end
             end
             local sp, sch, sdir = msg:match("NOTE%s+(%d+)%s+(%d+)%s+stem%s+([%a]+)")
             if sp and sdir then
@@ -296,6 +300,10 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 if sdir == "up" or sdir == "down" then
                     table.insert(note_stems_list, { ppq = ppq, pitch = tonumber(sp), chan = tonumber(sch) or 0, stem_dir = sdir })
                 end
+            end
+            local arp_dir = msg:match("NOTATOR_ARPEGGIO%s*([%a]*)")
+            if arp_dir then
+                table.insert(note_arpeggios_list, { ppq = ppq, dir = (arp_dir ~= "" and arp_dir) or "up" })
             end
             local ch_c, pc_c = msg:match("NOTATOR_CHASE%s+(%d+)%s+(%d+)")
             if ch_c and pc_c then
@@ -394,6 +402,14 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                             end
                         end
                         
+                        local arpeggio_dir = nil
+                        for _, narp in ipairs(note_arpeggios_list) do
+                            if math.abs(narp.ppq - sppq) <= 75 then
+                                arpeggio_dir = narp.dir or "up"
+                                break
+                            end
+                        end
+                        
                         local note_obj = MidiNote.new({
                             idx = ni,
                             pitch = pitch,
@@ -406,7 +422,8 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                             item = item,
                             track = track,
                             articulation = art,
-                            stem_dir = stem_dir
+                            stem_dir = stem_dir,
+                            arpeggio = arpeggio_dir
                         })
                         table.insert(take_notes, note_obj)
                     end
@@ -2598,6 +2615,8 @@ function MidiService.toggle_selected_articulation(state, art_id)
         elseif low:find("tenuto") or low == "ten" then return "tenuto"
         elseif low:find("accent") or low == "acc" then return "accent"
         elseif low:find("harm") or low:find("flag") then return "harmonic"
+        elseif low:find("fermata") then return "fermata"
+        elseif low:find("arpegg") or low:find("arp") then return "arpeggio"
         end
         return low
     end
@@ -2714,6 +2733,118 @@ function MidiService.toggle_selected_articulation(state, art_id)
     else
         state.status_msg = string.format("Articulation '%s' set for %d note(s)", norm_target or art_id, #targets)
     end
+end
+
+function MidiService.toggle_arpeggio_on_selected(state, direction)
+    direction = direction or "up"
+    local targets = {}
+    for _, sn in pairs(state.selected_notes) do table.insert(targets, sn) end
+    if #targets == 0 and state.selected_note then table.insert(targets, state.selected_note) end
+    if #targets == 0 then
+        state.status_msg = "Please select notes or a chord first!"
+        return
+    end
+
+    local take = targets[1].take or MidiService.get_active_midi_take()
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then return end
+
+    local base_qn = targets[1].start_qn
+    if #targets == 1 then
+        local _, notecnt = reaper.MIDI_CountEvts(take)
+        for ni = 0, notecnt - 1 do
+            local ok, _, _, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, ni)
+            if ok then
+                local n_qn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+                if math.abs(n_qn - base_qn) < 0.08 then
+                    local already = false
+                    for _, t in ipairs(targets) do if t.pitch == pitch then already = true break end end
+                    if not already then
+                        table.insert(targets, MidiNote.new({
+                            idx = ni, pitch = pitch, start_qn = n_qn, dur_qn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq) - n_qn,
+                            chan = chan, vel = vel, take = take
+                        }))
+                    end
+                end
+            end
+        end
+    end
+
+    if #targets < 2 then
+        state.status_msg = "Arpeggio requires at least 2 chord notes!"
+        return
+    end
+
+    local has_arp = false
+    for _, sn in ipairs(targets) do
+        if sn.arpeggio or sn.articulation == "arpeggio" then has_arp = true break end
+    end
+
+    reaper.Undo_BeginBlock2(0)
+    reaper.MIDI_DisableSort(take)
+
+    local min_ppq = 999999999
+    for _, sn in ipairs(targets) do
+        local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn) + 0.5)
+        if sn.idx and sn.idx >= 0 then
+            local ok, _, _, s_ppq = reaper.MIDI_GetNote(take, sn.idx)
+            if ok then sppq = s_ppq end
+        end
+        if sppq < min_ppq then min_ppq = sppq end
+    end
+
+    -- Sort targets by pitch
+    table.sort(targets, function(a, b)
+        if direction == "down" then
+            return a.pitch > b.pitch
+        else
+            return a.pitch < b.pitch
+        end
+    end)
+
+    -- Clean existing NOTATOR_ARPEGGIO events near min_ppq
+    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+    for text_i = text_cnt - 1, 0, -1 do
+        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+        if ok and ev_type == 15 and (msg:match("^NOTATOR_ARPEGGIO") or msg:match("a%s+arpeggio")) then
+            if math.abs(ppq - min_ppq) < 80 then
+                reaper.MIDI_DeleteTextSysexEvt(take, text_i)
+            end
+        end
+    end
+
+    local spread_ticks = 18 -- ~15ms strum step at 120 BPM
+
+    for i, sn in ipairs(targets) do
+        local target_sppq = has_arp and min_ppq or (min_ppq + (i - 1) * spread_ticks)
+
+        local _, notecnt = reaper.MIDI_CountEvts(take)
+        for ni = 0, notecnt - 1 do
+            local ok, sel, muted, s_ppq, e_ppq, chan, pitch, vel = reaper.MIDI_GetNote(take, ni)
+            if ok and pitch == sn.pitch and math.abs(s_ppq - min_ppq) < 80 then
+                local new_sppq = target_sppq
+                local new_eppq = math.max(new_sppq + 40, e_ppq)
+                reaper.MIDI_SetNote(take, ni, sel, muted, new_sppq, new_eppq, chan, pitch, vel, false)
+
+                if not has_arp then
+                    reaper.MIDI_InsertTextSysexEvt(take, false, false, new_sppq, 15, string.format("NOTE %d %d a arpeggio", pitch, chan))
+                end
+                break
+            end
+        end
+        sn.articulation = not has_arp and "arpeggio" or nil
+        sn.arpeggio = not has_arp and direction or nil
+    end
+
+    if not has_arp then
+        reaper.MIDI_InsertTextSysexEvt(take, false, false, min_ppq, 15, "NOTATOR_ARPEGGIO " .. direction)
+    end
+
+    reaper.MIDI_Sort(take)
+    reaper.Undo_EndBlock2(0, has_arp and "Notator: Remove Arpeggio" or "Notator: Apply Arpeggio", -1)
+    reaper.UpdateArrange()
+    MidiService.invalidate_cache()
+    state.active_tracks_cache = nil
+    state.status_msg = has_arp and "Removed Arpeggio (Snapped to Grid)" or string.format("Applied Arpeggio (%s)", direction)
 end
 
 function MidiService.invert_selected_notes_stem_direction(state, target_dir)

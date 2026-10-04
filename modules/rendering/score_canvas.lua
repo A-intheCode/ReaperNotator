@@ -450,7 +450,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local staff_end_x = (measure_map.starts[total_measures] or (margin_left + total_measures * measure_w)) + 40 * s
     
     local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
-    local total_score_h = 50 * s + chord_lane_h
+    local rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
+    local total_score_h = 50 * s + chord_lane_h + rehearsal_lane_h
     for _, tdata in ipairs(active_tracks_data) do
         local trk_clef = get_track_clef(tdata.guid, tdata.notes, tdata.name, state)
         tdata.clef = trk_clef
@@ -582,7 +583,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local hov = {}
     
     local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
-    local cur_band_top = canvas_p0_y + 40 * s + chord_lane_h
+    local rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
+    local cur_band_top = canvas_p0_y + 40 * s + chord_lane_h + rehearsal_lane_h
     local score_top_y = cur_band_top
     local score_bottom_y = cur_band_top
     local staff_line_col = Constants.COLORS.staff_line
@@ -1253,12 +1255,26 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         for _, vn in ipairs(visual_notes) do
             local vn_v = (vn.orig and vn.orig.chan) or 0
             local vn_staff = vn.in_staff or (vn.in_treble and "treble" or "bass")
+            local is_arp = (vn.orig and (vn.orig.arpeggio or vn.orig.articulation == "arpeggio"))
+            local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.08 or 0.03
             local same_staff = cur_cluster and (cur_cluster.staff == vn_staff)
-            local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < 0.03)
+            local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < time_tol)
             local same_voice = cur_cluster and (cur_cluster.voice == vn_v)
             if not (same_staff and same_time and same_voice) then
-                cur_cluster = { start_qn = vn.start_qn, staff = vn_staff, in_treble = vn.in_treble, voice = vn_v, notes = {} }
+                cur_cluster = {
+                    start_qn     = vn.start_qn,
+                    staff        = vn_staff,
+                    in_treble    = vn.in_treble,
+                    voice        = vn_v,
+                    notes        = {},
+                    is_arpeggio  = (is_arp == true or is_arp == "up" or is_arp == "down"),
+                    arpeggio_dir = (vn.orig and vn.orig.arpeggio) or "up"
+                }
                 table.insert(chord_clusters, cur_cluster)
+            end
+            if is_arp then
+                cur_cluster.is_arpeggio = true
+                if vn.orig and vn.orig.arpeggio then cur_cluster.arpeggio_dir = vn.orig.arpeggio end
             end
             table.insert(cur_cluster.notes, vn)
             vn.chord_cluster = cur_cluster
@@ -1597,6 +1613,21 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local base_nx = cluster.notes[1].nominal_nx
             if base_nx >= cull_min_x - 30 * s and base_nx <= cull_max_x + 30 * s then
                 local cnotes = cluster.notes
+                if cluster.is_arpeggio and #cnotes >= 2 then
+                    local arp_min_y = cnotes[1].vis_ny
+                    local arp_max_y = cnotes[1].vis_ny
+                    local arp_min_x = cnotes[1].vis_nx
+                    for _, vn in ipairs(cnotes) do
+                        if vn.vis_ny < arp_min_y then arp_min_y = vn.vis_ny end
+                        if vn.vis_ny > arp_max_y then arp_max_y = vn.vis_ny end
+                        local nx_left = vn.nominal_nx
+                        if vn.acc_nx and vn.acc_nx < arp_min_x then nx_left = vn.acc_nx end
+                        if nx_left < arp_min_x then arp_min_x = nx_left end
+                    end
+                    local arp_x = arp_min_x - 12 * s
+                    local arp_col = Constants.COLORS.notehead_black or 0x111111FF
+                    Engraver.draw_arpeggio(draw_list, arp_x, arp_min_y, arp_max_y, s, arp_col, font_music, cluster.arpeggio_dir or "up")
+                end
                 local all_whole = true
                 for _, vn in ipairs(cnotes) do
                     if math.abs(vn.dur_qn - 4.0) >= 0.15 then all_whole = false break end
@@ -2708,6 +2739,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, first_staff_top_y, s, margin_left, system_start_x, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, hov)
         CanvasDecorations.draw_octave_lines(ctx, draw_list, state, fonts, active_tracks_data, s, margin_left, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, is_ctrl, hov)
         CanvasDecorations.draw_chord_scale_lane(ctx, draw_list, state, fonts, s, canvas_p0_x, canvas_p0_y, staff_end_x, margin_left, system_start_x, hdr_x0, hdr_x1, qn_per_measure, measure_map, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, is_shift, hov)
+        CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, canvas_p0_x, canvas_p0_y, staff_end_x, margin_left, system_start_x, hdr_x0, hdr_x1, qn_per_measure, measure_map, cull_min_x, cull_max_x, is_hovered, mouse_x, mouse_y, hov)
+        CanvasDecorations.draw_fermatas(ctx, draw_list, state, fonts, active_tracks_data, s, margin_left, qn_per_measure, measure_map, cull_min_x, cull_max_x, is_hovered, mouse_x, mouse_y, hov)
     end
     
     if hov then

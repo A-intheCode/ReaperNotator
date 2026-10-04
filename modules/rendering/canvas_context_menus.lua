@@ -602,6 +602,7 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                     { id = "accent",        label = "> Accent" },
                     { id = "marcato",       label = "^ Marcato" },
                     { id = "harmonic",      label = "○ Harmonic / Flageolet" },
+                    { id = "fermata",       label = "𝄐 Fermata (Single Note)" },
                 }
                 for _, a in ipairs(art_items) do
                     local is_cur = (cur_note_art == a.id)
@@ -619,6 +620,37 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                     end
                 end
                 reaper.ImGui_EndMenu(ctx)
+            end
+
+            if reaper.ImGui_BeginMenu(ctx, "〰 Arpeggio (Strum)") then
+                if reaper.ImGui_MenuItem(ctx, "↑ Arpeggio Up (Roll)") then
+                    if midi_service and midi_service.toggle_arpeggio_on_selected then
+                        midi_service.toggle_arpeggio_on_selected(state, "up")
+                    end
+                end
+                if reaper.ImGui_MenuItem(ctx, "↓ Arpeggio Down") then
+                    if midi_service and midi_service.toggle_arpeggio_on_selected then
+                        midi_service.toggle_arpeggio_on_selected(state, "down")
+                    end
+                end
+                reaper.ImGui_Separator(ctx)
+                if reaper.ImGui_MenuItem(ctx, "❌ Remove Arpeggio (Snap)") then
+                    if midi_service and midi_service.toggle_arpeggio_on_selected then
+                        midi_service.toggle_arpeggio_on_selected(state, "up")
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
+            if reaper.ImGui_MenuItem(ctx, "𝄐 Add Score-Wide Fermata") then
+                local sn = state.selected_note
+                if not sn and state.selected_notes then
+                    for _, n in pairs(state.selected_notes) do sn = n break end
+                end
+                if sn then
+                    local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
+                    FermataService.add_fermata(state, sn.start_qn, "standard", 1.5, active_tracks_data)
+                end
             end
             
             if reaper.ImGui_BeginMenu(ctx, "🗣 Assign Voice (Channel)") then
@@ -981,8 +1013,199 @@ function CanvasContextMenus.render_measure_header_popup(ctx, state, active_track
                     RepeatService.toggle_repeat_mark(state, trk, cm, active_tracks_data)
                 end
             end
+
+            reaper.ImGui_Separator(ctx)
+            if reaper.ImGui_MenuItem(ctx, "𝄐 Add Fermata to Bar (Downbeat)") then
+                local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
+                local tpos = reaper.TimeMap2_beatsToTime(0, 0, cm)
+                local qn = reaper.TimeMap2_timeToQN(0, tpos)
+                FermataService.add_fermata(state, qn, "standard", 1.5, active_tracks_data)
+            end
+
+            if reaper.ImGui_BeginMenu(ctx, "🔖 Rehearsal & Navigation Marks") then
+                local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+                if reaper.ImGui_MenuItem(ctx, "🔤 Add Letter Mark [A], [B]... (Auto)") then
+                    RehearsalMarkService.add_mark(state, cm, "letter")
+                end
+                if reaper.ImGui_MenuItem(ctx, "🔢 Add Number Mark [1], [2]... (Auto)") then
+                    RehearsalMarkService.add_mark(state, cm, "number")
+                end
+                reaper.ImGui_Separator(ctx)
+                if reaper.ImGui_MenuItem(ctx, "Da Capo (D.C.)") then
+                    RehearsalMarkService.add_mark(state, cm, "dc")
+                end
+                if reaper.ImGui_MenuItem(ctx, "D.C. al Fine") then
+                    RehearsalMarkService.add_mark(state, cm, "dc_al_fine")
+                end
+                if reaper.ImGui_MenuItem(ctx, "Dal Segno (D.S.)") then
+                    RehearsalMarkService.add_mark(state, cm, "ds")
+                end
+                if reaper.ImGui_MenuItem(ctx, "D.S. al Coda") then
+                    RehearsalMarkService.add_mark(state, cm, "ds_al_coda")
+                end
+                if reaper.ImGui_MenuItem(ctx, "Segno (𝄋)") then
+                    RehearsalMarkService.add_mark(state, cm, "segno")
+                end
+                if reaper.ImGui_MenuItem(ctx, "Coda (𝄌)") then
+                    RehearsalMarkService.add_mark(state, cm, "coda")
+                end
+                if reaper.ImGui_MenuItem(ctx, "Fine") then
+                    RehearsalMarkService.add_mark(state, cm, "fine")
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
             reaper.ImGui_EndPopup(ctx)
         end
+    end
+end
+
+function CanvasContextMenus.render_fermata_popup(ctx, state, active_tracks_data)
+    if reaper.ImGui_BeginPopup(ctx, "fermata_context_popup") then
+        local ferm = state.context_fermata or state.selected_fermata
+        if ferm then
+            local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
+            local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
+            reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("𝄐 Fermata (Bar %d, Beat %.1f)", ferm.measure + 1, (ferm.beat_rel or 0) + 1))
+            reaper.ImGui_Separator(ctx)
+
+            if reaper.ImGui_BeginMenu(ctx, "⏱ Playback Hold Factor") then
+                local factors = {
+                    { factor = 1.25, label = "1.25x (Slight pause)" },
+                    { factor = 1.5,  label = "1.50x (Standard hold)" },
+                    { factor = 2.0,  label = "2.00x (Double length)" },
+                    { factor = 3.0,  label = "3.00x (Long sustained hold)" },
+                }
+                for _, f in ipairs(factors) do
+                    local is_cur = (ferm.playback_mode ~= "visual_only") and math.abs(ferm.hold_factor - f.factor) < 0.05
+                    local pfx = is_cur and "✓ " or "   "
+                    if reaper.ImGui_MenuItem(ctx, pfx .. f.label) then
+                        ferm.playback_mode = "tempo_dip"
+                        ferm.hold_factor = f.factor
+                        FermataService.save_fermatas(state)
+                        if TempoService and TempoService.sync_to_reaper then TempoService.sync_to_reaper(state) end
+                    end
+                end
+                reaper.ImGui_Separator(ctx)
+                local is_vis = (ferm.playback_mode == "visual_only")
+                if reaper.ImGui_MenuItem(ctx, (is_vis and "✓ " or "   ") .. "Visual Only (No tempo slowdown)") then
+                    ferm.playback_mode = "visual_only"
+                    FermataService.save_fermatas(state)
+                    if TempoService and TempoService.sync_to_reaper then TempoService.sync_to_reaper(state) end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
+            if reaper.ImGui_BeginMenu(ctx, "𝄐 Symbol Type") then
+                local types = {
+                    { id = "standard",  label = "Standard (Round 𝄐)" },
+                    { id = "short",     label = "Short (Triangular ▼)" },
+                    { id = "long",      label = "Long (Square ⨅)" },
+                    { id = "very_long", label = "Very Long (Arched)" }
+                }
+                for _, t in ipairs(types) do
+                    local is_cur = (ferm.type == t.id)
+                    local pfx = is_cur and "✓ " or "   "
+                    if reaper.ImGui_MenuItem(ctx, pfx .. t.label) then
+                        ferm.type = t.id
+                        FermataService.save_fermatas(state)
+                        FermataService.sync_takes_for_fermata(ferm, active_tracks_data, false)
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
+            reaper.ImGui_Separator(ctx)
+            if reaper.ImGui_MenuItem(ctx, "🗑 Delete Fermata") then
+                FermataService.remove_fermata(state, ferm.id, active_tracks_data)
+                state.selected_fermata = nil
+                state.context_fermata = nil
+            end
+        end
+        reaper.ImGui_EndPopup(ctx)
+    end
+end
+
+function CanvasContextMenus.render_rehearsal_mark_popup(ctx, state)
+    if reaper.ImGui_BeginPopup(ctx, "rehearsal_mark_item_context_popup") then
+        local rm = state.context_rehearsal_mark or state.selected_rehearsal_mark
+        if rm then
+            local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+            reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("🔖 Rehearsal Mark: %s (Bar %d)", rm.label, rm.measure + 1))
+            reaper.ImGui_Separator(ctx)
+
+            if reaper.ImGui_BeginMenu(ctx, "Change Type") then
+                local types = {
+                    { id = "letter",     label = "Auto Letter [A], [B], [C]..." },
+                    { id = "number",     label = "Auto Number [1], [2], [3]..." },
+                    { id = "dc",         label = "Da Capo (D.C.)" },
+                    { id = "dc_al_fine", label = "D.C. al Fine" },
+                    { id = "ds",         label = "Dal Segno (D.S.)" },
+                    { id = "ds_al_coda", label = "D.S. al Coda" },
+                    { id = "segno",      label = "Segno (𝄋)" },
+                    { id = "coda",       label = "Coda (𝄌)" },
+                    { id = "fine",       label = "Fine" }
+                }
+                for _, t in ipairs(types) do
+                    local is_cur = (rm.type == t.id)
+                    local pfx = is_cur and "✓ " or "   "
+                    if reaper.ImGui_MenuItem(ctx, pfx .. t.label) then
+                        rm.type = t.id
+                        RehearsalMarkService.recompute_labels(state)
+                        RehearsalMarkService.save_marks(state)
+                        RehearsalMarkService.sync_takes(state)
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
+            reaper.ImGui_Separator(ctx)
+            if reaper.ImGui_MenuItem(ctx, "🗑 Delete Mark") then
+                RehearsalMarkService.remove_mark(state, rm.id)
+                state.selected_rehearsal_mark = nil
+                state.context_rehearsal_mark = nil
+            end
+        end
+        reaper.ImGui_EndPopup(ctx)
+    end
+end
+
+function CanvasContextMenus.render_rehearsal_lane_popup(ctx, state)
+    if reaper.ImGui_BeginPopup(ctx, "rehearsal_lane_context_popup") then
+        local target_m = state.context_rehearsal_measure or 0
+        local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+        reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("Add Mark at Bar %d", target_m + 1))
+        reaper.ImGui_Separator(ctx)
+
+        if reaper.ImGui_MenuItem(ctx, "🔤 Add Letter Mark [A], [B]... (Auto)") then
+            RehearsalMarkService.add_mark(state, target_m, "letter")
+        end
+        if reaper.ImGui_MenuItem(ctx, "🔢 Add Number Mark [1], [2]... (Auto)") then
+            RehearsalMarkService.add_mark(state, target_m, "number")
+        end
+        reaper.ImGui_Separator(ctx)
+        if reaper.ImGui_MenuItem(ctx, "Da Capo (D.C.)") then
+            RehearsalMarkService.add_mark(state, target_m, "dc")
+        end
+        if reaper.ImGui_MenuItem(ctx, "D.C. al Fine") then
+            RehearsalMarkService.add_mark(state, target_m, "dc_al_fine")
+        end
+        if reaper.ImGui_MenuItem(ctx, "Dal Segno (D.S.)") then
+            RehearsalMarkService.add_mark(state, target_m, "ds")
+        end
+        if reaper.ImGui_MenuItem(ctx, "D.S. al Coda") then
+            RehearsalMarkService.add_mark(state, target_m, "ds_al_coda")
+        end
+        if reaper.ImGui_MenuItem(ctx, "Segno (𝄋)") then
+            RehearsalMarkService.add_mark(state, target_m, "segno")
+        end
+        if reaper.ImGui_MenuItem(ctx, "Coda (𝄌)") then
+            RehearsalMarkService.add_mark(state, target_m, "coda")
+        end
+        if reaper.ImGui_MenuItem(ctx, "Fine") then
+            RehearsalMarkService.add_mark(state, target_m, "fine")
+        end
+        reaper.ImGui_EndPopup(ctx)
     end
 end
 
@@ -1343,6 +1566,9 @@ function CanvasContextMenus.render_all(ctx, state, midi_service, active_tracks_d
     CanvasContextMenus.render_tempo_popup(ctx, state, midi_service, active_tracks_data, qn_per_measure)
     CanvasContextMenus.render_edit_tempo_popup(ctx, state)
     CanvasContextMenus.render_articulation_popup(ctx, state, midi_service, active_tracks_data, qn_per_measure)
+    CanvasContextMenus.render_fermata_popup(ctx, state, active_tracks_data)
+    CanvasContextMenus.render_rehearsal_mark_popup(ctx, state)
+    CanvasContextMenus.render_rehearsal_lane_popup(ctx, state)
 end
 
 return CanvasContextMenus

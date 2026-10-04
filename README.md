@@ -41,6 +41,15 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Direct synchronization with REAPER's master tempo map.
   - Gradual tempo transitions (*accelerando*, *ritardando*) and metric modulations.
 
+- **Score-Wide Fermatas & Rehearsal Marks (New in v1.4.0)**:
+  - Score-wide vertical Fermatas (standard, short, long, very long) synchronized across all visible tracks.
+  - Tempomap playback coupling with deterministic tempo-dip slowdown (1.25x to 3.0x) and automatic restoration.
+  - Dynamic Rehearsal Marks ([A], [B], [C]...) with automatic re-sequencing on insertion, deletion, and movement.
+  - Dedicated Rehearsal Lane positioned between the Chord Track lane and Bar Numbers.
+  - Standard navigation symbols: Da Capo ($D.C.$ / $D.C. \text{ al Fine}$), Dal Segno ($D.S.$ / $D.S. \text{ al Coda}$), Segno, Coda, and Fine.
+  - Arpeggiated chords with bezier wavy line engraving and non-destructive micro-strumming playback offset.
+  - Full MusicXML 4.0 import and export support for fermatas, rehearsal marks, navigation, and arpeggios.
+
 - **Interoperability**:
   - Native **MusicXML 4.0** import and export.
   - Clipboard copy/paste for dynamic marks, pedal lines, and score annotations.

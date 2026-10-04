@@ -88,13 +88,6 @@ function BottomBar.render(ctx, state, h, child_border, bottom_flags)
             reaper.ImGui_SetTooltip(ctx, "Toggle Orchestral Pattern Browser (Drag & Drop into Canvas)")
         end
 
-        reaper.ImGui_SameLine(ctx, 0, 8)
-        if toggle_btn(ctx, "ALPHA:🖨 Print...", state.show_print_modal, 105, 24, 0x27AE60FF) then
-            state.show_print_modal = not state.show_print_modal
-        end
-        if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Score Print & PDF Export: Title cover, orchestrator notes, 5-bar paginated score, XML persistence, and PDF export.")
-        end
 
         reaper.ImGui_SameLine(ctx, 0, 8)
         if toggle_btn(ctx, "🎼 MusicXML...", state.show_musicxml_modal, 120, 24, 0x16A085FF) then

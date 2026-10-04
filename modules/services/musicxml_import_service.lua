@@ -343,6 +343,10 @@ function MusicXmlImportService.import_file(file_path, state, options)
     local active_octaves = {}
     local active_pedals = {}
     local imported_tempo_markers = {}
+    local imported_fermatas = {}
+    local imported_fermatas_seen = {}
+    local imported_rehearsal_marks = {}
+    local imported_rehearsal_seen = {}
     local takes_with_dynamics = {}
 
     -- Process each part
@@ -574,6 +578,60 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             end
                         end
 
+                        -- Rehearsal Marks (<rehearsal>A</rehearsal>)
+                        local reh_node = get_first_child(dt, "rehearsal")
+                        if reh_node and pi == 1 then
+                            local r_txt = get_text(reh_node) or ""
+                            r_txt = r_txt:gsub("^%s+", ""):gsub("%s+$", "")
+                            local m_type = "letter"
+                            if tonumber(r_txt) then
+                                m_type = "number"
+                            elseif #r_txt > 2 or not r_txt:match("^[A-Za-z]$") then
+                                m_type = "custom"
+                            end
+                            local rm_key = string.format("%d_%.2f", mi - 1, dir_qn)
+                            if not imported_rehearsal_seen[rm_key] then
+                                imported_rehearsal_seen[rm_key] = true
+                                table.insert(imported_rehearsal_marks, {
+                                    measure = mi - 1,
+                                    qn = dir_qn,
+                                    type = m_type,
+                                    custom_text = (m_type == "custom") and r_txt or "",
+                                    label = r_txt
+                                })
+                            end
+                        end
+
+                        -- Segno (<segno/>)
+                        local segno_node = get_first_child(dt, "segno")
+                        if segno_node and pi == 1 then
+                            local rm_key = string.format("segno_%d_%.2f", mi - 1, dir_qn)
+                            if not imported_rehearsal_seen[rm_key] then
+                                imported_rehearsal_seen[rm_key] = true
+                                table.insert(imported_rehearsal_marks, {
+                                    measure = mi - 1,
+                                    qn = dir_qn,
+                                    type = "segno",
+                                    label = utf8.char(0xE047)
+                                })
+                            end
+                        end
+
+                        -- Coda (<coda/>)
+                        local coda_node = get_first_child(dt, "coda")
+                        if coda_node and pi == 1 then
+                            local rm_key = string.format("coda_%d_%.2f", mi - 1, dir_qn)
+                            if not imported_rehearsal_seen[rm_key] then
+                                imported_rehearsal_seen[rm_key] = true
+                                table.insert(imported_rehearsal_marks, {
+                                    measure = mi - 1,
+                                    qn = dir_qn,
+                                    type = "coda",
+                                    label = utf8.char(0xE048)
+                                })
+                            end
+                        end
+
                         -- Dynamics (<dynamics><p/></dynamics>, <pp/>, etc.)
                         local dyn_node = get_first_child(dt, "dynamics")
                         local current_dyn_label = nil
@@ -710,7 +768,30 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             local txt = get_text(words_node)
                             if txt and txt ~= "" then
                                 local clean_w = txt:lower():gsub("^%s+", ""):gsub("%s+$", "")
-                                if clean_w:match("^cresc") or clean_w:match("^dim") or clean_w:match("^decresc") then
+                                local nav_type = nil
+                                if clean_w == "d.c. al fine" or clean_w == "dc al fine" or clean_w == "da capo al fine" then
+                                    nav_type = "dc_al_fine"
+                                elseif clean_w == "d.s. al coda" or clean_w == "ds al coda" or clean_w == "dal segno al coda" then
+                                    nav_type = "ds_al_coda"
+                                elseif clean_w == "d.c." or clean_w == "dc" or clean_w == "da capo" then
+                                    nav_type = "dc"
+                                elseif clean_w == "d.s." or clean_w == "ds" or clean_w == "dal segno" then
+                                    nav_type = "ds"
+                                elseif clean_w == "fine" then
+                                    nav_type = "fine"
+                                end
+
+                                if nav_type and pi == 1 then
+                                    local rm_key = string.format("%s_%d_%.2f", nav_type, mi - 1, dir_qn)
+                                    if not imported_rehearsal_seen[rm_key] then
+                                        imported_rehearsal_seen[rm_key] = true
+                                        table.insert(imported_rehearsal_marks, {
+                                            measure = mi - 1,
+                                            qn = dir_qn,
+                                            type = nav_type
+                                        })
+                                    end
+                                elseif clean_w:match("^cresc") or clean_w:match("^dim") or clean_w:match("^decresc") then
                                     local dash_key = string.format("%d_%d", pi, dir_staff)
                                     local dtype = (clean_w:match("^dim") or clean_w:match("^decresc")) and "diminuendo" or "crescendo"
                                     local dt_staff = nil
@@ -906,8 +987,41 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                         end
                                     end
                                 end
-                                if not note_art and get_first_child(notations_node, "fermata") then
+
+                                -- Arpeggio (<arpeggiate direction="up|down"/>)
+                                local arp_node = get_first_child(notations_node, "arpeggiate")
+                                if arp_node then
+                                    note_arp = (arp_node.attr and arp_node.attr.direction == "down") and "down" or "up"
+                                end
+
+                                -- Fermata (<fermata type="upright">normal</fermata>)
+                                local ferm_node = get_first_child(notations_node, "fermata")
+                                if ferm_node then
                                     note_art = "fermata"
+                                    local ferm_shape = get_text(ferm_node) or ""
+                                    local f_type = "standard"
+                                    local h_fac = 1.5
+                                    if ferm_shape:match("angled") then
+                                        f_type = "short"
+                                        h_fac = 1.25
+                                    elseif ferm_shape:match("square") then
+                                        f_type = "long"
+                                        h_fac = 2.0
+                                    elseif ferm_shape:match("double%-square") then
+                                        f_type = "very_long"
+                                        h_fac = 2.5
+                                    end
+
+                                    local qn_key = string.format("%.2f", note_start_qn)
+                                    if not imported_fermatas_seen[qn_key] then
+                                        imported_fermatas_seen[qn_key] = true
+                                        table.insert(imported_fermatas, {
+                                            qn = note_start_qn,
+                                            measure = mi - 1,
+                                            type = f_type,
+                                            hold_factor = h_fac
+                                        })
+                                    end
                                 end
                             end
 
@@ -946,6 +1060,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                     chan = chan,
                                     vel = 90,
                                     articulation = note_art,
+                                    arpeggio = note_arp,
                                     accidental = pref_acc
                                 }
                                 table.insert(track_notes, note_entry)
@@ -1053,11 +1168,46 @@ function MusicXmlImportService.import_file(file_path, state, options)
                 if take then
                     reaper.MIDI_DisableSort(take)
                     if not state.note_accidentals then state.note_accidentals = {} end
+
+                    -- Group notes by start_qn to calculate arpeggio micro-strumming (treppe)
+                    local arp_groups = {}
                     for _, n in ipairs(track_notes) do
-                        local s_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, n.start_qn)
+                        if n.arpeggio then
+                            local k = string.format("%.3f", n.start_qn)
+                            if not arp_groups[k] then arp_groups[k] = {} end
+                            table.insert(arp_groups[k], n)
+                        end
+                    end
+                    for _, grp in pairs(arp_groups) do
+                        if #grp > 1 then
+                            local arp_dir = grp[1].arpeggio or "up"
+                            table.sort(grp, function(a, b)
+                                if arp_dir == "down" then
+                                    return a.pitch > b.pitch
+                                else
+                                    return a.pitch < b.pitch
+                                end
+                            end)
+                            for i, n in ipairs(grp) do
+                                n.strum_offset_ppq = (i - 1) * 18
+                            end
+                        end
+                    end
+
+                    for _, n in ipairs(track_notes) do
+                        local base_s_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, n.start_qn)
+                        local s_ppq = base_s_ppq + (n.strum_offset_ppq or 0)
                         local e_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, n.start_qn + n.dur_qn)
+                        if n.strum_offset_ppq and n.strum_offset_ppq > 0 then
+                            e_ppq = math.max(s_ppq + 40, e_ppq)
+                        end
                         reaper.MIDI_InsertNote(take, false, false, s_ppq, e_ppq, n.chan, n.pitch, n.vel, false)
-                        if n.articulation and n.articulation ~= "" then
+                        if n.arpeggio then
+                            reaper.MIDI_InsertTextSysexEvt(take, false, false, s_ppq, 15, string.format("NOTE %d %d a arpeggio", n.pitch, n.chan))
+                            if not n.strum_offset_ppq or n.strum_offset_ppq == 0 then
+                                reaper.MIDI_InsertTextSysexEvt(take, false, false, base_s_ppq, 15, "NOTATOR_ARPEGGIO " .. n.arpeggio)
+                            end
+                        elseif n.articulation and n.articulation ~= "" then
                             reaper.MIDI_InsertTextSysexEvt(take, false, false, s_ppq, 15, string.format("NOTE %d %d a %s", n.pitch, n.chan, n.articulation))
                         end
                         if n.accidental ~= nil then
@@ -1206,6 +1356,65 @@ function MusicXmlImportService.import_file(file_path, state, options)
             end
             TempoService.save_markers(state)
             TempoService.sync_all_to_reaper(state)
+        end
+    end
+
+    -- Fermatas
+    if #imported_fermatas > 0 and state then
+        local Fermata = package.loaded["classes.fermata"] or require("classes.fermata")
+        local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
+        if not state.fermatas then state.fermatas = {} end
+        for _, iferm in ipairs(imported_fermatas) do
+            local bpi = 4.0
+            local ts_num, ts_den = reaper.TimeMap_GetTimeSigAtTime(0, reaper.TimeMap2_QNToTime(0, iferm.qn))
+            if ts_num and ts_den and ts_den > 0 then bpi = ts_num * (4.0 / ts_den) end
+            local m = math.floor((iferm.qn + 0.01) / bpi)
+            local beat = iferm.qn - (m * bpi)
+
+            local ferm = Fermata.new({
+                id            = string.format("ferm_%d_%d", math.floor(iferm.qn * 100), math.random(1000, 9999)),
+                qn            = iferm.qn,
+                measure       = m,
+                beat_rel      = beat,
+                type          = iferm.type or "standard",
+                hold_factor   = iferm.hold_factor or 1.5,
+                playback_mode = "tempo_dip"
+            })
+            table.insert(state.fermatas, ferm)
+        end
+        table.sort(state.fermatas, function(a, b) return a.qn < b.qn end)
+        if FermataService then
+            FermataService.save_fermatas(state)
+            for _, f in ipairs(state.fermatas) do
+                FermataService.sync_takes_for_fermata(f, nil, false)
+            end
+        end
+        local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
+        if TempoService and TempoService.sync_to_reaper then
+            TempoService.sync_to_reaper(state)
+        end
+    end
+
+    -- Rehearsal Marks & Navigation
+    if #imported_rehearsal_marks > 0 and state then
+        local RehearsalMark = package.loaded["classes.rehearsal_mark"] or require("classes.rehearsal_mark")
+        local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+        if not state.rehearsal_marks then state.rehearsal_marks = {} end
+        for _, irm in ipairs(imported_rehearsal_marks) do
+            local rm = RehearsalMark.new({
+                id          = string.format("rm_%d_%d", math.floor(irm.qn * 100), math.random(1000, 9999)),
+                measure     = irm.measure or 0,
+                qn          = irm.qn,
+                type        = irm.type or "letter",
+                custom_text = irm.custom_text or "",
+                label       = irm.label or ""
+            })
+            table.insert(state.rehearsal_marks, rm)
+        end
+        if RehearsalMarkService then
+            RehearsalMarkService.recompute_labels(state)
+            RehearsalMarkService.sync_takes(state)
+            RehearsalMarkService.save_marks(state)
         end
     end
 
