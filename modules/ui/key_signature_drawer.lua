@@ -447,6 +447,9 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     -- 6. TIME SIGNATURE SECTION
     -- ==================================================================
     reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "⏱ TIME SIGNATURE")
+    local scope_desc = (state.key_sig_scope == "item") and "Scope: Selected Item" or ((state.key_sig_scope == "track") and "Scope: Track Items" or "Scope: Entire Project (Tempomap)")
+    local scope_col = (state.key_sig_scope == "project") and 0x2ECC71FF or 0x5DADE2FF
+    reaper.ImGui_TextColored(ctx, scope_col, scope_desc)
 
     state.key_sig_ts_num = state.key_sig_ts_num or 4
     state.key_sig_ts_den = state.key_sig_ts_den or 4
@@ -507,9 +510,28 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
                 state.status_msg = string.format("Track '%s': Time signature set to %d/%d", trk_name, num, denom)
             end
         elseif state.key_sig_scope == "project" then
+            state.time_sig_num = num
+            state.time_sig_denom = denom
             local cur_time = reaper.GetCursorPosition()
-            reaper.SetTempoTimeSigMarker(0, -1, cur_time, -1, -1, -1, num, denom, false)
+            local cnt = reaper.CountTempoTimeSigMarkers(0)
+            local match_idx = nil
+            for i = 0, cnt - 1 do
+                local ok, tpos = reaper.GetTempoTimeSigMarker(0, i)
+                if ok and math.abs(tpos - cur_time) < 0.05 then
+                    match_idx = i
+                    break
+                end
+            end
+            local cur_bpm = reaper.Master_GetTempo() or 120
+            if match_idx ~= nil then
+                local ok, tpos, mpos, bpos, mbpm, _, _, lin = reaper.GetTempoTimeSigMarker(0, match_idx)
+                local use_bpm = (mbpm and mbpm > 0) and mbpm or cur_bpm
+                reaper.SetTempoTimeSigMarker(0, match_idx, tpos, mpos or -1, bpos or -1, use_bpm, num, denom, lin or false)
+            else
+                reaper.SetTempoTimeSigMarker(0, -1, cur_time, -1, -1, cur_bpm, num, denom, false)
+            end
             reaper.UpdateTimeline()
+            if reaper.UpdateArrange then reaper.UpdateArrange() end
 
             local num_trks = reaper.CountTracks(0)
             for t = 0, num_trks - 1 do
@@ -528,7 +550,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
                 end
             end
             if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
-            state.status_msg = string.format("Project: Time signature set to %d/%d", num, denom)
+            state.status_msg = string.format("Project: Time signature set to %d/%d & synced to tempomap", num, denom)
         end
     end
 

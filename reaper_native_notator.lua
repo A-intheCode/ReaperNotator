@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.4.4
+-- @version 1.4.5
 -- @changelog
+--   + v1.4.5: Hotfix for Tempo Map & Time Signature synchronization in clean projects (Count == 0), project time signature preservation, and active scope UI indicator
 --   + v1.4.4: Hotfix for ReaImGui child window state restoration and protected ScoreCanvas render & mouse handling preventing unpopped child window crashes
 --   + v1.4.3: Direct MIDI Item Key & Time Signature assignment in Item Scope; restored Clef Drawer to track scope with auto-parent track target
 --   + v1.4.2: Maintenance and UI refinements

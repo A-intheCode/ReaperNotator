@@ -267,6 +267,22 @@ function TempoService.add_tempo_marker(state, data)
     state.tempo_markers = state.tempo_markers or {}
     local bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or 4.0
     
+    -- If a tempo marker is currently focused/selected and no note is selected, update it directly
+    local m_type = data.type or "absolute"
+    if state.selected_tempo_marker and not state.selected_note and (data.type == nil or data.type == state.selected_tempo_marker.type) then
+        local tm = state.selected_tempo_marker
+        tm.bpm = data.bpm or tm.bpm
+        tm.label = data.label or tm.label
+        tm.modifier = data.modifier or tm.modifier
+        if data.target_bpm then tm.target_bpm = data.target_bpm end
+        tm.custom_bpm_only = (data.custom_bpm_only == true)
+        TempoService.save_markers(state)
+        TempoService.sync_all_to_reaper(state)
+        reaper.Undo_OnStateChange2(0, "Notator: Update Tempo Marker")
+        state.status_msg = string.format("Tempo '%s' updated & synced to REAPER tempo map", tm:get_display_text())
+        return tm
+    end
+
     local start_qn = 0.0
     if state.selected_note then
         start_qn = state.selected_note.start_qn
@@ -293,7 +309,6 @@ function TempoService.add_tempo_marker(state, data)
     end
     
     local end_qn = start_qn + (data.dur_qn or bpi)
-    local m_type = data.type or "absolute"
     
     -- Determine effective tempo at start point from Notator state:
     local context_bpm = TempoService.get_tempo_at_qn(state, start_qn)
@@ -550,18 +565,52 @@ function TempoService.sync_all_to_reaper(state)
     end
     
     -- 3. Synchronize into REAPER timeline (deterministic without ghost points)
-    local bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or 4
-    local bpi_d = (state.time_sig_denom and state.time_sig_denom > 0) and state.time_sig_denom or 4
+    local cur_ts_num, cur_ts_den = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
+    local bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or (cur_ts_num or 4)
+    local bpi_d = (state.time_sig_denom and state.time_sig_denom > 0) and state.time_sig_denom or (cur_ts_den or 4)
     
-    -- Point 0 at time 0.0 (marker 0 always exists in REAPER and is updated cleanly):
     local pt0 = merged_points[1]
     local bpm0 = pt0 and pt0.bpm or 120
     local lin0 = pt0 and (pt0.linear == true) or false
-    reaper.SetTempoTimeSigMarker(0, 0, 0.0, 0, 0, bpm0, bpi, bpi_d, lin0)
+
+    local cnt_before = reaper.CountTempoTimeSigMarkers(0)
+    
+    -- Preserve any existing REAPER time signatures at markers > 0
+    local existing_time_sigs = {}
+    if cnt_before > 1 then
+        for i = 1, cnt_before - 1 do
+            local ok, tpos, _, _, _, ts_num, ts_den = reaper.GetTempoTimeSigMarker(0, i)
+            if ok and ts_num > 0 and ts_den > 0 then
+                table.insert(existing_time_sigs, { timepos = tpos, num = ts_num, den = ts_den })
+            end
+        end
+    end
+    
+    -- Point 0 at time 0.0:
+    -- If REAPER already has markers, update marker 0.
+    -- If REAPER has 0 markers, ptidx MUST be -1 to insert the first marker!
+    if cnt_before > 0 then
+        local ok, _, _, _, _, m0_num, m0_den = reaper.GetTempoTimeSigMarker(0, 0)
+        if ok and m0_num > 0 and m0_den > 0 then
+            bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or m0_num
+            bpi_d = (state.time_sig_denom and state.time_sig_denom > 0) and state.time_sig_denom or m0_den
+        end
+        reaper.SetTempoTimeSigMarker(0, 0, 0.0, -1, -1, bpm0, bpi, bpi_d, lin0)
+    else
+        reaper.SetTempoTimeSigMarker(0, -1, 0.0, -1, -1, bpm0, bpi, bpi_d, lin0)
+    end
+    
+    -- Notify REAPER transport and control surfaces immediately
+    if reaper.CSurf_OnTempoChange then
+        reaper.CSurf_OnTempoChange(bpm0)
+    end
+    if reaper.Master_SetTempo then
+        reaper.Master_SetTempo(bpm0, true)
+    end
     
     -- Remove all old markers above index 0 completely to eliminate ghost points during dragging:
-    local cnt_before = reaper.CountTempoTimeSigMarkers(0)
-    for i = cnt_before - 1, 1, -1 do
+    local cnt_after_pt0 = reaper.CountTempoTimeSigMarkers(0)
+    for i = cnt_after_pt0 - 1, 1, -1 do
         reaper.DeleteTempoTimeSigMarker(0, i)
     end
     
@@ -569,7 +618,24 @@ function TempoService.sync_all_to_reaper(state)
     for i = 2, #merged_points do
         local pt = merged_points[i]
         local t_pos = reaper.TimeMap2_QNToTime(0, pt.qn)
-        reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, pt.bpm, 0, 0, pt.linear == true)
+        local ts_n, ts_d = 0, 0
+        for _, ts in ipairs(existing_time_sigs) do
+            if not ts.used and math.abs(ts.timepos - t_pos) < 0.05 then
+                ts_n, ts_d = ts.num, ts.den
+                ts.used = true
+                break
+            end
+        end
+        reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, pt.bpm, ts_n, ts_d, pt.linear == true)
+    end
+    
+    -- Re-insert any preserved time signature markers that were not matched by a tempo point
+    for _, ts in ipairs(existing_time_sigs) do
+        if not ts.used then
+            local qn = reaper.TimeMap2_timeToQN(0, ts.timepos)
+            local effective_bpm = TempoService.get_tempo_at_qn(state, qn)
+            reaper.SetTempoTimeSigMarker(0, -1, ts.timepos, -1, -1, effective_bpm, ts.num, ts.den, false)
+        end
     end
     
     reaper.UpdateTimeline()
