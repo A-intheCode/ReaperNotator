@@ -185,7 +185,7 @@ local function draw_treble_clef(draw_list, x, g4_y, s, col, font_music)
 end
 
 local function draw_time_signature(draw_list, x, bot_y, line_spacing, s, col, num, denom, font_music, font_main)
-    local col_ts = col or 0x1A1A1AFF
+    local col_ts = col or Constants.COLORS.timesig_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
     local font_sz = math.floor(40 * s + 0.5)
     
     if type(num) == "table" then
@@ -877,7 +877,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
             
             -- 1. Clef
-            local clef_col = is_clef_hov and 0xFF9F1CFF or 0x1A1A1AFF
+            local clef_base = Constants.COLORS.clef_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
+            local clef_col = is_clef_hov and 0xFF9F1CFF or clef_base
             if is_harp then
                 draw_treble_clef(draw_list, clef_x, treble_bottom_y - line_spacing, s, clef_col, font_music)
                 draw_smufl_clef(draw_list, clef_x, mid_bottom_y, 3, line_spacing, s, clef_col, font_music, Constants.SMUFL.c_clef)
@@ -929,15 +930,16 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
 
             -- 3. Time signature (4/4, 3/4 etc.) directly following key signature in the gap before measure 1
             local timesig_x = system_start_x + 46 * s + max_key_sig_w
+            local ts_col = Constants.COLORS.timesig_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
             if is_harp then
-                draw_time_signature(draw_list, timesig_x, treble_bottom_y, line_spacing, s, 0x1A1A1AFF, trk_ts_num, trk_ts_den, font_music, font_main)
-                draw_time_signature(draw_list, timesig_x, mid_bottom_y, line_spacing, s, 0x1A1A1AFF, trk_ts_num, trk_ts_den, font_music, font_main)
-                draw_time_signature(draw_list, timesig_x, bass_bottom_y, line_spacing, s, 0x1A1A1AFF, trk_ts_num, trk_ts_den, font_music, font_main)
+                draw_time_signature(draw_list, timesig_x, treble_bottom_y, line_spacing, s, ts_col, trk_ts_num, trk_ts_den, font_music, font_main)
+                draw_time_signature(draw_list, timesig_x, mid_bottom_y, line_spacing, s, ts_col, trk_ts_num, trk_ts_den, font_music, font_main)
+                draw_time_signature(draw_list, timesig_x, bass_bottom_y, line_spacing, s, ts_col, trk_ts_num, trk_ts_den, font_music, font_main)
             elseif is_grand then
-                draw_time_signature(draw_list, timesig_x, treble_bottom_y, line_spacing, s, 0x1A1A1AFF, trk_ts_num, trk_ts_den, font_music, font_main)
-                draw_time_signature(draw_list, timesig_x, bass_bottom_y, line_spacing, s, 0x1A1A1AFF, trk_ts_num, trk_ts_den, font_music, font_main)
+                draw_time_signature(draw_list, timesig_x, treble_bottom_y, line_spacing, s, ts_col, trk_ts_num, trk_ts_den, font_music, font_main)
+                draw_time_signature(draw_list, timesig_x, bass_bottom_y, line_spacing, s, ts_col, trk_ts_num, trk_ts_den, font_music, font_main)
             else
-                draw_time_signature(draw_list, timesig_x, staff_bottom_y, line_spacing, s, 0x1A1A1AFF, trk_ts_num, trk_ts_den, font_music, font_main)
+                draw_time_signature(draw_list, timesig_x, staff_bottom_y, line_spacing, s, ts_col, trk_ts_num, trk_ts_den, font_music, font_main)
             end
         end
         
@@ -1117,7 +1119,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 prev_m = cur_m
                 
                 if rx >= cull_min_x - 30 * s and rx <= cull_max_x + 30 * s then
-                    Engraver.draw_rest(draw_list, r, staff_bot, line_spacing, margin_left, s, qn_per_measure, 0x1A1A1AFF, font_music, measure_map, rx)
+                    local rest_col = Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
+                    Engraver.draw_rest(draw_list, r, staff_bot, line_spacing, margin_left, s, qn_per_measure, rest_col, font_music, measure_map, rx)
                 end
             end
         end
@@ -1426,8 +1429,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local beam_col = Constants.COLORS.beam_color
             if all_ghost then
                 local b_v = (bgroup[1].orig and bgroup[1].orig.chan or 0) + 1
-                if (state.voice_color_mode ~= false) and b_v > 1 and Constants.VOICE_COLORS and Constants.VOICE_COLORS[b_v] then
-                    beam_col = (Constants.VOICE_COLORS[b_v] & 0xFFFFFF00) | ghost_alpha_byte
+                if (state.voice_color_mode ~= false) and b_v > 1 then
+                    beam_col = (Constants.get_voice_color(b_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
                 else
                     beam_col = global_ghost_col
                 end
@@ -1521,8 +1524,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local note_v = (n.chan or 0) + 1
                 
                 if vn.is_ghost_voice then
-                    if (state.voice_color_mode ~= false) and note_v > 1 and Constants.VOICE_COLORS and Constants.VOICE_COLORS[note_v] then
-                        head_col = (Constants.VOICE_COLORS[note_v] & 0xFFFFFF00) | ghost_alpha_byte
+                    if (state.voice_color_mode ~= false) and note_v > 1 then
+                        head_col = (Constants.get_voice_color(note_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
                     else
                         head_col = global_ghost_col
                     end
@@ -1530,8 +1533,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     head_col = state.is_dragging and 0x88888855 or Constants.COLORS.selection_gold
                     if not state.is_dragging then
                         reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, 8.5*s, Constants.COLORS.selection_border, 0, 2.5*s)
-                        if (state.voice_color_mode ~= false) and note_v > 1 and Constants.VOICE_COLORS and Constants.VOICE_COLORS[note_v] then
-                            reaper.ImGui_DrawList_AddCircleFilled(draw_list, nx, ny, 3.8*s, Constants.VOICE_COLORS[note_v])
+                        if (state.voice_color_mode ~= false) and note_v > 1 then
+                            reaper.ImGui_DrawList_AddCircleFilled(draw_list, nx, ny, 3.8*s, Constants.get_voice_color(note_v, state.invert_mode))
                         end
                     end
                 elseif state.marquee_active and (nx >= mrx0 - 8*s and nx <= mrx1 + 8*s and ny >= mry0 - 8*s and ny <= mry1 + 8*s) then
@@ -1539,8 +1542,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, 7.5*s, 0xFF9F1C55, 0, 1.8*s)
                 elseif is_hov then
                     head_col = Constants.COLORS.hover_orange
-                elseif (state.voice_color_mode ~= false) and note_v > 1 and Constants.VOICE_COLORS and Constants.VOICE_COLORS[note_v] then
-                    head_col = Constants.VOICE_COLORS[note_v]
+                elseif (state.voice_color_mode ~= false) and note_v > 1 then
+                    head_col = Constants.get_voice_color(note_v, state.invert_mode)
                 end
                 
                 -- Ledger lines dynamically calculated for all clefs & staves
@@ -1645,8 +1648,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     
                     if all_ghost then
                         local c_v = (cnotes[1].orig and cnotes[1].orig.chan or 0) + 1
-                        if (state.voice_color_mode ~= false) and c_v > 1 and Constants.VOICE_COLORS and Constants.VOICE_COLORS[c_v] then
-                            stem_col = (Constants.VOICE_COLORS[c_v] & 0xFFFFFF00) | ghost_alpha_byte
+                        if (state.voice_color_mode ~= false) and c_v > 1 then
+                            stem_col = (Constants.get_voice_color(c_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
                         else
                             stem_col = global_ghost_col
                         end
@@ -1656,8 +1659,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                         if stem_col == Constants.COLORS.notehead_black and (state.voice_color_mode ~= false) then
                             local c_v = (cnotes[1].orig and cnotes[1].orig.chan or 0) + 1
-                            if c_v > 1 and Constants.VOICE_COLORS and Constants.VOICE_COLORS[c_v] then
-                                stem_col = Constants.VOICE_COLORS[c_v]
+                            if c_v > 1 then
+                                stem_col = Constants.get_voice_color(c_v, state.invert_mode)
                             end
                         end
                     end
@@ -1710,7 +1713,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                     
-                    reaper.ImGui_DrawList_AddLine(draw_list, stem_x, stem_start_y, stem_x, stem_end_y, stem_col, 2.5 * s)
+                    local draw_stem_end_y = stem_end_y
+                    if has_beamed then
+                        draw_stem_end_y = stem_down and (stem_end_y - 1.0 * s) or (stem_end_y + 1.0 * s)
+                    end
+                    reaper.ImGui_DrawList_AddLine(draw_list, stem_x, stem_start_y, stem_x, draw_stem_end_y, stem_col, 2.5 * s)
                     
                     local flag_count = Engraver.get_flag_count(shortest_dur)
                     if flag_count > 0 and not has_beamed then
@@ -1797,7 +1804,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         reaper.ImGui_OpenPopup(ctx, "dynamic_context_popup")
                     end
                     
-                    local text_col = 0x1A1A1AFF
+                    local text_col = Constants.COLORS.art_text or Constants.COLORS.text_dark or 0x1A1A1AFF
                     if is_dyn_dragged then
                         reaper.ImGui_DrawList_AddRectFilled(draw_list, bx0, by0, bx1, by1, 0xFF9F1C22, 4)
                         reaper.ImGui_DrawList_AddRect(draw_list, bx0, by0, bx1, by1, 0xFFFFFF33, 4, 0, 1.0 * s)
@@ -2537,7 +2544,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 else
                     -- Draw text
-                    local text_col = is_selected and 0x2980B9FF or (is_hov and 0x3498DBFF or (state.invert_mode and 0xEEEEEEFF or 0x1A1A1AFF))
+                    local text_col = is_selected and 0x2980B9FF or (is_hov and 0x3498DBFF or (Constants.COLORS.lyrics_text or (state.invert_mode and 0xEEEEEEFF or 0x1A1A1AFF)))
                     local drew_txt = false
                     if reaper.APIExists("ImGui_DrawList_AddTextEx") and font_to_use then
                         drew_txt = pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_to_use, font_sz, tx, ty, text_col, text_str)
@@ -2621,7 +2628,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
             -- Bar number above each staff system
             if (state.show_bar_numbers ~= false) then
-                local bar_num_col = Constants.COLORS.bar_num or 0x5BC0DEFF
+                local bar_num_col = Constants.COLORS.bar_num or Constants.COLORS.notehead_black or 0x111111FF
                 local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 0.0)) * s
                 local bar_num_off_x = (state.bar_num_offset_x or 0.0) * s
                 local bar_num_sz = (state.bar_num_size or 14.0) * s
@@ -2719,11 +2726,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     if not drawn_ties[tie_key] then
                         drawn_ties[tie_key] = true
                         local is_ghost_tie = (nd1.is_ghost_voice == true) or (nd2.is_ghost_voice == true)
-                        local tie_col = 0x1A1A1AFF
+                        local tie_col = Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
                         if is_ghost_tie then
                             local t_v = (nd1.orig and nd1.orig.chan or 0) + 1
-                            if (state.voice_color_mode ~= false) and t_v > 1 and Constants.VOICE_COLORS and Constants.VOICE_COLORS[t_v] then
-                                tie_col = (Constants.VOICE_COLORS[t_v] & 0xFFFFFF00) | ghost_alpha_byte
+                            if (state.voice_color_mode ~= false) and t_v > 1 then
+                                tie_col = (Constants.get_voice_color(t_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
                             else
                                 tie_col = global_ghost_col
                             end

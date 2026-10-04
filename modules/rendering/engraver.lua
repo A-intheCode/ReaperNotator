@@ -1628,18 +1628,56 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     
     -- 7. Draw beams
     local dir = group_stem_down and -1 or 1
+    local half_stem = 1.25 * s
+    
+    local function draw_beam_quad(x_a, y_a, x_b, y_b)
+        if not draw_list then return end
+        local left_x, right_x, y_left, y_right
+        if x_a <= x_b then
+            left_x, right_x = x_a, x_b
+            y_left, y_right = y_a, y_b
+        else
+            left_x, right_x = x_b, x_a
+            y_left, y_right = y_b, y_a
+        end
+        
+        local top_y1, btm_y1, top_y2, btm_y2
+        if group_stem_down then
+            top_y1 = y_left - beam_h
+            btm_y1 = y_left
+            top_y2 = y_right - beam_h
+            btm_y2 = y_right
+        else
+            top_y1 = y_left
+            btm_y1 = y_left + beam_h
+            top_y2 = y_right
+            btm_y2 = y_right + beam_h
+        end
+        
+        if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
+            -- Vertices are strictly clockwise in Dear ImGui screen space:
+            -- top-left -> top-right -> bottom-right -> bottom-left.
+            -- This guarantees outward-facing anti-aliasing normals on all 4 edges,
+            -- rendering silky smooth, non-jagged beam edges regardless of stem direction.
+            reaper.ImGui_DrawList_AddQuadFilled(draw_list,
+                left_x,  top_y1,
+                right_x, top_y2,
+                right_x, btm_y2,
+                left_x,  btm_y1,
+                beam_col)
+        else
+            local my1 = (top_y1 + btm_y1) * 0.5
+            local my2 = (top_y2 + btm_y2) * 0.5
+            reaper.ImGui_DrawList_AddLine(draw_list, left_x, my1, right_x, my2, beam_col, beam_h)
+        end
+    end
     
     -- Primary beam (Level 0: eighths)
-    if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
-        reaper.ImGui_DrawList_AddQuadFilled(draw_list,
-            x1, beam_y1,
-            x2, beam_y2,
-            x2, beam_y2 + dir * beam_h,
-            x1, beam_y1 + dir * beam_h,
-            beam_col)
-    else
-        reaper.ImGui_DrawList_AddLine(draw_list, x1, beam_y1, x2, beam_y2, beam_col, beam_h)
-    end
+    local bx1 = x1 - half_stem
+    local bx2 = x2 + half_stem
+    local by1 = beam_y1 + slope * (bx1 - x1)
+    local by2 = beam_y1 + slope * (bx2 - x1)
+    draw_beam_quad(bx1, by1, bx2, by2)
     
     -- Secondary beam levels (Level 1: 16ths, Level 2: 32nds) across onsets
     local max_flags = 0
@@ -1657,55 +1695,53 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
                 if not seg_start then seg_start = i end
             else
                 if seg_start and (i - seg_start) >= 2 then
-                    local sx = onsets[seg_start].stem_x
+                    local sx = onsets[seg_start].stem_x - (seg_start == 1 and half_stem or 0)
                     local sy = (beam_y1 + slope * (sx - x1)) + offset_y
-                    local ex = onsets[i-1].stem_x
+                    local ex = onsets[i-1].stem_x + ((i-1) == #onsets and half_stem or 0)
                     local ey = (beam_y1 + slope * (ex - x1)) + offset_y
-                    if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
-                        reaper.ImGui_DrawList_AddQuadFilled(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col)
-                    else
-                        reaper.ImGui_DrawList_AddLine(draw_list, sx, sy, ex, ey, beam_col, beam_h)
-                    end
+                    draw_beam_quad(sx, sy, ex, ey)
                 elseif seg_start and (i - seg_start) == 1 then
                     -- Fractional beam (stub / beamlet)
-                    local sx = onsets[seg_start].stem_x
-                    local sy = (beam_y1 + slope * (sx - x1)) + offset_y
+                    local stem_pos = onsets[seg_start].stem_x
                     local stub_len = 9 * s
                     local stub_dir = (seg_start > 1) and -1 or 1
-                    local ex = sx + stub_dir * stub_len
-                    local ey = sy + slope * (stub_dir * stub_len)
-                    if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
-                        reaper.ImGui_DrawList_AddQuadFilled(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col)
+                    local sx, ex
+                    if stub_dir == 1 then
+                        sx = stem_pos - (seg_start == 1 and half_stem or 0)
+                        ex = stem_pos + stub_len
                     else
-                        reaper.ImGui_DrawList_AddLine(draw_list, sx, sy, ex, ey, beam_col, beam_h)
+                        sx = stem_pos + (seg_start == #onsets and half_stem or 0)
+                        ex = stem_pos - stub_len
                     end
+                    local sy = (beam_y1 + slope * (sx - x1)) + offset_y
+                    local ey = (beam_y1 + slope * (ex - x1)) + offset_y
+                    draw_beam_quad(sx, sy, ex, ey)
                 end
                 seg_start = nil
             end
         end
         if seg_start then
             if (#onsets - seg_start + 1) >= 2 then
-                local sx = onsets[seg_start].stem_x
+                local sx = onsets[seg_start].stem_x - (seg_start == 1 and half_stem or 0)
                 local sy = (beam_y1 + slope * (sx - x1)) + offset_y
-                local ex = onsets[#onsets].stem_x
+                local ex = onsets[#onsets].stem_x + half_stem
                 local ey = (beam_y1 + slope * (ex - x1)) + offset_y
-                if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
-                    reaper.ImGui_DrawList_AddQuadFilled(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col)
-                else
-                    reaper.ImGui_DrawList_AddLine(draw_list, sx, sy, ex, ey, beam_col, beam_h)
-                end
+                draw_beam_quad(sx, sy, ex, ey)
             elseif (#onsets - seg_start + 1) == 1 then
-                local sx = onsets[seg_start].stem_x
-                local sy = (beam_y1 + slope * (sx - x1)) + offset_y
+                local stem_pos = onsets[seg_start].stem_x
                 local stub_len = 9 * s
                 local stub_dir = (#onsets > 1) and -1 or 1
-                local ex = sx + stub_dir * stub_len
-                local ey = sy + slope * (stub_dir * stub_len)
-                if reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
-                    reaper.ImGui_DrawList_AddQuadFilled(draw_list, sx, sy, ex, ey, ex, ey + dir * beam_h, sx, sy + dir * beam_h, beam_col)
+                local sx, ex
+                if stub_dir == 1 then
+                    sx = stem_pos - (seg_start == 1 and half_stem or 0)
+                    ex = stem_pos + stub_len
                 else
-                    reaper.ImGui_DrawList_AddLine(draw_list, sx, sy, ex, ey, beam_col, beam_h)
+                    sx = stem_pos + (seg_start == #onsets and half_stem or 0)
+                    ex = stem_pos - stub_len
                 end
+                local sy = (beam_y1 + slope * (sx - x1)) + offset_y
+                local ey = (beam_y1 + slope * (ex - x1)) + offset_y
+                draw_beam_quad(sx, sy, ex, ey)
             end
         end
     end
@@ -1840,7 +1876,7 @@ function Engraver.draw_repeat_mark(draw_list, cx, cy, s, col, font_music, repeat
 end
 
 function Engraver.draw_accidental(draw_list, acc_type, x, y, s, font_music, custom_col)
-    local col = custom_col or 0x1A1A1AFF
+    local col = custom_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
     local font_sz = math.floor(40 * s + 0.5)
     if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
         local glyph = (acc_type == 1) and SMUFL.acc_sharp or ((acc_type == -1) and SMUFL.acc_flat or SMUFL.acc_natural)
@@ -1884,7 +1920,7 @@ function Engraver.draw_key_signature(draw_list, key_idx, x, bot_y, line_spacing,
     local acc_type = is_cancelling and 0 or (is_sharp and 1 or -1)
     local scale = s or 1.0
     local acc_spacing = 9.5 * scale
-    local draw_col = col or 0x1A1A1AFF
+    local draw_col = col or Constants.COLORS.clef_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
     local step_y = (line_spacing or (8.0 * scale)) / 2.0
 
     local clef = clef_type or "treble"
@@ -2036,7 +2072,7 @@ function Engraver.draw_rehearsal_mark(draw_list, x, y, s, label, is_selected, is
             reaper.ImGui_DrawList_AddCircleFilled(draw_list, x, y, 16 * s, 0xFF9F1C33)
         end
         local sym_col = is_selected and (Constants.COLORS.selection_gold or 0xFF9F1CFF)
-                      or (is_hovered and 0xFFB300FF or 0x111111FF)
+                      or (is_hovered and 0xFFB300FF or (Constants.COLORS.rehearsal_text or Constants.COLORS.notehead_black or 0x111111FF))
         local f_sz = 26 * s
         local tx = x - 8 * s
         local ty = y - 13 * s
@@ -2137,7 +2173,7 @@ function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above)
     local offset_y = dir * arc_h
     local cp_offset = dist * 0.28
     
-    local tie_col = col or 0x1A1A1AFF
+    local tie_col = col or Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
     local start_x = x1 + 4 * s
     local end_x   = x2 - 4 * s
     local start_y = y1 + dir * 5.0 * s
@@ -2171,7 +2207,7 @@ function Engraver.draw_rest(draw_list, r, staff_bottom_y, line_spacing, margin_l
     end
     
     local font_sz = math.floor(40 * s + 0.5)
-    local rest_col = col or 0x1A1A1AFF
+    local rest_col = col or Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
     
     -- Gould ("Behind Bars"): Voice-separated vertical placement of rests
     local y_offset = 0

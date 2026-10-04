@@ -53,7 +53,12 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Arpeggiated chords with bezier wavy line engraving and non-destructive micro-strumming playback offset.
   - Score Tools drawer: Make Notes Legato, Auto Voice & Auto Voice on Selection, and integrated Quantize Tools.
   - Inverted classical engraving styling for rehearsal marks and keyboard Delete/Backspace removal for marks & fermatas.
-  - Full MusicXML 4.0 lossless import and export support for fermatas, rehearsal marks, navigation, and arpeggios.
+- **Smooth Anti-Aliased Beaming & Enhanced Usability (v1.5.0)**:
+  - **Silky Smooth Anti-Aliased Beam Rendering**: Normalized Dear ImGui quad vertex winding (strictly clockwise) across all stem orientations and beamlet/stub directions, ensuring clean outward-facing normal vectors and pristine subpixel anti-aliasing.
+  - **Full Stem Width Coverage**: Extended beam boundaries to encompass the full thickness of outside stems (`half_stem`), with embedded stem line terminations preventing flat end caps from poking past slanted beam edges (per Gardner Read & Elaine Gould).
+  - **Keyboard Note Navigation**: Seamless keyboard-only timeline navigation (`Alt + Left / Right`) to hop between notes, and selection expansion (`Alt + Shift + Left / Right`) with intelligent Auto-Scroll integration.
+  - **Modernized Settings Modal**: Collapsible section headers, single unified vertical scrolling container to prevent clipped layouts, pinned static action footer, and live shortcut search filter.
+  - **Comprehensive Dark Mode Inversion**: Full palette coverage for clefs, time signatures, rests, ties, lyrics, rehearsal marks, fermatas, and polyphonic voice contrast, plus standard engraving black bar numbers in light mode.
 
 - **Interoperability**:
   - Native **MusicXML 4.0** import and export.

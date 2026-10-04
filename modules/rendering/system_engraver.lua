@@ -575,7 +575,12 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
                 stem_end_y = stem_down and (max_ny + stem_len) or (min_ny - stem_len)
             end
 
-            reaper.ImGui_DrawList_AddLine(dl, stem_x, stem_start_y, stem_x, stem_end_y, 0x111111FF, 1.4 * eng_s)
+            local draw_stem_end_y = stem_end_y
+            if has_beamed then
+                draw_stem_end_y = stem_down and (stem_end_y - 1.0 * eng_s) or (stem_end_y + 1.0 * eng_s)
+            end
+
+            reaper.ImGui_DrawList_AddLine(dl, stem_x, stem_start_y, stem_x, draw_stem_end_y, 0x111111FF, 1.4 * eng_s)
 
             local flag_count = Engraver.get_flag_count(shortest_dur)
             if flag_count > 0 and not has_beamed then

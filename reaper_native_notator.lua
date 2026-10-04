@@ -1,7 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.4.5
+-- @version 1.5.0
 -- @changelog
+--   + v1.5.0: Major feature release:
+--             - Smooth anti-aliased beam rendering: normalized quad winding order (strictly clockwise) in Dear ImGui screen space, ensuring full subpixel AA across all stem directions
+--             - Full outer stem coverage (half_stem) and embedded stem terminations preventing protruding flat line caps on slanted beams (per Gardner Read & Elaine Gould)
+--             - Non-mouse keyboard note navigation (Alt + Left / Right) and selection expansion (Alt + Shift + Left / Right) with auto-scroll integration
+--             - Redesigned Settings modal with collapsible category sections, unified vertical scrolling container, pinned static footer, and live shortcut search
+--             - Comprehensive Dark Mode palette inversion covering all score elements (clefs, time signatures, rests, ties, lyrics, rehearsal marks, fermatas, voice contrast)
+--             - Default bar numbers color set to standard engraving black in light mode and high contrast in dark mode
 --   + v1.4.5: Hotfix for Tempo Map & Time Signature synchronization in clean projects (Count == 0), project time signature preservation, and active scope UI indicator
 --   + v1.4.4: Hotfix for ReaImGui child window state restoration and protected ScoreCanvas render & mouse handling preventing unpopped child window crashes
 --   + v1.4.3: Direct MIDI Item Key & Time Signature assignment in Item Scope; restored Clef Drawer to track scope with auto-parent track target

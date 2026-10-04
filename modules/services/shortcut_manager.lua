@@ -201,6 +201,70 @@ ShortcutManager.DEFAULT_SHORTCUTS = {
         shift = false,
         alt  = false
     },
+    select_next_note = {
+        name = "Select next note on timeline",
+        cat  = "Edit & Selection",
+        key  = "RightArrow",
+        ctrl = false,
+        shift = false,
+        alt  = true
+    },
+    select_prev_note = {
+        name = "Select previous note on timeline",
+        cat  = "Edit & Selection",
+        key  = "LeftArrow",
+        ctrl = false,
+        shift = false,
+        alt  = true
+    },
+    select_note_above = {
+        name = "Select note above in chord",
+        cat  = "Edit & Selection",
+        key  = "UpArrow",
+        ctrl = false,
+        shift = false,
+        alt  = true
+    },
+    select_note_below = {
+        name = "Select note below in chord",
+        cat  = "Edit & Selection",
+        key  = "DownArrow",
+        ctrl = false,
+        shift = false,
+        alt  = true
+    },
+    extend_next_note = {
+        name = "Extend note selection right",
+        cat  = "Edit & Selection",
+        key  = "RightArrow",
+        ctrl = false,
+        shift = true,
+        alt  = true
+    },
+    extend_prev_note = {
+        name = "Extend note selection left",
+        cat  = "Edit & Selection",
+        key  = "LeftArrow",
+        ctrl = false,
+        shift = true,
+        alt  = true
+    },
+    extend_note_above = {
+        name = "Extend note selection above in chord",
+        cat  = "Edit & Selection",
+        key  = "UpArrow",
+        ctrl = false,
+        shift = true,
+        alt  = true
+    },
+    extend_note_below = {
+        name = "Extend note selection below in chord",
+        cat  = "Edit & Selection",
+        key  = "DownArrow",
+        ctrl = false,
+        shift = true,
+        alt  = true
+    },
     toggle_articulations = {
         name = "Toggle Articulations panel",
         cat  = "Edit & Selection",
@@ -395,6 +459,14 @@ ShortcutManager.ACTION_LIST = {
     "paste",
     "cut",
     "select_all",
+    "select_next_note",
+    "select_prev_note",
+    "select_note_above",
+    "select_note_below",
+    "extend_next_note",
+    "extend_prev_note",
+    "extend_note_above",
+    "extend_note_below",
     "delete",
     "play_pause",
     "rewind",

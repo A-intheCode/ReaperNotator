@@ -106,6 +106,15 @@ MANUAL_DATA = [
                         "- 16 Polyphonic Voices: Maps MIDI channels 0-15 to 16 distinct engraving colors with configurable ghost voice opacity (5% to 100%).\n"
                         "- Auto-Voice: Intelligently analyzes the entire track for polyphonic overlaps and distributes them to channels 1-16.\n"
                         "- Auto-Split on Selection: Splits selected chordal intervals across independent voices with automatic opposite stem orientations."
+            },
+            {
+                "heading": "2.9 Settings Modal & Unified Dark Mode Inversion",
+                "text": "Functions:\n"
+                        "- Collapsible Categorization: Settings are structured into 5 collapsible category headers (Theme & Appearance, Engraving & Notation, Audition & Playback, Shortcuts, and Advanced).\n"
+                        "- Single Vertical Scroll Container: The entire modal body scrolls smoothly within a single child window, preventing double scrollbars and layout clipping.\n"
+                        "- Static Action Footer: Pinned at the bottom with quick access to Reset and Close actions.\n"
+                        "- Real-Time Shortcut Filter: Interactive search bar to quickly locate and rebind key actions.\n"
+                        "- Comprehensive Dark Mode Inversion: Full palette inversion across all score elements, including noteheads, stems, beams, clefs, time signatures, rests, ties, lyrics, rehearsal marks, fermatas, and polyphonic voice colors."
             }
         ]
     },
@@ -163,6 +172,13 @@ MANUAL_DATA = [
                 "text": "Functions:\n"
                         "- Empty Measure Rests: Empty measures automatically display a centered whole-measure rest glyph.\n"
                         "- Rhythmic Rest Decomposition: Gaps between notes decompose into standard rests (quarter, eighth, 16th rests) strictly aligned to the meter division."
+            },
+            {
+                "heading": "3.8 Non-Mouse Keyboard Note Navigation & Selection Expansion",
+                "text": "Functions:\n"
+                        "- Alt + Left / Right Arrows: Sequential note navigation along the timeline without mouse usage, selecting the previous or next note.\n"
+                        "- Alt + Shift + Left / Right Arrows: Extends and expands note selections chronologically across the measure and score.\n"
+                        "- Auto-Scroll Synchronization: When Follow Playhead / Auto-Scroll is active, the score canvas smoothly glides to keep newly selected notes centered in view."
             }
         ]
     },
@@ -187,9 +203,11 @@ MANUAL_DATA = [
                 "text": "Functions: Pressing the 'X' key instantly flips the stem direction of selected notes (stems up vs. stems down). Inverting stems automatically recalculates beam anchor points and flag alignments."
             },
             {
-                "heading": "4.5 Hardware-Accelerated Beaming & Gardner Read / Gould Tuplet Math",
+                "heading": "4.5 Hardware-Accelerated Beaming & Smooth Edge Anti-Aliasing",
                 "text": "Functions:\n"
-                        "- Pure GPU-Accelerated Quads: All beam levels and fractional stubs utilize native ImGui vertex fringe anti-aliasing for razor-sharp slants without CPU overdraw.\n"
+                        "- Clockwise Vertex Winding: All beam quads (primary, secondary, and fractional beamlets) enforce strictly clockwise vertex ordering in Dear ImGui screen space (top-left -> top-right -> bottom-right -> bottom-left). This guarantees outward-facing anti-aliasing normals with silky smooth, non-jagged edges across both upward and downward stem directions.\n"
+                        "- Outer Stem Coverage: Beam polygons extend by half stem thickness (1.25 * s) on outer stems to encompass outer stems completely without horizontal protrusion (per Gardner Read & Elaine Gould).\n"
+                        "- Embedded Stem Terminations: Stem lines terminate slightly inside the beam thickness to ensure flat rectangular line caps remain invisible within the slanted beam polygon.\n"
                         "- Gould Quarter-Note Quintuplets (5:4): Full 4/4 bar quintuplets accurately calculate 0.8 QN step widths spanning exactly 4.0 QN total duration.\n"
                         "Performance: Minimizes C-API overhead and eliminates redundant outline strokes."
             }
@@ -472,6 +490,8 @@ MANUAL_DATA = [
                         "| Shift + Up / Down | Octave Shift | Moves selected notes up/down by 1 octave (12 semitones) |\n"
                         "| Left / Right Arrows | Nudge Position | Shifts notes horizontally by the active grid increment |\n"
                         "| Shift + Left / Right | Resize Duration | Shortens or lengthens selected notes by grid step |\n"
+                        "| Alt + Left / Right | Select Note | Navigates to previous / next note on timeline without mouse usage |\n"
+                        "| Alt + Shift + Left / Right | Expand Selection | Expands multi-note selection along the timeline |\n"
                         "| X | Invert Stem | Flips note stem direction (up <-> down) |\n"
                         "| 1 .. 6 | Rhythmic Values | 1=Whole, 2=Half, 3=Quarter, 4=Eighth, 5=16th, 6=32nd |\n"
                         "| . (Period) | Toggle Dot | Toggles dotted note duration (1.5x) |\n"

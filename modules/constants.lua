@@ -206,8 +206,15 @@ Constants.DEFAULT_COLORS = {
     paper_bg         = 0xFAF8F5FF,
     staff_line       = 0x222222FF,
     barline          = 0x000000FF,
-    bar_num          = 0x5BC0DEFF,
+    beatline         = 0xEAE6DCFF,
+    bar_num          = 0x111111FF,
     notehead_black   = 0x111111FF,
+    beam_color       = 0x111111FF,
+    clef_col         = 0x1A1A1AFF,
+    timesig_col      = 0x1A1A1AFF,
+    rest_col         = 0x1A1A1AFF,
+    tie_col          = 0x1A1A1AFF,
+    lyrics_text      = 0x1A1A1AFF,
     selection_gold   = 0xFF9F1CFF,
     selection_border = 0xFF9F1C88,
     selection_glow   = 0xFFD700FF,
@@ -218,16 +225,26 @@ Constants.DEFAULT_COLORS = {
     badge_red        = 0xE74C3CFF,
     text_dark        = 0x1A1A1AFF,
     text_muted       = 0x777777FF,
-    beam_color       = 0x111111FF,
-    art_text         = 0x1A1A1AFF
+    art_text         = 0x1A1A1AFF,
+    rehearsal_box_bg = 0xFAF8F5FF,
+    rehearsal_border = 0x1A1A1AFF,
+    rehearsal_text   = 0x111111FF,
+    fermata_col      = 0x111111FF
 }
 
 Constants.COLORS = {
     paper_bg         = 0xFAF8F5FF,
     staff_line       = 0x222222FF,
-    barline          = 0x222222FF,
+    barline          = 0x000000FF,
     beatline         = 0xEAE6DCFF,
+    bar_num          = 0x111111FF,
     notehead_black   = 0x111111FF,
+    beam_color       = 0x111111FF,
+    clef_col         = 0x1A1A1AFF,
+    timesig_col      = 0x1A1A1AFF,
+    rest_col         = 0x1A1A1AFF,
+    tie_col          = 0x1A1A1AFF,
+    lyrics_text      = 0x1A1A1AFF,
     selection_gold   = 0xFF9F1CFF,
     selection_border = 0xFF9F1C88,
     selection_glow   = 0xFFD700FF,
@@ -238,7 +255,6 @@ Constants.COLORS = {
     badge_red        = 0xE74C3CFF,
     text_dark        = 0x1A1A1AFF,
     text_muted       = 0x777777FF,
-    beam_color       = 0x111111FF,
     art_text         = 0x1A1A1AFF,
     rehearsal_box_bg = 0xFAF8F5FF,
     rehearsal_border = 0x1A1A1AFF,
@@ -265,6 +281,17 @@ Constants.VOICE_COLORS = {
     [15] = 0xF5B041FF, -- Voice 15: Sun yellow / gold
     [16] = 0xEC7063FF, -- Voice 16: Coral
 }
+
+function Constants.get_voice_color(voice_num, is_invert)
+    if is_invert then
+        if voice_num == 1 then
+            return Constants.COLORS.notehead_black or 0xEEEEEEFF
+        elseif voice_num == 9 then
+            return 0x5DADE2FF -- High-contrast sky blue instead of dark midnight blue in dark mode
+        end
+    end
+    return (Constants.VOICE_COLORS and Constants.VOICE_COLORS[voice_num]) or (Constants.COLORS.notehead_black or 0x111111FF)
+end
 
 -- 10 Alex ScoreTools dynamic levels with color coding
 Constants.ALEX_DYN_BUTTONS = {

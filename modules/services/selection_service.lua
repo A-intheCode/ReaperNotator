@@ -752,4 +752,230 @@ function SelectionService.render_menu_items(ctx, state, active_tracks_data, midi
     reaper.ImGui_Separator(ctx)
 end
 
+-- ==============================================================================
+-- Keyboard Note Navigation (Alt + Arrow keys)
+-- Navigates between notes/chords on the timeline and voices within a chord.
+-- Auto-scrolling occurs strictly when state.auto_scroll is active.
+-- ==============================================================================
+function SelectionService.navigate_note(state, active_tracks_data, midi_service, direction, extend)
+    if not state then return end
+    
+    local cur_note = state.selected_note
+    local cur_track = (cur_note and cur_note.track) or state.focused_track
+    if not cur_track or not reaper.ValidatePtr(cur_track, "MediaTrack*") then
+        local sel_trk = reaper.GetSelectedTrack(0, 0)
+        if sel_trk and reaper.ValidatePtr(sel_trk, "MediaTrack*") then
+            cur_track = sel_trk
+        elseif active_tracks_data and active_tracks_data[1] and active_tracks_data[1].track then
+            cur_track = active_tracks_data[1].track
+        end
+    end
+
+    -- Collect all notes for the active track
+    local track_notes = {}
+    if active_tracks_data then
+        for _, tdata in ipairs(active_tracks_data) do
+            if not cur_track or tdata.track == cur_track then
+                if tdata.notes then
+                    for _, n in ipairs(tdata.notes) do
+                        table.insert(track_notes, n)
+                    end
+                end
+            end
+        end
+    end
+
+    if #track_notes == 0 then
+        state.status_msg = "No notes available to navigate on active track"
+        return
+    end
+
+    -- Sort notes chronologically, then by pitch ascending
+    table.sort(track_notes, function(a, b)
+        if math.abs(a.start_qn - b.start_qn) > 0.001 then
+            return a.start_qn < b.start_qn
+        end
+        return (a.pitch or 60) < (b.pitch or 60)
+    end)
+
+    local target_note = nil
+
+    if direction == "next" then
+        if cur_note then
+            -- Find the earliest onset strictly after current note's start_qn
+            local min_next_qn = nil
+            for _, n in ipairs(track_notes) do
+                if n.start_qn > cur_note.start_qn + 0.005 then
+                    if min_next_qn == nil or n.start_qn < min_next_qn then
+                        min_next_qn = n.start_qn
+                    end
+                end
+            end
+            if min_next_qn ~= nil then
+                local best_dist = 999
+                for _, n in ipairs(track_notes) do
+                    if math.abs(n.start_qn - min_next_qn) < 0.005 then
+                        local dist = math.abs((n.pitch or 60) - (cur_note.pitch or 60))
+                        if dist < best_dist then
+                            best_dist = dist
+                            target_note = n
+                        end
+                    end
+                end
+            end
+        else
+            -- If no note is selected, find the first note at or after current edit cursor
+            local cur_pos = reaper.GetCursorPosition()
+            local cur_qn = reaper.TimeMap2_timeToQN(0, cur_pos)
+            for _, n in ipairs(track_notes) do
+                if n.start_qn >= cur_qn - 0.005 then
+                    target_note = n
+                    break
+                end
+            end
+            if not target_note then
+                target_note = track_notes[1]
+            end
+        end
+
+    elseif direction == "prev" then
+        if cur_note then
+            -- Find the latest onset strictly before current note's start_qn
+            local max_prev_qn = nil
+            for _, n in ipairs(track_notes) do
+                if n.start_qn < cur_note.start_qn - 0.005 then
+                    if max_prev_qn == nil or n.start_qn > max_prev_qn then
+                        max_prev_qn = n.start_qn
+                    end
+                end
+            end
+            if max_prev_qn ~= nil then
+                local best_dist = 999
+                for _, n in ipairs(track_notes) do
+                    if math.abs(n.start_qn - max_prev_qn) < 0.005 then
+                        local dist = math.abs((n.pitch or 60) - (cur_note.pitch or 60))
+                        if dist < best_dist then
+                            best_dist = dist
+                            target_note = n
+                        end
+                    end
+                end
+            end
+        else
+            -- If no note is selected, find the last note at or before current edit cursor
+            local cur_pos = reaper.GetCursorPosition()
+            local cur_qn = reaper.TimeMap2_timeToQN(0, cur_pos)
+            for i = #track_notes, 1, -1 do
+                local n = track_notes[i]
+                if n.start_qn <= cur_qn + 0.005 then
+                    target_note = n
+                    break
+                end
+            end
+            if not target_note then
+                target_note = track_notes[#track_notes]
+            end
+        end
+
+    elseif direction == "above" then
+        if cur_note then
+            -- Find immediate higher pitch in the same chord (same onset)
+            local best_higher = nil
+            for _, n in ipairs(track_notes) do
+                if math.abs(n.start_qn - cur_note.start_qn) < 0.01 and (n.pitch or 60) > (cur_note.pitch or 60) then
+                    if best_higher == nil or (n.pitch or 60) < (best_higher.pitch or 60) then
+                        best_higher = n
+                    end
+                end
+            end
+            target_note = best_higher
+        end
+
+    elseif direction == "below" then
+        if cur_note then
+            -- Find immediate lower pitch in the same chord (same onset)
+            local best_lower = nil
+            for _, n in ipairs(track_notes) do
+                if math.abs(n.start_qn - cur_note.start_qn) < 0.01 and (n.pitch or 60) < (cur_note.pitch or 60) then
+                    if best_lower == nil or (n.pitch or 60) > (best_lower.pitch or 60) then
+                        best_lower = n
+                    end
+                end
+            end
+            target_note = best_lower
+        end
+    end
+
+    if not target_note then
+        if direction == "next" then
+            state.status_msg = "Reached end of track notes"
+        elseif direction == "prev" then
+            state.status_msg = "Reached beginning of track notes"
+        elseif direction == "above" then
+            state.status_msg = "Highest note in chord"
+        elseif direction == "below" then
+            state.status_msg = "Lowest note in chord"
+        end
+        return
+    end
+
+    -- Apply note selection
+    if not extend then
+        state._nav_anchor_note = target_note
+        state:clear_selection()
+        state:select_note(target_note)
+    else
+        -- Extending selection (Alt + Shift + Arrow)
+        if direction == "above" or direction == "below" then
+            -- In chord: add note to multi-selection
+            state:select_note(target_note)
+        else
+            -- On timeline: select all notes on track between anchor and target_note
+            if not state._nav_anchor_note then
+                state._nav_anchor_note = cur_note or target_note
+            end
+            local anchor = state._nav_anchor_note
+            local min_range_qn = math.min(anchor.start_qn, target_note.start_qn)
+            local max_range_qn = math.max(anchor.start_qn, target_note.start_qn)
+
+            state:clear_selection()
+            for _, n in ipairs(track_notes) do
+                if n.start_qn >= min_range_qn - 0.005 and n.start_qn <= max_range_qn + 0.005 then
+                    state:select_note(n)
+                end
+            end
+            state.selected_note = target_note
+        end
+    end
+
+    -- Auto-scrolling occurs strictly when state.auto_scroll is active
+    local new_time = reaper.TimeMap2_QNToTime(0, target_note.start_qn)
+    if state.auto_scroll then
+        reaper.SetEditCurPos(new_time, true, false)
+    else
+        reaper.SetEditCurPos(new_time, false, false)
+    end
+
+    -- Synchronize with REAPER MIDI take events
+    if midi_service and midi_service.sync_selection_to_reaper then
+        midi_service.sync_selection_to_reaper(state, active_tracks_data)
+    end
+
+    -- Formulate clean musical status feedback
+    local Constants = require("constants")
+    local p_mod = (target_note.pitch or 60) % 12
+    local oct = math.floor((target_note.pitch or 60) / 12) - 1
+    local p_info = Constants.PITCH_MAP and Constants.PITCH_MAP[p_mod]
+    local p_name = p_info and p_info.name or "Note"
+    local bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or 4.0
+    local bar = math.floor((target_note.start_qn + 0.001) / bpi) + 1
+    local beat = (target_note.start_qn % bpi) + 1
+    if extend then
+        local sel_cnt = state:count_selected_notes()
+        state.status_msg = string.format("Extended selection: %d notes | Current: %s%d (Bar %d, Beat %.1f)", sel_cnt, p_name, oct, bar, beat)
+    else
+        state.status_msg = string.format("Selected note: %s%d | Bar %d (Beat %.1f)", p_name, oct, bar, beat)
+    end
+end
+
 return SelectionService

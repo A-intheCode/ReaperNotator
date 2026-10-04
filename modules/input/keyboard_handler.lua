@@ -378,6 +378,37 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         state.status_msg = "Selection cleared"
     end
     
+    -- Note selection navigation across timeline & chords (Alt + Arrow keys, Shift + Alt for range extension)
+    local nav_right = is_action_pressed("select_next_note") or is_action_pressed("extend_next_note")
+        or (is_alt and not is_ctrl and reaper.APIExists("ImGui_Key_RightArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_RightArrow(), false))
+
+    local nav_left = is_action_pressed("select_prev_note") or is_action_pressed("extend_prev_note")
+        or (is_alt and not is_ctrl and reaper.APIExists("ImGui_Key_LeftArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_LeftArrow(), false))
+
+    local nav_up = is_action_pressed("select_note_above") or is_action_pressed("extend_note_above")
+        or (is_alt and not is_ctrl and reaper.APIExists("ImGui_Key_UpArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_UpArrow(), false))
+
+    local nav_down = is_action_pressed("select_note_below") or is_action_pressed("extend_note_below")
+        or (is_alt and not is_ctrl and reaper.APIExists("ImGui_Key_DownArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_DownArrow(), false))
+
+    if nav_right then
+        local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
+        SelectionService.navigate_note(state, active_tracks_data, midi_service, "next", is_shift)
+        return
+    elseif nav_left then
+        local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
+        SelectionService.navigate_note(state, active_tracks_data, midi_service, "prev", is_shift)
+        return
+    elseif nav_up then
+        local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
+        SelectionService.navigate_note(state, active_tracks_data, midi_service, "above", is_shift)
+        return
+    elseif nav_down then
+        local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
+        SelectionService.navigate_note(state, active_tracks_data, midi_service, "below", is_shift)
+        return
+    end
+
     -- Note duration, moving & pitch via arrow keys
     if state:count_selected_notes() > 0 or state.selected_note then
         local step = state.grid_qn or 0.25

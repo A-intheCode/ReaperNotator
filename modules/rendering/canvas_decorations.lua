@@ -834,7 +834,7 @@ function CanvasDecorations.draw_fermatas(ctx, draw_list, state, fonts, active_tr
 
     if (state.show_articulations_layer ~= false) and state.fermatas and #state.fermatas > 0 then
         local font_music = fonts and fonts.music
-        local ferm_col = state.invert_mode and 0xEEEEEEFF or (Constants.COLORS.fermata_col or 0x111111FF)
+        local ferm_col = Constants.COLORS.fermata_col or (state.invert_mode and 0xEEEEEEFF or 0x111111FF)
 
         for _, ferm in ipairs(state.fermatas) do
             local fx = Engraver.cursor_qn_to_canvas_x(ferm.qn, margin_left, s, qn_per_measure, measure_map)
