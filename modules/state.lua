@@ -132,6 +132,8 @@ function State.new()
         -- Multitrack & Track-Picker
         selected_tracks = {},     -- Map: track_guid -> boolean
         track_clefs = {},         -- Map: track_guid -> "treble"|"bass"|"grand"|"auto"
+        item_clefs = {},          -- Map: item_guid -> "treble"|"bass"|"grand"|"alto" etc.
+        clef_scope = "item",      -- Target scope for Clef drawer: "item" or "track"
         track_voices = {},        -- Map: track_guid -> voice (0 = All Notes, 1..16 = Voice 1..16)
         active_voice = 0,         -- Active voice (0 = All Notes, 1..16)
         voice_color_mode = true,  -- Color notes by voice (MIDI channels 1-16)
@@ -717,6 +719,18 @@ function State:load_settings()
         end
     end
 
+    -- Item Clefs
+    local _, raw_item_clefs = reaper.GetProjExtState(0, "REAPER_Notator", "item_clefs")
+    if raw_item_clefs and raw_item_clefs ~= "" then
+        self.item_clefs = {}
+        for entry in raw_item_clefs:gmatch("([^;]+)") do
+            local guid, clef = entry:match("^([^:]+):(.+)$")
+            if guid and clef then
+                self.item_clefs[guid] = clef
+            end
+        end
+    end
+
     -- Track Voices (MIDI channels 1-16 per track)
     local _, raw_voices = reaper.GetProjExtState(0, "REAPER_Notator", "track_voices")
     if raw_voices and raw_voices ~= "" then
@@ -843,6 +857,16 @@ function State.save_settings(self)
         end
         local raw_clefs = table.concat(parts, ";")
         reaper.SetProjExtState(0, "REAPER_Notator", "track_clefs", raw_clefs)
+    end
+
+    -- Item Clefs
+    if self.item_clefs then
+        local parts = {}
+        for guid, clef in pairs(self.item_clefs) do
+            table.insert(parts, guid .. ":" .. tostring(clef))
+        end
+        local raw_item_clefs = table.concat(parts, ";")
+        reaper.SetProjExtState(0, "REAPER_Notator", "item_clefs", raw_item_clefs)
     end
 
     -- Track Voices

@@ -686,7 +686,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         
                         local tag_bg = is_item_sel and 0xFFD700EE or reaper_color_to_rgba(it.col, tag_alpha)
                         local tag_txt_col = is_item_sel and 0x111111FF or 0xFFFFFFFF
-                        local tag_lbl = is_item_sel and ("✓ " .. it.name) or it.name
+                        local item_clef_lbl = (it.clef and it.clef ~= tdata.clef) and (" [" .. (Constants.CLEF_DEFS[it.clef] and Constants.CLEF_DEFS[it.clef].name or it.clef) .. "]") or ""
+                        local tag_lbl = (is_item_sel and "✓ " or "") .. it.name .. item_clef_lbl
                         
                         reaper.ImGui_DrawList_AddRectFilled(draw_list, tag_x0, tag_y0, tag_x1, tag_y1, tag_bg, 3)
                         reaper.ImGui_DrawList_AddText(draw_list, tag_x0 + 4*s, tag_y0 + 1*s, tag_txt_col, tag_lbl)
@@ -706,6 +707,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                     state.selected_item = it.item
                                     state.selected_take = it.take
                                     state.focused_track = tdata.track
+                                    state.clef_scope = "item"
                                     reaper.SelectAllMediaItems(0, false)
                                     reaper.SetMediaItemSelected(it.item, true)
                                     reaper.UpdateArrange()
@@ -716,6 +718,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 state.selected_item = it.item
                                 state.selected_take = it.take
                                 state.focused_track = tdata.track
+                                state.clef_scope = "item"
                                 state.item_context_target = it
                                 state.item_context_track_data = tdata
                                 reaper.ImGui_OpenPopup(ctx, "item_header_context_popup")
@@ -1193,9 +1196,23 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local pref_acc = Engraver.get_note_preferred_accidental(vn, state)
             local eff_pitch, active_oct, oct_shift = Engraver.get_note_effective_pitch(vn.pitch, vn.start_qn, tdata.guid, state)
             
-            local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[track_clef]
-            local is_unpitched = cdef and cdef.unpitched
             local note_item = vn.item or (vn.orig and vn.orig.item)
+            local note_clef = track_clef
+            if note_item then
+                if note_item.clef and note_item.clef ~= "" and note_item.clef ~= "auto" then
+                    note_clef = note_item.clef
+                else
+                    local real_it = (note_item.item and reaper.ValidatePtr(note_item.item, "MediaItem*") and note_item.item) or (type(note_item) == "userdata" and reaper.ValidatePtr(note_item, "MediaItem*") and note_item)
+                    if real_it then
+                        local ok_c, c_ext = reaper.GetSetMediaItemInfo_String(real_it, "P_EXT:notator_clef", "", false)
+                        if ok_c and c_ext and c_ext ~= "" and c_ext ~= "auto" then
+                            note_clef = c_ext
+                        end
+                    end
+                end
+            end
+            local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[note_clef]
+            local is_unpitched = cdef and cdef.unpitched
             local note_key_idx = resolve_effective_key(state, tdata.track, note_item, vn.start_qn)
             
             local force_staff = nil
@@ -1204,7 +1221,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 force_staff = (n_c >= 2) and "bass" or "treble"
             end
             
-            local ny, in_treble_b, dstep, acc, staff_target = Engraver.pitch_to_canvas_y(eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, track_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff)
+            local ny, in_treble_b, dstep, acc, staff_target = Engraver.pitch_to_canvas_y(eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, note_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff)
             vn.nominal_ny = ny
             vn.in_staff = staff_target
             vn.in_treble = in_treble_b

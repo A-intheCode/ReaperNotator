@@ -272,6 +272,10 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 item_obj.time_sig = { num = tonumber(num_s), denom = tonumber(den_s) }
             end
         end
+        local ok_c, c_ext = reaper.GetSetMediaItemInfo_String(item, "P_EXT:notator_clef", "", false)
+        if ok_c and c_ext and c_ext ~= "" and c_ext ~= "auto" then
+            item_obj.clef = c_ext
+        end
     end
     
     local take_notes = {}

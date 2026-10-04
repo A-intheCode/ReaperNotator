@@ -31,7 +31,7 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Continuous controller automation across CC1 (Modulation), CC11 (Expression), and CC7 (Volume).
 
 - **DAW & Articulation Integration**:
-  - Seamless two-way integration with **Reaticulate** sound libraries and bank presets.
+  - Seamless two-way integration with [**Reaticulate**](https://reaticulate.com/) ([GitHub](https://github.com/jtackaberry/reaticulate)) sound libraries and bank presets.
   - Articulation drawer with instant key switch / program change assignment.
   - Sustain and Holding pedal lane (CC64) with dual drag handles and break/retake notches.
   - Octave shift lines ($8^{va}$, $8^{vb}$, $15^{ma}$, $15^{mb}$).

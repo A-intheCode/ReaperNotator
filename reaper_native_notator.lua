@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.4.1
+-- @version 1.4.2
 -- @changelog
+--   + v1.4.2: Direct MIDI item clef assignment from Clef Drawer with Item vs Track scope switcher and immediate visual feedback
 --   + v1.4.1: Interactive Rehearsal Mark drag-and-drop, edit cursor placement, full-staff fermata hit-testing, and UI refinement
 --   + v1.4.0: Major notation & engraving features:
 --             - Score-wide vertical Fermatas (standard, short, long, very long) with tempomap slowdown dip & dual-persistence

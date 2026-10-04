@@ -872,11 +872,25 @@ function CanvasContextMenus.render_item_header_popup(ctx, state)
             reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("📦 MIDI Item: %s", it.name or "Untitled"))
             reaper.ImGui_Separator(ctx)
 
-            -- 1. Key Signature...
+            -- 1. Clef...
+            if reaper.ImGui_MenuItem(ctx, "𝄢 Clef Drawer...") then
+                state.selected_item = it.item
+                state.selected_take = it.take
+                state.focused_track = tdata and tdata.track or state.focused_track
+                state.clef_scope = "item"
+                state.show_clefs = true
+                state.show_key_signatures = false
+                state.show_dynamics = false
+                state.show_tempo = false
+                state.status_msg = string.format("Item '%s': Clef drawer opened", it.name or "Item")
+            end
+
+            -- 2. Key Signature...
             if reaper.ImGui_MenuItem(ctx, "♯♭ Key Signature...") then
                 state.selected_item = it.item
                 state.selected_take = it.take
                 state.focused_track = tdata and tdata.track or state.focused_track
+                state.key_sig_scope = "item"
                 state.show_key_signatures = true
                 state.show_clefs = false
                 state.show_dynamics = false
@@ -884,7 +898,7 @@ function CanvasContextMenus.render_item_header_popup(ctx, state)
                 state.status_msg = string.format("Item '%s': Key Signature drawer opened", it.name or "Item")
             end
 
-            -- 2. Time Signature... (Submenu with 4/4, 3/4, 2/4, 6/8 etc.)
+            -- 3. Time Signature... (Submenu with 4/4, 3/4, 2/4, 6/8 etc.)
             if reaper.ImGui_BeginMenu(ctx, "⏱ Time Signature") then
                 local common_ts = {
                     { num = 4, den = 4, lbl = "4/4 (Common Time)" },

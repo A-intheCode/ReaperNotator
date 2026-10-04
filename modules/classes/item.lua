@@ -17,6 +17,7 @@ function MidiItem.new(data)
     self.end_qn   = data.end_qn or 0.0
     self.col      = data.col or 0
     self.name     = data.name or "MIDI Item"
+    self.clef     = data.clef or nil
     return self
 end
 
