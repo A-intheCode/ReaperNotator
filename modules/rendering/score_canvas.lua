@@ -1354,38 +1354,91 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         -- Collision spacing adjustment (only within the same staff and measure!)
         for ci = 2, #chord_clusters do
             local cur_c = chord_clusters[ci]
-            local prev_c = nil
+            local cur_m = math.floor(cur_c.start_qn / bpi)
+            
+            -- 1. Check if this cluster is simultaneous with any earlier cluster on the same staff
+            local sim_c = nil
             for pi = ci - 1, 1, -1 do
-                if chord_clusters[pi].staff == cur_c.staff then
-                    prev_c = chord_clusters[pi]
+                local prev = chord_clusters[pi]
+                if prev.staff == cur_c.staff and math.abs(cur_c.start_qn - prev.start_qn) < 0.03 then
+                    sim_c = prev
                     break
                 end
             end
-            if prev_c then
-                local cur_m = math.floor(cur_c.start_qn / bpi)
-                local prev_m = math.floor(prev_c.start_qn / bpi)
+            
+            if sim_c then
+                -- Align nominal_nx with simultaneous cluster so both voices share the beat axis
+                local sim_base_nx = sim_c.notes[1].nominal_nx
+                for _, cvn in ipairs(cur_c.notes) do
+                    cvn.nominal_nx = sim_base_nx
+                    cvn.vis_nx = cvn.nominal_nx + (cvn.head_x_offset or 0)
+                end
                 
-                -- Perform collision detection and note pushing ONLY within the same measure!
-                if cur_m == prev_m then
-                    local prev_max_x = prev_c.notes[1].vis_nx
-                    for _, pvn in ipairs(prev_c.notes) do
-                        if pvn.vis_nx > prev_max_x then prev_max_x = pvn.vis_nx end
-                        if Engraver.is_dotted_duration(pvn.dur_qn) then prev_max_x = math.max(prev_max_x, pvn.vis_nx + 8 * s) end
-                    end
-                    local cur_min_x = cur_c.notes[1].vis_nx
-                    for _, cvn in ipairs(cur_c.notes) do
-                        local left_edge = cvn.vis_nx
-                        if cvn.acc ~= 0 then left_edge = cvn.vis_nx - 11.5 * s + cvn.acc_x_offset end
-                        if left_edge < cur_min_x then cur_min_x = left_edge end
-                    end
-                    local min_gap = 14 * s
-                    if cur_min_x < prev_max_x + min_gap then
-                        local push = (prev_max_x + min_gap) - cur_min_x
-                        local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or (margin_left + (cur_m + 1) * measure_w)
-                        local max_allowed_x = m_end_x - 18 * s -- Safety clearance before right barline
+                -- Check for pitch collisions against all earlier simultaneous clusters (unisons or seconds: |dstep_a - dstep_b| <= 1)
+                local pitch_collides = false
+                for pi = ci - 1, 1, -1 do
+                    local prev = chord_clusters[pi]
+                    if prev.staff == cur_c.staff and math.abs(cur_c.start_qn - prev.start_qn) < 0.03 then
                         for _, cvn in ipairs(cur_c.notes) do
-                            cvn.vis_nx = math.min(max_allowed_x, cvn.vis_nx + push)
+                            for _, pvn in ipairs(prev.notes) do
+                                if math.abs(cvn.dstep - pvn.dstep) <= 1 then
+                                    pitch_collides = true
+                                    break
+                                end
+                            end
+                            if pitch_collides then break end
                         end
+                    end
+                    if pitch_collides then break end
+                end
+                
+                if pitch_collides then
+                    local note_w = 11.5 * s
+                    for _, cvn in ipairs(cur_c.notes) do
+                        cvn.head_x_offset = (cvn.head_x_offset or 0) + note_w
+                        cvn.nominal_nx = cvn.nominal_nx + note_w
+                        cvn.vis_nx = cvn.nominal_nx + (cvn.head_x_offset or 0)
+                    end
+                end
+            end
+            
+            -- 2. Sequential spacing adjustment against earlier temporal notes on the same staff and measure
+            local prev_max_x = nil
+            local max_prev_start_qn = -1
+            for pi = ci - 1, 1, -1 do
+                local prev = chord_clusters[pi]
+                if prev.staff == cur_c.staff and (cur_c.start_qn - prev.start_qn) >= 0.03 then
+                    local prev_m = math.floor(prev.start_qn / bpi)
+                    if prev_m == cur_m then
+                        if prev.start_qn > max_prev_start_qn then
+                            max_prev_start_qn = prev.start_qn
+                        end
+                        if math.abs(prev.start_qn - max_prev_start_qn) < 0.03 then
+                            for _, pvn in ipairs(prev.notes) do
+                                local px = pvn.vis_nx
+                                if Engraver.is_dotted_duration(pvn.dur_qn) then px = px + 8 * s end
+                                if not prev_max_x or px > prev_max_x then prev_max_x = px end
+                            end
+                        end
+                    end
+                end
+            end
+            
+            if prev_max_x then
+                local cur_min_x = cur_c.notes[1].vis_nx
+                for _, cvn in ipairs(cur_c.notes) do
+                    local left_edge = cvn.vis_nx
+                    if cvn.acc ~= 0 then left_edge = cvn.vis_nx - 11.5 * s + cvn.acc_x_offset end
+                    if left_edge < cur_min_x then cur_min_x = left_edge end
+                end
+                local min_gap = 14 * s
+                if cur_min_x < prev_max_x + min_gap then
+                    local push = (prev_max_x + min_gap) - cur_min_x
+                    local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or (margin_left + (cur_m + 1) * measure_w)
+                    local max_allowed_x = m_end_x - 18 * s -- Safety clearance before right barline
+                    for _, cvn in ipairs(cur_c.notes) do
+                        cvn.vis_nx = math.min(max_allowed_x, cvn.vis_nx + push)
+                        cvn.nominal_nx = cvn.vis_nx - (cvn.head_x_offset or 0)
                     end
                 end
             end
@@ -1435,7 +1488,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     beam_col = global_ghost_col
                 end
             end
-            local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state)
+            local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, is_polyphonic_track)
             for k in pairs(bmap) do beamed_notes_map[k] = true end
         end
         
@@ -1617,7 +1670,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         for _, cluster in ipairs(chord_clusters) do
             local cluster_m = math.floor((cluster.notes[1].start_qn + 0.001) / bpi)
             if not RepeatService.has_repeat_mark(state, tdata.guid, cluster_m) then
-            local base_nx = cluster.notes[1].nominal_nx
+            local base_nx = (cluster.notes[1].vis_nx or cluster.notes[1].nominal_nx) - (cluster.notes[1].head_x_offset or 0)
             if base_nx >= cull_min_x - 30 * s and base_nx <= cull_max_x + 30 * s then
                 local cnotes = cluster.notes
                 if cluster.is_arpeggio and #cnotes >= 2 then
@@ -1627,7 +1680,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     for _, vn in ipairs(cnotes) do
                         if vn.vis_ny < arp_min_y then arp_min_y = vn.vis_ny end
                         if vn.vis_ny > arp_max_y then arp_max_y = vn.vis_ny end
-                        local nx_left = vn.nominal_nx
+                        local nx_left = vn.vis_nx
                         if vn.acc_nx and vn.acc_nx < arp_min_x then nx_left = vn.acc_nx end
                         if nx_left < arp_min_x then arp_min_x = nx_left end
                     end

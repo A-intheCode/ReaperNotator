@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.5.0
+-- @version 1.5.1
 -- @changelog
+--   + v1.5.1: Hotfix for polyphonic engraving, stem alignment, and voice-separated beaming:
+--             - Fix detached floating stems in multi-voice contexts by aligning concurrent polyphonic notes on the exact same beat axis
+--             - Synchronize visual notehead positions (vis_nx) and nominal positions (nominal_nx) across all stem and flag calculations
+--             - Voice-separated beaming in Engraver: partition beam groups strictly by staff and voice (st .. "_v" .. v)
+--             - Standard-compliant polyphonic stem directions for beamed groups (Voice 1 stems up, Voice 2 stems down per Elaine Gould)
+--             - Synchronized stem attachments for displaced noteheads on seconds and unisons in both ScoreCanvas and SystemEngraver
 --   + v1.5.0: Major feature release:
 --             - Smooth anti-aliased beam rendering: normalized quad winding order (strictly clockwise) in Dear ImGui screen space, ensuring full subpixel AA across all stem directions
 --             - Full outer stem coverage (half_stem) and embedded stem terminations preventing protruding flat line caps on slanted beams (per Gardner Read & Elaine Gould)

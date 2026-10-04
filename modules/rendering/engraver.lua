@@ -1469,27 +1469,30 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
         end
     end
     
-    -- Partition strictly by staff (treble vs. mid/alto vs. bass) to prevent stem/beam merging across grand staff and harp staff!
-    local notes_by_staff = {}
-    local staff_keys_in_order = {}
+    -- Partition strictly by staff AND voice (treble vs. mid/alto vs. bass, voice 1 vs voice 2)
+    -- to prevent stem/beam merging across grand staff and across polyphonic voices!
+    local notes_by_partition = {}
+    local partition_keys_in_order = {}
     for _, vn in ipairs(visual_notes) do
         local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
-        if not notes_by_staff[st] then
-            notes_by_staff[st] = {}
-            table.insert(staff_keys_in_order, st)
+        local v = (vn.orig and vn.orig.chan) or 0
+        local part_key = st .. "_v" .. tostring(v)
+        if not notes_by_partition[part_key] then
+            notes_by_partition[part_key] = {}
+            table.insert(partition_keys_in_order, part_key)
         end
-        table.insert(notes_by_staff[st], vn)
+        table.insert(notes_by_partition[part_key], vn)
     end
     
-    for _, st in ipairs(staff_keys_in_order) do
-        group_staff_notes(notes_by_staff[st])
+    for _, pk in ipairs(partition_keys_in_order) do
+        group_staff_notes(notes_by_partition[pk])
     end
     
     return groups
 end
 
 -- Calculates standard-compliant beam geometry (stem direction, slant, stem endpoints)
-function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_render_by_key, state)
+function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_render_by_key, state, is_polyphonic)
     if #group < 2 then return {} end
     
     -- 1. Condense notes by temporal onsets (chord notes share the same stem/beam step)
@@ -1504,11 +1507,12 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
             if vn.dstep < last_onset.min_dstep then last_onset.min_dstep = vn.dstep end
             if vn.dstep > last_onset.max_dstep then last_onset.max_dstep = vn.dstep end
         else
+            local onset_base_x = (vn.vis_nx or vn.nominal_nx) - (vn.head_x_offset or 0)
             table.insert(onsets, {
                 start_qn = vn.start_qn,
                 dur_qn = vn.dur_qn,
                 notes = { vn },
-                nominal_nx = vn.nominal_nx or vn.vis_nx,
+                nominal_nx = onset_base_x,
                 min_ny = vn.vis_ny,
                 max_ny = vn.vis_ny,
                 min_dstep = vn.dstep,
@@ -1547,6 +1551,16 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
         group_stem_down = false
     elseif manual_stem_dir == "down" then
         group_stem_down = true
+    elseif is_polyphonic then
+        -- Gould ("Behind Bars", p. 308): Polyphonic voice-leading standard
+        -- Voice 1 (and odd voices 1, 3 -> chan 0, 2) = stems UP!
+        -- Voice 2 (and even voices 2, 4 -> chan 1, 3) = stems DOWN!
+        local grp_v = (group[1] and group[1].orig and group[1].orig.chan) or 0
+        if grp_v % 2 == 1 then
+            group_stem_down = true
+        else
+            group_stem_down = false
+        end
     end
     
     -- 3. Stem X positions per onset (and for all notes within the onset)

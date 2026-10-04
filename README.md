@@ -53,6 +53,10 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Arpeggiated chords with bezier wavy line engraving and non-destructive micro-strumming playback offset.
   - Score Tools drawer: Make Notes Legato, Auto Voice & Auto Voice on Selection, and integrated Quantize Tools.
   - Inverted classical engraving styling for rehearsal marks and keyboard Delete/Backspace removal for marks & fermatas.
+- **Polyphonic Engraving & Stem Alignment Hotfix (v1.5.1)**:
+  - **Attached Multi-Voice Stems**: Fixed detached floating note stems in polyphonic measures by aligning concurrent voices on the exact same beat axis and eliminating false horizontal collision pushing.
+  - **Full Stem & Notehead Coordinate Synchronization**: Guaranteed seamless attachment between noteheads, stems, flags, and beams across all collision adjustments and second-interval displacements.
+  - **Voice-Separated Beaming**: Partitioned beam groups strictly by staff and voice, enforcing Elaine Gould standard-compliant stem directions (Voice 1 stems up, Voice 2 stems down).
 - **Smooth Anti-Aliased Beaming & Enhanced Usability (v1.5.0)**:
   - **Silky Smooth Anti-Aliased Beam Rendering**: Normalized Dear ImGui quad vertex winding (strictly clockwise) across all stem orientations and beamlet/stub directions, ensuring clean outward-facing normal vectors and pristine subpixel anti-aliasing.
   - **Full Stem Width Coverage**: Extended beam boundaries to encompass the full thickness of outside stems (`half_stem`), with embedded stem line terminations preventing flat end caps from poking past slanted beam edges (per Gardner Read & Elaine Gould).

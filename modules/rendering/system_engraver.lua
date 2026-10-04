@@ -422,6 +422,7 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
                 local prev = cnotes[i-1]
                 local curr = cnotes[i]
                 if math.abs(curr.dstep - prev.dstep) <= 1 then
+                    curr.head_x_offset = 8.5 * eng_s
                     curr.vis_nx = curr.vis_nx + (8.5 * eng_s)
                 end
             end
@@ -560,7 +561,7 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
                 end
             end
 
-            local base_nx = cnotes[1].nominal_nx
+            local base_nx = (cnotes[1].vis_nx or cnotes[1].nominal_nx) - (cnotes[1].head_x_offset or 0)
             local stem_x, stem_start_y, stem_end_y
 
             if has_beamed and beam_end_y then
