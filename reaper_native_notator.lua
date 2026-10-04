@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.4.3
+-- @version 1.4.4
 -- @changelog
+--   + v1.4.4: Hotfix for ReaImGui child window state restoration and protected ScoreCanvas render & mouse handling preventing unpopped child window crashes
 --   + v1.4.3: Direct MIDI Item Key & Time Signature assignment in Item Scope; restored Clef Drawer to track scope with auto-parent track target
 --   + v1.4.2: Maintenance and UI refinements
 --   + v1.4.1: Interactive Rehearsal Mark drag-and-drop, edit cursor placement, full-staff fermata hit-testing, and UI refinement
@@ -543,10 +544,15 @@ local function loop()
                 end
             end
             
-            local canvas_info = ScoreCanvas.render(ctx, state, fonts, project_tracks, MidiService)
-            if canvas_info then
+            local ok, canvas_info = pcall(ScoreCanvas.render, ctx, state, fonts, project_tracks, MidiService)
+            if ok and canvas_info then
                 state.active_tracks_cache = canvas_info.active_tracks_data
-                MouseHandler.handle(ctx, state, canvas_info, MidiService, DynamicsEngine)
+                local m_ok, m_err = pcall(MouseHandler.handle, ctx, state, canvas_info, MidiService, DynamicsEngine)
+                if not m_ok then
+                    reaper.ShowConsoleMsg("[ScoreCanvas MouseHandler Error] " .. tostring(m_err) .. "\n")
+                end
+            elseif not ok then
+                reaper.ShowConsoleMsg("[ScoreCanvas Render Error] " .. tostring(canvas_info) .. "\n")
             end
             reaper.ImGui_EndChild(ctx)
         end
