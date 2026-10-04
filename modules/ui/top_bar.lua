@@ -278,7 +278,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     reaper.ImGui_SameLine(ctx, 0, 10)
     local parent_avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
     local dq_extra = (state.display_quantize and (3 + 52) or 0)
-    local total_needed_w = 105 + dq_extra + 6 + 100 + 6 + 175 + 6 + 125 + 6 + 115 + 8 + 78 + 6 + 78 + 6 + 110 + 6 + 95 + 6 + 86 + 6 + 26 + 6 + 26 + 6 + 26 + 10
+    local total_needed_w = 105 + dq_extra + 6 + 88 + 8 + 78 + 6 + 78 + 6 + 110 + 6 + 95 + 6 + 86 + 6 + 26 + 6 + 26 + 6 + 26 + 10
     local needs_scroll = (parent_avail_w < total_needed_w)
 
     local scroll_flags = reaper.ImGui_WindowFlags_NoScrollbar()
@@ -332,33 +332,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
             reaper.ImGui_PopItemWidth(ctx)
         end
         
-        -- Auto-Voice Overlaps Button (Track-Wide)
-        reaper.ImGui_SameLine(ctx, 0, 6)
-        if reaper.ImGui_Button(ctx, "⚡ Auto-Voice", 100, 26) then
-            local ms = require("services.midi_service")
-            local trk = state.focused_track
-            if not trk and state.selected_notes then
-                for _, sn in pairs(state.selected_notes) do
-                    if sn.track then trk = sn.track; break end
-                end
-            end
-            ms.auto_split_overlaps_to_voices(state, trk or cur_trk)
-        end
-        if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Auto-Voice (Whole Track):\nDetects note overlaps across entire track and splits them into voices 1-16.")
-        end
-        
-        -- Auto-Voice on Selection Button
-        reaper.ImGui_SameLine(ctx, 0, 6)
-        if reaper.ImGui_Button(ctx, "⚡ Auto-Voice on Selection", 175, 26) then
-            local ms = require("services.midi_service")
-            ms.auto_split_selection_to_voices(state, nil)
-        end
-        if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Auto-Voice on Selection:\nAutomatically splits selected notes/chords into different voices 1-16.\n(If no notes are selected, processes entire track).")
-        end
-        
-        -- Tools Drawer Toggle (Contains Make Notes Legato, Rehearsal Marks & Navigation, Arpeggio Chords)
+        -- Tools Drawer Toggle (Contains Make Notes Legato, Auto Voice, Arpeggio Chords, Quantize Tools, Rehearsal Marks & Navigation)
         reaper.ImGui_SameLine(ctx, 0, 6)
         if toggle_btn(ctx, "🛠 Tools", state.show_tools_drawer, 88, 26, 0x8E44ADFF) then
             state.show_tools_drawer = not state.show_tools_drawer
@@ -371,19 +345,8 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
             end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Score Tools & Navigation:\nLegato, Arpeggios, Auto-Voice, and Rehearsal & Navigation Marks ([A], [1], D.C., D.S., Coda, Fine).")
+            reaper.ImGui_SetTooltip(ctx, "Score Tools & Navigation:\nLegato, Auto Voice, Quantize, Arpeggios, and Rehearsal & Navigation Marks ([A], [1], D.C., D.S., Coda, Fine).")
         end
-        
-        -- Quantize Dialog Button
-        reaper.ImGui_SameLine(ctx, 0, 6)
-        if toggle_btn(ctx, "⚡ Quantize (Q)", state.show_quantize_modal, 115, 26, 0x27AE60FF) then
-            state.show_quantize_modal = not state.show_quantize_modal
-        end
-        if reaper.ImGui_IsItemHovered(ctx) then
-            local sel_cnt = state:count_selected_notes()
-            local tip = string.format("Quantize dialog for notes (Q)\nSelected notes: %d", sel_cnt)
-            reaper.ImGui_SetTooltip(ctx, tip)
-        end    
         
         -- Clefs Drawer Toggle
         reaper.ImGui_SameLine(ctx, 0, 8)

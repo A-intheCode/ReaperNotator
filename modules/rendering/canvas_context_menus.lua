@@ -1149,25 +1149,6 @@ function CanvasContextMenus.render_fermata_popup(ctx, state, active_tracks_data)
                 reaper.ImGui_EndMenu(ctx)
             end
 
-            if reaper.ImGui_BeginMenu(ctx, "𝄐 Symbol Type") then
-                local types = {
-                    { id = "standard",  label = "Standard (Round 𝄐)" },
-                    { id = "short",     label = "Short (Triangular ▼)" },
-                    { id = "long",      label = "Long (Square ⨅)" },
-                    { id = "very_long", label = "Very Long (Arched)" }
-                }
-                for _, t in ipairs(types) do
-                    local is_cur = (ferm.type == t.id)
-                    local pfx = is_cur and "✓ " or "   "
-                    if reaper.ImGui_MenuItem(ctx, pfx .. t.label) then
-                        ferm.type = t.id
-                        FermataService.save_fermatas(state)
-                        FermataService.sync_takes_for_fermata(ferm, active_tracks_data, false)
-                    end
-                end
-                reaper.ImGui_EndMenu(ctx)
-            end
-
             reaper.ImGui_Separator(ctx)
             if reaper.ImGui_MenuItem(ctx, "🗑 Delete Fermata") then
                 FermataService.remove_fermata(state, ferm.id, active_tracks_data)
