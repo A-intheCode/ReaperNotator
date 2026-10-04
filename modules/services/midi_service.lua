@@ -279,9 +279,10 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     local take_dynamics = {}
     local take_articulations = {}
     
-    -- Read articulations & stem directions (Type 15 Sysex/Text)
+    -- Read articulations, stem directions & staff assignments (Type 15 Sysex/Text)
     local note_arts_list = {}
     local note_stems_list = {}
+    local note_staffs_list = {}
     local note_arpeggios_list = {}
     local chase_events_list = {}
     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
@@ -300,6 +301,13 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 sdir = sdir:lower()
                 if sdir == "up" or sdir == "down" then
                     table.insert(note_stems_list, { ppq = ppq, pitch = tonumber(sp), chan = tonumber(sch) or 0, stem_dir = sdir })
+                end
+            end
+            local stp, stch, sstf = msg:match("NOTE%s+(%d+)%s+(%d+)%s+staff%s+([%a]+)")
+            if stp and sstf then
+                sstf = sstf:lower()
+                if sstf == "treble" or sstf == "bass" then
+                    table.insert(note_staffs_list, { ppq = ppq, pitch = tonumber(stp), chan = tonumber(stch) or 0, staff = sstf })
                 end
             end
             local arp_dir = msg:match("NOTATOR_ARPEGGIO%s*([%a]*)")
@@ -411,6 +419,14 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                             end
                         end
                         
+                        local staff_override = nil
+                        for _, nst in ipairs(note_staffs_list) do
+                            if nst.pitch == pitch and math.abs(nst.ppq - sppq) <= 25 then
+                                staff_override = nst.staff
+                                break
+                            end
+                        end
+                        
                         local note_obj = MidiNote.new({
                             idx = ni,
                             pitch = pitch,
@@ -424,7 +440,8 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                             track = track,
                             articulation = art,
                             stem_dir = stem_dir,
-                            arpeggio = arpeggio_dir
+                            arpeggio = arpeggio_dir,
+                            staff = staff_override
                         })
                         table.insert(take_notes, note_obj)
                     end
@@ -2957,6 +2974,118 @@ function MidiService.invert_selected_notes_stem_direction(state, target_dir)
     else
         state.status_msg = string.format("Set stem direction to '%s' for %d note(s)", tostring(target_dir), #targets)
     end
+end
+
+function MidiService.set_selected_notes_staff(state, target_staff)
+    local targets = {}
+    for _, sn in pairs(state.selected_notes) do table.insert(targets, sn) end
+    if #targets == 0 and state.selected_note then table.insert(targets, state.selected_note) end
+    if #targets == 0 then
+        state.status_msg = "No notes selected for staff assignment"
+        return
+    end
+    
+    reaper.Undo_BeginBlock2(0)
+    local by_take = {}
+    for _, sn in ipairs(targets) do
+        local take = sn.take or MidiService.get_active_midi_take()
+        if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
+            if not by_take[take] then by_take[take] = {} end
+            table.insert(by_take[take], sn)
+        end
+    end
+    
+    if not state.note_staff_assignments then
+        state.note_staff_assignments = {}
+    end
+    
+    -- Determine default staff if toggle was chosen
+    local default_target = nil
+    if target_staff == "toggle" or not target_staff then
+        local has_any_treble = false
+        for _, sn in ipairs(targets) do
+            local k = sn.key or (sn.get_key and sn:get_key())
+            local cur_st = sn.staff or (k and state.note_staff_assignments[k])
+            if cur_st == nil then
+                cur_st = (sn.pitch >= 60) and "treble" or "bass"
+            end
+            if cur_st == "treble" then
+                has_any_treble = true
+                break
+            end
+        end
+        default_target = has_any_treble and "bass" or "treble"
+    end
+    
+    for take, n_list in pairs(by_take) do
+        reaper.MIDI_DisableSort(take)
+        for _, sn in ipairs(n_list) do
+            local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn) + 0.5)
+            local chan = sn.chan or 0
+            
+            -- Search existing type 15 staff event
+            local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+            for ti = text_cnt - 1, 0, -1 do
+                local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
+                if ok and etype == 15 then
+                    local p, ch, stf = msg:match("NOTE%s+(%d+)%s+(%d+)%s+staff%s+([%a]+)")
+                    if p and tonumber(p) == sn.pitch and math.abs(ppq - sppq) <= 25 then
+                        reaper.MIDI_DeleteTextSysexEvt(take, ti)
+                    end
+                end
+            end
+            
+            local k = sn.key or (sn.get_key and sn:get_key())
+            local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(sn.idx or 0), sn.start_qn or 0)
+            local pos_k = string.format("%s_%.3f_%d", tostring(take), sn.start_qn or 0, sn.pitch)
+            
+            local new_st = nil
+            if target_staff == "toggle" or not target_staff then
+                new_st = default_target
+            elseif target_staff == "treble" then
+                new_st = "treble"
+            elseif target_staff == "bass" then
+                new_st = "bass"
+            elseif target_staff == "auto" then
+                new_st = nil
+            end
+            
+            if new_st then
+                reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, string.format("NOTE %d %d staff %s", sn.pitch, chan, new_st))
+                sn.staff = new_st
+                if k then state.note_staff_assignments[k] = new_st end
+                state.note_staff_assignments[id_k] = new_st
+                state.note_staff_assignments[pos_k] = new_st
+            else
+                sn.staff = nil
+                if k then state.note_staff_assignments[k] = nil end
+                state.note_staff_assignments[id_k] = nil
+                state.note_staff_assignments[pos_k] = nil
+            end
+        end
+        reaper.MIDI_Sort(take)
+    end
+    
+    local undo_title = "Notator: Change Note Staff"
+    if target_staff == "toggle" then undo_title = "Notator: Toggle Note Staff"
+    elseif target_staff == "treble" then undo_title = "Notator: Move Note to Upper Staff (Treble)"
+    elseif target_staff == "bass" then undo_title = "Notator: Move Note to Lower Staff (Bass)"
+    elseif target_staff == "auto" then undo_title = "Notator: Reset Note Staff to Auto"
+    end
+    
+    reaper.Undo_EndBlock2(0, undo_title, -1)
+    reaper.UpdateArrange()
+    MidiService.invalidate_cache()
+    state.active_tracks_cache = nil
+    
+    if target_staff == "toggle" then
+        state.status_msg = string.format("Moved %d note(s) to %s staff", #targets, (default_target == "treble" and "Upper (Treble)" or "Lower (Bass)"))
+    elseif target_staff == "auto" then
+        state.status_msg = string.format("Reset staff to Auto (split at Middle C) for %d note(s)", #targets)
+    else
+        state.status_msg = string.format("Moved %d note(s) to %s staff", #targets, (target_staff == "treble" and "Upper (Treble)" or "Lower (Bass)"))
+    end
+    state.status_time = reaper.time_precise()
 end
 
 

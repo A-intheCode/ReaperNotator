@@ -23,6 +23,7 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Automatic beaming engine with slope compensation and beamlet/stub handling.
   - Multi-voice support with collision avoidance and centered whole measure rests.
   - Tuplet rendering (triplets, quintuplets, sextuplets, septuplets, etc.).
+  - **Grand Staff & Cross-Staff Engine**: Natural pitch-based split at Middle C ($C_4$) with interactive cross-staff switching (`M` or `Ctrl+Shift+Up/Down`) and per-note staff overrides.
 
 - **Dynamic Automation & CC Engine**:
   - 10 standardized dynamic levels ($ppp$ through $fff$) mapped to customizable MIDI velocities and CC values.

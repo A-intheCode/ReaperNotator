@@ -21,6 +21,7 @@ function MidiNote.new(data)
     self.articulation = data.articulation
     self.stem_dir     = data.stem_dir
     self.arpeggio     = data.arpeggio
+    self.staff        = data.staff
     self.key          = self:get_key()
     return self
 end

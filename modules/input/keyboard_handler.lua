@@ -440,6 +440,25 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
                 midi_service.invert_selected_notes_stem_direction(state, "invert")
             end
         end
+        
+        -- Cross-Staff Move / Toggle (M or Ctrl+Shift+Up/Down)
+        local cross_toggle = is_action_pressed("cross_staff_toggle") or (not is_ctrl and not is_alt and not is_shift and reaper.APIExists("ImGui_Key_M") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_M()))
+        local cross_up = is_action_pressed("cross_staff_up") or (is_ctrl and is_shift and not is_alt and reaper.APIExists("ImGui_Key_UpArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_UpArrow()))
+        local cross_down = is_action_pressed("cross_staff_down") or (is_ctrl and is_shift and not is_alt and reaper.APIExists("ImGui_Key_DownArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_DownArrow()))
+        
+        if cross_up then
+            if midi_service and midi_service.set_selected_notes_staff then
+                midi_service.set_selected_notes_staff(state, "treble")
+            end
+        elseif cross_down then
+            if midi_service and midi_service.set_selected_notes_staff then
+                midi_service.set_selected_notes_staff(state, "bass")
+            end
+        elseif cross_toggle then
+            if midi_service and midi_service.set_selected_notes_staff then
+                midi_service.set_selected_notes_staff(state, "toggle")
+            end
+        end
     end
     
     -- Number keys for note values (2..7)

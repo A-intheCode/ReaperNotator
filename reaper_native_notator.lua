@@ -1,7 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.5.1
+-- @version 1.5.2
 -- @changelog
+--   + v1.5.2: Critical fix for Grand Staff system note assignment and interactive cross-staff management:
+--             - Fix high notes erroneously forced into lower bass staff with 12-14 ledger lines by eliminating flawed track_has_multi_staff_chan channel assumption
+--             - Natural pitch-based split in Grand Staff mode: notes >= 60 (Middle C) automatically allocate to upper Treble staff; notes < 60 allocate to lower Bass staff
+--             - Interactive Cross-Staff Switching (M): select any note(s) and press M or Ctrl+Shift+Up / Ctrl+Shift+Down to switch between upper and lower systems
+--             - Added Grand Staff context submenu: instant access to Move to Upper Staff, Move to Lower Staff, and Auto Staff
+--             - Fully synchronized rest generation and beaming partition parity across staves in multi-voice piano contexts
+--             - Enhanced automatic grand staff clef detection for tracks with broad keyboard pitch spans (piano recordings)
 --   + v1.5.1: Hotfix for polyphonic engraving, stem alignment, and voice-separated beaming:
 --             - Fix detached floating stems in multi-voice contexts by aligning concurrent polyphonic notes on the exact same beat axis
 --             - Synchronize visual notehead positions (vis_nx) and nominal positions (nominal_nx) across all stem and flag calculations

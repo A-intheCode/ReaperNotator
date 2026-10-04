@@ -587,6 +587,41 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 reaper.ImGui_EndMenu(ctx)
             end
             
+            if reaper.ImGui_BeginMenu(ctx, "🎼 Grand Staff System") then
+                local cur_staff = nil
+                local sn = state.selected_note
+                if not sn and state.selected_notes then
+                    for _, n in pairs(state.selected_notes) do sn = n break end
+                end
+                if sn then
+                    local k = (sn.get_key and sn:get_key()) or sn.key
+                    cur_staff = sn.staff or (state.note_staff_assignments and k and state.note_staff_assignments[k])
+                end
+                
+                local p_tr = (cur_staff == "treble") and "✓ " or "   "
+                if reaper.ImGui_MenuItem(ctx, p_tr .. "⬆ Move to Upper Staff (Treble)") then
+                    if midi_service and midi_service.set_selected_notes_staff then
+                        midi_service.set_selected_notes_staff(state, "treble")
+                    end
+                end
+                
+                local p_ba = (cur_staff == "bass") and "✓ " or "   "
+                if reaper.ImGui_MenuItem(ctx, p_ba .. "⬇ Move to Lower Staff (Bass)") then
+                    if midi_service and midi_service.set_selected_notes_staff then
+                        midi_service.set_selected_notes_staff(state, "bass")
+                    end
+                end
+                
+                reaper.ImGui_Separator(ctx)
+                local p_auto = (cur_staff == nil) and "✓ " or "   "
+                if reaper.ImGui_MenuItem(ctx, p_auto .. "🔄 Auto Staff (Split at Middle C)") then
+                    if midi_service and midi_service.set_selected_notes_staff then
+                        midi_service.set_selected_notes_staff(state, "auto")
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+            
             if reaper.ImGui_BeginMenu(ctx, "🎯 Articulation") then
                 local cur_note_art = nil
                 local sn = state.selected_note

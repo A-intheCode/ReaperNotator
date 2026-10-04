@@ -1274,7 +1274,8 @@ function MusicXmlExportService.export_project(state, options)
                 local s1_notes = {}
                 local s2_notes = {}
                 for _, n in ipairs(m_notes) do
-                    if (n.pitch or 60) >= 60 then
+                    local staff_pref = n.staff or (state and state.note_staff_assignments and (state.note_staff_assignments[n.key or (n.get_key and n:get_key())]))
+                    if staff_pref == "treble" or (not staff_pref and (n.pitch or 60) >= 60) then
                         table.insert(s1_notes, n)
                     else
                         table.insert(s2_notes, n)

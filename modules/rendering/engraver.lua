@@ -545,14 +545,22 @@ function Engraver.get_track_clef(track_or_guid, p2, p3, state)
     if track_notes and #track_notes > 0 then
         local sum_p = 0
         local count = 0
+        local min_p = 127
+        local max_p = 0
         for _, n in ipairs(track_notes) do
             local p = n.pitch or n.nominal_pitch
             if p then
                 sum_p = sum_p + p
                 count = count + 1
+                if p < min_p then min_p = p end
+                if p > max_p then max_p = p end
             end
         end
         if count > 0 then
+            -- Wide keyboard range spanning across both staves (e.g. piano pieces without explicit name)
+            if min_p <= 53 and max_p >= 67 and (max_p - min_p >= 20) then
+                return "grand"
+            end
             local avg_p = sum_p / count
             if avg_p < 55 then
                 return "bass"
@@ -600,6 +608,29 @@ function Engraver.get_note_stem_direction(vn, state)
         if pref ~= nil then return pref end
         local pos_k = string.format("%s_%.3f_%d", tostring(orig.take or "0"), orig.start_qn or 0, orig.pitch or 0)
         return state.note_stem_directions[pos_k]
+    end
+    return nil
+end
+
+function Engraver.get_note_staff(vn, state)
+    if not vn then return nil end
+    if vn.staff and (vn.staff == "treble" or vn.staff == "bass") then
+        return vn.staff
+    end
+    local orig = vn.orig or (vn.take and vn)
+    if orig and orig.staff and (orig.staff == "treble" or orig.staff == "bass") then
+        return orig.staff
+    end
+    if not (state and state.note_staff_assignments) then return nil end
+    local k = (orig and (orig.key or (orig.get_key and orig:get_key()))) or vn.key
+    local pref = state.note_staff_assignments[k]
+    if pref ~= nil then return pref end
+    if orig and orig.take then
+        local id_k = string.format("%s_%s_%.3f", tostring(orig.take or "0"), tostring(orig.idx or 0), orig.start_qn or 0)
+        pref = state.note_staff_assignments[id_k]
+        if pref ~= nil then return pref end
+        local pos_k = string.format("%s_%.3f_%d", tostring(orig.take or "0"), orig.start_qn or 0, orig.pitch or 0)
+        return state.note_staff_assignments[pos_k]
     end
     return nil
 end

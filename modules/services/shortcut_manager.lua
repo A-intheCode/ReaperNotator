@@ -153,6 +153,30 @@ ShortcutManager.DEFAULT_SHORTCUTS = {
         shift = false,
         alt  = false
     },
+    cross_staff_toggle = {
+        name = "Toggle Cross-Staff (Upper / Lower)",
+        cat  = "Edit & Selection",
+        key  = "M",
+        ctrl = false,
+        shift = false,
+        alt  = false
+    },
+    cross_staff_up = {
+        name = "Move Note to Upper Staff (Treble)",
+        cat  = "Edit & Selection",
+        key  = "UpArrow",
+        ctrl = true,
+        shift = true,
+        alt  = false
+    },
+    cross_staff_down = {
+        name = "Move Note to Lower Staff (Bass)",
+        cat  = "Edit & Selection",
+        key  = "DownArrow",
+        ctrl = true,
+        shift = true,
+        alt  = false
+    },
     select_all = {
         name = "Select all notes",
         cat  = "Edit & Selection",

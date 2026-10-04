@@ -996,8 +996,17 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         st_target = "bass"
                     end
                 elseif is_grand then
-                    is_tr = (written_pitch >= 60)
-                    st_target = is_tr and "treble" or "bass"
+                    local manual_st = Engraver.get_note_staff(n, state)
+                    if manual_st == "treble" then
+                        is_tr = true
+                        st_target = "treble"
+                    elseif manual_st == "bass" then
+                        is_tr = false
+                        st_target = "bass"
+                    else
+                        is_tr = (written_pitch >= 60)
+                        st_target = is_tr and "treble" or "bass"
+                    end
                 elseif track_clef == "bass" then
                     is_tr = false
                     st_target = "bass"
@@ -1184,17 +1193,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
         end
         
-        local track_has_multi_staff_chan = false
-        if is_grand then
-            for _, vn_chk in ipairs(visual_notes) do
-                local c = vn_chk.chan or (vn_chk.orig and vn_chk.orig.chan) or 0
-                if c >= 2 then
-                    track_has_multi_staff_chan = true
-                    break
-                end
-            end
-        end
-        
         for _, vn in ipairs(visual_notes) do
             local pref_acc = Engraver.get_note_preferred_accidental(vn, state)
             local eff_pitch, active_oct, oct_shift = Engraver.get_note_effective_pitch(vn.pitch, vn.start_qn, tdata.guid, state)
@@ -1206,9 +1204,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local note_key_idx = resolve_effective_key(state, tdata.track, note_item, vn.start_qn)
             
             local force_staff = nil
-            if is_grand and track_has_multi_staff_chan then
-                local n_c = vn.chan or (vn.orig and vn.orig.chan) or 0
-                force_staff = (n_c >= 2) and "bass" or "treble"
+            if is_grand then
+                local manual_st = Engraver.get_note_staff(vn, state)
+                if manual_st == "treble" or manual_st == "bass" then
+                    force_staff = manual_st
+                end
             end
             
             local ny, in_treble_b, dstep, acc, staff_target = Engraver.pitch_to_canvas_y(eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, note_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff)
@@ -2361,7 +2361,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 
                 if not is_standard_symbol and (is_art_sel or (dx >= cull_min_x - 30 * s and dx <= cull_max_x + 30 * s)) then
                     local art_staff_top_y = staff_top_y
-                    if is_grand and (art.staff == 2 or (art.chan and art.chan >= 2)) and bass_bottom_y then
+                    if is_grand and (art.staff == 2 or art.staff == "bass") and bass_bottom_y then
                         art_staff_top_y = bass_bottom_y - 4 * line_spacing
                     end
                     local dy = art_staff_top_y - art_offset
