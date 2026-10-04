@@ -367,15 +367,38 @@ MANUAL_DATA = [
     },
     {
         "chapter": 11,
-        "title": "Text Items & Score Annotations",
+        "title": "Rehearsal Marks, Fermatas & Score Tools",
         "sections": [
             {
-                "heading": "11.1 Rehearsal Marks & Structural Tags",
-                "text": "Functions: Pressing Ctrl+T inserts a floating score text item at the cursor. Supports rehearsal letters ([A], [B], [C]), section titles ('Verse', 'Chorus', 'Bridge'), and orchestration performance instructions ('Molto espressivo', 'Solo', 'Tutti')."
+                "heading": "11.1 Dynamic Rehearsal Marks & Interactive Drag-and-Drop",
+                "text": "Functions: Professional structural navigation and rehearsal tagging:\n"
+                        "- Dedicated Rehearsal Lane: Positioned cleanly between the Chord Track lane and Bar Numbers, providing unobstructed structural visibility across all systems.\n"
+                        "- Interactive Mouse Drag & Drop: Click and drag any rehearsal mark directly along the top lane to move it to any measure. During dragging, the mark follows the cursor with a real-time vertical snap guide line and target bar indicator ('Bar X').\n"
+                        "- Auto-Sequencing: Marks automatically sequence as [A], [B], [C]... or [1], [2], [3]... Moving or inserting marks chronologically re-indexes all subsequent marks across the score.\n"
+                        "- Edit-Cursor Placement: The Tools Drawer dynamically detects the active REAPER edit cursor position, displaying explicit actions like 'Add Letter Mark at Bar X' and 'Add Number Mark at Bar X'.\n"
+                        "- Classical Navigation Symbols: Immediate one-click placement of Da Capo (D.C.), D.C. al Fine, Dal Segno (D.S.), D.S. al Coda, Segno, Coda, and Fine marks.\n"
+                        "- Inverted Engraving Typography: Styled according to classical engraving rules with a crisp paper background, 2px dark border, and high-contrast dark typography.\n"
+                        "- Settings & View Options: Configurable vertical Y-offset slider in Settings and a show/hide toggle in the View dropdown."
             },
             {
-                "heading": "11.2 In-Place Editing & Typography",
-                "text": "Functions: Double-click any text item to open an in-place editing field. Configure font size, standard/italic/bold styling, and staff attachment anchor points."
+                "heading": "11.2 Score-Wide Vertical Fermatas",
+                "text": "Functions: Classical pause and hold articulation across all staves:\n"
+                        "- Four Engraving Types: Standard fermata, Short fermata (triangle/fermata corta), Long fermata (square/fermata lunga), and Very Long fermata.\n"
+                        "- Full-Score Clickability: Fermatas can be clicked, selected, and edited on any staff across the entire vertical score system, not just the top staff.\n"
+                        "- Tempomap Playback Coupling: Non-destructive tempo slowdown dip (1.25x to 3.0x multiplier) with automatic restoration at the release point.\n"
+                        "- Keyboard Delete Support: Select any fermata or rehearsal mark and press Delete or Backspace to instantly remove it."
+            },
+            {
+                "heading": "11.3 Score Tools Drawer & Performance Transformations",
+                "text": "Functions: Fast editing actions consolidated in the right-hand Tools drawer:\n"
+                        "- Make Notes Legato: Extends note durations to adjacent note downbeats for seamless cantabile phrasing.\n"
+                        "- Auto Voice & Auto Voice on Selection: Polyphonic splitting of selected chords into upper Voice 1 (stems up) and lower Voice 2 (stems down).\n"
+                        "- Arpeggio Strums: Realistic harp and guitar roll simulation with upward/downward wavy line engraving and non-destructive playback micro-offset.\n"
+                        "- Quantize Tools: Integrated triplet, swing, and 1/4 through 1/64 grid snapping directly inside the Tools drawer."
+            },
+            {
+                "heading": "11.4 Floating Text Items & In-Place Editing",
+                "text": "Functions: Pressing Ctrl+T inserts a floating score text item at the cursor. Double-click any text item to open an in-place editing field. Configure font size, standard/italic/bold styling, and staff attachment anchor points."
             }
         ]
     },
