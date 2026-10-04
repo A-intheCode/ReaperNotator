@@ -707,7 +707,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                     state.selected_item = it.item
                                     state.selected_take = it.take
                                     state.focused_track = tdata.track
-                                    state.clef_scope = "item"
+                                    state.key_sig_scope = "item"
                                     reaper.SelectAllMediaItems(0, false)
                                     reaper.SetMediaItemSelected(it.item, true)
                                     reaper.UpdateArrange()
@@ -718,7 +718,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 state.selected_item = it.item
                                 state.selected_take = it.take
                                 state.focused_track = tdata.track
-                                state.clef_scope = "item"
+                                state.key_sig_scope = "item"
                                 state.item_context_target = it
                                 state.item_context_track_data = tdata
                                 reaper.ImGui_OpenPopup(ctx, "item_header_context_popup")
@@ -1198,19 +1198,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             
             local note_item = vn.item or (vn.orig and vn.orig.item)
             local note_clef = track_clef
-            if note_item then
-                if note_item.clef and note_item.clef ~= "" and note_item.clef ~= "auto" then
-                    note_clef = note_item.clef
-                else
-                    local real_it = (note_item.item and reaper.ValidatePtr(note_item.item, "MediaItem*") and note_item.item) or (type(note_item) == "userdata" and reaper.ValidatePtr(note_item, "MediaItem*") and note_item)
-                    if real_it then
-                        local ok_c, c_ext = reaper.GetSetMediaItemInfo_String(real_it, "P_EXT:notator_clef", "", false)
-                        if ok_c and c_ext and c_ext ~= "" and c_ext ~= "auto" then
-                            note_clef = c_ext
-                        end
-                    end
-                end
-            end
             local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[note_clef]
             local is_unpitched = cdef and cdef.unpitched
             local note_key_idx = resolve_effective_key(state, tdata.track, note_item, vn.start_qn)

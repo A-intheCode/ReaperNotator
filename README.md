@@ -41,7 +41,9 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Direct synchronization with REAPER's master tempo map.
   - Gradual tempo transitions (*accelerando*, *ritardando*) and metric modulations.
 
-- **Score-Wide Fermatas, Rehearsal Marks & Score Tools (v1.4.1)**:
+- **Score-Wide Fermatas, Rehearsal Marks & Score Tools (v1.4.3)**:
+  - Key & Time Signatures: Direct MIDI Item Scope support allowing immediate key and time signature application to selected items upon drawer selection with live in-memory score rendering.
+  - Clef Management: Dedicated track-level clef management with automatic parent-track focus when items or notes are selected.
   - Dynamic Rehearsal Marks ([A], [B], [C]...) with automatic re-sequencing and interactive mouse **drag-and-drop** along the dedicated Rehearsal Lane.
   - Real-time vertical snap guide line and target bar downbeat indicator during mark dragging.
   - Automatic edit-cursor bar detection in the Tools Drawer (`Add Letter Mark at Bar X` / `Add Number Mark at Bar X`).

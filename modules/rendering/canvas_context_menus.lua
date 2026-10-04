@@ -877,12 +877,11 @@ function CanvasContextMenus.render_item_header_popup(ctx, state)
                 state.selected_item = it.item
                 state.selected_take = it.take
                 state.focused_track = tdata and tdata.track or state.focused_track
-                state.clef_scope = "item"
                 state.show_clefs = true
                 state.show_key_signatures = false
                 state.show_dynamics = false
                 state.show_tempo = false
-                state.status_msg = string.format("Item '%s': Clef drawer opened", it.name or "Item")
+                state.status_msg = string.format("Track '%s': Clef drawer opened", tdata and tdata.name or "Track")
             end
 
             -- 2. Key Signature...

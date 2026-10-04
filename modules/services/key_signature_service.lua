@@ -202,17 +202,25 @@ function KeySignatureService.set_item_key_sig(state, item, take, key_idx, mode, 
     if type(item) == "table" then
         item.key_sig = { idx = kidx, key_idx = kidx, mode = kmode }
     end
-    -- Also update all cached wrappers in active_tracks_cache
-    if state and state.active_tracks_cache then
-        for _, tdata in ipairs(state.active_tracks_cache) do
-            if tdata.items then
-                for _, it in ipairs(tdata.items) do
-                    if (real_item and it.item == real_item) or (real_take and it.take == real_take) then
-                        it.key_sig = { idx = kidx, key_idx = kidx, mode = kmode }
+    -- Also update all cached wrappers in active_tracks_data and active_tracks_cache
+    if state then
+        local track_lists = { state.active_tracks_data, state.active_tracks_cache }
+        for _, tlist in ipairs(track_lists) do
+            if type(tlist) == "table" then
+                for _, tdata in ipairs(tlist) do
+                    if tdata.items then
+                        for _, it in ipairs(tdata.items) do
+                            if (real_item and it.item == real_item) or (real_take and it.take == real_take) then
+                                it.key_sig = { idx = kidx, key_idx = kidx, mode = kmode }
+                            end
+                        end
                     end
                 end
             end
         end
+        state.cached_measure_map = nil
+        state.cached_measure_map_sig = nil
+        state.active_tracks_cache = nil
     end
 
     -- 4. Auto-respell notes
@@ -225,7 +233,7 @@ function KeySignatureService.set_item_key_sig(state, item, take, key_idx, mode, 
     if MidiService and MidiService.invalidate_cache then
         MidiService.invalidate_cache()
     end
-    if state then state.active_tracks_cache = nil end
+    reaper.Undo_OnStateChange2(0, "Notator: Set Item Key Signature")
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
     if reaper.UpdateArrange then reaper.UpdateArrange() end
 end
@@ -380,13 +388,33 @@ function KeySignatureService.set_item_time_sig(state, item, take, num, denom, at
     if type(item) == "table" then
         item.time_sig = { num = t_num, denom = t_den }
     end
+    -- Also update all cached wrappers in active_tracks_data and active_tracks_cache
+    if state then
+        local track_lists = { state.active_tracks_data, state.active_tracks_cache }
+        for _, tlist in ipairs(track_lists) do
+            if type(tlist) == "table" then
+                for _, tdata in ipairs(tlist) do
+                    if tdata.items then
+                        for _, it in ipairs(tdata.items) do
+                            if (real_item and it.item == real_item) or (real_take and it.take == real_take) then
+                                it.time_sig = { num = t_num, denom = t_den }
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        state.cached_measure_map = nil
+        state.cached_measure_map_sig = nil
+        state.active_tracks_cache = nil
+    end
 
     -- 4. Invalidate cache & update project
     local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
     if MidiService and MidiService.invalidate_cache then
         MidiService.invalidate_cache()
     end
-    if state then state.active_tracks_cache = nil end
+    reaper.Undo_OnStateChange2(0, "Notator: Set Item Time Signature")
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
     if reaper.UpdateArrange then reaper.UpdateArrange() end
 end

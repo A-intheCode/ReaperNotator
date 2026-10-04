@@ -62,25 +62,42 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     -- ==================================================================
     local sel_item = (state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*") and state.selected_item) or reaper.GetSelectedMediaItem(0, 0)
     local sel_take = sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") and reaper.GetActiveTake(sel_item)
+    if not sel_item and state.selected_notes then
+        for _, sn in pairs(state.selected_notes) do
+            if sn.item and reaper.ValidatePtr(sn.item, "MediaItem*") then
+                sel_item = sn.item
+                sel_take = sn.take or reaper.GetActiveTake(sel_item)
+                state.selected_item = sel_item
+                state.selected_take = sel_take
+                break
+            end
+        end
+    end
     local item_name = "None"
     local has_item = false
 
-    if sel_take and reaper.ValidatePtr(sel_take, "MediaItem_Take*") then
+    if sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") then
         has_item = true
-        local _, iname = reaper.GetSetMediaItemTakeInfo_String(sel_take, "P_NAME", "", false)
-        item_name = (iname and iname ~= "") and iname or "Selected Item"
-    elseif sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") then
-        has_item = true
-        item_name = "Selected Item"
+        if sel_take and reaper.ValidatePtr(sel_take, "MediaItem_Take*") then
+            local _, iname = reaper.GetSetMediaItemTakeInfo_String(sel_take, "P_NAME", "", false)
+            item_name = (iname and iname ~= "") and iname or "Selected Item"
+        else
+            item_name = "Selected Item"
+        end
     end
 
     -- Active Track Focus
-    local cur_trk = state.focused_track
+    local it_trk = has_item and reaper.GetMediaItem_Track(sel_item)
+    local cur_trk = (it_trk and reaper.ValidatePtr(it_trk, "MediaTrack*") and it_trk) or state.focused_track
     if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
-        if sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") then
-            cur_trk = reaper.GetMediaItem_Track(sel_item)
+        local sel_trk = reaper.GetSelectedTrack(0, 0)
+        if sel_trk and reaper.ValidatePtr(sel_trk, "MediaTrack*") then
+            cur_trk = sel_trk
             state.focused_track = cur_trk
-        elseif state.selected_notes then
+        end
+    end
+    if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+        if state.selected_notes then
             for _, sn in pairs(state.selected_notes) do
                 if sn.track and reaper.ValidatePtr(sn.track, "MediaTrack*") then
                     cur_trk = sn.track
@@ -101,9 +118,16 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
         trk_guid = reaper.GetTrackGUID(cur_trk)
     end
 
-    -- Default Scope
+    -- Scope Switcher: Default to "item" if item selected, otherwise "track" or "project"
     if not state.key_sig_scope then
         state.key_sig_scope = has_item and "item" or (has_track and "track" or "project")
+    end
+    if has_item and state._keysig_last_has_item == false then
+        state.key_sig_scope = "item"
+    end
+    state._keysig_last_has_item = has_item
+    if not has_item and state.key_sig_scope == "item" then
+        state.key_sig_scope = has_track and "track" or "project"
     end
 
     reaper.ImGui_TextColored(ctx, 0xAAAAAAFF, "Target Scope:")
@@ -260,6 +284,27 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
                             reaper.GetSetMediaItemInfo_String(sel_item, "P_EXT:notator_key_sig", string.format("%d|%s", sig.idx, mode), true)
                             if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
                         end
+
+                        -- Immediately update in-memory active_tracks_data objects
+                        if state.active_tracks_data then
+                            for _, td in ipairs(state.active_tracks_data) do
+                                if td.items then
+                                    for _, it_obj in ipairs(td.items) do
+                                        if it_obj.item == sel_item or (sel_take and it_obj.take == sel_take) then
+                                            it_obj.key_sig = { idx = sig.idx, key_idx = sig.idx, mode = mode }
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                        state.cached_measure_map = nil
+                        state.cached_measure_map_sig = nil
+                        local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+                        if MidiService and MidiService.invalidate_cache then
+                            MidiService.invalidate_cache()
+                        end
+                        reaper.Undo_OnStateChange2(0, "Notator: Set Item Key Signature")
+                        if reaper.UpdateArrange then reaper.UpdateArrange() end
                         state.status_msg = string.format("Item '%s': Key signature set to %s", item_name, disp_title)
                     else
                         state.status_msg = "Please select a MIDI Item to assign key signature!"
@@ -419,6 +464,27 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
                     reaper.GetSetMediaItemInfo_String(sel_item, "P_EXT:notator_time_sig", string.format("%d|%d", num, denom), true)
                     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
                 end
+
+                -- Immediately update in-memory active_tracks_data objects
+                if state.active_tracks_data then
+                    for _, td in ipairs(state.active_tracks_data) do
+                        if td.items then
+                            for _, it_obj in ipairs(td.items) do
+                                if it_obj.item == sel_item or (sel_take and it_obj.take == sel_take) then
+                                    it_obj.time_sig = { num = num, denom = denom }
+                                end
+                            end
+                        end
+                    end
+                end
+                state.cached_measure_map = nil
+                state.cached_measure_map_sig = nil
+                local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+                if MidiService and MidiService.invalidate_cache then
+                    MidiService.invalidate_cache()
+                end
+                reaper.Undo_OnStateChange2(0, "Notator: Set Item Time Signature")
+                if reaper.UpdateArrange then reaper.UpdateArrange() end
                 state.status_msg = string.format("Item '%s': Time signature set to %d/%d", item_name, num, denom)
             else
                 state.status_msg = "Please select a MIDI Item to assign time signature!"

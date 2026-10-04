@@ -27,34 +27,15 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
     end
     reaper.ImGui_Separator(ctx)
     
-    -- Resolve Selected MIDI Item
-    local sel_item = (state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*") and state.selected_item) or reaper.GetSelectedMediaItem(0, 0)
-    local sel_take = sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") and reaper.GetActiveTake(sel_item)
-    local item_name = "None"
-    local has_item = false
-    local item_guid = nil
-    local cur_item_clef = nil
-
-    if sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") then
-        has_item = true
-        item_guid = reaper.BR_GetMediaItemGUID and reaper.BR_GetMediaItemGUID(sel_item) or tostring(sel_item)
-        if sel_take and reaper.ValidatePtr(sel_take, "MediaItem_Take*") then
-            local _, iname = reaper.GetSetMediaItemTakeInfo_String(sel_take, "P_NAME", "", false)
-            item_name = (iname and iname ~= "") and iname or "Selected Item"
-        else
-            item_name = "Selected Item"
-        end
-        local ok_c, c_ext = reaper.GetSetMediaItemInfo_String(sel_item, "P_EXT:notator_clef", "", false)
-        if ok_c and c_ext and c_ext ~= "" and c_ext ~= "auto" then
-            cur_item_clef = c_ext
-        elseif state.item_clefs and item_guid and state.item_clefs[item_guid] then
-            cur_item_clef = state.item_clefs[item_guid]
+    -- Target Track Info
+    local cur_trk = state.focused_track
+    if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+        local sel_item = (state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*") and state.selected_item) or reaper.GetSelectedMediaItem(0, 0)
+        if sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") then
+            cur_trk = reaper.GetMediaItem_Track(sel_item)
+            state.focused_track = cur_trk
         end
     end
-
-    -- Target Track Info
-    local it_trk = has_item and reaper.GetMediaItem_Track(sel_item)
-    local cur_trk = (it_trk and reaper.ValidatePtr(it_trk, "MediaTrack*") and it_trk) or state.focused_track
     if not cur_trk or not reaper.ValidatePtr(cur_trk, "MediaTrack*") then
         local sel_trk = reaper.GetSelectedTrack(0, 0)
         if sel_trk and reaper.ValidatePtr(sel_trk, "MediaTrack*") then
@@ -93,72 +74,24 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
     local trk_name = "None"
     local trk_guid = nil
     local has_track = false
-    local cur_track_clef = "treble"
+    local cur_clef_id = "treble"
     if cur_trk and reaper.ValidatePtr(cur_trk, "MediaTrack*") then
         has_track = true
         local _, name = reaper.GetTrackName(cur_trk)
         trk_name = (name and name ~= "") and name or ("Track " .. math.floor(reaper.GetMediaTrackInfo_Value(cur_trk, "IP_TRACKNUMBER")))
         trk_guid = reaper.GetTrackGUID(cur_trk)
-        cur_track_clef = state.track_clefs[trk_guid] or "treble"
+        cur_clef_id = state.track_clefs[trk_guid] or "treble"
     end
 
-    -- Scope Switcher: Default to "item" if item selected, otherwise "track"
-    if not state.clef_scope then
-        state.clef_scope = has_item and "item" or "track"
-    end
-    if has_item and state._clef_last_has_item == false then
-        state.clef_scope = "item"
-    end
-    state._clef_last_has_item = has_item
-    if not has_item and state.clef_scope == "item" then
-        state.clef_scope = "track"
-    end
+    local short_trk_name = #trk_name > 24 and (trk_name:sub(1, 22) .. "..") or trk_name
 
-    local function render_scope_btn(label, target_scope, is_enabled)
-        local is_active = (state.clef_scope == target_scope)
-        if not is_enabled then
-            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0x666666FF)
-            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x1A1C22FF)
-            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x1A1C22FF)
-            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(), 0x1A1C22FF)
-            reaper.ImGui_Button(ctx, label, -1, 23)
-            reaper.ImGui_PopStyleColor(ctx, 4)
-            return false
-        end
-
-        local bg = is_active and 0x2980B9FF or 0x222630FF
-        local bg_hov = is_active and 0x3498DBFF or 0x303644FF
-        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), bg)
-        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), bg_hov)
-        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(), 0x1B4F72FF)
-        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), is_active and 0xFFFFFFFF or 0xBBBBBBFF)
-        local clicked = reaper.ImGui_Button(ctx, label, -1, 23)
-        reaper.ImGui_PopStyleColor(ctx, 4)
-        if clicked then
-            state.clef_scope = target_scope
-        end
-        return clicked
-    end
-
-    local short_item_name = #item_name > 18 and (item_name:sub(1, 16) .. "..") or item_name
-    local short_trk_name  = #trk_name > 18 and (trk_name:sub(1, 16) .. "..") or trk_name
-
-    render_scope_btn(string.format("📦 Selected Item: \"%s\"##ClefScopeItem", has_item and short_item_name or "None"), "item", has_item)
-    render_scope_btn(string.format("🎵 Active Track: \"%s\"##ClefScopeTrk", has_track and short_trk_name or "None"), "track", has_track)
-
-    if state.clef_scope == "item" and has_item then
-        local eff_id = cur_item_clef or cur_track_clef
-        local cur_def = Constants.CLEF_DEFS[eff_id]
-        local cur_lbl = cur_def and cur_def.name or eff_id
-        reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("Target: Item \"%s\"", short_item_name))
-        reaper.ImGui_TextColored(ctx, 0xAAAAAAFF, string.format("Active Clef: %s", cur_lbl))
-    elseif has_track then
-        local cur_def = Constants.CLEF_DEFS[cur_track_clef]
-        local cur_lbl = cur_def and cur_def.name or cur_track_clef
+    if has_track then
+        local cur_def = Constants.CLEF_DEFS[cur_clef_id]
+        local cur_lbl = cur_def and cur_def.name or cur_clef_id
         reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("Target: Track \"%s\"", short_trk_name))
         reaper.ImGui_TextColored(ctx, 0xAAAAAAFF, string.format("Active Clef: %s", cur_lbl))
     else
-        reaper.ImGui_TextColored(ctx, 0xE67E22FF, "Target: Select a MIDI item or track")
+        reaper.ImGui_TextColored(ctx, 0xE67E22FF, "Target: Select a track in score")
     end
     reaper.ImGui_Spacing(ctx)
     
@@ -172,7 +105,7 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
     -- ==================================================================
     -- 2. SPLITTER & HEIGHT ALLOCATION FOR 4 CATEGORIES
     -- ==================================================================
-    local header_used_h = 160
+    local header_used_h = 105
     local available_content_h = math.max(220, height - header_used_h)
     
     local h1 = state.clef_drawer_h1 or 180
@@ -189,12 +122,7 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
     -- HELPER: DRAW CLEF PREVIEW CARD
     -- ==================================================================
     local function draw_clef_card(clef, card_w, card_h)
-        local is_selected
-        if state.clef_scope == "item" and has_item then
-            is_selected = (clef.id == (cur_item_clef or cur_track_clef))
-        else
-            is_selected = (clef.id == cur_track_clef)
-        end
+        local is_selected = (clef.id == cur_clef_id)
         local p0_x, p0_y = reaper.ImGui_GetCursorScreenPos(ctx)
         local btn_id = "##clef_card_" .. clef.id
         
@@ -209,49 +137,47 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
         
         -- Click handler
         if clicked then
-            if state.clef_scope == "item" and has_item and sel_item then
-                -- Immediately assign clef to the selected MIDI item!
-                reaper.GetSetMediaItemInfo_String(sel_item, "P_EXT:notator_clef", clef.id, true)
-                if item_guid then
-                    state.item_clefs = state.item_clefs or {}
-                    state.item_clefs[item_guid] = clef.id
+            if cur_trk and trk_guid then
+                state.track_clefs[trk_guid] = clef.id
+                cur_clef_id = clef.id
+
+                -- Clear any per-item clef overrides on this track so track clef governs all items
+                local it_cnt = reaper.CountTrackMediaItems(cur_trk)
+                for i = 0, it_cnt - 1 do
+                    local it = reaper.GetTrackMediaItem(cur_trk, i)
+                    if it then
+                        reaper.GetSetMediaItemInfo_String(it, "P_EXT:notator_clef", "", true)
+                        local it_g = reaper.BR_GetMediaItemGUID and reaper.BR_GetMediaItemGUID(it)
+                        if it_g and state.item_clefs then
+                            state.item_clefs[it_g] = nil
+                        end
+                    end
                 end
-                cur_item_clef = clef.id
-                
-                -- Update item obj in active_tracks_data if present
                 if state.active_tracks_data then
                     for _, td in ipairs(state.active_tracks_data) do
-                        if td.items then
+                        if td.track == cur_trk and td.items then
                             for _, it_obj in ipairs(td.items) do
-                                if it_obj.item == sel_item then
-                                    it_obj.clef = clef.id
-                                end
+                                it_obj.clef = nil
                             end
                         end
                     end
                 end
-                
+
                 state.cached_measure_map = nil
                 state.cached_measure_map_sig = nil
                 state._track_clefs_cache = nil
                 state._cached_hdr_metrics = nil
+                local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+                if MidiService and MidiService.invalidate_cache then
+                    MidiService.invalidate_cache()
+                end
                 state:save_settings()
-                if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
-                if reaper.UpdateArrange then reaper.UpdateArrange() end
-                state.status_msg = string.format("MIDI Item '%s': Clef set to %s", item_name, clef.name)
-            elseif cur_trk and trk_guid then
-                state.track_clefs[trk_guid] = clef.id
-                cur_track_clef = clef.id
-                state.cached_measure_map = nil
-                state.cached_measure_map_sig = nil
-                state._track_clefs_cache = nil
-                state._cached_hdr_metrics = nil
-                state:save_settings()
+                reaper.Undo_OnStateChange2(0, "Notator: Set Track Clef")
                 if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
                 if reaper.UpdateArrange then reaper.UpdateArrange() end
                 state.status_msg = string.format("Track '%s': Clef set to %s", trk_name, clef.name)
             else
-                state.status_msg = string.format("Clef selected: %s (Focus a track or select an item)", clef.name)
+                state.status_msg = string.format("Clef selected: %s (Focus a track to apply)", clef.name)
             end
         end
         

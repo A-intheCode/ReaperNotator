@@ -53,6 +53,7 @@ MidiService._last_num_tracks = -1
 MidiService._last_sel_sig = ""
 
 function MidiService.invalidate_cache(track_or_guid)
+    MidiService._last_proj_change_cnt = -1
     if not track_or_guid then
         MidiService._track_cache = {}
         MidiService._take_cache = {}
@@ -271,10 +272,6 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             if num_s and den_s then
                 item_obj.time_sig = { num = tonumber(num_s), denom = tonumber(den_s) }
             end
-        end
-        local ok_c, c_ext = reaper.GetSetMediaItemInfo_String(item, "P_EXT:notator_clef", "", false)
-        if ok_c and c_ext and c_ext ~= "" and c_ext ~= "auto" then
-            item_obj.clef = c_ext
         end
     end
     
