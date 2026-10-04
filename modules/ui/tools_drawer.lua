@@ -206,52 +206,34 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
 
         reaper.ImGui_Spacing(ctx)
 
-        -- Target Bar Detection & Stepper
+        -- Target Bar Detection (Always places at current edit cursor)
         local cur_pos_sec = reaper.GetCursorPosition()
-        local cur_qn = reaper.TimeMap2_timeToQN(0, cur_pos_sec)
-        local bpi = 4.0
-        local ts_num, ts_den = reaper.TimeMap_GetTimeSigAtTime(0, cur_pos_sec)
-        if ts_num and ts_den and ts_den > 0 then bpi = ts_num * (4.0 / ts_den) end
-        local default_bar = math.floor((cur_qn + 0.01) / bpi) + 1
-        if ToolsDrawer.target_bar_offset == 0 then
-            ToolsDrawer.target_bar_offset = default_bar
-        end
+        local _, cur_m = reaper.TimeMap2_timeToBeats(0, cur_pos_sec)
+        local target_m_idx = math.max(0, cur_m or 0)
+        local cursor_bar = target_m_idx + 1
 
-        reaper.ImGui_TextColored(ctx, 0x5DADE2FF, string.format("Target Bar: %d", ToolsDrawer.target_bar_offset))
-        reaper.ImGui_SameLine(ctx)
-        if reaper.ImGui_SmallButton(ctx, "-1##dec_bar") then
-            ToolsDrawer.target_bar_offset = math.max(1, ToolsDrawer.target_bar_offset - 1)
-        end
-        reaper.ImGui_SameLine(ctx)
-        if reaper.ImGui_SmallButton(ctx, "+1##inc_bar") then
-            ToolsDrawer.target_bar_offset = ToolsDrawer.target_bar_offset + 1
-        end
-        reaper.ImGui_SameLine(ctx)
-        if reaper.ImGui_SmallButton(ctx, "Cursor##cur_bar") then
-            ToolsDrawer.target_bar_offset = default_bar
-        end
-
-        local target_m_idx = math.max(0, ToolsDrawer.target_bar_offset - 1)
+        reaper.ImGui_TextColored(ctx, 0x5DADE2FF, string.format("Cursor at Bar: %d", cursor_bar))
 
         reaper.ImGui_Spacing(ctx)
 
-        -- Quick Add Letter / Number Marks (Auto-Sequenced)
+        -- Quick Add Letter / Number Marks (Placed at Edit Cursor)
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0xE67E22FF)
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0xF39C12FF)
-        if reaper.ImGui_Button(ctx, "🔤 Add Letter Mark [A], [B]... (Auto)", width - 24, 26) then
+        if reaper.ImGui_Button(ctx, string.format("🔤 Add Letter Mark at Bar %d", cursor_bar), width - 24, 26) then
             RehearsalMarkService.add_mark(state, target_m_idx, "letter")
-            ToolsDrawer.target_bar_offset = ToolsDrawer.target_bar_offset + 4 -- Advance 4 bars for convenience
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Adds auto-sequenced letter mark [A], [B], [C]...\nInserting between existing marks automatically re-indexes following marks!")
+            reaper.ImGui_SetTooltip(ctx, string.format("Adds auto-sequenced letter mark [A], [B], [C]... at Bar %d (Edit Cursor).\nInserting between existing marks automatically re-indexes following marks!", cursor_bar))
         end
 
         reaper.ImGui_Spacing(ctx)
 
-        if reaper.ImGui_Button(ctx, "🔢 Add Number Mark [1], [2]... (Auto)", width - 24, 24) then
+        if reaper.ImGui_Button(ctx, string.format("🔢 Add Number Mark at Bar %d", cursor_bar), width - 24, 24) then
             RehearsalMarkService.add_mark(state, target_m_idx, "number")
-            ToolsDrawer.target_bar_offset = ToolsDrawer.target_bar_offset + 4
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, string.format("Adds auto-sequenced number mark [1], [2], [3]... at Bar %d (Edit Cursor).", cursor_bar))
         end
 
         reaper.ImGui_Spacing(ctx)

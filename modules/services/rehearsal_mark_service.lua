@@ -216,6 +216,15 @@ end
 function RehearsalMarkService.move_mark(state, mark_id, target_measure)
     if not state.rehearsal_marks then return end
     target_measure = math.max(0, math.floor(target_measure or 0))
+
+    -- Remove any other mark that already occupied the destination bar
+    for idx = #state.rehearsal_marks, 1, -1 do
+        local other = state.rehearsal_marks[idx]
+        if other.id ~= mark_id and other.measure == target_measure then
+            table.remove(state.rehearsal_marks, idx)
+        end
+    end
+
     for _, rm in ipairs(state.rehearsal_marks) do
         if rm.id == mark_id then
             rm.measure = target_measure

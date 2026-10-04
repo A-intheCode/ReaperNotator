@@ -1091,8 +1091,12 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
 
     -- 4. CLICK IN EMPTY SPACE: Sets REAPER edit cursor & focuses track (or prepares Ctrl+marquee)
     local in_chord_lane = (state.show_chord_lane ~= false and canvas_info.canvas_p0_y and mouse_y >= canvas_info.canvas_p0_y and mouse_y <= (canvas_info.canvas_p0_y + 42 * s))
+    local chord_h = (state.show_chord_lane ~= false) and (42 * s) or 0
+    local rm_off_y = (state.rehearsal_mark_offset_y or 0.0) * s
+    local reh_y0 = canvas_info.canvas_p0_y and (canvas_info.canvas_p0_y + 40 * s + chord_h + rm_off_y)
+    local in_reh_lane = (state.show_rehearsal_lane ~= false and reh_y0 and mouse_y >= reh_y0 and mouse_y <= (reh_y0 + 28 * s))
     local empty_click = (state.input_mode_type ~= "draw") and reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
-                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not in_chord_lane
+                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not in_chord_lane and not in_reh_lane and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark
                         
     if empty_click then
         state.drag_note = nil
@@ -1183,7 +1187,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
        and not state.is_dragging_octave 
        and not state.is_dragging_tempo 
        and not state.is_dragging_articulation
-       and not state.is_dragging_text_item then
+       and not state.is_dragging_text_item
+       and not state.is_dragging_rehearsal_mark then
         state.marquee_active = true
         state.drag_note = nil
         state.is_dragging = false

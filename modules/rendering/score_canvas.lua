@@ -3314,7 +3314,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
            and not dynamic_text_hovered_this_frame and not pedal_hovered_this_frame and not text_item_hovered_this_frame
            and not octave_hovered_this_frame and not art_hovered_this_frame and not tempo_hovered_this_frame
            and not chord_hovered_this_frame and not state.hovered_fermata and not state.hovered_rehearsal_mark
-           and not (state.show_chord_lane ~= false and mouse_y >= canvas_p0_y and mouse_y <= (canvas_p0_y + 42 * s)) then
+           and not (state.show_chord_lane ~= false and mouse_y >= canvas_p0_y and mouse_y <= (canvas_p0_y + 42 * s))
+           and not (state.show_rehearsal_lane ~= false and mouse_y >= (canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + (state.rehearsal_mark_offset_y or 0.0) * s) and mouse_y <= (canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + (state.rehearsal_mark_offset_y or 0.0) * s + 28 * s)) then
             
             -- Find clicked track (staff) based on mouse_y
             local target_tdata = nil
