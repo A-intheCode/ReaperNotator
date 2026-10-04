@@ -275,11 +275,25 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     -- Delete via Delete / Backspace
     local del_pressed = is_action_pressed("delete")
     if not del_pressed and not is_ctrl and not is_shift and not is_alt then
-        if reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Backspace()) then
+        if reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Backspace()) or (reaper.APIExists("ImGui_Key_Delete") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Delete())) then
             del_pressed = true
         end
     end
     if del_pressed then
+        if state.selected_fermata then
+            local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
+            FermataService.remove_fermata(state, state.selected_fermata.id, active_tracks_data)
+            state.selected_fermata = nil
+            state.context_fermata = nil
+            return
+        end
+        if state.selected_rehearsal_mark then
+            local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+            RehearsalMarkService.remove_mark(state, state.selected_rehearsal_mark.id)
+            state.selected_rehearsal_mark = nil
+            state.context_rehearsal_mark = nil
+            return
+        end
         local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
         if SelectionService and SelectionService.count_all_selected(state) > 1 then
             SelectionService.delete_all_selected(state, midi_service, active_tracks_data)
@@ -348,6 +362,10 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         state.selected_dynamic = nil
         state.selected_tempo_marker = nil
         state.selected_octave_line = nil
+        state.selected_fermata = nil
+        state.context_fermata = nil
+        state.selected_rehearsal_mark = nil
+        state.context_rehearsal_mark = nil
         state.selected_hairpin = nil
         state.selected_dynamic_text = nil
         state.selected_pedal = nil

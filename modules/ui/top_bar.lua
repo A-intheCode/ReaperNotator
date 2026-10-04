@@ -171,6 +171,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
         view_item("Tuplets / Triplets (3, 5, ...)", "show_tuplets_layer")
         view_item("Text Items (🔤)", "show_text_items_layer")
         view_item("Chord / Scale Lane", "show_chord_lane")
+        view_item("Rehearsal Marks Lane", "show_rehearsal_lane")
         
         
         

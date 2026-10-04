@@ -1071,7 +1071,21 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     if state.hovered_fermata and reaper.ImGui_IsMouseClicked(ctx, 0) and not state.is_resizing_item then
         state:clear_selection()
         state.selected_fermata = state.hovered_fermata
+        state.selected_rehearsal_mark = nil
+        state.selected_dynamic = nil
+        state.selected_tempo_marker = nil
         state.status_msg = string.format("Selected Fermata at Bar %d (Beat %.1f)", state.hovered_fermata.measure + 1, (state.hovered_fermata.beat_rel or 0) + 1)
+        return
+    end
+
+    -- 3d. REHEARSAL MARK SELECTION: Left-click directly selects rehearsal mark
+    if state.hovered_rehearsal_mark and reaper.ImGui_IsMouseClicked(ctx, 0) and not state.is_resizing_item then
+        state:clear_selection()
+        state.selected_rehearsal_mark = state.hovered_rehearsal_mark
+        state.selected_fermata = nil
+        state.selected_dynamic = nil
+        state.selected_tempo_marker = nil
+        state.status_msg = string.format("Selected Rehearsal Mark: %s (Bar %d)", state.hovered_rehearsal_mark.label, state.hovered_rehearsal_mark.measure + 1)
         return
     end
 
@@ -1083,6 +1097,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     if empty_click then
         state.drag_note = nil
         state.is_dragging = false
+        state.selected_fermata = nil
+        state.selected_rehearsal_mark = nil
         state.drag_selected_snapshot = {}
         state.drag_delta_qn = 0
         state.drag_delta_pitch = 0

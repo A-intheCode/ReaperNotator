@@ -717,6 +717,21 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 end
             end
             
+            local sn_sel = state.selected_note
+            if not sn_sel and state.selected_notes then
+                for _, n in pairs(state.selected_notes) do sn_sel = n break end
+            end
+            if sn_sel and sn_sel.start_qn then
+                local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
+                local sn_time = reaper.TimeMap2_QNToTime(0, sn_sel.start_qn)
+                local _, sn_m = reaper.TimeMap2_timeToBeats(0, sn_time)
+                if reaper.ImGui_MenuItem(ctx, string.format(">> Select Notes in Bar %d", sn_m + 1)) then
+                    if SelectionService and SelectionService.select_measure then
+                        SelectionService.select_measure(state, sn_m, active_tracks_data, midi_service, qn_per_measure)
+                    end
+                end
+            end
+            
             reaper.ImGui_Separator(ctx)
         else
             -- No note object selected -> context menu for staff & measure

@@ -3348,10 +3348,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
             
             local raw_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
-            local qn_pm = qn_per_measure or 4.0
-            state.context_measure = math.floor(raw_qn / qn_pm)
-            state.context_click_qn = raw_qn
             local click_time = reaper.TimeMap2_QNToTime(0, raw_qn)
+            local _, exact_m = reaper.TimeMap2_timeToBeats(0, click_time)
+            state.context_measure = exact_m or math.floor(raw_qn / (qn_per_measure or 4.0))
+            state.context_click_qn = raw_qn
             reaper.SetEditCurPos2(0, click_time, true, false)
             if target_tdata then
                 state.context_measure_track = target_tdata.track

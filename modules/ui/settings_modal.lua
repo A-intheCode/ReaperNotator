@@ -84,6 +84,10 @@ function SettingsModal.render(ctx, state, shortcut_manager)
         local bnoy_changed, new_bnoy = reaper.ImGui_SliderDouble(ctx, "Bar Numbers Y-Offset", bno_y, -50.0, 50.0, "%.1f px")
         if bnoy_changed then state.bar_num_offset_y = new_bnoy; require('state').save_settings(state) end
         
+        local rmoy = state.rehearsal_mark_offset_y or 0.0
+        local rmoy_changed, new_rmoy = reaper.ImGui_SliderDouble(ctx, "Rehearsal Marks Y-Offset", rmoy, -60.0, 60.0, "%.1f px")
+        if rmoy_changed then state.rehearsal_mark_offset_y = new_rmoy; require('state').save_settings(state) end
+        
         local bns = state.bar_num_size or 14.0
         local bns_changed, new_bns = reaper.ImGui_SliderDouble(ctx, "Bar Numbers Font Size", bns, 8.0, 32.0, "%.1f px")
         if bns_changed then state.bar_num_size = new_bns; require('state').save_settings(state) end

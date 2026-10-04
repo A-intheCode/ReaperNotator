@@ -685,7 +685,8 @@ function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, 
 
     if (state.show_rehearsal_lane ~= false) then
         local chord_h = (state.show_chord_lane ~= false) and (42 * s) or 0
-        local lane_y0 = canvas_p0_y + 40 * s + chord_h
+        local rm_off_y = (state.rehearsal_mark_offset_y or 0.0) * s
+        local lane_y0 = canvas_p0_y + 40 * s + chord_h + rm_off_y
         local lane_h = 28 * s
         local lane_y1 = lane_y0 + lane_h
         local lane_mid_y = lane_y0 + (lane_h / 2)
@@ -695,25 +696,6 @@ function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, 
         if line_x0 < line_x1 then
             -- Subtle lane separator line
             reaper.ImGui_DrawList_AddLine(draw_list, line_x0, lane_y1, line_x1, lane_y1, 0x5BC0DE22, 1.0 * s)
-        end
-
-        -- Header badge on sticky left header
-        local badge_x0 = hdr_x0 or canvas_p0_x
-        local badge_x1 = hdr_x1 or (canvas_p0_x + 60 * s)
-        local is_badge_hov = is_hovered and (mouse_x >= badge_x0 and mouse_x <= badge_x1 and mouse_y >= lane_y0 and mouse_y <= lane_y1)
-        local badge_bg = is_badge_hov and 0x34495ECC or 0x242730DD
-        local badge_bdr = is_badge_hov and 0xE67E22FF or 0xE67E2266
-        reaper.ImGui_DrawList_AddRectFilled(draw_list, badge_x0, lane_y0 + 1 * s, badge_x1, lane_y1 - 1 * s, badge_bg, 3.0)
-        reaper.ImGui_DrawList_AddRect(draw_list, badge_x0, lane_y0 + 1 * s, badge_x1, lane_y1 - 1 * s, badge_bdr, 3.0, 0, 1.0 * s)
-        reaper.ImGui_DrawList_AddText(draw_list, badge_x0 + 6 * s, lane_mid_y - 6 * s, 0xE67E22FF, "🔖 MARKS")
-
-        if is_badge_hov then
-            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
-            reaper.ImGui_SetTooltip(ctx, "Rehearsal & Navigation Marks\nDouble-click in lane to add mark [A], [B]...\nRight-click for options")
-            if reaper.ImGui_IsMouseClicked(ctx, 1) then
-                state.context_rehearsal_measure = 0
-                reaper.ImGui_OpenPopup(ctx, "rehearsal_lane_context_popup")
-            end
         end
 
         -- Double click in lane to create rehearsal mark
@@ -741,10 +723,15 @@ function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, 
                 if is_mark_hov then
                     rm_hovered_this_frame = rm
                     reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
-                    reaper.ImGui_SetTooltip(ctx, string.format("Rehearsal Mark: %s (Bar %d)\nRight-click to change type or delete", rm.label, rm.measure + 1))
+                    reaper.ImGui_SetTooltip(ctx, string.format("Rehearsal Mark: %s (Bar %d)\nClick to select | Delete key to remove\nRight-click for options", rm.label, rm.measure + 1))
 
                     if reaper.ImGui_IsMouseClicked(ctx, 0) then
+                        state:clear_selection()
                         state.selected_rehearsal_mark = rm
+                        state.selected_fermata = nil
+                        state.selected_dynamic = nil
+                        state.selected_tempo_marker = nil
+                        state.status_msg = string.format("Selected Rehearsal Mark: %s (Bar %d)", rm.label, rm.measure + 1)
                     end
                     if reaper.ImGui_IsMouseClicked(ctx, 1) then
                         state.context_rehearsal_mark = rm
@@ -843,7 +830,11 @@ function CanvasDecorations.draw_fermatas(ctx, draw_list, state, fonts, active_tr
                         reaper.ImGui_SetTooltip(ctx, string.format("𝄐 Fermata: %s\nBar %d (Beat %.1f)\nPlayback: %s\nClick to select | Right-click for options", ferm.type or "standard", ferm.measure + 1, (ferm.beat_rel or 0) + 1, pb_mode))
 
                         if reaper.ImGui_IsMouseClicked(ctx, 0) then
+                            state:clear_selection()
                             state.selected_fermata = ferm
+                            state.selected_rehearsal_mark = nil
+                            state.selected_dynamic = nil
+                            state.selected_tempo_marker = nil
                             state.status_msg = string.format("Selected Fermata at Bar %d (Beat %.1f)", ferm.measure + 1, (ferm.beat_rel or 0) + 1)
                         end
                         if reaper.ImGui_IsMouseClicked(ctx, 1) then

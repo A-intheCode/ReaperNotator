@@ -2023,24 +2023,27 @@ function Engraver.draw_rehearsal_mark(draw_list, x, y, s, label, is_selected, is
     local x1 = x0 + box_w
     local y1 = y0 + box_h
 
-    local bg_col = Constants.COLORS.rehearsal_box_bg or 0x242832EE
+    local bg_col = is_selected and 0xFFF3E0FF
+                 or (is_hovered and 0xFFF8E7FF or (Constants.COLORS.rehearsal_box_bg or 0xFAF8F5FF))
     local border_col = is_selected and (Constants.COLORS.selection_gold or 0xFF9F1CFF)
-                     or (is_hovered and 0xFFB300FF or (Constants.COLORS.rehearsal_border or 0xE67E22FF))
+                     or (is_hovered and 0xFFB300FF or (Constants.COLORS.rehearsal_border or 0x1A1A1AFF))
     local text_col = is_selected and (Constants.COLORS.selection_gold or 0xFF9F1CFF)
-                   or (Constants.COLORS.rehearsal_text or 0xFFFFFFFF)
+                   or (Constants.COLORS.rehearsal_text or 0x111111FF)
 
     if is_symbol then
         -- Draw symbol with prominent engraving size without surrounding box
         if is_hovered or is_selected then
             reaper.ImGui_DrawList_AddCircleFilled(draw_list, x, y, 16 * s, 0xFF9F1C33)
         end
+        local sym_col = is_selected and (Constants.COLORS.selection_gold or 0xFF9F1CFF)
+                      or (is_hovered and 0xFFB300FF or 0x111111FF)
         local f_sz = 26 * s
         local tx = x - 8 * s
         local ty = y - 13 * s
         if font_bold and reaper.APIExists("ImGui_DrawList_AddTextEx") then
-            pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_bold, f_sz, tx, ty, border_col, label)
+            pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_bold, f_sz, tx, ty, sym_col, label)
         else
-            reaper.ImGui_DrawList_AddText(draw_list, tx, ty, border_col, label)
+            reaper.ImGui_DrawList_AddText(draw_list, tx, ty, sym_col, label)
         end
     else
         -- Classical boxed rehearsal frame (Elaine Gould standard)

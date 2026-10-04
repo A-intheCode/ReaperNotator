@@ -221,6 +221,16 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
 
     local flt = state.selection_filter
 
+    local is_measure = (state.selection_bounds and state.selection_bounds.is_measure_selection)
+    local function in_range(pos_qn)
+        if not pos_qn then return false end
+        if is_measure then
+            return pos_qn >= (min_qn - 0.005) and pos_qn < (max_qn - 0.005)
+        else
+            return pos_qn >= (min_qn - 0.01) and pos_qn <= (max_qn + 0.01)
+        end
+    end
+
     -- 1. Notes
     state.selected_notes = {}
     state.selected_note = nil
@@ -229,7 +239,7 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
         for _, td in ipairs(active_tracks_data) do
             if target_tracks[td.guid] then
                 for _, n in ipairs(td.notes or {}) do
-                    if n.start_qn >= (min_qn - 0.01) and n.start_qn <= (max_qn + 0.01) then
+                    if in_range(n.start_qn) then
                         if not flt.articulations_only or (n.articulation and n.articulation ~= "") then
                             state:select_note(n)
                             n_cnt = n_cnt + 1
@@ -248,7 +258,7 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
         for _, td in ipairs(active_tracks_data) do
             if target_tracks[td.guid] then
                 for _, d in ipairs(td.dynamics or {}) do
-                    if d.qn >= (min_qn - 0.01) and d.qn <= (max_qn + 0.01) then
+                    if in_range(d.qn) then
                         state.selected_dynamics[d.key or d] = d
                         if not state.selected_dynamic then state.selected_dynamic = d end
                         d_cnt = d_cnt + 1
@@ -269,7 +279,7 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
                 if target_tracks[td.guid] then
                     local hps = HairpinService.get_hairpins_for_track(state, td.guid)
                     for _, hp in ipairs(hps or {}) do
-                        if hp.start_qn >= (min_qn - 0.01) and hp.start_qn <= (max_qn + 0.01) then
+                        if in_range(hp.start_qn) then
                             state.selected_hairpins[hp.id] = hp
                             if not state.selected_hairpin then state.selected_hairpin = hp end
                             hp_cnt = hp_cnt + 1
@@ -291,7 +301,7 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
                 if target_tracks[td.guid] then
                     local dts = DynamicTextService.get_dynamic_texts_for_track(state, td.guid)
                     for _, dt in ipairs(dts or {}) do
-                        if dt.start_qn >= (min_qn - 0.01) and dt.start_qn <= (max_qn + 0.01) then
+                        if in_range(dt.start_qn) then
                             state.selected_dynamic_texts[dt.id] = dt
                             if not state.selected_dynamic_text then state.selected_dynamic_text = dt end
                             dt_cnt = dt_cnt + 1
@@ -313,7 +323,7 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
                 if target_tracks[td.guid] then
                     local tis = TextItemService.get_text_items_for_track(state, td.guid)
                     for _, ti in ipairs(tis or {}) do
-                        if ti.qn >= (min_qn - 0.01) and ti.qn <= (max_qn + 0.01) then
+                        if in_range(ti.qn) then
                             state.selected_text_items[ti.id] = ti
                             if not state.selected_text_item then state.selected_text_item = ti end
                             ti_cnt = ti_cnt + 1
@@ -335,7 +345,7 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
                 if target_tracks[td.guid] then
                     local pms = PedalService.get_pedals_for_track(state, td.guid)
                     for _, pm in ipairs(pms or {}) do
-                        if pm.start_qn >= (min_qn - 0.01) and pm.start_qn <= (max_qn + 0.01) then
+                        if in_range(pm.start_qn) then
                             state.selected_pedals[pm.id] = pm
                             if not state.selected_pedal then state.selected_pedal = pm end
                             p_cnt = p_cnt + 1
@@ -357,7 +367,7 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
                 if target_tracks[td.guid] then
                     local ols = OctaveService.get_lines_for_track(state, td.guid)
                     for _, ol in ipairs(ols or {}) do
-                        if ol.start_qn >= (min_qn - 0.01) and ol.start_qn <= (max_qn + 0.01) then
+                        if in_range(ol.start_qn) then
                             state.selected_octave_lines[ol.id] = ol
                             if not state.selected_octave_line then state.selected_octave_line = ol end
                             ol_cnt = ol_cnt + 1
@@ -397,11 +407,24 @@ end
 -- Selects all elements in a specific measure on focused track
 function SelectionService.select_measure(state, measure_idx, active_tracks_data, midi_service, qn_per_measure)
     SelectionService.init_state(state)
-    local qn_pm = qn_per_measure or 4.0
-    local start_qn = measure_idx * qn_pm
-    local end_qn = (measure_idx + 1) * qn_pm - 0.001
+    local start_qn, end_qn
+    if reaper.TimeMap2_beatsToTime then
+        local t0 = reaper.TimeMap2_beatsToTime(0, 0, measure_idx)
+        local t1 = reaper.TimeMap2_beatsToTime(0, 0, measure_idx + 1)
+        start_qn = reaper.TimeMap2_timeToQN(0, t0)
+        end_qn = reaper.TimeMap2_timeToQN(0, t1)
+    else
+        local qn_pm = qn_per_measure or 4.0
+        start_qn = measure_idx * qn_pm
+        end_qn = (measure_idx + 1) * qn_pm
+    end
+
     state.selection_is_to_end = false
-    state.selection_bounds = { start_qn = start_qn, end_qn = end_qn }
+    state.selection_bounds = {
+        start_qn = start_qn,
+        end_qn = end_qn,
+        is_measure_selection = true
+    }
     
     state.selection_filter.notes = true
     state.selection_filter.dynamics = true
@@ -413,7 +436,7 @@ function SelectionService.select_measure(state, measure_idx, active_tracks_data,
     state.selection_filter.articulations_only = false
 
     SelectionService.apply_filter(state, active_tracks_data, midi_service)
-    state.status_msg = string.format("Selected bar %d", measure_idx + 1)
+    state.status_msg = string.format("Selected notes in bar %d", measure_idx + 1)
 end
 
 -- Filter Preset: Notes Only

@@ -240,9 +240,9 @@ Constants.COLORS = {
     text_muted       = 0x777777FF,
     beam_color       = 0x111111FF,
     art_text         = 0x1A1A1AFF,
-    rehearsal_box_bg = 0x242832EE,
-    rehearsal_border = 0xE67E22FF,
-    rehearsal_text   = 0xFFFFFFFF,
+    rehearsal_box_bg = 0xFAF8F5FF,
+    rehearsal_border = 0x1A1A1AFF,
+    rehearsal_text   = 0x111111FF,
     fermata_col      = 0x111111FF
 }
 
