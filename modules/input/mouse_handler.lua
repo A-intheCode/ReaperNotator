@@ -1067,10 +1067,18 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
         end
     end
 
+    -- 3c. FERMATA SELECTION: Left-click directly selects fermata on any staff
+    if state.hovered_fermata and reaper.ImGui_IsMouseClicked(ctx, 0) and not state.is_resizing_item then
+        state:clear_selection()
+        state.selected_fermata = state.hovered_fermata
+        state.status_msg = string.format("Selected Fermata at Bar %d (Beat %.1f)", state.hovered_fermata.measure + 1, (state.hovered_fermata.beat_rel or 0) + 1)
+        return
+    end
+
     -- 4. CLICK IN EMPTY SPACE: Sets REAPER edit cursor & focuses track (or prepares Ctrl+marquee)
     local in_chord_lane = (state.show_chord_lane ~= false and canvas_info.canvas_p0_y and mouse_y >= canvas_info.canvas_p0_y and mouse_y <= (canvas_info.canvas_p0_y + 42 * s))
     local empty_click = (state.input_mode_type ~= "draw") and reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
-                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not in_chord_lane
+                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not in_chord_lane
                         
     if empty_click then
         state.drag_note = nil

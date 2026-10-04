@@ -106,6 +106,7 @@
         <source file="modules/ui/settings_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/settings_modal.lua</source>
         <source file="modules/ui/sidebar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/sidebar.lua</source>
         <source file="modules/ui/tempo_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/tempo_drawer.lua</source>
+        <source file="modules/ui/tools_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/tools_drawer.lua</source>
         <source file="modules/ui/top_bar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/top_bar.lua</source>
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>

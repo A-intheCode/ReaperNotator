@@ -123,6 +123,7 @@ local SettingsModal       = require("ui.settings_modal")
 local ShortcutManager     = require("services.shortcut_manager")
 local TempoService        = require("services.tempo_service")
 local TempoDrawer         = require("ui.tempo_drawer")
+local ToolsDrawer         = require("ui.tools_drawer")
 local ClefDrawer          = require("ui.clef_drawer")
 local ArticulationsDrawer = require("ui.articulations_drawer")
 local BankPickerModal     = require("ui.bank_picker_modal")
@@ -148,6 +149,7 @@ local MusicXmlModal        = require("ui.musicxml_modal")
 -- 4. Initialization of State & Fonts
 local state = State.new()
 ShortcutManager.init()
+FermataService.load_fermatas(state)
 TempoService.load_markers(state)
 OctaveService.load_lines(state)
 HairpinService.load_hairpins(state)
@@ -155,7 +157,6 @@ DynamicTextService.load_dynamic_texts(state)
 PedalService.load_pedals(state)
 TextItemService.load_text_items(state)
 RepeatService.load_repeat_marks(state)
-FermataService.load_fermatas(state)
 RehearsalMarkService.load_marks(state)
 ScaleService.load_chord_items(state)
 PrintSettingsService.load_settings(state)
@@ -197,6 +198,7 @@ local function loop()
         MidiService.invalidate_cache()
         state:load_settings()
         SettingsModal.apply_theme(state)
+        FermataService.load_fermatas(state)
         TempoService.load_markers(state)
         OctaveService.load_lines(state)
         HairpinService.load_hairpins(state)
@@ -204,7 +206,6 @@ local function loop()
         PedalService.load_pedals(state)
         TextItemService.load_text_items(state)
         RepeatService.load_repeat_marks(state)
-        FermataService.load_fermatas(state)
         RehearsalMarkService.load_marks(state)
         ScaleService.load_chord_items(state)
         PrintSettingsService.load_settings(state)
@@ -467,7 +468,7 @@ local function loop()
         state.drawer_w = state.drawer_w or 236
         
         local canvas_w = main_avail_w - state.sidebar_w - splitter_w - spacing
-        if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures then
+        if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures or state.show_tools_drawer then
             canvas_w = canvas_w - state.drawer_w - splitter_w - spacing
         end
         if canvas_w < 150 then canvas_w = 150 end
@@ -547,8 +548,8 @@ local function loop()
             reaper.ImGui_EndChild(ctx)
         end
         
-        -- RIGHT AREA: DYNAMICS DRAWER, TEMPO DRAWER, CLEF DRAWER, KEY SIGNATURE DRAWER OR ARTICULATIONS DRAWER (Resizable via splitter)
-        if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures then
+        -- RIGHT AREA: DYNAMICS, TEMPO, CLEF, KEY SIGNATURE, ARTICULATIONS OR TOOLS DRAWER (Resizable via splitter)
+        if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures or state.show_tools_drawer then
             -- VERTICAL SPLITTER 2: Right drawer resizing
             reaper.ImGui_SameLine(ctx, 0, 2)
             reaper.ImGui_InvisibleButton(ctx, "vsplitter_right", splitter_w, main_content_h)
@@ -569,7 +570,9 @@ local function loop()
             end
             
             reaper.ImGui_SameLine(ctx, 0, 2)
-            if state.show_clefs then
+            if state.show_tools_drawer then
+                ToolsDrawer.render(ctx, state, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
+            elseif state.show_clefs then
                 ClefDrawer.render(ctx, state, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
             elseif state.show_key_signatures then
                 KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)

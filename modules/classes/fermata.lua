@@ -14,7 +14,8 @@ function Fermata.new(data)
     self.beat_rel      = tonumber(data.beat_rel) or 0.0
     self.type          = data.type or "standard" -- "standard", "short", "long", "very_long"
     self.hold_factor   = tonumber(data.hold_factor) or 1.5 -- Slowdown factor, e.g. 1.5x (BPM = orig_bpm / 1.5)
-    self.playback_mode = data.playback_mode or "tempo_dip" -- "tempo_dip" | "visual_only"
+    self.playback_mode = data.playback_mode or "tempo_curve" -- "tempo_curve" | "tempo_dip" | "visual_only"
+    self.duration_qn   = tonumber(data.duration_qn) or 1.0
     return self
 end
 
@@ -26,7 +27,8 @@ function Fermata:to_table()
         beat_rel      = self.beat_rel,
         type          = self.type,
         hold_factor   = self.hold_factor,
-        playback_mode = self.playback_mode
+        playback_mode = self.playback_mode,
+        duration_qn   = self.duration_qn or 1.0
     }
 end
 

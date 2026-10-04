@@ -642,14 +642,21 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 reaper.ImGui_EndMenu(ctx)
             end
 
-            if reaper.ImGui_MenuItem(ctx, "𝄐 Add Score-Wide Fermata") then
-                local sn = state.selected_note
-                if not sn and state.selected_notes then
-                    for _, n in pairs(state.selected_notes) do sn = n break end
-                end
-                if sn then
+            -- Score-Wide Fermata on selected note
+            local sn = state.selected_note
+            if not sn and state.selected_notes then
+                for _, n in pairs(state.selected_notes) do sn = n break end
+            end
+            if sn then
+                local cur_bpi = 4.0
+                local c_ts_n, c_ts_d = reaper.TimeMap_GetTimeSigAtTime(0, reaper.TimeMap2_QNToTime(0, sn.start_qn))
+                if c_ts_n and c_ts_d and c_ts_d > 0 then cur_bpi = c_ts_n * (4.0 / c_ts_d) end
+                local n_bar = math.floor((sn.start_qn + 0.01) / cur_bpi) + 1
+                local n_beat = (sn.start_qn % cur_bpi) + 1
+
+                if reaper.ImGui_MenuItem(ctx, string.format("𝄐 Add Fermata to Note (Bar %d, Beat %.1f)", n_bar, n_beat)) then
                     local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
-                    FermataService.add_fermata(state, sn.start_qn, "standard", 1.5, active_tracks_data)
+                    FermataService.add_fermata(state, sn.start_qn, "standard", 1.5, active_tracks_data, sn.dur_qn, "tempo_curve")
                 end
             end
             
@@ -722,6 +729,35 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
             local click_bar = state.context_measure and (state.context_measure + 1) or nil
             local hdr = click_bar and string.format("🎼 Staff: %s (Bar %d)", trk_name, click_bar) or string.format("🎼 Staff: %s", trk_name)
             reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, hdr)
+            reaper.ImGui_Separator(ctx)
+            
+            -- FERMATA PLACEMENT ANYWHERE ON STAFF (PAUSES, RESTS, BETWEEN NOTES)
+            local click_qn = state.context_click_qn or reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition())
+            if state.grid_qn and state.grid_qn > 0.001 then
+                click_qn = math.floor((click_qn / state.grid_qn) + 0.5) * state.grid_qn
+            end
+            click_qn = math.max(0, click_qn)
+            local cur_bpi = 4.0
+            local c_ts_n, c_ts_d = reaper.TimeMap_GetTimeSigAtTime(0, reaper.TimeMap2_QNToTime(0, click_qn))
+            if c_ts_n and c_ts_d and c_ts_d > 0 then cur_bpi = c_ts_n * (4.0 / c_ts_d) end
+            local ferm_bar = math.floor((click_qn + 0.01) / cur_bpi) + 1
+            local ferm_beat = (click_qn % cur_bpi) + 1
+
+            if reaper.ImGui_MenuItem(ctx, string.format("𝄐 Add Fermata Here (Bar %d, Beat %.1f)", ferm_bar, ferm_beat)) then
+                local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
+                FermataService.add_fermata(state, click_qn, "standard", 1.5, active_tracks_data, 1.0, "tempo_curve")
+            end
+
+            if state.context_measure ~= nil then
+                local db_tpos = reaper.TimeMap2_beatsToTime(0, 0, state.context_measure)
+                local db_qn = reaper.TimeMap2_timeToQN(0, db_tpos)
+                if math.abs(db_qn - click_qn) > 0.25 then
+                    if reaper.ImGui_MenuItem(ctx, string.format("𝄐 Add Fermata to Bar %d (Downbeat)", state.context_measure + 1)) then
+                        local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
+                        FermataService.add_fermata(state, db_qn, "standard", 1.5, active_tracks_data, 1.0, "tempo_curve")
+                    end
+                end
+            end
             reaper.ImGui_Separator(ctx)
             
             -- Measure selection & track selection
@@ -1069,7 +1105,31 @@ function CanvasContextMenus.render_fermata_popup(ctx, state, active_tracks_data)
             reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("𝄐 Fermata (Bar %d, Beat %.1f)", ferm.measure + 1, (ferm.beat_rel or 0) + 1))
             reaper.ImGui_Separator(ctx)
 
-            if reaper.ImGui_BeginMenu(ctx, "⏱ Playback Hold Factor") then
+            if reaper.ImGui_BeginMenu(ctx, "⏱ Tempomap Mode & Curve") then
+                local is_curve = (ferm.playback_mode == "tempo_curve" or ferm.playback_mode == nil)
+                local is_dip = (ferm.playback_mode == "tempo_dip")
+                local is_vis = (ferm.playback_mode == "visual_only")
+
+                if reaper.ImGui_MenuItem(ctx, (is_curve and "✓ " or "   ") .. "∿ Smooth Curve (Linear Ramp)") then
+                    ferm.playback_mode = "tempo_curve"
+                    FermataService.save_fermatas(state)
+                    if TempoService then (TempoService.sync_all_to_reaper or TempoService.sync_to_reaper)(state) end
+                end
+                if reaper.ImGui_MenuItem(ctx, (is_dip and "✓ " or "   ") .. "⎍ Step Hold (Direct Dip)") then
+                    ferm.playback_mode = "tempo_dip"
+                    FermataService.save_fermatas(state)
+                    if TempoService then (TempoService.sync_all_to_reaper or TempoService.sync_to_reaper)(state) end
+                end
+                reaper.ImGui_Separator(ctx)
+                if reaper.ImGui_MenuItem(ctx, (is_vis and "✓ " or "   ") .. "👁 Visual Only (No Tempomap slowdown)") then
+                    ferm.playback_mode = "visual_only"
+                    FermataService.save_fermatas(state)
+                    if TempoService then (TempoService.sync_all_to_reaper or TempoService.sync_to_reaper)(state) end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
+            if reaper.ImGui_BeginMenu(ctx, "⏳ Playback Hold Factor") then
                 local factors = {
                     { factor = 1.25, label = "1.25x (Slight pause)" },
                     { factor = 1.5,  label = "1.50x (Standard hold)" },
@@ -1080,18 +1140,11 @@ function CanvasContextMenus.render_fermata_popup(ctx, state, active_tracks_data)
                     local is_cur = (ferm.playback_mode ~= "visual_only") and math.abs(ferm.hold_factor - f.factor) < 0.05
                     local pfx = is_cur and "✓ " or "   "
                     if reaper.ImGui_MenuItem(ctx, pfx .. f.label) then
-                        ferm.playback_mode = "tempo_dip"
+                        if ferm.playback_mode == "visual_only" then ferm.playback_mode = "tempo_curve" end
                         ferm.hold_factor = f.factor
                         FermataService.save_fermatas(state)
-                        if TempoService and TempoService.sync_to_reaper then TempoService.sync_to_reaper(state) end
+                        if TempoService then (TempoService.sync_all_to_reaper or TempoService.sync_to_reaper)(state) end
                     end
-                end
-                reaper.ImGui_Separator(ctx)
-                local is_vis = (ferm.playback_mode == "visual_only")
-                if reaper.ImGui_MenuItem(ctx, (is_vis and "✓ " or "   ") .. "Visual Only (No tempo slowdown)") then
-                    ferm.playback_mode = "visual_only"
-                    FermataService.save_fermatas(state)
-                    if TempoService and TempoService.sync_to_reaper then TempoService.sync_to_reaper(state) end
                 end
                 reaper.ImGui_EndMenu(ctx)
             end

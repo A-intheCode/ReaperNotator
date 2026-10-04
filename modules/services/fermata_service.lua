@@ -29,7 +29,8 @@ function FermataService.load_fermatas(state)
                     beat_rel      = tonumber(parts[4]) or 0.0,
                     type          = (parts[5] and parts[5] ~= "") and parts[5] or "standard",
                     hold_factor   = tonumber(parts[6]) or 1.5,
-                    playback_mode = (parts[7] and parts[7] ~= "") and parts[7] or "tempo_dip"
+                    playback_mode = (parts[7] and parts[7] ~= "") and parts[7] or "tempo_curve",
+                    duration_qn   = tonumber(parts[8]) or 1.0
                 })
                 table.insert(state.fermatas, ferm)
                 local k = string.format("%.2f", qn)
@@ -70,7 +71,8 @@ function FermataService.load_fermatas(state)
                                     beat_rel      = beat,
                                     type          = f_type or "standard",
                                     hold_factor   = tonumber(h_fac) or 1.5,
-                                    playback_mode = "tempo_dip"
+                                    playback_mode = "tempo_curve",
+                                    duration_qn   = 1.0
                                 })
                                 table.insert(state.fermatas, ferm)
                             end
@@ -89,23 +91,42 @@ function FermataService.save_fermatas(state)
     if not state.fermatas then return end
     local entries = {}
     for _, f in ipairs(state.fermatas) do
-        table.insert(entries, string.format("%s|%.3f|%d|%.3f|%s|%.2f|%s",
+        table.insert(entries, string.format("%s|%.3f|%d|%.3f|%s|%.2f|%s|%.3f",
             f.id or "",
             f.qn or 0.0,
             f.measure or 0,
             f.beat_rel or 0.0,
             f.type or "standard",
             f.hold_factor or 1.5,
-            f.playback_mode or "tempo_dip"
+            f.playback_mode or "tempo_curve",
+            f.duration_qn or 1.0
         ))
     end
     reaper.SetProjExtState(0, "REAPER_Notator", "fermatas", table.concat(entries, ";"))
 end
 
-function FermataService.add_fermata(state, qn, f_type, hold_factor, active_tracks_data)
+function FermataService.add_fermata(state, qn, f_type, hold_factor, active_tracks_data, duration_qn, playback_mode)
     if not state.fermatas then state.fermatas = {} end
     f_type = f_type or "standard"
     hold_factor = hold_factor or 1.5
+    playback_mode = playback_mode or "tempo_curve"
+
+    -- Auto-detect note duration if duration_qn was not passed
+    if not duration_qn or duration_qn <= 0.001 then
+        duration_qn = 1.0
+        if active_tracks_data then
+            for _, td in ipairs(active_tracks_data) do
+                if td.notes then
+                    for _, n in ipairs(td.notes) do
+                        if math.abs(n.start_qn - qn) < 0.15 then
+                            duration_qn = n.dur_qn or 1.0
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
 
     -- Remove any existing fermata at virtually the same QN
     FermataService.remove_fermata_at_qn(state, qn, active_tracks_data)
@@ -123,7 +144,8 @@ function FermataService.add_fermata(state, qn, f_type, hold_factor, active_track
         beat_rel      = beat,
         type          = f_type,
         hold_factor   = hold_factor,
-        playback_mode = "tempo_dip"
+        playback_mode = playback_mode,
+        duration_qn   = duration_qn
     })
     table.insert(state.fermatas, ferm)
     table.sort(state.fermatas, function(a, b) return a.qn < b.qn end)
@@ -133,10 +155,14 @@ function FermataService.add_fermata(state, qn, f_type, hold_factor, active_track
 
     FermataService.save_fermatas(state)
 
-    -- Synchronize REAPER Tempomap
+    -- Synchronize REAPER Tempomap (reliably invoke sync_all_to_reaper or sync_to_reaper)
     local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
-    if TempoService and TempoService.sync_to_reaper then
-        TempoService.sync_to_reaper(state)
+    if TempoService then
+        if TempoService.sync_all_to_reaper then
+            TempoService.sync_all_to_reaper(state)
+        elseif TempoService.sync_to_reaper then
+            TempoService.sync_to_reaper(state)
+        end
     end
 
     state.status_msg = string.format("Added %s Fermata at Bar %d (Beat %.1f, Hold %.1fx)", f_type, m + 1, beat + 1, hold_factor)
@@ -163,8 +189,12 @@ function FermataService.remove_fermata(state, ferm_id, active_tracks_data)
 
         -- Synchronize REAPER Tempomap
         local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
-        if TempoService and TempoService.sync_to_reaper then
-            TempoService.sync_to_reaper(state)
+        if TempoService then
+            if TempoService.sync_all_to_reaper then
+                TempoService.sync_all_to_reaper(state)
+            elseif TempoService.sync_to_reaper then
+                TempoService.sync_to_reaper(state)
+            end
         end
         state.status_msg = "Removed Fermata"
     end

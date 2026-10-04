@@ -358,12 +358,21 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
             reaper.ImGui_SetTooltip(ctx, "Auto-Voice on Selection:\nAutomatically splits selected notes/chords into different voices 1-16.\n(If no notes are selected, processes entire track).")
         end
         
-        -- Make Legato Button
+        -- Tools Drawer Toggle (Contains Make Notes Legato, Rehearsal Marks & Navigation, Arpeggio Chords)
         reaper.ImGui_SameLine(ctx, 0, 6)
-        if reaper.ImGui_Button(ctx, "Make Notes Legato", 125, 26) then
-            local midi_service = require("services.midi_service")
-            midi_service.make_legato(state)
-        end    
+        if toggle_btn(ctx, "🛠 Tools", state.show_tools_drawer, 88, 26, 0x8E44ADFF) then
+            state.show_tools_drawer = not state.show_tools_drawer
+            if state.show_tools_drawer then
+                state.show_clefs = false
+                state.show_dynamics = false
+                state.show_tempo = false
+                state.show_articulations_drawer = false
+                state.show_key_signatures = false
+            end
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Score Tools & Navigation:\nLegato, Arpeggios, Auto-Voice, and Rehearsal & Navigation Marks ([A], [1], D.C., D.S., Coda, Fine).")
+        end
         
         -- Quantize Dialog Button
         reaper.ImGui_SameLine(ctx, 0, 6)
@@ -385,6 +394,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_tempo = false
                 state.show_articulations_drawer = false
                 state.show_key_signatures = false
+                state.show_tools_drawer = false
             end
         end
 
@@ -397,6 +407,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_dynamics = false
                 state.show_tempo = false
                 state.show_articulations_drawer = false
+                state.show_tools_drawer = false
             end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
@@ -412,6 +423,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_dynamics = false
                 state.show_tempo = false
                 state.show_key_signatures = false
+                state.show_tools_drawer = false
                 local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
                 ReaticulateParser.reload_all_banks()
             end
@@ -429,6 +441,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_clefs = false
                 state.show_articulations_drawer = false
                 state.show_key_signatures = false
+                state.show_tools_drawer = false
             end
         end
         
@@ -441,6 +454,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_clefs = false
                 state.show_articulations_drawer = false
                 state.show_key_signatures = false
+                state.show_tools_drawer = false
             end
         end
         

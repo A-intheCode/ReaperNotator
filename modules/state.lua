@@ -214,6 +214,9 @@ function State.new()
         is_dragging_tempo = false,
         tempo_drawer_presets_h = 220, -- Scalable height of tempo presets list (via splitter)
         
+        -- Score Tools Drawer (Legato, Arpeggio, Rehearsal Marks & Navigation)
+        show_tools_drawer = false,
+
         -- Clef Drawer System
         show_clefs = false,       -- Visibility of Clef drawer on right
         clef_drawer_h1 = 180,     -- Height Category 1 (Common Clefs) via Splitter

@@ -492,7 +492,7 @@ function TempoService.sync_all_to_reaper(state)
         end
     end
     
-    -- Incorporate score-wide fermata tempo dips (Playback hold)
+    -- Incorporate score-wide fermata tempo dips (Playback hold & curve)
     if state.fermatas and #state.fermatas > 0 then
         table.sort(target_points, function(a, b) return a.qn < b.qn end)
         for _, ferm in ipairs(state.fermatas) do
@@ -507,11 +507,14 @@ function TempoService.sync_all_to_reaper(state)
                 end
                 local hold_fac = ferm.hold_factor or 1.5
                 local ferm_bpm = math.max(15, math.floor((base_bpm / hold_fac) + 0.5))
-                local ferm_end_qn = ferm.qn + 1.0
+                local ferm_dur = ferm.duration_qn or 1.0
+                local ferm_end_qn = ferm.qn + ferm_dur
+                local is_curve = (ferm.playback_mode == "tempo_curve" or ferm.playback_mode ~= "tempo_dip")
+
                 table.insert(target_points, {
                     qn         = ferm.qn,
                     bpm        = ferm_bpm,
-                    linear     = false,
+                    linear     = is_curve,
                     is_fermata = true
                 })
                 table.insert(target_points, {
@@ -534,8 +537,13 @@ function TempoService.sync_all_to_reaper(state)
     for _, pt in ipairs(target_points) do
         local prev = merged_points[#merged_points]
         if prev and math.abs(prev.qn - pt.qn) < 0.15 then
-            if pt.linear then prev.linear = true end
+            if pt.linear ~= nil then prev.linear = pt.linear end
             if pt.is_abs then prev.bpm = pt.bpm end
+            if pt.is_fermata then
+                prev.bpm = pt.bpm
+                prev.linear = pt.linear
+                prev.is_fermata = true
+            end
         else
             table.insert(merged_points, pt)
         end
@@ -561,13 +569,15 @@ function TempoService.sync_all_to_reaper(state)
     for i = 2, #merged_points do
         local pt = merged_points[i]
         local t_pos = reaper.TimeMap2_QNToTime(0, pt.qn)
-        local _, mpos, bpos = reaper.TimeMap2_timeToBeats(0, t_pos)
-        reaper.SetTempoTimeSigMarker(0, -1, t_pos, mpos or -1, bpos or -1, pt.bpm, 0, 0, pt.linear == true)
+        reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, pt.bpm, 0, 0, pt.linear == true)
     end
     
     reaper.UpdateTimeline()
     reaper.UpdateArrange()
     reaper.TrackList_AdjustWindows(false)
 end
+
+-- Export alias for backward/forward service compatibility
+TempoService.sync_to_reaper = TempoService.sync_all_to_reaper
 
 return TempoService

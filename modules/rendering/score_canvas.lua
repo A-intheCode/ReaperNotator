@@ -3313,7 +3313,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         if not note_hovered_this_frame and not dyn_hovered_this_frame and not hairpin_hovered_this_frame
            and not dynamic_text_hovered_this_frame and not pedal_hovered_this_frame and not text_item_hovered_this_frame
            and not octave_hovered_this_frame and not art_hovered_this_frame and not tempo_hovered_this_frame
-           and not chord_hovered_this_frame and not (state.show_chord_lane ~= false and mouse_y >= canvas_p0_y and mouse_y <= (canvas_p0_y + 42 * s)) then
+           and not chord_hovered_this_frame and not state.hovered_fermata and not state.hovered_rehearsal_mark
+           and not (state.show_chord_lane ~= false and mouse_y >= canvas_p0_y and mouse_y <= (canvas_p0_y + 42 * s)) then
             
             -- Find clicked track (staff) based on mouse_y
             local target_tdata = nil
@@ -3350,11 +3351,31 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local qn_pm = qn_per_measure or 4.0
             state.context_measure = math.floor(raw_qn / qn_pm)
             state.context_click_qn = raw_qn
+            local click_time = reaper.TimeMap2_QNToTime(0, raw_qn)
+            reaper.SetEditCurPos2(0, click_time, true, false)
             if target_tdata then
                 state.context_measure_track = target_tdata.track
             end
             
-            reaper.ImGui_OpenPopup(ctx, "NoteContextMenu")
+            -- Check if right-clicking on a staff column where a fermata is set
+            local ferm_at_pos = state.hovered_fermata
+            if not ferm_at_pos and state.fermatas and #state.fermatas > 0 then
+                for _, f in ipairs(state.fermatas) do
+                    local fx = Engraver.cursor_qn_to_canvas_x(f.qn, margin_left, s, qn_per_measure, measure_map)
+                    if math.abs(mouse_x - fx) <= 18 * s then
+                        ferm_at_pos = f
+                        break
+                    end
+                end
+            end
+
+            if ferm_at_pos then
+                state.context_fermata = ferm_at_pos
+                state.selected_fermata = ferm_at_pos
+                reaper.ImGui_OpenPopup(ctx, "fermata_context_popup")
+            else
+                reaper.ImGui_OpenPopup(ctx, "NoteContextMenu")
+            end
         end
     end
     

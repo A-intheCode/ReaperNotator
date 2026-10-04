@@ -776,38 +776,79 @@ function CanvasDecorations.draw_fermatas(ctx, draw_list, state, fonts, active_tr
             if fx >= cull_min_x - 30 * s and fx <= cull_max_x + 30 * s then
                 local is_selected = (state.selected_fermata and state.selected_fermata.id == ferm.id)
 
-                -- Draw vertically across each active visible track
+                -- Track vertical span & all staff Y positions of this fermata
                 local top_fermata_y = nil
+                local min_staff_y = math.huge
+                local max_staff_y = -math.huge
+                local ferm_y_positions = {}
+
                 for t_idx, tdata in ipairs(active_tracks_data) do
                     if tdata.is_visible_vertically and tdata.staff_top_y then
                         local fy = tdata.staff_top_y - 12 * s
                         if not top_fermata_y then top_fermata_y = fy end
+                        if fy < min_staff_y then min_staff_y = fy end
+                        table.insert(ferm_y_positions, fy)
 
                         local col = is_selected and (Constants.COLORS.selection_gold or 0xFF9F1CFF) or ferm_col
                         Engraver.draw_fermata(draw_list, fx, fy, s, col, font_music, false, ferm.type)
 
+                        local b_y = (tdata.is_grand and tdata.bass_bottom_y) and (tdata.bass_bottom_y + 14 * s)
+                                    or ((tdata.staff_bottom_y or tdata.staff_top_y + 40 * s) + 10 * s)
+                        if b_y > max_staff_y then max_staff_y = b_y end
+
                         if tdata.is_grand and tdata.bass_bottom_y then
                             local fy_bass = tdata.bass_bottom_y + 14 * s
+                            table.insert(ferm_y_positions, fy_bass)
                             Engraver.draw_fermata(draw_list, fx, fy_bass, s, col, font_music, true, ferm.type)
                         end
                     end
                 end
 
-                -- Top-most handle & hover zone
-                if top_fermata_y then
-                    local is_hov = is_hovered and (math.abs(mouse_x - fx) <= 14 * s and math.abs(mouse_y - top_fermata_y) <= 14 * s)
+                -- If fermata is selected, render subtle golden marker rings across all visible staves
+                if is_selected then
+                    for _, ypos in ipairs(ferm_y_positions) do
+                        reaper.ImGui_DrawList_AddCircle(draw_list, fx, ypos, 13 * s, 0xFF9F1C88, 0, 1.5 * s)
+                    end
+                    reaper.ImGui_DrawList_AddLine(draw_list, fx, min_staff_y - 4 * s, fx, max_staff_y + 4 * s, 0xFF9F1C44, 1.5 * s)
+                end
+
+                -- Hover & click detection across EVERY staff at this fermata position
+                if #ferm_y_positions > 0 then
+                    local is_x_near = is_hovered and (math.abs(mouse_x - fx) <= 18 * s)
+                    local is_y_in_span = (mouse_y >= min_staff_y - 12 * s and mouse_y <= max_staff_y + 12 * s)
+                    local is_hov = is_x_near and is_y_in_span
+
                     if is_hov then
                         ferm_hovered_this_frame = ferm
                         reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
-                        reaper.ImGui_DrawList_AddCircle(draw_list, fx, top_fermata_y, 14 * s, Constants.COLORS.selection_gold, 0, 1.8 * s)
-                        local pb_mode = (ferm.playback_mode == "visual_only") and "Visual only" or string.format("Tempomap dip (%.1fx hold)", ferm.hold_factor or 1.5)
-                        reaper.ImGui_SetTooltip(ctx, string.format("Fermata: %s\nBar %d (Beat %.1f)\nPlayback: %s\nRight-click for options", ferm.type or "standard", ferm.measure + 1, (ferm.beat_rel or 0) + 1, pb_mode))
+
+                        -- Find the staff fermata closest to the current mouse cursor
+                        local closest_y = ferm_y_positions[1]
+                        local min_dist_y = math.huge
+                        for _, ypos in ipairs(ferm_y_positions) do
+                            local dist_y = math.abs(mouse_y - ypos)
+                            if dist_y < min_dist_y then
+                                min_dist_y = dist_y
+                                closest_y = ypos
+                            end
+                        end
+
+                        -- Visual feedback directly at the hovered staff's fermata
+                        reaper.ImGui_DrawList_AddCircle(draw_list, fx, closest_y, 14 * s, Constants.COLORS.selection_gold or 0xFF9F1CFF, 0, 2.0 * s)
+                        reaper.ImGui_DrawList_AddLine(draw_list, fx, min_staff_y - 4 * s, fx, max_staff_y + 4 * s, 0xFF9F1C55, 1.5 * s)
+
+                        local pb_mode = (ferm.playback_mode == "visual_only") and "Visual only"
+                            or ((ferm.playback_mode == "tempo_dip") and string.format("Tempomap step (%.1fx hold)", ferm.hold_factor or 1.5)
+                            or string.format("Tempomap curve (%.1fx hold)", ferm.hold_factor or 1.5))
+                        reaper.ImGui_SetTooltip(ctx, string.format("𝄐 Fermata: %s\nBar %d (Beat %.1f)\nPlayback: %s\nClick to select | Right-click for options", ferm.type or "standard", ferm.measure + 1, (ferm.beat_rel or 0) + 1, pb_mode))
 
                         if reaper.ImGui_IsMouseClicked(ctx, 0) then
                             state.selected_fermata = ferm
+                            state.status_msg = string.format("Selected Fermata at Bar %d (Beat %.1f)", ferm.measure + 1, (ferm.beat_rel or 0) + 1)
                         end
                         if reaper.ImGui_IsMouseClicked(ctx, 1) then
                             state.context_fermata = ferm
+                            state.selected_fermata = ferm
                             reaper.ImGui_OpenPopup(ctx, "fermata_context_popup")
                         end
                     end
