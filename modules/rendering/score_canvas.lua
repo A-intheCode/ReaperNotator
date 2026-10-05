@@ -1502,6 +1502,25 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
         end
         
+        -- Pre-pass: Find the single closest note to mouse for hover and click arbitration
+        local closest_hovered_vn = nil
+        local closest_hovered_dist = 12.5 * s
+        if is_hovered then
+            for _, vn in ipairs(display_notes) do
+                if not vn.is_ghost_voice then
+                    local d = math.sqrt((mouse_x - vn.vis_nx)^2 + (mouse_y - vn.vis_ny)^2)
+                    if d <= closest_hovered_dist then
+                        closest_hovered_dist = d
+                        closest_hovered_vn = vn
+                    end
+                end
+            end
+        end
+        if closest_hovered_vn then
+            note_hovered_this_frame = closest_hovered_vn.orig
+            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+        end
+
         -- Draw noteheads, accidentals, ledger lines & articulations (visible notes only)
         for _, vn in ipairs(display_notes) do
             local nx = vn.vis_nx
@@ -1514,15 +1533,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local dstep = vn.dstep
                 local acc = vn.acc
                 
-                local dist_to_mouse = math.sqrt((mouse_x - nx)^2 + (mouse_y - ny)^2)
-                local is_hov = is_hovered and (dist_to_mouse <= 12.5*s) and not vn.is_ghost_voice
-                if is_hov then
-                    note_hovered_this_frame = n
-                    reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
-                end
+                local is_the_closest = (closest_hovered_vn == vn)
                 
-                -- Note click (selection / step mode only)
-                if is_hov and reaper.ImGui_IsMouseClicked(ctx, 0) and state.input_mode_type ~= "draw" then
+                -- Note click (selection / step mode only) - ONLY for the single closest hovered note!
+                if is_the_closest and reaper.ImGui_IsMouseClicked(ctx, 0) and state.input_mode_type ~= "draw" then
                     state.selected_dynamic = nil
                     state.selected_tempo_marker = nil
                     state.selected_octave_line = nil
@@ -1530,7 +1544,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
                         reaper.SetOnlyTrackSelected(n.track)
                     end
-                    AudioPreview.play_note(state, n.pitch, n.vel, n.chan, n.track, n.start_qn)
+                    AudioPreview.play_note(state, n.pitch, n.vel, n.chan, n.track, n.start_qn, n)
                     state.last_drag_audition_pitch = n.pitch
                     if is_shift_or_ctrl then
                         state:toggle_note_selection(n)
@@ -1565,7 +1579,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
                 
                 -- Note right-click: open context menu (quantize, legato, delete)
-                if is_hov and reaper.ImGui_IsMouseClicked(ctx, 1) and state.input_mode_type ~= "draw" then
+                if is_the_closest and reaper.ImGui_IsMouseClicked(ctx, 1) and state.input_mode_type ~= "draw" then
                     state.selected_dynamic = nil
                     state.selected_tempo_marker = nil
                     state.selected_octave_line = nil
@@ -1573,7 +1587,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
                         reaper.SetOnlyTrackSelected(n.track)
                     end
-                    AudioPreview.play_note(state, n.pitch, n.vel, n.chan, n.track, n.start_qn)
+                    AudioPreview.play_note(state, n.pitch, n.vel, n.chan, n.track, n.start_qn, n)
                     if not state:is_note_selected(n) then
                         state:clear_selection()
                         state:select_note(n)
@@ -1584,6 +1598,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 
                 -- Notehead & highlight
                 local head_col = Constants.COLORS.notehead_black
+                if state.invert_mode and (head_col == 0x111111FF or head_col == 0x000000FF) then
+                    head_col = 0xEEEEEEFF
+                end
                 local note_v = (n.chan or 0) + 1
                 
                 if vn.is_ghost_voice then
@@ -1698,7 +1715,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             end
                         end
                         
-                        Engraver.draw_articulation(draw_list, n.articulation, nx, art_y, s, head_col, font_music, is_above)
+                        local art_col = head_col
+                        if state.invert_mode and (art_col == 0x111111FF or art_col == 0x000000FF) then
+                            art_col = 0xEEEEEEFF
+                        end
+                        Engraver.draw_articulation(draw_list, n.articulation, nx, art_y, s, art_col, font_music, is_above)
                     end
                 end
             end

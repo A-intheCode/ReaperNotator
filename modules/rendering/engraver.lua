@@ -2393,17 +2393,13 @@ local function is_tuplet_step(step, n)
         -- 16th: 0.1429 QN (in 1.0 QN)
         -- 8th: 0.2857 QN (in 2.0 QN)
         -- 32nd: 0.0714 QN (in 0.5 QN)
-        return (math.abs(step - 0.1429) < 0.030) or
-               (math.abs(step - 0.2857) < 0.045) or
-               (math.abs(step - 0.0714) < 0.020)
+        return (math.abs(step - 0.1429) < 0.020) or
+               (math.abs(step - 0.2857) < 0.020) or
+               (math.abs(step - 0.0714) < 0.015)
     elseif n == 8 then
-        -- Octuplet 8:4 in 1.0 QN: 0.1250 QN
-        -- 8:6 in 1.5 QN: 0.1875 QN
-        -- 8:6 in 3.0 QN: 0.3750 QN
-        -- 8:4 in 2.0 QN: 0.2500 QN
-        return (math.abs(step - 0.1250) < 0.030) or
-               (math.abs(step - 0.2500) < 0.040) or
-               (math.abs(step - 0.1875) < 0.035) or
+        -- Compound meter octuplet: 8:6 in 1.5 QN (0.1875 QN) or 8:6 in 3.0 QN (0.3750 QN)
+        -- (In simple meters, 8 notes in 2.0 QN or 1.0 QN are standard binary 16ths/32nds, not tuplets)
+        return (math.abs(step - 0.1875) < 0.035) or
                (math.abs(step - 0.3750) < 0.055)
     end
     return false

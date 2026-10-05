@@ -141,7 +141,7 @@ function MidiService.find_reaticulate_art_for_id(bank, art_id)
     -- Normalize target id
     if id:find("staccatiss") or id:find("wedge") then
         id = "staccatissimo"
-    elseif id:find("stacc") then
+    elseif id:find("stacc") or id:find("dig") then
         id = "staccato"
     elseif id:find("marc") then
         id = "marcato"
@@ -157,7 +157,53 @@ function MidiService.find_reaticulate_art_for_id(bank, art_id)
     for _, a in ipairs(bank.articulations) do
         if a.name and a.name:lower() == id then return a end
     end
-    -- 2. Strict keyword & icon matching (NEVER match wrong techniques like harmonics or con sordino for standard staccato!)
+
+    -- Special handling for staccato with prioritized tiers:
+    -- Tier 1: Explicit 'dig' / 'staccato dig' (e.g. Double Basses in Spitfire SSO / SSS / SCS)
+    -- Tier 2: Explicit 'staccato' / 'stacc' (excluding staccatissimo, harmonics, sordino)
+    -- Tier 3: Fallback duration names for libraries without a staccato patch (e.g. Spitfire Celli/Violins 'Short 0.5')
+    if id == "staccato" then
+        -- Tier 1: Dig / Staccato Dig
+        for _, a in ipairs(bank.articulations) do
+            local aname = (a.name or ""):lower()
+            local aicon = (a.icon or ""):lower()
+            local is_harmonic = aname:find("harm") or aname:find("flag") or aicon:find("harm") or aicon:find("flag")
+            local is_sordino = aname:find("sord") or aicon:find("sord") or aname:find("%f[%a]cs%f[%A]") or aicon:find("con%-sord")
+            if not is_harmonic and not is_sordino then
+                if aname:find("dig") or aicon:find("dig") then
+                    return a
+                end
+            end
+        end
+        -- Tier 2: Explicit Staccato
+        for _, a in ipairs(bank.articulations) do
+            local aname = (a.name or ""):lower()
+            local aicon = (a.icon or ""):lower()
+            local is_harmonic = aname:find("harm") or aname:find("flag") or aicon:find("harm") or aicon:find("flag")
+            local is_sordino = aname:find("sord") or aicon:find("sord") or aname:find("%f[%a]cs%f[%A]") or aicon:find("con%-sord")
+            if not is_harmonic and not is_sordino then
+                if (aname:find("stacc") and not aname:find("staccatiss"))
+                    or (aicon:find("stacc") and not aicon:find("staccatiss")) then
+                    return a
+                end
+            end
+        end
+        -- Tier 3: Fallback to Short 0.5s for Spitfire libraries without staccato/dig
+        for _, a in ipairs(bank.articulations) do
+            local aname = (a.name or ""):lower()
+            local aicon = (a.icon or ""):lower()
+            local is_harmonic = aname:find("harm") or aname:find("flag") or aicon:find("harm") or aicon:find("flag")
+            local is_sordino = aname:find("sord") or aicon:find("sord") or aname:find("%f[%a]cs%f[%A]") or aicon:find("con%-sord")
+            if not is_harmonic and not is_sordino then
+                if aname:find("short 0%.5") or aname:find("short 0%.25") or aname:find("short 0%.3")
+                    or aname:find("short 0%.4") or aname:find("short.-0%.5") then
+                    return a
+                end
+            end
+        end
+    end
+
+    -- 2. Strict keyword & icon matching for other articulations
     for _, a in ipairs(bank.articulations) do
         local aname = (a.name or ""):lower()
         local aicon = (a.icon or ""):lower()
@@ -174,13 +220,6 @@ function MidiService.find_reaticulate_art_for_id(bank, art_id)
                     return a
                 end
             end
-        elseif id == "staccato" then
-            -- Strict: Staccato is NOT a harmonic and NOT con sordino!
-            if not is_harmonic and not is_sordino then
-                if (aname:find("stacc") and not aname:find("staccatiss")) or (aicon:find("stacc") and not aicon:find("staccatiss")) then
-                    return a
-                end
-            end
         elseif id == "marcato" then
             if not is_harmonic then
                 if aname:find("marc") or aicon:find("marc") then
@@ -188,9 +227,10 @@ function MidiService.find_reaticulate_art_for_id(bank, art_id)
                 end
             end
         elseif id == "tenuto" then
-            -- Strict match on tenuto, NEVER fallback to long, harmonic or sordino!
-            if not is_harmonic and not is_sordino then
-                if aname:find("tenuto") or aicon:find("tenuto") then
+            -- Strict match on tenuto, NEVER fallback to long, harmonic, sordino, or short 0.5s!
+            -- Supports standard 'tenuto', plus Spitfire SSO / Albion 'Short 1.0'
+            if not is_harmonic and not is_sordino and not aname:find("0%.5") and not aname:find("0%.25") then
+                if aname:find("tenuto") or aicon:find("tenuto") or aname:find("short 1%.0") or aname:find("short 1s") then
                     return a
                 end
             end
@@ -220,14 +260,19 @@ function MidiService.art_id_from_reaticulate_art(art_def)
         return "staccatissimo"
     end
     
-    -- Standard Staccato
-    if (aname:find("stacc") and not aname:find("staccatiss")) or (aicon:find("stacc") and not aicon:find("staccatiss")) then
+    -- Standard Staccato (including Spitfire SSO / Albion Short 0.5 / Short 0.5s / Staccato Dig)
+    if (aname:find("stacc") and not aname:find("staccatiss"))
+        or (aicon:find("stacc") and not aicon:find("staccatiss"))
+        or aname:find("dig") or aicon:find("dig")
+        or aname:find("short 0%.5") or aname:find("short 0%.25") or aname:find("short 0%.3")
+        or aname:find("short 0%.4") or aname:find("short.-0%.5") then
         return "staccato"
     end
     
     if aname:find("marc") or aicon:find("marc") then
         return "marcato"
-    elseif aname:find("tenuto") or aicon:find("tenuto") then
+    elseif ((aname:find("tenuto") or aicon:find("tenuto")) and not aname:find("0%.5") and not aname:find("0%.25"))
+        or aname:find("short 1%.0") or aname:find("short 1s") then
         return "tenuto"
     elseif aname:find("accent") or aicon:find("accent") then
         return "accent"
@@ -238,7 +283,8 @@ end
 function MidiService.is_momentary_articulation(art_id)
     if not art_id or art_id == "" or art_id == "none" then return false end
     local a = tostring(art_id):lower()
-    return a:find("stacc") ~= nil or a:find("marc") ~= nil or a:find("tenuto") ~= nil
+    return a:find("stacc") ~= nil or a:find("dig") ~= nil or a:find("0%.5") ~= nil
+        or a:find("marc") ~= nil or a:find("tenuto") ~= nil
         or a:find("accent") ~= nil or a:find("spicc") ~= nil or a:find("wedge") ~= nil
         or a:find("harm") ~= nil or a:find("flag") ~= nil
 end
@@ -2628,9 +2674,9 @@ function MidiService.toggle_selected_articulation(state, art_id)
         if not a or a == "" or a == "none" then return nil end
         local low = tostring(a):lower()
         if low:find("staccatiss") or low:find("spicc") then return "staccatissimo"
-        elseif low:find("stacc") then return "staccato"
+        elseif low:find("stacc") or low:find("short 0%.5") then return "staccato"
         elseif low:find("marc") then return "marcato"
-        elseif low:find("tenuto") or low == "ten" then return "tenuto"
+        elseif low:find("tenuto") or low == "ten" or low:find("short 1%.0") then return "tenuto"
         elseif low:find("accent") or low == "acc" then return "accent"
         elseif low:find("harm") or low:find("flag") then return "harmonic"
         elseif low:find("fermata") then return "fermata"

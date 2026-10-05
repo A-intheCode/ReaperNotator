@@ -41,8 +41,8 @@ function ReaticulateParser.parse_file(filepath, banks_dict)
     local pending_id = ""
     local pending_clone = nil
     
-    for line in f:lines() do
-        line = line:gsub("^%s+", ""):gsub("%s+$", "")
+    for raw_line in f:lines() do
+        local line = raw_line:gsub("^%s+", ""):gsub("%s+$", "")
         
         -- Parse Group and Name: //! g="Group" n="Name"
         local g, n = line:match('//!%s*g="([^"]+)"%s*n="([^"]+)"')
@@ -441,7 +441,7 @@ function ReaticulateParser.get_bank_for_track(track, banks, override_or_msb, opt
         end
     end
     
-    return banks[1]
+    return nil
 end
 
 return ReaticulateParser

@@ -155,7 +155,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             if state.is_dragging and state.last_drag_audition_pitch ~= effective_pitch then
                 state.last_drag_audition_pitch = effective_pitch
                 local trk_ptr = (target_trk and target_trk.track) or (state.drag_note and state.drag_note.track)
-                AudioPreview.play_note(state, effective_pitch, state.drag_note and state.drag_note.vel, state.drag_note and state.drag_note.chan, trk_ptr, state.drag_note and state.drag_note.start_qn)
+                AudioPreview.play_note(state, effective_pitch, state.drag_note and state.drag_note.vel, state.drag_note and state.drag_note.chan, trk_ptr, state.drag_note and state.drag_note.start_qn, state.drag_note)
             end
         end
     end
@@ -1045,7 +1045,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             
             local n_obj = midi_service.insert_note_at_qn(state, prev.qn, prev.pitch, dur)
             if n_obj then
-                AudioPreview.play_note(state, prev.pitch, 96, 0, prev.track, prev.qn)
+                AudioPreview.play_note(state, prev.pitch, 96, 0, prev.track, prev.qn, n_obj)
                 local bpi = qn_per_measure or 4.0
                 local p_info = Constants.PITCH_MAP and Constants.PITCH_MAP[prev.pitch % 12]
                 local p_name = p_info and p_info.name or "C"

@@ -28,6 +28,7 @@ local opt_import_chords = true
 local opt_import_texts = true
 local opt_import_dynamics = true
 local opt_import_keys = true
+local opt_compact_tracks = true
 
 local status_msg = ""
 local status_color = 0xFFFFFFFF
@@ -57,8 +58,6 @@ function MusicXmlModal.render(ctx, state, project_tracks)
 
     if not is_open then
         state.show_musicxml_modal = false
-        reaper.ImGui_End(ctx)
-        return
     end
 
     if is_vis then
@@ -161,7 +160,7 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                         end
                     end
 
-                    local ok, res, num_meas, num_trks = MusicXmlExportService.export_project(state, {
+                    local p_ok, ok, res, num_meas, num_trks = pcall(MusicXmlExportService.export_project, state, {
                         file_path = export_file_path,
                         tracks = export_tracks,
                         include_chords = opt_include_chords,
@@ -172,7 +171,10 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                         include_pedals = opt_include_octaves_pedals
                     })
 
-                    if ok then
+                    if not p_ok then
+                        status_msg = "Export error: " .. tostring(ok)
+                        status_color = 0xE74C3CFF
+                    elseif ok then
                         status_msg = string.format("Exported successfully! %d tracks, %d measures to:\n%s", num_trks or #export_tracks, num_meas or 0, res)
                         status_color = 0x2ECC71FF
                     else
@@ -224,6 +226,8 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                 opt_import_dynamics = i4
                 local _, i5 = reaper.ImGui_Checkbox(ctx, "Import Key & Time Signatures##ImpKeys", opt_import_keys)
                 opt_import_keys = i5
+                local _, i6 = reaper.ImGui_Checkbox(ctx, "Compact Track Heights in REAPER TCP##ImpCompact", opt_compact_tracks)
+                opt_compact_tracks = i6
 
                 reaper.ImGui_Spacing(ctx)
                 reaper.ImGui_Spacing(ctx)
@@ -238,8 +242,9 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                     package.loaded["services.dynamics_engine"] = nil
                     package.loaded["services.hairpin_service"] = nil
                     MusicXmlImportService = require("services.musicxml_import_service")
-                    local ok, res, notes_cnt, trks_cnt = MusicXmlImportService.import_file(import_file_path, state, {
+                    local p_ok, ok, res, notes_cnt, trks_cnt, reat_installed = pcall(MusicXmlImportService.import_file, import_file_path, state, {
                         create_new_tracks = opt_create_new_tracks,
+                        compact_tracks = opt_compact_tracks,
                         import_chords = opt_import_chords,
                         import_text_items = opt_import_texts,
                         import_dynamics = opt_import_dynamics,
@@ -248,8 +253,12 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                         import_keys = opt_import_keys
                     })
 
-                    if ok then
-                        status_msg = string.format("Import successful! %d tracks created/updated, %d notes imported.", trks_cnt or 0, notes_cnt or 0)
+                    if not p_ok then
+                        status_msg = "Import exception: " .. tostring(ok)
+                        status_color = 0xE74C3CFF
+                    elseif ok then
+                        local reat_warn = (reat_installed == false) and " (Reaticulate not found - standard notations imported)" or ""
+                        status_msg = string.format("Import successful! %d tracks created/updated, %d notes imported%s.", trks_cnt or 0, notes_cnt or 0, reat_warn)
                         status_color = 0x2ECC71FF
                     else
                         status_msg = "Import failed: " .. tostring(res)
@@ -270,9 +279,9 @@ function MusicXmlModal.render(ctx, state, project_tracks)
             reaper.ImGui_Separator(ctx)
             reaper.ImGui_TextColored(ctx, status_color, status_msg)
         end
-
-        reaper.ImGui_End(ctx)
     end
+
+    reaper.ImGui_End(ctx)
 end
 
 return MusicXmlModal

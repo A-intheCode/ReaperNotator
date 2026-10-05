@@ -15,8 +15,6 @@ function ScaleModal.render(ctx, state)
 
     if not s_open then
         state.show_scale_modal = false
-        reaper.ImGui_End(ctx)
-        return
     end
 
     if s_vis then
@@ -133,9 +131,9 @@ function ScaleModal.render(ctx, state)
         else
             reaper.ImGui_PopStyleColor(ctx, 2)
         end
-
-        reaper.ImGui_End(ctx)
     end
+
+    reaper.ImGui_End(ctx)
 end
 
 return ScaleModal

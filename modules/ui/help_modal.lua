@@ -10,6 +10,9 @@ function HelpModal.render(ctx, state)
     
     reaper.ImGui_SetNextWindowSize(ctx, 580, 520, reaper.ImGui_Cond_Appearing())
     local h_vis, h_open = reaper.ImGui_Begin(ctx, "REAPER Notator - Shortcuts & Help", true)
+    if not h_open then
+        state.show_help = false
+    end
     if h_vis then
         reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "Keyboard Shortcuts & Mouse Controls:")
         reaper.ImGui_Separator(ctx)
@@ -35,9 +38,8 @@ function HelpModal.render(ctx, state)
         if reaper.ImGui_Button(ctx, "Close", -1, 30) then
             state.show_help = false
         end
-        reaper.ImGui_End(ctx)
     end
-    if not h_open then state.show_help = false end
+    reaper.ImGui_End(ctx)
 end
 
 return HelpModal

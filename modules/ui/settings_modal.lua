@@ -54,10 +54,8 @@ function SettingsModal.render(ctx, state, shortcut_manager)
     if not s_open then
         state.show_settings = false
         state.capturing_action = nil
-        reaper.ImGui_End(ctx)
-        return
     end
-    
+
     if s_vis then
         -- Determine modifier key state for key capture
         local is_ctrl = false
@@ -591,9 +589,9 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             state.show_settings = false
             state.capturing_action = nil
         end
-        
-        reaper.ImGui_End(ctx)
     end
+
+    reaper.ImGui_End(ctx)
 end
 
 return SettingsModal

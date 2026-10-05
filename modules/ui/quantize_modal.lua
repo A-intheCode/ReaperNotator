@@ -23,8 +23,6 @@ function QuantizeModal.render(ctx, state, midi_service, active_tracks_data)
 
     if not s_open then
         state.show_quantize_modal = false
-        reaper.ImGui_End(ctx)
-        return
     end
 
     if s_vis then
@@ -159,9 +157,9 @@ function QuantizeModal.render(ctx, state, midi_service, active_tracks_data)
 
         reaper.ImGui_SameLine(ctx, 0, 16)
         reaper.ImGui_TextDisabled(ctx, "(Shortcut: Q)")
-
-        reaper.ImGui_End(ctx)
     end
+
+    reaper.ImGui_End(ctx)
 end
 
 return QuantizeModal

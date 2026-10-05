@@ -81,8 +81,12 @@ MANUAL_DATA = [
             },
             {
                 "heading": "2.4 Audition Preview (Note Audio on Click)",
-                "text": "Function: When enabled (speaker icon), clicking or vertically dragging any note on the canvas triggers an immediate acoustic preview sound.\n"
-                        "DAW Effect: Sends instantaneous MIDI Note-On and scheduled Note-Off events to the active track's virtual instrument synth via REAPER's Audio Preview API."
+                "text": "Functions:\n"
+                        "- Single-Note Audition: Clicking or vertically dragging any note on the canvas triggers an immediate acoustic preview sound, arbitrated to audition strictly the single hovered note even in dense chords or adjacent systems.\n"
+                        "- Track Audition Isolation: Auditioning automatically isolates the target track and temporarily disarms concurrent project tracks, preventing Virtual MIDI Keyboard crosstalk across unrelated instruments sharing the same pitch/register.\n"
+                        "- Articulation Chasing: The engine scans the project timeline from measure 1 up to the clicked note position to chase active Program Changes and note-level articulation marks (Staccato, Marcato, Tenuto, Pizzicato, etc.), dispatching the authentic Reaticulate bank and patch.\n"
+                        "- Zero-Latency First Click: Implements a 1-frame pre-switch mechanism for Bank/Program Change before Note-On, eliminating sampler group switching lag so notes sound cleanly on the very first click.\n"
+                        "DAW Effect: Dispatches synchronized Bank Select, Program Change, and instantaneous MIDI Note-On/scheduled Note-Off events to the active track's virtual instrument synth via REAPER's Audio Preview API."
             },
             {
                 "heading": "2.5 Follow Playhead (Auto-Scroll)",
@@ -429,8 +433,11 @@ MANUAL_DATA = [
                 "text": "Functions: MusicXML 4.0 is the universal interchange format between professional notation software. REAPER-Notator includes a dedicated MusicXML parser and exporter written in pure Lua."
             },
             {
-                "heading": "12.2 Importing Scores",
-                "text": "Functions: Click 'Import MusicXML' to load orchestral scores created in external notation programs. Notator parses parts, measures, time signatures, key signatures, pitch data, dynamics, and tempo markers, creating fully arranged tracks and MIDI items directly in REAPER."
+                "heading": "12.2 Importing Scores & Articulation Auto-Mapping",
+                "text": "Functions:\n"
+                        "- Orchestral Score Import: Click 'Import MusicXML' to load orchestral scores created in external notation programs. Notator parses parts, measures, time signatures, key signatures, pitch data, dynamics, lyrics, and tempo markers, creating fully arranged tracks and MIDI items directly in REAPER.\n"
+                        "- Intelligent Articulation Detection: Automatically analyzes Reaticulate sound banks loaded on destination tracks. Employs a prioritized 3-tier mapping algorithm for articulations (e.g. prioritizing dedicated 'Staccato Dig' patches for Spitfire Double Basses over fallback 'Short 0.5' duration patches).\n"
+                        "- Compact Track Layout: Automatically collapses imported track heights (25px) to provide an immediate, organized orchestral overview without overwhelming the REAPER track arrangement."
             },
             {
                 "heading": "12.3 Exporting Scores",

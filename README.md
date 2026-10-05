@@ -53,6 +53,13 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Standard navigation symbols: Da Capo ($D.C.$ / $D.C. \text{ al Fine}$), Dal Segno ($D.S.$ / $D.S. \text{ al Coda}$), Segno, Coda, and Fine.
   - Arpeggiated chords with bezier wavy line engraving and non-destructive micro-strumming playback offset.
   - Score Tools drawer: Make Notes Legato, Auto Voice & Auto Voice on Selection, and integrated Quantize Tools.
+- **MusicXML Import & Instant Note Audition Hotfix (v1.5.4)**:
+  - **Intelligent Articulation Mapping on Import**: Prioritized 3-tier algorithm for staccato mappings ensuring dedicated short patches (such as Spitfire 'Staccato Dig') take precedence over duration fallbacks ('Short 0.5') during MusicXML import.
+  - **Compact Import Layout**: Automatically reduces track heights to 25px upon MusicXML import for an organized orchestral overview.
+  - **Single-Note Audition Arbitration**: Strict hit-testing isolation ensures that clicking in dense chords or adjacent systems previews only the single clicked notehead.
+  - **Track Audition Isolation**: Temporarily disarms other project tracks during preview to eliminate Virtual MIDI Keyboard crosstalk across instruments sharing identical registers.
+  - **Timeline Articulation Chasing**: Auditioning scans the project timeline from measure 1 up to the clicked note, sending authentic Reaticulate bank and Program Change data.
+  - **Zero-Latency First Click**: Eliminated destructive patch reset on mouse release and introduced 1-frame pre-switching for Bank/Program Change before Note-On, ensuring instant articulation playback on the very first click.
 - **Selective Score Clipboard & Engraving Hotfixes (v1.5.3)**:
   - **Selective Note Copy/Paste Engine**: Isolated note copying so that copying selected notes or chords never inadvertently captures unselected dynamics, hairpins, pedal markings, or tempo markers. Pasting notes into a MIDI item cleanly respects existing item boundaries without truncating or unexpectedly expanding takes.
   - **Authentic SMuFL Staccatissimo**: Upgraded staccatissimo wedges from rough canvas polygons to authentic Bravura SMuFL glyphs (`articStaccatissimoAbove` / `articStaccatissimoBelow`) with pristine subpixel anti-aliasing and vector fallback strokes.

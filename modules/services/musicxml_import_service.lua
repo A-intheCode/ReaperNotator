@@ -18,6 +18,7 @@ local KeySignatureService = require("services.key_signature_service")
 local MidiService = require("services.midi_service")
 local HairpinService = require("services.hairpin_service")
 local DynamicTextService = require("services.dynamic_text_service")
+local ReaticulateParser = require("services.reaticulate_parser")
 
 local DYN_LOOKUP = {
     pppp = {c1 = 8,   c2 = 12},
@@ -222,6 +223,8 @@ local ARTICULATION_TEXT_MAP = {
     ["espr."] = "espressivo",
     ["dolce"] = "dolce",
     ["cantabile"] = "cantabile",
+    ["staccato dig"] = "staccato",
+    ["dig"] = "staccato",
     ["up-bow"] = "up-bow",
     ["down-bow"] = "down-bow"
 }
@@ -253,6 +256,60 @@ local function detect_articulation_from_text(txt)
     elseif clean:find("col legno") then return "col legno"
     end
     return nil
+end
+
+-- ------------------------------------------------------------------------------
+-- Reaticulate Matching Helper
+-- ------------------------------------------------------------------------------
+local function find_best_bank_for_part_name(pname, all_banks)
+    if not all_banks or #all_banks == 0 then return nil end
+    local lower_p = (pname or ""):lower()
+
+    -- 1. Exact match on bank name
+    for _, b in ipairs(all_banks) do
+        local lower_b = (b.name or ""):lower()
+        if lower_b:find(lower_p, 1, true) or lower_p:find(lower_b, 1, true) then
+            return b
+        end
+    end
+
+    -- 2. Specific instrument token matching (violins 1/2, viola, cello, bass, etc.)
+    local specific_tokens = {
+        "violin 1", "violin 2", "violins 1", "violins 2", "viola", "violas",
+        "cello", "cellos", "celli", "double bass", "basses", "contrabass",
+        "flute", "oboe", "clarinet", "bassoon", "horn", "trumpet", "trombone", "tuba", "timpani"
+    }
+    for _, tok in ipairs(specific_tokens) do
+        if lower_p:find(tok, 1, true) then
+            for _, b in ipairs(all_banks) do
+                local lower_b = (b.name or ""):lower()
+                if lower_b:find(tok, 1, true) then
+                    return b
+                end
+            end
+        end
+    end
+
+    -- 3. Any word token >= 4 chars
+    for word in lower_p:gmatch("%a+") do
+        if #word >= 4 and word ~= "part" and word ~= "track" and word ~= "midi" then
+            for _, b in ipairs(all_banks) do
+                if (b.name or ""):lower():find(word, 1, true) then
+                    return b
+                end
+            end
+        end
+    end
+
+    -- 4. Dummy / generic orchestral fallback: string bank or first available bank
+    for _, b in ipairs(all_banks) do
+        local lb = (b.name or ""):lower()
+        if lb:find("string") or lb:find("violin") or lb:find("orchestra") then
+            return b
+        end
+    end
+
+    return all_banks[1]
 end
 
 -- ------------------------------------------------------------------------------
@@ -308,6 +365,20 @@ function MusicXmlImportService.import_file(file_path, state, options)
     -- Setup destination tracks
     local create_tracks = (options.create_new_tracks ~= false)
     local target_tracks = {}
+    local target_banks = {}
+
+    local all_banks = ReaticulateParser.get_all_banks()
+    local reaticulate_installed = (all_banks and #all_banks > 0)
+    if not reaticulate_installed then
+        if reaper.APIExists("ShowMessageBox") then
+            reaper.ShowMessageBox(
+                "Reaticulate is not installed or no .reabank articulation banks were found.\n\n" ..
+                "The notes and musical notations were successfully imported, but installing Reaticulate is recommended to enable articulation playback switching and bank mapping.",
+                "REAPER-Notator: Reaticulate Notice",
+                0
+            )
+        end
+    end
 
     for pi, part_node in ipairs(parts) do
         local pid = part_node.attr and part_node.attr.id or string.format("P%d", pi)
@@ -329,6 +400,47 @@ function MusicXmlImportService.import_file(file_path, state, options)
             end
         end
         table.insert(target_tracks, tr)
+
+        -- Compact / collapse track height in REAPER TCP (standard compact view)
+        if options.compact_tracks ~= false and tr and reaper.ValidatePtr(tr, "MediaTrack*") then
+            reaper.SetMediaTrackInfo_Value(tr, "I_HEIGHTOVERRIDE", 25)
+        end
+
+        -- Apply Reaticulate bank and FX to track if available
+        if reaticulate_installed and tr and reaper.ValidatePtr(tr, "MediaTrack*") then
+            local best_bank = find_best_bank_for_part_name(pname, all_banks)
+            if best_bank then
+                target_banks[pi] = best_bank
+
+                -- Add Reaticulate.jsfx to track FX chain if not already present
+                local has_fx = false
+                local fx_count = reaper.TrackFX_GetCount(tr)
+                for fxi = 0, fx_count - 1 do
+                    local _, fx_name = reaper.TrackFX_GetFXName(tr, fxi, "")
+                    if fx_name:lower():find("reaticulate") then
+                        has_fx = true
+                        break
+                    end
+                end
+                if not has_fx then
+                    local fx_idx = reaper.TrackFX_AddByName(tr, "Reaticulate.jsfx", false, -1)
+                    if fx_idx < 0 then
+                        reaper.TrackFX_AddByName(tr, "Reaticulate", false, -1)
+                    end
+                end
+
+                -- Configure P_EXT:reaticulate JSON on the track
+                local bank_val = (best_bank.id and best_bank.id ~= "") and best_bank.id or (best_bank.msb * 128 + (best_bank.lsb >= 0 and best_bank.lsb or 0))
+                local reat_json = string.format('2{"y":0,"v":1,"defchan":1,"banks":[{"dst":17,"v":%s,"src":17,"t":"g","dstbus":1,"name":"%s"}]}',
+                    (type(bank_val) == "string" and ('"' .. bank_val .. '"') or tostring(bank_val)),
+                    (best_bank.name or ""):gsub('"', '\\"'))
+                reaper.GetSetMediaTrackInfo_String(tr, "P_EXT:reaticulate", reat_json, true)
+
+                local trk_guid = reaper.GetTrackGUID(tr)
+                if not state.track_articulation_banks then state.track_articulation_banks = {} end
+                state.track_articulation_banks[trk_guid] = (best_bank.id and best_bank.id ~= "") and best_bank.id or best_bank.name
+            end
+        end
     end
 
     local total_notes_imported = 0
@@ -378,6 +490,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
         local cur_m_start_qn = 0.0
 
         for m_idx, m_node in ipairs(measures) do
+            local mi = m_idx
             local m_num = tonumber(m_node.attr and m_node.attr.number) or m_idx
             local m_start_qn = cur_m_start_qn
             local cur_div = 0
@@ -589,11 +702,11 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             elseif #r_txt > 2 or not r_txt:match("^[A-Za-z]$") then
                                 m_type = "custom"
                             end
-                            local rm_key = string.format("%d_%.2f", mi - 1, dir_qn)
+                            local rm_key = string.format("%d_%.2f", m_idx - 1, dir_qn)
                             if not imported_rehearsal_seen[rm_key] then
                                 imported_rehearsal_seen[rm_key] = true
                                 table.insert(imported_rehearsal_marks, {
-                                    measure = mi - 1,
+                                    measure = m_idx - 1,
                                     qn = dir_qn,
                                     type = m_type,
                                     custom_text = (m_type == "custom") and r_txt or "",
@@ -605,11 +718,11 @@ function MusicXmlImportService.import_file(file_path, state, options)
                         -- Segno (<segno/>)
                         local segno_node = get_first_child(dt, "segno")
                         if segno_node and pi == 1 then
-                            local rm_key = string.format("segno_%d_%.2f", mi - 1, dir_qn)
+                            local rm_key = string.format("segno_%d_%.2f", m_idx - 1, dir_qn)
                             if not imported_rehearsal_seen[rm_key] then
                                 imported_rehearsal_seen[rm_key] = true
                                 table.insert(imported_rehearsal_marks, {
-                                    measure = mi - 1,
+                                    measure = m_idx - 1,
                                     qn = dir_qn,
                                     type = "segno",
                                     label = utf8.char(0xE047)
@@ -620,11 +733,11 @@ function MusicXmlImportService.import_file(file_path, state, options)
                         -- Coda (<coda/>)
                         local coda_node = get_first_child(dt, "coda")
                         if coda_node and pi == 1 then
-                            local rm_key = string.format("coda_%d_%.2f", mi - 1, dir_qn)
+                            local rm_key = string.format("coda_%d_%.2f", m_idx - 1, dir_qn)
                             if not imported_rehearsal_seen[rm_key] then
                                 imported_rehearsal_seen[rm_key] = true
                                 table.insert(imported_rehearsal_marks, {
-                                    measure = mi - 1,
+                                    measure = m_idx - 1,
                                     qn = dir_qn,
                                     type = "coda",
                                     label = utf8.char(0xE048)
@@ -782,11 +895,11 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                 end
 
                                 if nav_type and pi == 1 then
-                                    local rm_key = string.format("%s_%d_%.2f", nav_type, mi - 1, dir_qn)
+                                    local rm_key = string.format("%s_%d_%.2f", nav_type, m_idx - 1, dir_qn)
                                     if not imported_rehearsal_seen[rm_key] then
                                         imported_rehearsal_seen[rm_key] = true
                                         table.insert(imported_rehearsal_marks, {
-                                            measure = mi - 1,
+                                            measure = m_idx - 1,
                                             qn = dir_qn,
                                             type = nav_type
                                         })
@@ -1017,7 +1130,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                         imported_fermatas_seen[qn_key] = true
                                         table.insert(imported_fermatas, {
                                             qn = note_start_qn,
-                                            measure = mi - 1,
+                                            measure = m_idx - 1,
                                             type = f_type,
                                             hold_factor = h_fac
                                         })
@@ -1195,9 +1308,9 @@ function MusicXmlImportService.import_file(file_path, state, options)
                     end
 
                     for _, n in ipairs(track_notes) do
-                        local base_s_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, n.start_qn)
+                        local base_s_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n.start_qn) + 0.5)
                         local s_ppq = base_s_ppq + (n.strum_offset_ppq or 0)
-                        local e_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, n.start_qn + n.dur_qn)
+                        local e_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n.start_qn + n.dur_qn) + 0.5)
                         if n.strum_offset_ppq and n.strum_offset_ppq > 0 then
                             e_ppq = math.max(s_ppq + 40, e_ppq)
                         end
@@ -1209,6 +1322,24 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             end
                         elseif n.articulation and n.articulation ~= "" then
                             reaper.MIDI_InsertTextSysexEvt(take, false, false, s_ppq, 15, string.format("NOTE %d %d a %s", n.pitch, n.chan, n.articulation))
+                            local track_bank = target_banks[pi]
+                            if track_bank then
+                                local art_match = MidiService.find_reaticulate_art_for_id(track_bank, n.articulation)
+                                if not art_match and (n.articulation == "staccatissimo" or n.articulation:find("staccatiss")) then
+                                    art_match = MidiService.find_reaticulate_art_for_id(track_bank, "staccato")
+                                end
+                                if art_match then
+                                    local eff_msb = (track_bank.msb and track_bank.msb >= 0) and track_bank.msb or -1
+                                    local eff_lsb = (track_bank.lsb and track_bank.lsb >= 0) and track_bank.lsb or -1
+                                    if eff_msb >= 0 then
+                                        reaper.MIDI_InsertCC(take, false, false, s_ppq, 0xB0, n.chan, 0, eff_msb)
+                                    end
+                                    if eff_lsb >= 0 then
+                                        reaper.MIDI_InsertCC(take, false, false, s_ppq, 0xB0, n.chan, 32, eff_lsb)
+                                    end
+                                    reaper.MIDI_InsertCC(take, false, false, s_ppq, 0xC0, n.chan, art_match.pc, 0)
+                                end
+                            end
                         end
                         if n.accidental ~= nil then
                             local pos_k = string.format("%s_%.3f_%d", tostring(take), n.start_qn, n.pitch)
@@ -1222,7 +1353,21 @@ function MusicXmlImportService.import_file(file_path, state, options)
                         local lk = DYN_LOOKUP[d.label:lower()] or { c1 = 80, c2 = 85 }
                         reaper.MIDI_InsertTextSysexEvt(take, false, false, d_ppq, 15, string.format("dynamic %s :%d:%d", d.label, lk.c1, lk.c2))
                     end
+
+                    local track_bank = target_banks[pi]
+                    if track_bank then
+                        MidiService.auto_chase_momentary_articulations(take, track_bank)
+                    end
                     reaper.MIDI_Sort(take)
+
+                    -- Persist clef on item and track
+                    local part_clef = (state and state.track_clefs and trk_guid and state.track_clefs[trk_guid]) or "auto"
+                    if part_clef and part_clef ~= "auto" then
+                        reaper.GetSetMediaItemInfo_String(item, "P_EXT:notator_clef", part_clef, true)
+                        if tr and reaper.ValidatePtr(tr, "MediaTrack*") then
+                            reaper.GetSetMediaTrackInfo_String(tr, "P_EXT:notator_clef", part_clef, true)
+                        end
+                    end
 
                     local has_dyn = (#track_dynamics > 0)
                     if not has_dyn and state and state.hairpins then
@@ -1460,16 +1605,34 @@ function MusicXmlImportService.import_file(file_path, state, options)
         end
     end
 
+    -- Automatically select all newly imported tracks in state and focus first track
+    if state and target_tracks and #target_tracks > 0 then
+        state.selected_tracks = {}
+        for _, t in ipairs(target_tracks) do
+            if t and reaper.ValidatePtr(t, "MediaTrack*") then
+                local guid = reaper.GetTrackGUID(t)
+                state.selected_tracks[guid] = true
+            end
+        end
+        if target_tracks[1] and reaper.ValidatePtr(target_tracks[1], "MediaTrack*") then
+            state.focused_track = target_tracks[1]
+            if reaper.SetOnlyTrackSelected then
+                reaper.SetOnlyTrackSelected(target_tracks[1])
+            end
+        end
+    end
+
     -- Flush caches & mark project dirty
     MidiService.invalidate_cache()
     if state then state.active_tracks_cache = nil end
     reaper.MarkProjectDirty(0)
+    if reaper.TrackList_AdjustWindows then reaper.TrackList_AdjustWindows(false) end
     if reaper.UpdateArrange then reaper.UpdateArrange() end
 
     local success_msg = string.format("Imported %d tracks, %d notes, %d measures from MusicXML.", #parts, total_notes_imported, total_measures_imported)
     if state then state.status_msg = success_msg end
 
-    return true, success_msg, total_notes_imported, #parts
+    return true, success_msg, total_notes_imported, #parts, reaticulate_installed
 end
 
 return MusicXmlImportService

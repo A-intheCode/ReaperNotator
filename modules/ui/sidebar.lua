@@ -251,9 +251,9 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
         if not a or a == "" or a == "none" then return nil end
         local low = tostring(a):lower()
         if low:find("staccatiss") or low:find("spicc") then return "staccatissimo"
-        elseif low:find("stacc") then return "staccato"
+        elseif low:find("stacc") or low:find("dig") or low:find("short 0%.5") then return "staccato"
         elseif low:find("marc") then return "marcato"
-        elseif low:find("tenuto") or low == "ten" then return "tenuto"
+        elseif low:find("tenuto") or low == "ten" or low:find("short 1%.0") then return "tenuto"
         elseif low:find("accent") or low == "acc" then return "accent"
         elseif low:find("harm") or low:find("flag") then return "harmonic"
         end

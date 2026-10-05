@@ -1,7 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.5.3
+-- @version 1.5.4
 -- @changelog
+--   + v1.5.4: Hotfix release: MusicXML Articulation Import & Instant Note Audition Preview Playback:
+--             - MusicXML Articulation Mapping: Implemented prioritized 3-tier matching for staccato, ensuring dedicated short patches (such as Spitfire 'Staccato Dig') take priority over generic duration fallbacks ('Short 0.5')
+--             - Compact MusicXML Import Layout: Automatically sets compact track heights upon importing MusicXML scores for an organized orchestral overview
+--             - Single-Note Audition Arbitration: Refined audition hit-testing to sound strictly the single closest hovered note even within dense chords or adjacent systems
+--             - Track Audition Isolation: Temporarily disarms concurrent project tracks during audition clicks to eliminate VKB broadcast crosstalk across instruments sharing the same register
+--             - Timeline Articulation Chasing: Auditioning notes scans the project timeline from measure 1 to chase active Program Changes and note-level articulation marks (Staccato, Marcato, Tenuto, Pizzicato)
+--             - Zero-Latency First Click: Eliminated destructive patch reset on mouse release and introduced 1-frame pre-switching for Bank/Program Change before Note-On, ensuring instant articulation playback on the very first click
 --   + v1.5.3: Hotfix release: Selective Copy/Paste, SMuFL Staccatissimo, Staccato alignment, and removal of print.xml auto-generation:
 --             - Selective Note Copy/Paste Engine: Isolated note copying so that copying selected notes or chords never inadvertently captures unselected dynamics, hairpins, pedal markings, or tempo markers
 --             - Destination MIDI Take boundary preservation: Pasting notes into a MIDI item cleanly respects existing item boundaries without truncating or unexpectedly expanding takes
