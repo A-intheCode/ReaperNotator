@@ -52,6 +52,10 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Tempomap playback coupling with deterministic tempo-dip slowdown (1.25x to 3.0x) and automatic restoration.
   - Standard navigation symbols: Da Capo ($D.C.$ / $D.C. \text{ al Fine}$), Dal Segno ($D.S.$ / $D.S. \text{ al Coda}$), Segno, Coda, and Fine.
   - Arpeggiated chords with bezier wavy line engraving and non-destructive micro-strumming playback offset.
+- **Dynamic Object Scaling Decoupling & Legacy Hairpin Playback Healing (v1.5.6)**:
+  - **Decoupled Dynamic Scaling**: Hairpins (`<`, `>`) and Dynamic Text objects (`cresc.`, `dim.`) now strictly collide and bound against dynamic markers ($p$, $pp$, $mp$, $mf$, $f$, etc.), other hairpins, and dynamic texts. They will never collide with or be bounded by note articulations (e.g. staccatos, tenutos, accents). Hairpins can now span freely across passages containing dense patterns of dozens or hundreds of staccato notes without shrinking or collapsing.
+  - **Legacy Hairpin Playback Healing via "⚡ Fix Playback"**: The "⚡ Fix Playback" command automatically detects collapsed or shrunken hairpins and dynamic texts ($\le 0.75\text{ QN}$) in legacy projects that were squeezed by old staccato collisions, expands them back to their natural musical boundaries, recalculates dynamic levels, and regenerates clean continuous CC automation ramps without staccato clipping.
+  - **Dynamic Status Reporting**: Reports healed dynamic element counts in the bottom status message alongside synced notes and cleared events.
 - **Playback Reconciliation & Fix of Last Resort Hotfix (v1.5.5)**:
   - **Idempotent Playback Reconciliation**: Left-clicking "⚡ Fix Playback" scans and reconciles all note articulations with the active track's Reaticulate sound bank without stripping or corrupting existing valid articulations.
   - **Fix of Last Resort Modal**: Repeating click when already synchronized (or right-clicking at any time) presents a dedicated emergency confirmation modal window to purge corrupted keyswitches (CC0/CC32/PCs) and reset to clean default sustain.

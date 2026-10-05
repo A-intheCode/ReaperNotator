@@ -1,7 +1,17 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.5.4
+-- @version 1.5.6
 -- @changelog
+--   + v1.5.6: Dynamic Object Scaling Decoupling & Legacy Hairpin Playback Healing:
+--             - Decoupled Dynamic Scaling: Hairpins (<, >) and Dynamic Texts (cresc., dim.) now strictly collide and bound only against dynamic markers (p, f, etc.), other hairpins, and dynamic texts, completely ignoring note articulations. Hairpins can now scale freely across dense staccato phrases without shrinking.
+--             - Legacy Hairpin Playback Healing: The '⚡ Fix Playback' command automatically detects collapsed hairpins and dynamic texts (<= 0.75 QN) in older projects, restores them to their natural musical phrase boundaries, re-resolves dynamic levels, and regenerates clean continuous CC automation ramps.
+--             - Status Notification: Reports healed dynamic object count alongside synced notes and cleared events.
+--   + v1.5.5: Hotfix release: Playback Reconciliation, Centered Last Resort Purge Modal, and Target Track Resolution:
+--             - Idempotent Playback Reconciliation: Left-clicking '⚡ Fix Playback' scans and reconciles all note articulations with the active track's Reaticulate sound bank without stripping or corrupting valid articulations
+--             - Centered Fix of Last Resort Confirmation Modal: Repeating click when already synchronized (or right-clicking at any time) presents a dedicated emergency confirmation modal window to purge corrupted keyswitches (CC0/CC32/PCs) and reset to clean default sustain
+--             - Dead-Center Modal Placement: Modal uses Cond_Always() with pivot (0.5, 0.5) dynamically computed from screen/window dimensions to guarantee perfect horizontal and vertical centering without jitter or 50Hz flickering
+--             - Target Track Resolution: Fixed REAPER C-API take track lookup (get_track_from_take) and implemented multi-tier track resolution so the modal header clearly displays the target track name (Target: Track <num>: <name>)
+--             - User Manual & Workaround Documentation: Updated Section 6.5 in the User Manual with complete step-by-step instructions for troubleshooting third-party sample libraries lacking specific articulation keyswitches (e.g. staccato)
 --   + v1.5.4: Hotfix release: MusicXML Articulation Import & Instant Note Audition Preview Playback:
 --             - MusicXML Articulation Mapping: Implemented prioritized 3-tier matching for staccato, ensuring dedicated short patches (such as Spitfire 'Staccato Dig') take priority over generic duration fallbacks ('Short 0.5')
 --             - Compact MusicXML Import Layout: Automatically sets compact track heights upon importing MusicXML scores for an organized orchestral overview

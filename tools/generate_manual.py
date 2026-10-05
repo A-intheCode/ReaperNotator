@@ -251,6 +251,8 @@ MANUAL_DATA = [
                         "- Diminuendo (>): Visual closing wedge representing gradual decrease in loudness.\n"
                         "- Dual Drag Handles: Circular handles at the start and end of hairpins allow exact quarter-note positioning.\n"
                         "- Curvature Selection: Toggle between linear ramps and exponential curves for organic acoustic swelling.\n"
+                        "- Decoupled Scaling Boundaries: Hairpin and dynamic text drag handles strictly collide and clamp against musical dynamic markers (p, pp, mp, mf, f, etc.), other hairpins, and dynamic text markings (cresc., dim.), but completely ignore note-level articulations (such as staccato dots, accents, tenutos). This allows hairpins to span freely across dense passages of staccato notes without getting restricted or shrunk down.\n"
+                        "- Legacy Hairpin Playback Reconciliation: If a hairpin in an older project file was previously squeezed or collapsed due to staccato note collisions, running '⚡ Fix Playback' automatically detects collapsed hairpins (<= 0.75 QN), restores them to their natural phrase boundaries, and regenerates smooth continuous CC ramps.\n"
                         "DAW Effect: Inscribes smooth CC ramps between the bounding dynamic levels."
             },
             {
@@ -309,6 +311,7 @@ MANUAL_DATA = [
                         "    3. Open the Articulations drawer on the right sidebar.\n"
                         "    4. Left-click '⚡ Fix Playback'.\n"
                         "    Playback immediately re-synchronizes to the destination track's virtual instrument bank with pristine staccato and sustain transitions.\n"
+                        "- Dynamic Object Healing: '⚡ Fix Playback' also scans for legacy hairpins or dynamic text markings that were previously compressed or collapsed (<= 0.75 QN) by articulation collisions. It restores their natural musical span, re-resolves dynamic continuity across the track, and regenerates uninterrupted CC curves.\n"
                         "- Idempotency & Safe Multi-Click: The '⚡ Fix Playback' command is fully idempotent. If playback is already synchronized, repeating the click will never inadvertently erase or corrupt existing articulations.\n"
                         "- Fix of Last Resort (Centered Popup Confirmation Modal):\n"
                         "    * How It Works: When '⚡ Fix Playback' is clicked while playback is already synchronized (or right-clicked at any time), REAPER-Notator opens the dedicated '⚡ Fix Playback: Fix of Last Resort' confirmation modal window. The dialog automatically centers itself on the screen over the active score display.\n"

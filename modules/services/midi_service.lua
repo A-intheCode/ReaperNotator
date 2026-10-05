@@ -4032,6 +4032,7 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
     local total_cleared_events = 0
     local processed_takes = 0
     local last_trk_name = nil
+    local processed_track_guids = {}
     
     for _, item_entry in ipairs(take_list) do
         local take = item_entry.take
@@ -4040,6 +4041,9 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
             trk = get_track_from_take(take)
         end
         local trk_guid = trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.GetTrackGUID(trk)
+        if trk_guid then
+            processed_track_guids[trk_guid] = true
+        end
         if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
             local formatted = format_track_name_with_idx(trk)
             if formatted and formatted ~= "" then last_trk_name = formatted end
@@ -4372,7 +4376,83 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
     end
     state.fix_last_resort_track_name = last_trk_name
     
-    if total_fixed_notes == 0 and total_cleared_events == 0 then
+    if next(processed_track_guids) == nil then
+        local fallback_trk = state.focused_track or (active_tracks_data and active_tracks_data[1] and active_tracks_data[1].track) or reaper.GetSelectedTrack(0, 0)
+        if fallback_trk and reaper.ValidatePtr(fallback_trk, "MediaTrack*") then
+            local f_guid = reaper.GetTrackGUID(fallback_trk)
+            if f_guid then processed_track_guids[f_guid] = true end
+        end
+    end
+
+    -- 8. Heal shrunken hairpins & dynamic texts squeezed by old articulation collisions
+    local HairpinService = package.loaded["services.hairpin_service"] or require("services.hairpin_service")
+    local DynamicTextService = package.loaded["services.dynamic_text_service"] or require("services.dynamic_text_service")
+    local total_healed_dynamics = 0
+    
+    for trk_guid, _ in pairs(processed_track_guids) do
+        if state.hairpins then
+            for _, hp in ipairs(state.hairpins) do
+                if hp.track_guid == trk_guid then
+                    local cur_len = (hp.end_qn or 0) - (hp.start_qn or 0)
+                    -- Collapsed or shrunken due to legacy articulation collision (<= 0.75 QN)
+                    if cur_len <= 0.75 then
+                        local _, r_b = HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
+                        if r_b and r_b > (hp.start_qn + 0.75) then
+                            local target_len = hp.saved_natural_len or 4.0
+                            local new_end = math.min(hp.start_qn + target_len, r_b - 0.05)
+                            if new_end > (hp.end_qn or 0) then
+                                hp.end_qn = new_end
+                                total_healed_dynamics = total_healed_dynamics + 1
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if state.dynamic_texts then
+            for _, dt in ipairs(state.dynamic_texts) do
+                if dt.track_guid == trk_guid then
+                    local cur_len = (dt.end_qn or 0) - (dt.start_qn or 0)
+                    if cur_len <= 0.75 then
+                        local _, r_b = DynamicTextService.get_bounds(state, dt, active_tracks_data)
+                        if r_b and r_b > (dt.start_qn + 0.75) then
+                            local target_len = 4.0
+                            local new_end = math.min(dt.start_qn + target_len, r_b - 0.05)
+                            if new_end > (dt.end_qn or 0) then
+                                dt.end_qn = new_end
+                                total_healed_dynamics = total_healed_dynamics + 1
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        -- Re-resolve dynamic CC curves across the track without articulation boundaries
+        HairpinService.resolve_all_track_hairpins(state, trk_guid, active_tracks_data)
+        if state.hairpins then
+            for _, hp in ipairs(state.hairpins) do
+                if hp.track_guid == trk_guid then
+                    HairpinService.apply_hairpin_cc(state, hp, MidiService, active_tracks_data)
+                end
+            end
+        end
+        if state.dynamic_texts then
+            for _, dt in ipairs(state.dynamic_texts) do
+                if dt.track_guid == trk_guid then
+                    DynamicTextService.apply_cc(state, dt, MidiService, active_tracks_data)
+                end
+            end
+        end
+    end
+    
+    if total_healed_dynamics > 0 then
+        if HairpinService.save_hairpins then HairpinService.save_hairpins(state) end
+        if DynamicTextService.save_dynamic_texts then DynamicTextService.save_dynamic_texts(state) end
+    end
+    
+    if total_fixed_notes == 0 and total_cleared_events == 0 and total_healed_dynamics == 0 then
         -- Playback is already synchronized with track sound bank!
         state.show_fix_last_resort_modal = true
         state.fix_last_resort_track_name = last_trk_name
@@ -4387,8 +4467,14 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
     
-    state.status_msg = string.format("⚡ Fix Playback: %s (%d item(s), %d cleared, %d synced)",
-        last_trk_name or "Track", processed_takes or 0, total_cleared_events or 0, total_fixed_notes or 0)
+    local parts = {}
+    if total_cleared_events > 0 then table.insert(parts, string.format("%d cleared", total_cleared_events)) end
+    if total_fixed_notes > 0 then table.insert(parts, string.format("%d synced", total_fixed_notes)) end
+    if total_healed_dynamics > 0 then table.insert(parts, string.format("%d dynamics healed", total_healed_dynamics)) end
+    if #parts == 0 then table.insert(parts, "0 changes") end
+    
+    state.status_msg = string.format("⚡ Fix Playback: %s (%d item(s), %s)",
+        last_trk_name or "Track", processed_takes or 0, table.concat(parts, ", "))
     return true
 end
 

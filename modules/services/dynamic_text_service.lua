@@ -412,24 +412,6 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
         end
     end
 
-    -- 4. Articulations on the same track
-    local max_prev_art_qn = -1
-    local min_next_art_qn = 99999999
-    if active_tracks_data then
-        for _, tdata in ipairs(active_tracks_data) do
-            if tdata.guid == dt.track_guid and tdata.articulations then
-                for _, a in ipairs(tdata.articulations) do
-                    local aqn = a.qn or 0.0
-                    if aqn <= s_qn + 0.05 then
-                        if aqn > max_prev_art_qn then max_prev_art_qn = aqn end
-                    elseif aqn > s_qn + 0.05 then
-                        if aqn < min_next_art_qn then min_next_art_qn = aqn end
-                    end
-                end
-            end
-        end
-    end
-
     local l_bound = 0.0
     if prev_dt then
         local pe = prev_dt.end_qn or (prev_dt.start_qn + 4.0)
@@ -441,9 +423,6 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
     end
     if prev_dyn then
         l_bound = math.max(l_bound, prev_dyn.qn)
-    end
-    if max_prev_art_qn >= 0 then
-        l_bound = math.max(l_bound, max_prev_art_qn)
     end
 
     local r_bound = 999999.0
@@ -457,9 +436,6 @@ function DynamicTextService.get_bounds(state, dt, active_tracks_data)
     end
     if next_dyn then
         r_bound = math.min(r_bound, next_dyn.qn)
-    end
-    if min_next_art_qn < 99999999 then
-        r_bound = math.min(r_bound, min_next_art_qn)
     end
 
     return l_bound, r_bound, prev_dt, next_dt, prev_hp, next_hp, prev_dyn, next_dyn

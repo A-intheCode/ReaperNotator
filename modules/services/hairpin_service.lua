@@ -400,25 +400,7 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
         end
     end
     
-    -- 2c. Find articulations on the same track
-    local max_prev_art_qn = -1
-    local min_next_art_qn = 99999999
-    if active_tracks_data then
-        for _, tdata in ipairs(active_tracks_data) do
-            if tdata.guid == hp.track_guid and tdata.articulations then
-                for _, a in ipairs(tdata.articulations) do
-                    local aqn = a.qn or 0.0
-                    if aqn <= s_qn + 0.05 then
-                        if aqn > max_prev_art_qn then max_prev_art_qn = aqn end
-                    elseif aqn > s_qn + 0.05 then
-                        if aqn < min_next_art_qn then min_next_art_qn = aqn end
-                    end
-                end
-            end
-        end
-    end
-
-    -- 3. Calculate strict physical bounds
+    -- 3. Calculate strict physical bounds (hairpins, dynamics, and dynamic texts only - NOT articulations)
     local l_bound = 0.0
     if prev_hp then
         local pe = prev_hp.end_qn or (prev_hp.start_qn + 4.0)
@@ -430,9 +412,6 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
     if prev_dt then
         local pde = prev_dt.end_qn or (prev_dt.start_qn + 4.0)
         l_bound = math.max(l_bound, pde)
-    end
-    if max_prev_art_qn >= 0 then
-        l_bound = math.max(l_bound, max_prev_art_qn)
     end
     
     local r_bound = 999999.0
@@ -446,9 +425,6 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
     if next_dt then
         local nds = next_dt.start_qn or 0.0
         r_bound = math.min(r_bound, nds)
-    end
-    if min_next_art_qn < 99999999 then
-        r_bound = math.min(r_bound, min_next_art_qn)
     end
     
     return l_bound, r_bound, prev_hp, next_hp, prev_dyn, next_dyn, prev_dt, next_dt
