@@ -72,7 +72,7 @@ function CanvasPedalRenderer.render_track_pedals(ctx, draw_list, state, fonts, t
         if not track_hairpins and HairpinService and HairpinService.get_hairpins_for_track then
             track_hairpins = HairpinService.get_hairpins_for_track(state, tdata.guid)
         end
-        local dyn_offset = (state.dynamics_offset_y or 45.0) * s
+        local dyn_offset = (state.dynamics_offset_y or 79.0) * s
         local dyn_base_y = staff_bottom_y + dyn_offset
         if track_hairpins then
             for _, hp in ipairs(track_hairpins) do

@@ -74,7 +74,7 @@ function BottomBar.render(ctx, state, h, child_border, bottom_flags)
     if reaper.ImGui_BeginChild(ctx, "BottomButtonsScroll", 0, child_h, 0, scroll_flags) then
         reaper.ImGui_SetScrollY(ctx, 0)
         local avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
-        local total_needed_w = 615
+        local total_needed_w = 145 + 8 + 120 + 8 + 180 + 8 + 25 -- 494 px
         if avail_w > total_needed_w then
             reaper.ImGui_SetCursorPosX(ctx, avail_w - total_needed_w)
         end

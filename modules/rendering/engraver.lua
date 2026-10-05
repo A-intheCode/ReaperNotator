@@ -2021,13 +2021,27 @@ function Engraver.draw_articulation(draw_list, art_id, x, y, s, col, font_music,
         reaper.ImGui_DrawList_AddCircleFilled(draw_list, x, y, 2.2 * s, art_col)
         return
     elseif art_id == "staccatissimo" or art_id == "staccatiss" or art_id == "wedge" then
-        -- Solid wedge pointing towards notehead
+        if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+            local font_sz = math.floor(34 * s + 0.5)
+            local glyph = is_above and (SMUFL.staccatissimoAbove or utf8.char(0xE4A6)) or (SMUFL.staccatissimoBelow or utf8.char(0xE4A7))
+            local pos_y = y - (font_sz * 2.012)
+            local pos_x = x - (font_sz * 0.05)
+            reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, font_sz, pos_x, pos_y, art_col, glyph)
+            return
+        end
+        -- Smooth vector fallback (filled wedge with anti-aliased contour stroke)
         if is_above then
             -- Above notehead: pointing down towards notehead
-            reaper.ImGui_DrawList_AddTriangleFilled(draw_list, x - 2.5*s, y - 6.5*s, x + 2.5*s, y - 6.5*s, x, y, art_col)
+            reaper.ImGui_DrawList_AddTriangleFilled(draw_list, x - 2.5*s, y - 7.0*s, x + 2.5*s, y - 7.0*s, x, y, art_col)
+            if reaper.APIExists("ImGui_DrawList_AddTriangle") then
+                reaper.ImGui_DrawList_AddTriangle(draw_list, x - 2.5*s, y - 7.0*s, x + 2.5*s, y - 7.0*s, x, y, art_col, 1.2 * s)
+            end
         else
             -- Below notehead: pointing up towards notehead
-            reaper.ImGui_DrawList_AddTriangleFilled(draw_list, x - 2.5*s, y + 6.5*s, x + 2.5*s, y + 6.5*s, x, y, art_col)
+            reaper.ImGui_DrawList_AddTriangleFilled(draw_list, x - 2.5*s, y + 7.0*s, x + 2.5*s, y + 7.0*s, x, y, art_col)
+            if reaper.APIExists("ImGui_DrawList_AddTriangle") then
+                reaper.ImGui_DrawList_AddTriangle(draw_list, x - 2.5*s, y + 7.0*s, x + 2.5*s, y + 7.0*s, x, y, art_col, 1.2 * s)
+            end
         end
         return
     elseif art_id == "tenuto" or art_id == "ten" then

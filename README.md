@@ -53,7 +53,12 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Standard navigation symbols: Da Capo ($D.C.$ / $D.C. \text{ al Fine}$), Dal Segno ($D.S.$ / $D.S. \text{ al Coda}$), Segno, Coda, and Fine.
   - Arpeggiated chords with bezier wavy line engraving and non-destructive micro-strumming playback offset.
   - Score Tools drawer: Make Notes Legato, Auto Voice & Auto Voice on Selection, and integrated Quantize Tools.
-  - Inverted classical engraving styling for rehearsal marks and keyboard Delete/Backspace removal for marks & fermatas.
+- **Selective Score Clipboard & Engraving Hotfixes (v1.5.3)**:
+  - **Selective Note Copy/Paste Engine**: Isolated note copying so that copying selected notes or chords never inadvertently captures unselected dynamics, hairpins, pedal markings, or tempo markers. Pasting notes into a MIDI item cleanly respects existing item boundaries without truncating or unexpectedly expanding takes.
+  - **Authentic SMuFL Staccatissimo**: Upgraded staccatissimo wedges from rough canvas polygons to authentic Bravura SMuFL glyphs (`articStaccatissimoAbove` / `articStaccatissimoBelow`) with pristine subpixel anti-aliasing and vector fallback strokes.
+  - **Standard-Compliant Staccato Dot Placement**: Aligned staccato dots consistently across beamed note clusters opposite beam stems (per Elaine Gould standard), complete with automatic staff-line avoidance.
+  - **Clean Saving & Print Subsystem Decoupling**: Completely removed background print XML auto-generation (`*_print.xml`) on project save and exit.
+  - **Flush Bottom Bar Layout**: Eliminated the right-margin gap on the bottom control bar, cleanly docking utility modals flush to the window edge.
 - **Polyphonic Engraving & Stem Alignment Hotfix (v1.5.1)**:
   - **Attached Multi-Voice Stems**: Fixed detached floating note stems in polyphonic measures by aligning concurrent voices on the exact same beat axis and eliminating false horizontal collision pushing.
   - **Full Stem & Notehead Coordinate Synchronization**: Guaranteed seamless attachment between noteheads, stems, flags, and beams across all collision adjustments and second-interval displacements.

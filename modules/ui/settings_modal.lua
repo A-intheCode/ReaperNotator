@@ -113,7 +113,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             end
         end
 
-        local default_open = (reaper.APIExists("ImGui_TreeNodeFlags_DefaultOpen") and reaper.ImGui_TreeNodeFlags_DefaultOpen()) or 0
+        local default_open = (reaper.APIExists("ImGui_TreeNodeFlags_DefaultOpen") and reaper.ImGui_TreeNodeFlags_DefaultOpen()) or 32
         local avail_w, avail_h = reaper.ImGui_GetContentRegionAvail(ctx)
         local footer_h = 44
 
@@ -123,52 +123,39 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             -- ==============================================================
             -- 1. General Settings
             -- ==============================================================
-            if reaper.ImGui_CollapsingHeader(ctx, "⚙ General Settings###hdr_general", default_open) then
+            if reaper.ImGui_CollapsingHeader(ctx, "⚙ General Settings###hdr_general", nil, default_open) then
                 reaper.ImGui_Spacing(ctx)
-                local sf = state.scroll_factor or 2.0
-                local sf_changed, new_sf = reaper.ImGui_SliderDouble(ctx, "Mouse Wheel Scroll Speed", sf, 0.5, 10.0, "%.1fx")
+                
+                -- --- 1. Navigation & Canvas Layout ---
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Navigation & Canvas Layout")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Navigation & Canvas Layout")
+                    reaper.ImGui_Separator(ctx)
+                end
+                
+                local sf = state.scroll_factor or 3.0
+                local sf_changed, new_sf = reaper.ImGui_SliderDouble(ctx, "Mouse Wheel Scroll Speed", sf, 1.0, 5.0, "%.1fx")
                 if sf_changed then state.scroll_factor = new_sf; require('state').save_settings(state) end
                 
-                local bno_x = state.bar_num_offset_x or 0.0
-                local bnox_changed, new_bnox = reaper.ImGui_SliderDouble(ctx, "Bar Numbers X-Offset", bno_x, -25.0, 25.0, "%.1f px")
-                if bnox_changed then state.bar_num_offset_x = new_bnox; require('state').save_settings(state) end
-                
-                local bno_y = state.bar_num_offset_y or 0.0
-                local bnoy_changed, new_bnoy = reaper.ImGui_SliderDouble(ctx, "Bar Numbers Y-Offset", bno_y, -50.0, 50.0, "%.1f px")
-                if bnoy_changed then state.bar_num_offset_y = new_bnoy; require('state').save_settings(state) end
-                
-                local rmoy = state.rehearsal_mark_offset_y or 0.0
-                local rmoy_changed, new_rmoy = reaper.ImGui_SliderDouble(ctx, "Rehearsal Marks Y-Offset", rmoy, -60.0, 60.0, "%.1f px")
-                if rmoy_changed then state.rehearsal_mark_offset_y = new_rmoy; require('state').save_settings(state) end
-                
-                local bns = state.bar_num_size or 14.0
-                local bns_changed, new_bns = reaper.ImGui_SliderDouble(ctx, "Bar Numbers Font Size", bns, 8.0, 32.0, "%.1f px")
-                if bns_changed then state.bar_num_size = new_bns; require('state').save_settings(state) end
-                
-                local doy = state.dynamics_offset_y or 45.0
-                local doy_changed, new_doy = reaper.ImGui_SliderDouble(ctx, "Dynamics & Hairpins Vertical Offset", doy, 5.0, 120.0, "%.1f px")
-                if doy_changed then
-                    state.dynamics_offset_y = new_doy
-                    state.hairpins_offset_y = new_doy
-                    require('state').save_settings(state)
-                end
-
-                local poy = state.pedal_offset_y or 75.0
-                local poy_changed, new_poy = reaper.ImGui_SliderDouble(ctx, "Pedal / Sustain Vertical Offset", poy, 10.0, 150.0, "%.1f px")
-                if poy_changed then state.pedal_offset_y = new_poy; require('state').save_settings(state) end
-                
-                local aoy = state.articulations_offset_y or 16.0
-                local aoy_changed, new_aoy = reaper.ImGui_SliderDouble(ctx, "Articulations Vertical Offset (Above Staff)", aoy, -20.0, 120.0, "%.1f px")
-                if aoy_changed then state.articulations_offset_y = new_aoy; require('state').save_settings(state) end
-                
-                local ts = state.track_spacing or 70.0
-                local ts_changed, new_ts = reaper.ImGui_SliderDouble(ctx, "Track Spacing", ts, -20.0, 250.0, "%.1f px")
+                local ts = state.track_spacing or 195.0
+                local ts_changed, new_ts = reaper.ImGui_SliderDouble(ctx, "Track Spacing", ts, 70.0, 320.0, "%.1f px")
                 if ts_changed then state.track_spacing = new_ts; require('state').save_settings(state) end
                 
                 local ib = (state.show_item_boxes ~= false)
                 local ib_changed, new_ib = reaper.ImGui_Checkbox(ctx, "Show MIDI Item Bounds & Tags", ib)
                 if ib_changed then state.show_item_boxes = new_ib; require('state').save_settings(state) end
                 
+                reaper.ImGui_Spacing(ctx)
+
+                -- --- 2. Note Audio Audition ---
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Audio & Note Preview")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Audio & Note Preview")
+                    reaper.ImGui_Separator(ctx)
+                end
+
                 local aud = (state.audition_notes ~= false)
                 local aud_changed, new_aud = reaper.ImGui_Checkbox(ctx, "Audition notes on click / edit", aud)
                 if aud_changed then
@@ -188,14 +175,76 @@ function SettingsModal.render(ctx, state, shortcut_manager)
                         require('state').save_settings(state)
                     end
                 end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- --- 3. Measure & Rehearsal Elements ---
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Measure & Rehearsal Elements")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Measure & Rehearsal Elements")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                local bno_y = state.bar_num_offset_y or 47.5
+                local bnoy_changed, new_bnoy = reaper.ImGui_SliderDouble(ctx, "Bar Numbers Y-Offset", bno_y, 0.0, 95.0, "%.1f px")
+                if bnoy_changed then state.bar_num_offset_y = new_bnoy; require('state').save_settings(state) end
                 
-                local toy = state.tempo_offset_y or 28.0
-                local toy_changed, new_toy = reaper.ImGui_SliderDouble(ctx, "Tempo Markers Vertical Offset (Above Staff)", toy, 5.0, 120.0, "%.1f px")
+                local bns = state.bar_num_size or 20.0
+                local bns_changed, new_bns = reaper.ImGui_SliderDouble(ctx, "Bar Numbers Font Size", bns, 8.0, 32.0, "%.1f px")
+                if bns_changed then state.bar_num_size = new_bns; require('state').save_settings(state) end
+                
+                local rmoy = state.rehearsal_mark_offset_y or -44.0
+                local rmoy_changed, new_rmoy = reaper.ImGui_SliderDouble(ctx, "Rehearsal Marks Y-Offset", rmoy, -88.0, 0.0, "%.1f px")
+                if rmoy_changed then state.rehearsal_mark_offset_y = new_rmoy; require('state').save_settings(state) end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- --- 4. Above-Staff Notations ---
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Vertical Offsets (Above Staff)")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Vertical Offsets (Above Staff)")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                local toy = state.tempo_offset_y or 62.0
+                local toy_changed, new_toy = reaper.ImGui_SliderDouble(ctx, "Tempo Markers Vertical Offset (Above Staff)", toy, 10.0, 114.0, "%.1f px")
                 if toy_changed then state.tempo_offset_y = new_toy; require('state').save_settings(state) end
+
+                local tfs = state.tempo_font_size or 16.0
+                local tfs_changed, new_tfs = reaper.ImGui_SliderDouble(ctx, "Tempo Markers Font Size", tfs, 8.0, 24.0, "%.1f px")
+                if tfs_changed then state.tempo_font_size = new_tfs; require('state').save_settings(state) end
                 
                 local ooy = state.octave_offset_y or 18.0
-                local ooy_changed, new_ooy = reaper.ImGui_SliderDouble(ctx, "Octave Lines Vertical Offset (Above Staff)", ooy, 5.0, 100.0, "%.1f px")
+                local ooy_changed, new_ooy = reaper.ImGui_SliderDouble(ctx, "Octave Lines Vertical Offset (Above Staff)", ooy, 0.0, 36.0, "%.1f px")
                 if ooy_changed then state.octave_offset_y = new_ooy; require('state').save_settings(state) end
+
+                local aoy = state.articulations_offset_y or 37.0
+                local aoy_changed, new_aoy = reaper.ImGui_SliderDouble(ctx, "Articulations Vertical Offset (Above Staff)", aoy, 0.0, 74.0, "%.1f px")
+                if aoy_changed then state.articulations_offset_y = new_aoy; require('state').save_settings(state) end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- --- 5. Below-Staff Notations ---
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Vertical Offsets (Below Staff)")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Vertical Offsets (Below Staff)")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                local doy = state.dynamics_offset_y or 79.0
+                local doy_changed, new_doy = reaper.ImGui_SliderDouble(ctx, "Dynamics & Hairpins Vertical Offset (Below Staff)", doy, 20.0, 138.0, "%.1f px")
+                if doy_changed then
+                    state.dynamics_offset_y = new_doy
+                    state.hairpins_offset_y = new_doy
+                    require('state').save_settings(state)
+                end
+
+                local poy = state.pedal_offset_y or 75.0
+                local poy_changed, new_poy = reaper.ImGui_SliderDouble(ctx, "Pedal / Sustain Vertical Offset (Below Staff)", poy, 10.0, 140.0, "%.1f px")
+                if poy_changed then state.pedal_offset_y = new_poy; require('state').save_settings(state) end
                 
                 reaper.ImGui_Spacing(ctx)
             end
@@ -413,7 +462,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             -- ==============================================================
             -- 5. Customize Keyboard Shortcuts
             -- ==============================================================
-            if reaper.ImGui_CollapsingHeader(ctx, "⌨ Customize Keyboard Shortcuts###hdr_shortcuts", default_open) then
+            if reaper.ImGui_CollapsingHeader(ctx, "⌨ Customize Keyboard Shortcuts###hdr_shortcuts", nil, default_open) then
                 reaper.ImGui_Spacing(ctx)
                 reaper.ImGui_TextColored(ctx, 0xAAAAAAFF, "Click 'Assign' and press a key or key combination (with Shift/Ctrl/Alt).")
                 

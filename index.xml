@@ -6,8 +6,15 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.5.2" author="A-intheCode" time="2026-10-05T01:55:00Z">
+      <version name="1.5.3" author="A-intheCode" time="2026-10-05T13:49:41Z">
         <changelog><![CDATA[
++ v1.5.3: Hotfix: Selective Copy/Paste, SMuFL Staccatissimo, Staccato alignment, and removal of print.xml auto-generation:
+          - Selective Note Copy/Paste Engine: Isolated note copying so that copying selected notes or chords never inadvertently captures unselected dynamics, hairpins, pedal markings, or tempo markers
+          - Destination MIDI Take boundary preservation: Pasting notes into a MIDI item cleanly respects existing item boundaries without truncating or unexpectedly expanding takes
+          - Authentic SMuFL Staccatissimo: Upgraded staccatissimo wedges from rough canvas polygons to authentic Bravura SMuFL glyphs (articStaccatissimoAbove / articStaccatissimoBelow) with pristine subpixel anti-aliasing
+          - Standard-compliant Staccato Dot Placement: Aligned staccato dots consistently across beamed note clusters opposite beam stems (per Elaine Gould standard), complete with automatic staff-line avoidance
+          - Decoupled print subsystem: completely removed background print XML auto-generation (*_print.xml) on project save and exit
+          - Flush Bottom Bar: Eliminated right-margin gap on the bottom control bar, cleanly docking utility modals flush to the window edge
 + v1.5.2: Critical fix for Grand Staff system note assignment and interactive cross-staff management:
           - Fix high notes erroneously forced into lower bass staff with 12-14 ledger lines by eliminating flawed track_has_multi_staff_chan channel assumption
           - Natural pitch-based split in Grand Staff mode: notes >= 60 (Middle C) automatically allocate to upper Treble staff; notes < 60 allocate to lower Bass staff
@@ -105,9 +112,7 @@
         <source file="modules/services/octave_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/octave_service.lua</source>
         <source file="modules/services/path_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/path_service.lua</source>
         <source file="modules/services/pattern_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/pattern_service.lua</source>
-        <source file="modules/services/pdf_export_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/pdf_export_service.lua</source>
         <source file="modules/services/pedal_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/pedal_service.lua</source>
-        <source file="modules/services/print_settings_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/print_settings_service.lua</source>
         <source file="modules/services/reaticulate_parser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/reaticulate_parser.lua</source>
         <source file="modules/services/rehearsal_mark_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/rehearsal_mark_service.lua</source>
         <source file="modules/services/repeat_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/repeat_service.lua</source>
@@ -125,7 +130,6 @@
         <source file="modules/ui/key_signature_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/key_signature_drawer.lua</source>
         <source file="modules/ui/musicxml_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/musicxml_modal.lua</source>
         <source file="modules/ui/pattern_browser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/pattern_browser.lua</source>
-        <source file="modules/ui/print_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/print_modal.lua</source>
         <source file="modules/ui/quantize_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/quantize_modal.lua</source>
         <source file="modules/ui/scale_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/scale_modal.lua</source>
         <source file="modules/ui/settings_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/settings_modal.lua</source>

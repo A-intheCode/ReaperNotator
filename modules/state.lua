@@ -14,14 +14,15 @@ function State.new()
         zoom = 1.0,              -- 0.6 to 2.0
         scroll_factor = 3.0,
         bar_num_offset_x = -10.0,
-        bar_num_offset_y = 0.0,
-        bar_num_size = 14.0,      -- Speed factor for canvas scrolling
-        dynamics_offset_y = 45.0,     -- Vertical dynamics distance (Default +25% = 36 * 1.25 = 45.0)
-        pedal_offset_y = 30.0,        -- Vertical pedal distance below dynamics (Default 30.0 px)
-        articulations_offset_y = 16.0, -- Vertical articulations distance (above staff)
+        bar_num_offset_y = 47.5,
+        bar_num_size = 20.0,      -- Speed factor for canvas scrolling
+        dynamics_offset_y = 79.0,     -- Vertical dynamics distance
+        hairpins_offset_y = 79.0,
+        pedal_offset_y = 75.0,        -- Vertical pedal distance below dynamics
+        articulations_offset_y = 37.0, -- Vertical articulations distance (above staff)
         articulations_font_size = 17.0, -- Font size of text articulations (standard engraving)
         articulations_bold = true,      -- Bold style for playing techniques
-        track_spacing = 35.0,          -- Manual track spacing via slider
+        track_spacing = 195.0,         -- Manual track spacing via slider
         show_item_boxes = true,        -- Show MIDI item bounding boxes & tags
         item_box_intensity = 25,       -- Color intensity of MIDI track regions in % (5-100)
         sticky_track_headers = true,   -- Stick track names to left edge during scrolling
@@ -31,10 +32,12 @@ function State.new()
         show_articulations_layer = true,-- Show articulations (Reaticulate)
         show_hairpins_layer = true,    -- Show hairpins (< & >)
         show_tempo_layer = true,       -- Show tempo markers
+        tempo_offset_y = 62.0,         -- Vertical offset for tempo markers (above staff)
         show_octaves_layer = true,     -- Show octave lines (8va/8vb)
+        octave_offset_y = 18.0,        -- Vertical offset for octave lines (above staff)
         show_tuplets_layer = true,     -- Show tuplets / triplets (3, 5, etc.)
         show_rehearsal_lane = true,    -- Show rehearsal marks lane [A], [B]...
-        rehearsal_mark_offset_y = 0.0, -- Vertical offset for rehearsal marks (px)
+        rehearsal_mark_offset_y = -44.0, -- Vertical offset for rehearsal marks (px)
         show_key_signatures = false,   -- Show key signature accidentals on staff
         key_signature = 0,             -- Key signature index (-7 to +7, 0 = C major / A minor)
         key_signature_mode = "major",  -- "major" | "minor"
@@ -217,6 +220,7 @@ function State.new()
         drag_tempo_handle = nil,    -- "start" | "end" | "body"
         is_dragging_tempo = false,
         tempo_drawer_presets_h = 220, -- Scalable height of tempo presets list (via splitter)
+        tempo_font_size = 16.0,       -- Scalable font size for tempo markers
         
         -- Score Tools Drawer (Legato, Arpeggio, Rehearsal Marks & Navigation)
         show_tools_drawer = false,
@@ -347,10 +351,6 @@ function State.new()
         show_scale_modal = false,
         scale_modal_root = 0,       -- 0 = C
         scale_modal_type = "major",
-
-        -- Score Print & PDF Export Modal (Bottom Bar Button "Print...")
-        show_print_modal = false,
-        print_settings = nil,
 
         -- MusicXML Import & Export Modal (Bottom Bar Button "MusicXML...")
         show_musicxml_modal = false,
@@ -640,15 +640,15 @@ function State:load_settings()
 
     self.scroll_factor = load_num("scroll_factor", 3.0)
     self.bar_num_offset_x = load_num("bar_num_offset_x", -10.0)
-    self.bar_num_offset_y = load_num("bar_num_offset_y", 0.0)
-    self.bar_num_size = load_num("bar_num_size", 14.0)
-    self.dynamics_offset_y = load_num("dynamics_offset_y", 45.0)
+    self.bar_num_offset_y = load_num("bar_num_offset_y", 47.5)
+    self.bar_num_size = load_num("bar_num_size", 20.0)
+    self.dynamics_offset_y = load_num("dynamics_offset_y", 79.0)
     self.hairpins_offset_y = self.dynamics_offset_y
     self.pedal_offset_y = load_num("pedal_offset_y", 75.0)
-    self.articulations_offset_y = load_num("articulations_offset_y", 16.0)
+    self.articulations_offset_y = load_num("articulations_offset_y", 37.0)
     self.articulations_font_size = load_num("articulations_font_size", 17.0)
     self.articulations_bold = load_bool("articulations_bold", true)
-    self.track_spacing = load_num("track_spacing", 70.0)
+    self.track_spacing = load_num("track_spacing", 195.0)
     self.show_item_boxes = load_bool("show_item_boxes", true)
     self.item_box_intensity = load_num("item_box_intensity", 25)
     self.sticky_track_headers = load_bool("sticky_track_headers", true)
@@ -671,9 +671,10 @@ function State:load_settings()
     self.show_chord_lane = load_bool("show_chord_lane", true)
     self.audition_notes = load_bool("audition_notes", true)
     self.audition_volume = load_num("audition_volume", 50)
-    self.tempo_offset_y = load_num("tempo_offset_y", 28.0)
+    self.tempo_offset_y = load_num("tempo_offset_y", 62.0)
+    self.tempo_font_size = load_num("tempo_font_size", 16.0)
     self.octave_offset_y = load_num("octave_offset_y", 18.0)
-    self.rehearsal_mark_offset_y = load_num("rehearsal_mark_offset_y", 0.0)
+    self.rehearsal_mark_offset_y = load_num("rehearsal_mark_offset_y", -44.0)
     self.show_rehearsal_lane = load_bool("show_rehearsal_lane", true)
     self.invert_mode = load_bool("invert_mode", false)
     self.tempo_drawer_presets_h = load_num("tempo_drawer_presets_h", 220)
@@ -786,15 +787,15 @@ function State.save_settings(self)
 
     save_val("scroll_factor", self.scroll_factor or 3.0)
     save_val("bar_num_offset_x", self.bar_num_offset_x or -10.0)
-    save_val("bar_num_offset_y", self.bar_num_offset_y or 0.0)
-    save_val("bar_num_size", self.bar_num_size or 14.0)
-    save_val("dynamics_offset_y", self.dynamics_offset_y or 45.0)
-    save_val("hairpins_offset_y", self.dynamics_offset_y or 45.0)
+    save_val("bar_num_offset_y", self.bar_num_offset_y or 47.5)
+    save_val("bar_num_size", self.bar_num_size or 20.0)
+    save_val("dynamics_offset_y", self.dynamics_offset_y or 79.0)
+    save_val("hairpins_offset_y", self.dynamics_offset_y or 79.0)
     save_val("pedal_offset_y", self.pedal_offset_y or 75.0)
-    save_val("articulations_offset_y", self.articulations_offset_y or 14.0)
+    save_val("articulations_offset_y", self.articulations_offset_y or 37.0)
     save_val("articulations_font_size", self.articulations_font_size or 17.0)
     save_val("articulations_bold", self.articulations_bold ~= false)
-    save_val("track_spacing", self.track_spacing or 70.0)
+    save_val("track_spacing", self.track_spacing or 195.0)
     save_val("show_item_boxes", self.show_item_boxes ~= false)
     save_val("item_box_intensity", self.item_box_intensity or 25)
     save_val("sticky_track_headers", self.sticky_track_headers ~= false)
@@ -813,9 +814,10 @@ function State.save_settings(self)
     save_val("show_chord_lane", self.show_chord_lane ~= false)
     save_val("audition_notes", self.audition_notes ~= false)
     save_val("audition_volume", math.floor(self.audition_volume or 50))
-    save_val("tempo_offset_y", self.tempo_offset_y or 28.0)
+    save_val("tempo_offset_y", self.tempo_offset_y or 62.0)
+    save_val("tempo_font_size", self.tempo_font_size or 16.0)
     save_val("octave_offset_y", self.octave_offset_y or 18.0)
-    save_val("rehearsal_mark_offset_y", self.rehearsal_mark_offset_y or 0.0)
+    save_val("rehearsal_mark_offset_y", self.rehearsal_mark_offset_y or -44.0)
     save_val("show_rehearsal_lane", self.show_rehearsal_lane ~= false)
     save_val("invert_mode", self.invert_mode == true)
     save_val("tempo_drawer_presets_h", math.floor(self.tempo_drawer_presets_h or 220))

@@ -24,33 +24,114 @@ function ClipboardService.copy(state, active_tracks_data)
         table.insert(sel_notes, state.selected_note)
     end
     
-    -- 2. Check explicitly selected non-note objects
-    local sel_dynamic = state.selected_dynamic
-    local sel_hairpin = state.selected_hairpin
-    local sel_dynamic_text = state.selected_dynamic_text
-    local sel_pedal = state.selected_pedal
-    local sel_tempo_marker = state.selected_tempo_marker
-    local sel_octave_line = state.selected_octave_line
-    local sel_text_item = state.selected_text_item
-    
+    -- 2. Check explicitly selected non-note objects (supports both single & multi-selection maps)
+    local sel_dynamics = {}
+    local dyn_seen = {}
+    if state.selected_dynamics then
+        for _, d in pairs(state.selected_dynamics) do
+            if d and d.qn then
+                table.insert(sel_dynamics, d)
+                dyn_seen[d] = true
+            end
+        end
+    end
+    if state.selected_dynamic and not dyn_seen[state.selected_dynamic] then
+        table.insert(sel_dynamics, state.selected_dynamic)
+    end
+
+    local sel_hairpins = {}
+    local hp_seen = {}
+    if state.selected_hairpins then
+        for _, hp in pairs(state.selected_hairpins) do
+            if hp and hp.id then
+                table.insert(sel_hairpins, hp)
+                hp_seen[hp.id] = true
+            end
+        end
+    end
+    if state.selected_hairpin and not hp_seen[state.selected_hairpin.id] then
+        table.insert(sel_hairpins, state.selected_hairpin)
+    end
+
+    local sel_dynamic_texts = {}
+    local dt_seen = {}
+    if state.selected_dynamic_texts then
+        for _, dt in pairs(state.selected_dynamic_texts) do
+            if dt and dt.id then
+                table.insert(sel_dynamic_texts, dt)
+                dt_seen[dt.id] = true
+            end
+        end
+    end
+    if state.selected_dynamic_text and not dt_seen[state.selected_dynamic_text.id] then
+        table.insert(sel_dynamic_texts, state.selected_dynamic_text)
+    end
+
+    local sel_pedals = {}
+    local pm_seen = {}
+    if state.selected_pedals then
+        for _, pm in pairs(state.selected_pedals) do
+            if pm and pm.id then
+                table.insert(sel_pedals, pm)
+                pm_seen[pm.id] = true
+            end
+        end
+    end
+    if state.selected_pedal and not pm_seen[state.selected_pedal.id] then
+        table.insert(sel_pedals, state.selected_pedal)
+    end
+
+    local sel_tempo_markers = {}
+    if state.selected_tempo_marker then
+        table.insert(sel_tempo_markers, state.selected_tempo_marker)
+    end
+
+    local sel_octave_lines = {}
+    local ol_seen = {}
+    if state.selected_octave_lines then
+        for _, ol in pairs(state.selected_octave_lines) do
+            if ol and ol.id then
+                table.insert(sel_octave_lines, ol)
+                ol_seen[ol.id] = true
+            end
+        end
+    end
+    if state.selected_octave_line and not ol_seen[state.selected_octave_line.id] then
+        table.insert(sel_octave_lines, state.selected_octave_line)
+    end
+
+    local sel_text_items = {}
+    local ti_seen = {}
+    if state.selected_text_items then
+        for _, ti in pairs(state.selected_text_items) do
+            if ti and ti.id then
+                table.insert(sel_text_items, ti)
+                ti_seen[ti.id] = true
+            end
+        end
+    end
+    if state.selected_text_item and not ti_seen[state.selected_text_item.id] then
+        table.insert(sel_text_items, state.selected_text_item)
+    end
+
     local has_any_selection = (#sel_notes > 0)
-                           or (sel_dynamic ~= nil)
-                           or (sel_hairpin ~= nil)
-                           or (sel_dynamic_text ~= nil)
-                           or (sel_pedal ~= nil)
-                           or (sel_tempo_marker ~= nil)
-                           or (sel_octave_line ~= nil)
-                           or (sel_text_item ~= nil)
-                           
+                           or (#sel_dynamics > 0)
+                           or (#sel_hairpins > 0)
+                           or (#sel_dynamic_texts > 0)
+                           or (#sel_pedals > 0)
+                           or (#sel_tempo_markers > 0)
+                           or (#sel_octave_lines > 0)
+                           or (#sel_text_items > 0)
+
     if not has_any_selection then
         state.status_msg = "Copy: Nothing selected to copy!"
         return false
     end
-    
+
     -- 3. Determine time range (min start QN and max end QN across all selected objects)
     local min_start_qn = 1e9
     local max_end_qn = -1e9
-    
+
     if #sel_notes > 0 then
         table.sort(sel_notes, function(a, b)
             if math.abs(a.start_qn - b.start_qn) > 0.005 then return a.start_qn < b.start_qn end
@@ -61,58 +142,59 @@ function ClipboardService.copy(state, active_tracks_data)
             if n.end_qn > max_end_qn then max_end_qn = n.end_qn end
         end
     end
-    
-    if sel_dynamic then
-        if sel_dynamic.qn < min_start_qn then min_start_qn = sel_dynamic.qn end
-        if (sel_dynamic.qn + 1.0) > max_end_qn then max_end_qn = sel_dynamic.qn + 1.0 end
+
+    for _, d in ipairs(sel_dynamics) do
+        local d_qn = d.qn or 0.0
+        if d_qn < min_start_qn then min_start_qn = d_qn end
+        if (d_qn + 1.0) > max_end_qn then max_end_qn = d_qn + 1.0 end
     end
-    
-    if sel_hairpin then
-        local hp_s = sel_hairpin.start_qn or 0.0
-        local hp_e = sel_hairpin.end_qn or (hp_s + 4.0)
+
+    for _, hp in ipairs(sel_hairpins) do
+        local hp_s = hp.start_qn or 0.0
+        local hp_e = hp.end_qn or (hp_s + 4.0)
         if hp_s < min_start_qn then min_start_qn = hp_s end
         if hp_e > max_end_qn then max_end_qn = hp_e end
     end
 
-    if sel_dynamic_text then
-        local dt_s = sel_dynamic_text.start_qn or 0.0
-        local dt_e = sel_dynamic_text.end_qn or (dt_s + 4.0)
+    for _, dt in ipairs(sel_dynamic_texts) do
+        local dt_s = dt.start_qn or 0.0
+        local dt_e = dt.end_qn or (dt_s + 4.0)
         if dt_s < min_start_qn then min_start_qn = dt_s end
         if dt_e > max_end_qn then max_end_qn = dt_e end
     end
 
-    if sel_pedal then
-        local pm_s = sel_pedal.start_qn or 0.0
-        local pm_e = sel_pedal.end_qn or (pm_s + 4.0)
+    for _, pm in ipairs(sel_pedals) do
+        local pm_s = pm.start_qn or 0.0
+        local pm_e = pm.end_qn or (pm_s + 4.0)
         if pm_s < min_start_qn then min_start_qn = pm_s end
         if pm_e > max_end_qn then max_end_qn = pm_e end
     end
-    
-    if sel_tempo_marker then
-        local tm_s = sel_tempo_marker.start_qn or 0.0
-        local tm_e = sel_tempo_marker.end_qn or (tm_s + 4.0)
+
+    for _, tm in ipairs(sel_tempo_markers) do
+        local tm_s = tm.start_qn or 0.0
+        local tm_e = tm.end_qn or (tm_s + 4.0)
         if tm_s < min_start_qn then min_start_qn = tm_s end
         if tm_e > max_end_qn then max_end_qn = tm_e end
     end
-    
-    if sel_octave_line then
-        local ol_s = sel_octave_line.start_qn or 0.0
-        local ol_e = sel_octave_line.end_qn or (ol_s + 4.0)
+
+    for _, ol in ipairs(sel_octave_lines) do
+        local ol_s = ol.start_qn or 0.0
+        local ol_e = ol.end_qn or (ol_s + 4.0)
         if ol_s < min_start_qn then min_start_qn = ol_s end
         if ol_e > max_end_qn then max_end_qn = ol_e end
     end
-    
-    if sel_text_item then
-        local ti_s = sel_text_item.qn or 0.0
+
+    for _, ti in ipairs(sel_text_items) do
+        local ti_s = ti.qn or 0.0
         local ti_e = ti_s + 1.0
         if ti_s < min_start_qn then min_start_qn = ti_s end
         if ti_e > max_end_qn then max_end_qn = ti_e end
     end
-    
+
     if min_start_qn > 1e8 then min_start_qn = 0.0 end
     if max_end_qn < -1e8 then max_end_qn = min_start_qn + 1.0 end
-    
-    -- 4. Store notes relative to start point
+
+    -- 4. Store notes relative to start point (STRICTLY SELECTED NOTES ONLY)
     local clip_notes = {}
     for _, n in ipairs(sel_notes) do
         table.insert(clip_notes, {
@@ -125,276 +207,121 @@ function ClipboardService.copy(state, active_tracks_data)
             track_guid   = n.track and reaper.ValidatePtr(n.track, "MediaTrack*") and reaper.GetTrackGUID(n.track) or nil
         })
     end
-    
-    -- 5. Capture dynamics (explicitly selected or in time range of selected notes)
+
+    -- 5. Capture dynamics (EXPLICITLY SELECTED DYNAMICS ONLY)
     local clip_dynamics = {}
-    local dyn_keys = {}
-    if sel_dynamic then
-        local trk_guid = sel_dynamic.track and reaper.ValidatePtr(sel_dynamic.track, "MediaTrack*") and reaper.GetTrackGUID(sel_dynamic.track)
+    for _, d in ipairs(sel_dynamics) do
+        local trk_guid = d.track and reaper.ValidatePtr(d.track, "MediaTrack*") and reaper.GetTrackGUID(d.track)
         table.insert(clip_dynamics, {
-            rel_qn     = sel_dynamic.qn - min_start_qn,
-            label      = sel_dynamic.label,
-            c1         = sel_dynamic.c1 or 80,
-            c11        = sel_dynamic.c11 or 85,
+            rel_qn     = (d.qn or 0.0) - min_start_qn,
+            label      = d.label,
+            c1         = d.c1 or 80,
+            c11        = d.c11 or 85,
             track_guid = trk_guid
         })
-        dyn_keys[tostring(trk_guid) .. "_" .. tostring(sel_dynamic.qn)] = true
     end
-    
-    if #sel_notes > 0 and active_tracks_data then
-        for _, tdata in ipairs(active_tracks_data) do
-            if tdata.dynamics then
-                for _, d in ipairs(tdata.dynamics) do
-                    local k = tostring(tdata.guid) .. "_" .. tostring(d.qn)
-                    if not dyn_keys[k] and d.qn >= (min_start_qn - 0.05) and d.qn <= (max_end_qn + 0.05) then
-                        table.insert(clip_dynamics, {
-                            rel_qn     = d.qn - min_start_qn,
-                            label      = d.label,
-                            c1         = d.c1 or 80,
-                            c11        = d.c11 or 85,
-                            track_guid = tdata.guid
-                        })
-                        dyn_keys[k] = true
-                    end
-                end
-            end
-        end
-    end
-    
-    -- 6. Capture hairpins (explicitly selected or in time range of selected notes)
+
+    -- 6. Capture hairpins (EXPLICITLY SELECTED HAIRPINS ONLY)
     local clip_hairpins = {}
-    local hp_keys = {}
-    if sel_hairpin then
-        local dur = (sel_hairpin.end_qn or (sel_hairpin.start_qn + 4.0)) - sel_hairpin.start_qn
+    for _, hp in ipairs(sel_hairpins) do
+        local dur = (hp.end_qn or (hp.start_qn + 4.0)) - hp.start_qn
         table.insert(clip_hairpins, {
-            rel_start_qn = sel_hairpin.start_qn - min_start_qn,
-            rel_end_qn   = (sel_hairpin.end_qn or (sel_hairpin.start_qn + 4.0)) - min_start_qn,
+            rel_start_qn = hp.start_qn - min_start_qn,
+            rel_end_qn   = (hp.end_qn or (hp.start_qn + 4.0)) - min_start_qn,
             dur_qn       = dur,
-            type         = sel_hairpin.type or "crescendo",
-            start_dyn    = sel_hairpin.start_dyn,
-            end_dyn      = sel_hairpin.end_dyn,
-            staff        = sel_hairpin.staff,
-            track_guid   = sel_hairpin.track_guid
+            type         = hp.type or "crescendo",
+            start_dyn    = hp.start_dyn,
+            end_dyn      = hp.end_dyn,
+            staff        = hp.staff,
+            track_guid   = hp.track_guid
         })
-        hp_keys[sel_hairpin.id] = true
     end
-    
-    if #sel_notes > 0 and state.hairpins then
-        for _, hp in ipairs(state.hairpins) do
-            if not hp_keys[hp.id] and hp.start_qn >= (min_start_qn - 0.05) and hp.start_qn <= (max_end_qn + 0.05) then
-                local dur = (hp.end_qn or (hp.start_qn + 4.0)) - hp.start_qn
-                table.insert(clip_hairpins, {
-                    rel_start_qn = hp.start_qn - min_start_qn,
-                    rel_end_qn   = (hp.end_qn or (hp.start_qn + 4.0)) - min_start_qn,
-                    dur_qn       = dur,
-                    type         = hp.type or "crescendo",
-                    start_dyn    = hp.start_dyn,
-                    end_dyn      = hp.end_dyn,
-                    staff        = hp.staff,
-                    track_guid   = hp.track_guid
-                })
-                hp_keys[hp.id] = true
-            end
-        end
-    end
-    
-    -- 6b. Capture dynamic texts (cresc., dim., etc.)
+
+    -- 6b. Capture dynamic texts (EXPLICITLY SELECTED DYNAMIC TEXTS ONLY)
     local clip_dynamic_texts = {}
-    local dt_keys = {}
-    if sel_dynamic_text then
-        local dur = sel_dynamic_text.end_qn - sel_dynamic_text.start_qn
+    for _, dt in ipairs(sel_dynamic_texts) do
+        local dur = dt.end_qn - dt.start_qn
         table.insert(clip_dynamic_texts, {
-            rel_start_qn  = sel_dynamic_text.start_qn - min_start_qn,
-            rel_end_qn    = sel_dynamic_text.end_qn - min_start_qn,
+            rel_start_qn  = dt.start_qn - min_start_qn,
+            rel_end_qn    = dt.end_qn - min_start_qn,
             dur_qn        = dur,
-            type          = sel_dynamic_text.type or "crescendo",
-            text          = sel_dynamic_text.text or "cresc.",
-            line_pattern  = sel_dynamic_text.line_pattern or "none",
-            curve_pattern = sel_dynamic_text.curve_pattern or "linear",
-            start_dyn     = sel_dynamic_text.start_dyn,
-            end_dyn       = sel_dynamic_text.end_dyn,
-            staff         = sel_dynamic_text.staff,
-            track_guid    = sel_dynamic_text.track_guid
+            type          = dt.type or "crescendo",
+            text          = dt.text or "cresc.",
+            line_pattern  = dt.line_pattern or "none",
+            curve_pattern = dt.curve_pattern or "linear",
+            start_dyn     = dt.start_dyn,
+            end_dyn       = dt.end_dyn,
+            staff         = dt.staff,
+            track_guid    = dt.track_guid
         })
-        dt_keys[sel_dynamic_text.id] = true
     end
-    
-    if #sel_notes > 0 and state.dynamic_texts then
-        for _, dt in ipairs(state.dynamic_texts) do
-            if not dt_keys[dt.id] and dt.start_qn >= (min_start_qn - 0.05) and dt.start_qn <= (max_end_qn + 0.05) then
-                local dur = dt.end_qn - dt.start_qn
-                table.insert(clip_dynamic_texts, {
-                    rel_start_qn  = dt.start_qn - min_start_qn,
-                    rel_end_qn    = dt.end_qn - min_start_qn,
-                    dur_qn        = dur,
-                    type          = dt.type or "crescendo",
-                    text          = dt.text or "cresc.",
-                    line_pattern  = dt.line_pattern or "none",
-                    curve_pattern = dt.curve_pattern or "linear",
-                    start_dyn     = dt.start_dyn,
-                    end_dyn       = dt.end_dyn,
-                    staff         = dt.staff,
-                    track_guid    = dt.track_guid
-                })
-                dt_keys[dt.id] = true
-            end
-        end
-    end
-    
-    -- 6c. Capture pedal markings (explicitly selected or within time range)
+
+    -- 6c. Capture pedal markings (EXPLICITLY SELECTED PEDALS ONLY)
     local clip_pedals = {}
-    local pm_keys = {}
-    if sel_pedal then
-        local dur = sel_pedal.end_qn - sel_pedal.start_qn
+    for _, pm in ipairs(sel_pedals) do
+        local dur = pm.end_qn - pm.start_qn
         local cp_pauses = {}
-        for _, p in ipairs(sel_pedal.pauses or {}) do
+        for _, p in ipairs(pm.pauses or {}) do
             table.insert(cp_pauses, {
-                rel_qn = p.qn - sel_pedal.start_qn,
+                rel_qn = p.qn - pm.start_qn,
                 type   = p.type or "asterisk",
                 dur    = p.dur or 0.0
             })
         end
         table.insert(clip_pedals, {
-            rel_start_qn = sel_pedal.start_qn - min_start_qn,
-            rel_end_qn   = sel_pedal.end_qn - min_start_qn,
+            rel_start_qn = pm.start_qn - min_start_qn,
+            rel_end_qn   = pm.end_qn - min_start_qn,
             dur_qn       = dur,
-            style        = sel_pedal.style or "classic",
-            apply_cc     = sel_pedal.apply_cc,
-            staff        = sel_pedal.staff or "bass",
-            track_guid   = sel_pedal.track_guid,
+            style        = pm.style or "classic",
+            apply_cc     = pm.apply_cc,
+            staff        = pm.staff or "bass",
+            track_guid   = pm.track_guid,
             pauses       = cp_pauses
         })
-        pm_keys[sel_pedal.id] = true
     end
 
-    if #sel_notes > 0 and state.pedal_marks then
-        for _, pm in ipairs(state.pedal_marks) do
-            if not pm_keys[pm.id] and pm.start_qn >= (min_start_qn - 0.05) and pm.start_qn <= (max_end_qn + 0.05) then
-                local dur = pm.end_qn - pm.start_qn
-                local cp_pauses = {}
-                for _, p in ipairs(pm.pauses or {}) do
-                    table.insert(cp_pauses, {
-                        rel_qn = p.qn - pm.start_qn,
-                        type   = p.type or "asterisk",
-                        dur    = p.dur or 0.0
-                    })
-                end
-                table.insert(clip_pedals, {
-                    rel_start_qn = pm.start_qn - min_start_qn,
-                    rel_end_qn   = pm.end_qn - min_start_qn,
-                    dur_qn       = dur,
-                    style        = pm.style or "classic",
-                    apply_cc     = pm.apply_cc,
-                    staff        = pm.staff or "bass",
-                    track_guid   = pm.track_guid,
-                    pauses       = cp_pauses
-                })
-                pm_keys[pm.id] = true
-            end
-        end
-    end
-    
-    -- 7. Capture tempo markers (explicitly selected or within time range)
+    -- 7. Capture tempo markers (EXPLICITLY SELECTED TEMPO MARKERS ONLY)
     local clip_tempos = {}
-    local tm_keys = {}
-    if sel_tempo_marker then
-        local dur = (sel_tempo_marker.end_qn or (sel_tempo_marker.start_qn + 4.0)) - sel_tempo_marker.start_qn
+    for _, tm in ipairs(sel_tempo_markers) do
+        local dur = (tm.end_qn or (tm.start_qn + 4.0)) - tm.start_qn
         table.insert(clip_tempos, {
-            rel_start_qn      = sel_tempo_marker.start_qn - min_start_qn,
-            rel_end_qn        = (sel_tempo_marker.end_qn or (sel_tempo_marker.start_qn + 4.0)) - min_start_qn,
+            rel_start_qn      = tm.start_qn - min_start_qn,
+            rel_end_qn        = (tm.end_qn or (tm.start_qn + 4.0)) - min_start_qn,
             dur_qn            = dur,
-            type              = sel_tempo_marker.type or "absolute",
-            label             = sel_tempo_marker.label,
-            modifier          = sel_tempo_marker.modifier,
-            bpm               = sel_tempo_marker.bpm,
-            target_bpm        = sel_tempo_marker.target_bpm,
-            custom_bpm_only   = sel_tempo_marker.custom_bpm_only,
-            custom_target_bpm = sel_tempo_marker.custom_target_bpm
+            type              = tm.type or "absolute",
+            label             = tm.label,
+            modifier          = tm.modifier,
+            bpm               = tm.bpm,
+            target_bpm        = tm.target_bpm,
+            custom_bpm_only   = tm.custom_bpm_only,
+            custom_target_bpm = tm.custom_target_bpm
         })
-        tm_keys[sel_tempo_marker.id] = true
-    end
-    
-    if #sel_notes > 0 and state.tempo_markers then
-        for _, tm in ipairs(state.tempo_markers) do
-            if not tm_keys[tm.id] and tm.start_qn >= (min_start_qn - 0.05) and tm.start_qn <= (max_end_qn + 0.05) then
-                local dur = (tm.end_qn or (tm.start_qn + 4.0)) - tm.start_qn
-                table.insert(clip_tempos, {
-                    rel_start_qn      = tm.start_qn - min_start_qn,
-                    rel_end_qn        = (tm.end_qn or (tm.start_qn + 4.0)) - min_start_qn,
-                    dur_qn            = dur,
-                    type              = tm.type or "absolute",
-                    label             = tm.label,
-                    modifier          = tm.modifier,
-                    bpm               = tm.bpm,
-                    target_bpm        = tm.target_bpm,
-                    custom_bpm_only   = tm.custom_bpm_only,
-                    custom_target_bpm = tm.custom_target_bpm
-                })
-                tm_keys[tm.id] = true
-            end
-        end
-    end
-    
-    -- 8. Capture octave lines (explicitly selected or in time range)
-    local clip_octaves = {}
-    local ol_keys = {}
-    if sel_octave_line then
-        local dur = (sel_octave_line.end_qn or (sel_octave_line.start_qn + 4.0)) - sel_octave_line.start_qn
-        table.insert(clip_octaves, {
-            rel_start_qn = sel_octave_line.start_qn - min_start_qn,
-            rel_end_qn   = (sel_octave_line.end_qn or (sel_octave_line.start_qn + 4.0)) - min_start_qn,
-            dur_qn       = dur,
-            type         = sel_octave_line.type or "8va",
-            track_guid   = sel_octave_line.track_guid
-        })
-        ol_keys[sel_octave_line.id] = true
-    end
-    
-    if #sel_notes > 0 and state.octave_lines then
-        for _, ol in ipairs(state.octave_lines) do
-            if not ol_keys[ol.id] and ol.start_qn >= (min_start_qn - 0.05) and ol.start_qn <= (max_end_qn + 0.05) then
-                local dur = (ol.end_qn or (ol.start_qn + 4.0)) - ol.start_qn
-                table.insert(clip_octaves, {
-                    rel_start_qn = ol.start_qn - min_start_qn,
-                    rel_end_qn   = (ol.end_qn or (ol.start_qn + 4.0)) - min_start_qn,
-                    dur_qn       = dur,
-                    type         = ol.type or "8va",
-                    track_guid   = ol.track_guid
-                })
-                ol_keys[ol.id] = true
-            end
-        end
-    end
-    
-    -- 6e. Capture text items (explicitly selected or within time range)
-    local clip_text_items = {}
-    local ti_keys = {}
-    if sel_text_item then
-        table.insert(clip_text_items, {
-            rel_qn     = sel_text_item.qn - min_start_qn,
-            offset_y   = sel_text_item.offset_y or 32.0,
-            text       = sel_text_item.text or "",
-            style      = sel_text_item.style or "italic",
-            font_size  = sel_text_item.font_size or 16.0,
-            track_guid = sel_text_item.track_guid,
-        })
-        ti_keys[sel_text_item.id] = true
     end
 
-    if #sel_notes > 0 and state.text_items then
-        for _, ti in ipairs(state.text_items) do
-            if type(ti) == "table" and not ti_keys[ti.id] and (ti.qn or 0.0) >= (min_start_qn - 0.05) and (ti.qn or 0.0) <= (max_end_qn + 0.05) then
-                table.insert(clip_text_items, {
-                    rel_qn     = (ti.qn or 0.0) - min_start_qn,
-                    offset_y   = tonumber(ti.offset_y) or 32.0,
-                    text       = tostring(ti.text or ""),
-                    style      = tostring(ti.style or "italic"),
-                    font_size  = tonumber(ti.font_size) or 16.0,
-                    track_guid = ti.track_guid,
-                })
-                if ti.id then ti_keys[ti.id] = true end
-            end
-        end
+    -- 8. Capture octave lines (EXPLICITLY SELECTED OCTAVE LINES ONLY)
+    local clip_octaves = {}
+    for _, ol in ipairs(sel_octave_lines) do
+        local dur = (ol.end_qn or (ol.start_qn + 4.0)) - ol.start_qn
+        table.insert(clip_octaves, {
+            rel_start_qn = ol.start_qn - min_start_qn,
+            rel_end_qn   = (ol.end_qn or (ol.start_qn + 4.0)) - min_start_qn,
+            dur_qn       = dur,
+            type         = ol.type or "8va",
+            track_guid   = ol.track_guid
+        })
+    end
+
+    -- 9. Capture text items (EXPLICITLY SELECTED TEXT ITEMS ONLY)
+    local clip_text_items = {}
+    for _, ti in ipairs(sel_text_items) do
+        table.insert(clip_text_items, {
+            rel_qn     = (ti.qn or 0.0) - min_start_qn,
+            offset_y   = tonumber(ti.offset_y) or 32.0,
+            text       = tostring(ti.text or ""),
+            style      = tostring(ti.style or "italic"),
+            font_size  = tonumber(ti.font_size) or 16.0,
+            track_guid = ti.track_guid,
+        })
     end
     
     state.clipboard = {
@@ -443,59 +370,243 @@ end
 function ClipboardService.cut(state, midi_service, active_tracks_data)
     if ClipboardService.copy(state, active_tracks_data) then
         local del_parts = {}
+        
+        -- Delete notes
         if state.selected_notes and state:count_selected_notes() > 0 then
             local del_cnt = midi_service.delete_selected_notes(state)
             table.insert(del_parts, string.format("%d note(s)", del_cnt))
         end
-        if state.selected_dynamic then
-            local DynamicsEngine = package.loaded["services.dynamics_engine"] or require("services.dynamics_engine")
-            local lbl = state.selected_dynamic.label or ""
-            DynamicsEngine.delete_selected_dynamic(state, midi_service, active_tracks_data)
+        
+        -- Delete dynamics (supporting both multi-selection map and single selection pointer)
+        local DynamicsEngine = package.loaded["services.dynamics_engine"] or require("services.dynamics_engine")
+        local dyns_to_delete = {}
+        if state.selected_dynamics then
+            for _, d in pairs(state.selected_dynamics) do
+                table.insert(dyns_to_delete, d)
+            end
+        end
+        if #dyns_to_delete == 0 and state.selected_dynamic then
+            table.insert(dyns_to_delete, state.selected_dynamic)
+        end
+        if #dyns_to_delete > 0 then
+            for _, d in ipairs(dyns_to_delete) do
+                state.selected_dynamic = d
+                DynamicsEngine.delete_selected_dynamic(state, midi_service, active_tracks_data)
+            end
             state.selected_dynamic = nil
-            table.insert(del_parts, string.format("Dynamic '%s'", lbl))
+            state.selected_dynamics = {}
+            table.insert(del_parts, string.format("%d dynamic(s)", #dyns_to_delete))
         end
-        if state.selected_hairpin then
-            local HairpinService = package.loaded["services.hairpin_service"] or require("services.hairpin_service")
-            local hname = (state.selected_hairpin.type == "crescendo") and "Crescendo (<)" or "Decrescendo (>)"
-            HairpinService.delete_hairpin(state, state.selected_hairpin.id, midi_service, active_tracks_data)
+        
+        -- Delete hairpins (supporting both multi-selection map and single selection pointer)
+        local HairpinService = package.loaded["services.hairpin_service"] or require("services.hairpin_service")
+        local hps_to_delete = {}
+        if state.selected_hairpins then
+            for _, hp in pairs(state.selected_hairpins) do
+                table.insert(hps_to_delete, hp)
+            end
+        end
+        if #hps_to_delete == 0 and state.selected_hairpin then
+            table.insert(hps_to_delete, state.selected_hairpin)
+        end
+        if #hps_to_delete > 0 then
+            for _, hp in ipairs(hps_to_delete) do
+                HairpinService.delete_hairpin(state, hp.id, midi_service, active_tracks_data)
+            end
             state.selected_hairpin = nil
-            table.insert(del_parts, hname)
+            state.selected_hairpins = {}
+            table.insert(del_parts, string.format("%d hairpin(s)", #hps_to_delete))
         end
-        if state.selected_dynamic_text then
-            local DynamicTextService = package.loaded["services.dynamic_text_service"] or require("services.dynamic_text_service")
-            local txt = state.selected_dynamic_text.text or "Text Dynamic"
-            DynamicTextService.delete_dynamic_text(state, state.selected_dynamic_text.id, midi_service, active_tracks_data)
+        
+        -- Delete dynamic texts
+        local DynamicTextService = package.loaded["services.dynamic_text_service"] or require("services.dynamic_text_service")
+        local dts_to_delete = {}
+        if state.selected_dynamic_texts then
+            for _, dt in pairs(state.selected_dynamic_texts) do
+                table.insert(dts_to_delete, dt)
+            end
+        end
+        if #dts_to_delete == 0 and state.selected_dynamic_text then
+            table.insert(dts_to_delete, state.selected_dynamic_text)
+        end
+        if #dts_to_delete > 0 then
+            for _, dt in ipairs(dts_to_delete) do
+                DynamicTextService.delete_dynamic_text(state, dt.id, midi_service, active_tracks_data)
+            end
             state.selected_dynamic_text = nil
-            table.insert(del_parts, string.format("Text Dynamic '%s'", txt))
+            state.selected_dynamic_texts = {}
+            table.insert(del_parts, string.format("%d text dynamic(s)", #dts_to_delete))
         end
-        if state.selected_pedal then
-            local PedalService = package.loaded["services.pedal_service"] or require("services.pedal_service")
-            PedalService.delete_pedal(state, state.selected_pedal.id, midi_service, active_tracks_data)
+        
+        -- Delete pedals
+        local PedalService = package.loaded["services.pedal_service"] or require("services.pedal_service")
+        local pedals_to_delete = {}
+        if state.selected_pedals then
+            for _, p in pairs(state.selected_pedals) do
+                table.insert(pedals_to_delete, p)
+            end
+        end
+        if #pedals_to_delete == 0 and state.selected_pedal then
+            table.insert(pedals_to_delete, state.selected_pedal)
+        end
+        if #pedals_to_delete > 0 then
+            for _, p in ipairs(pedals_to_delete) do
+                PedalService.delete_pedal(state, p.id, midi_service, active_tracks_data)
+            end
             state.selected_pedal = nil
-            table.insert(del_parts, "Pedal mark")
+            state.selected_pedals = {}
+            table.insert(del_parts, string.format("%d pedal mark(s)", #pedals_to_delete))
         end
-        if state.selected_text_item then
-            local TextItemService = package.loaded["services.text_item_service"] or require("services.text_item_service")
-            TextItemService.delete_text_item(state, state.selected_text_item.id)
+        
+        -- Delete text items
+        local TextItemService = package.loaded["services.text_item_service"] or require("services.text_item_service")
+        local tis_to_delete = {}
+        if state.selected_text_items then
+            for _, ti in pairs(state.selected_text_items) do
+                table.insert(tis_to_delete, ti)
+            end
+        end
+        if #tis_to_delete == 0 and state.selected_text_item then
+            table.insert(tis_to_delete, state.selected_text_item)
+        end
+        if #tis_to_delete > 0 then
+            for _, ti in ipairs(tis_to_delete) do
+                TextItemService.delete_text_item(state, ti.id)
+            end
             state.selected_text_item = nil
-            table.insert(del_parts, "Text Item")
+            state.selected_text_items = {}
+            table.insert(del_parts, string.format("%d text item(s)", #tis_to_delete))
         end
+        
+        -- Delete octave lines
+        local OctaveService = package.loaded["services.octave_service"] or require("services.octave_service")
+        local ols_to_delete = {}
+        if state.selected_octave_lines then
+            for _, ol in pairs(state.selected_octave_lines) do
+                table.insert(ols_to_delete, ol)
+            end
+        end
+        if #ols_to_delete == 0 and state.selected_octave_line then
+            table.insert(ols_to_delete, state.selected_octave_line)
+        end
+        if #ols_to_delete > 0 then
+            for _, ol in ipairs(ols_to_delete) do
+                OctaveService.delete_octave_line(state, ol)
+            end
+            state.selected_octave_line = nil
+            state.selected_octave_lines = {}
+            table.insert(del_parts, string.format("%d octave line(s)", #ols_to_delete))
+        end
+        
+        -- Delete tempo marker
         if state.selected_tempo_marker then
             local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
             TempoService.delete_selected_tempo_marker(state)
             state.selected_tempo_marker = nil
             table.insert(del_parts, "Tempo marker")
         end
-        if state.selected_octave_line then
-            local OctaveService = package.loaded["services.octave_service"] or require("services.octave_service")
-            OctaveService.delete_octave_line(state, state.selected_octave_line)
-            state.selected_octave_line = nil
-            table.insert(del_parts, "Octave line")
-        end
+        
         state.status_msg = string.format("✂️ Cut: %s", table.concat(del_parts, ", "))
         return true
     end
     return false
+end
+
+function ClipboardService.overwrite_track_bounds(state, target_track_guid, range_start_qn, range_end_qn, midi_service, active_tracks_data)
+    if not target_track_guid or not range_start_qn or not range_end_qn then return end
+    if range_end_qn < range_start_qn then
+        range_start_qn, range_end_qn = range_end_qn, range_start_qn
+    end
+
+    -- 1. Remove overlapping hairpins on this staff
+    if state.hairpins then
+        local HairpinService = package.loaded["services.hairpin_service"] or require("services.hairpin_service")
+        local new_hps = {}
+        local hp_changed = false
+        for _, hp in ipairs(state.hairpins) do
+            if hp.track_guid == target_track_guid then
+                local hp_s = hp.start_qn or 0.0
+                local hp_e = hp.end_qn or (hp_s + 4.0)
+                if hp_s < (range_end_qn - 0.05) and hp_e > (range_start_qn + 0.05) then
+                    hp_changed = true
+                    if state.selected_hairpin and state.selected_hairpin.id == hp.id then
+                        state.selected_hairpin = nil
+                    end
+                else
+                    table.insert(new_hps, hp)
+                end
+            else
+                table.insert(new_hps, hp)
+            end
+        end
+        if hp_changed then
+            state.hairpins = new_hps
+            HairpinService.save_hairpins(state)
+        end
+    end
+
+    -- 2. Remove overlapping dynamic texts on this staff
+    if state.dynamic_texts then
+        local DynamicTextService = package.loaded["services.dynamic_text_service"] or require("services.dynamic_text_service")
+        local new_dts = {}
+        local dt_changed = false
+        for _, dt in ipairs(state.dynamic_texts) do
+            if dt.track_guid == target_track_guid then
+                local dt_s = dt.start_qn or 0.0
+                local dt_e = dt.end_qn or (dt_s + 4.0)
+                if dt_s < (range_end_qn - 0.05) and dt_e > (range_start_qn + 0.05) then
+                    dt_changed = true
+                    if state.selected_dynamic_text and state.selected_dynamic_text.id == dt.id then
+                        state.selected_dynamic_text = nil
+                    end
+                else
+                    table.insert(new_dts, dt)
+                end
+            else
+                table.insert(new_dts, dt)
+            end
+        end
+        if dt_changed then
+            state.dynamic_texts = new_dts
+            DynamicTextService.save_dynamic_texts(state)
+        end
+    end
+
+    -- 3. Clear existing dynamics and dynamic CCs in that range from target take
+    local HairpinService = package.loaded["services.hairpin_service"] or require("services.hairpin_service")
+    local take = HairpinService.find_take_for_track(target_track_guid, active_tracks_data, range_start_qn)
+    if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
+        local clear_s_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, range_start_qn) + 0.5)
+        local clear_e_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, range_end_qn) + 0.5)
+        
+        -- Delete dynamic Sysex / Text events
+        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+        local changed_text = false
+        for i = (text_cnt or 0) - 1, 0, -1 do
+            local ok, _, _, ppq, ev_type = reaper.MIDI_GetTextSysexEvt(take, i)
+            if ok and (ev_type == 15 or ev_type == 7) and ppq >= (clear_s_ppq - 10) and ppq <= (clear_e_ppq + 10) then
+                reaper.MIDI_DeleteTextSysexEvt(take, i)
+                changed_text = true
+            end
+        end
+        
+        -- Delete CC1 and CC11 shaping in that range
+        local _, _, cc_count = reaper.MIDI_CountEvts(take)
+        local changed_cc = false
+        for j = (cc_count or 0) - 1, 0, -1 do
+            local ok, _, _, ppq, _, _, m, _ = reaper.MIDI_GetCC(take, j)
+            if ok and (m == (state.dyn_cc_a or 1) or m == (state.dyn_cc_b or 11)) then
+                if ppq >= (clear_s_ppq - 10) and ppq <= (clear_e_ppq + 10) then
+                    reaper.MIDI_DeleteCC(take, j)
+                    changed_cc = true
+                end
+            end
+        end
+        
+        if changed_text or changed_cc then
+            reaper.MIDI_Sort(take)
+        end
+    end
 end
 
 function ClipboardService.paste(state, midi_service, active_tracks_data)
@@ -569,6 +680,30 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
     local pasted_ol_count = 0
     local pasted_ti_count = 0
     
+    -- Ensure target item and take exist across paste duration
+    local target_item, target_take = nil, nil
+    if target_track and reaper.ValidatePtr(target_track, "MediaTrack*") then
+        target_item, target_take = midi_service.get_or_create_item_at_qn(target_track, target_start_qn, clip.total_dur_qn)
+    end
+    
+    -- When pasting into an empty MIDI item, cleanly overwrite any previous staff bounds in that region
+    local is_empty_take = false
+    if target_take and reaper.ValidatePtr(target_take, "MediaItem_Take*") then
+        local note_cnt = reaper.MIDI_CountEvts(target_take)
+        if (note_cnt or 0) == 0 then
+            is_empty_take = true
+        end
+    end
+    if is_empty_take and target_track_guid and target_item then
+        local it_pos = reaper.GetMediaItemInfo_Value(target_item, "D_POSITION")
+        local it_len = reaper.GetMediaItemInfo_Value(target_item, "D_LENGTH")
+        local it_s_qn = reaper.TimeMap2_timeToQN(0, it_pos)
+        local it_e_qn = reaper.TimeMap2_timeToQN(0, it_pos + it_len)
+        local clear_s = math.min(it_s_qn, target_start_qn)
+        local clear_e = math.max(it_e_qn, target_start_qn + clip.total_dur_qn)
+        ClipboardService.overwrite_track_bounds(state, target_track_guid, clear_s, clear_e, midi_service, active_tracks_data)
+    end
+    
     -- A. Insert notes
     if clip.notes and #clip.notes > 0 then
         if not target_track or not reaper.ValidatePtr(target_track, "MediaTrack*") then
@@ -577,7 +712,6 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
             return false
         end
         
-        local target_item, target_take = midi_service.get_or_create_item_at_qn(target_track, target_start_qn, clip.total_dur_qn)
         if target_take and reaper.ValidatePtr(target_take, "MediaItem_Take*") then
             state.selected_notes = {}
             state.selected_note = nil
@@ -597,7 +731,6 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
     -- B. Insert dynamics
     if clip.dynamics and #clip.dynamics > 0 then
         if target_track and reaper.ValidatePtr(target_track, "MediaTrack*") then
-            local target_item, target_take = midi_service.get_or_create_item_at_qn(target_track, target_start_qn, clip.total_dur_qn or 1.0)
             if target_take and reaper.ValidatePtr(target_take, "MediaItem_Take*") then
                 for _, cd in ipairs(clip.dynamics) do
                     local d_qn = target_start_qn + (cd.rel_qn or 0.0)
@@ -640,6 +773,10 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
             local s_qn = target_start_qn + (ch.rel_start_qn or 0.0)
             local dur = ch.dur_qn or (ch.rel_end_qn and (ch.rel_end_qn - ch.rel_start_qn)) or 4.0
             local e_qn = s_qn + dur
+            
+            -- Overwrite any existing hairpins in this range so new hairpin is not crushed
+            ClipboardService.overwrite_track_bounds(state, target_track_guid, s_qn, e_qn, midi_service, active_tracks_data)
+            
             local new_hp = HairpinService.create_hairpin(
                 state,
                 target_track_guid,
@@ -667,6 +804,10 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
             local s_qn = target_start_qn + (cdt.rel_start_qn or 0.0)
             local dur = cdt.dur_qn or 4.0
             local e_qn = s_qn + dur
+            
+            -- Overwrite any existing dynamic texts in this range
+            ClipboardService.overwrite_track_bounds(state, target_track_guid, s_qn, e_qn, midi_service, active_tracks_data)
+            
             local new_dt = DynamicTextService.create_dynamic_text(
                 state,
                 target_track_guid,
@@ -725,25 +866,47 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
     -- D. Insert tempo markers
     if clip.tempo_markers and #clip.tempo_markers > 0 then
         local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
+        state.tempo_markers = state.tempo_markers or {}
         for _, ctm in ipairs(clip.tempo_markers) do
             local s_qn = target_start_qn + (ctm.rel_start_qn or 0.0)
             local dur = ctm.dur_qn or 4.0
             local e_qn = s_qn + dur
-            local new_tm = TempoMarker.new({
-                type              = ctm.type or "absolute",
-                label             = ctm.label or "",
-                modifier          = ctm.modifier or "",
-                bpm               = ctm.bpm or 120,
-                start_qn          = s_qn,
-                end_qn            = e_qn,
-                target_bpm        = ctm.target_bpm,
-                custom_bpm_only   = ctm.custom_bpm_only,
-                custom_target_bpm = ctm.custom_target_bpm
-            })
-            state.tempo_markers = state.tempo_markers or {}
-            table.insert(state.tempo_markers, new_tm)
-            state.selected_tempo_marker = new_tm
-            pasted_tm_count = pasted_tm_count + 1
+            
+            -- Deduplication check: check if marker with same type already exists at s_qn
+            local existing_tm = nil
+            for _, tm in ipairs(state.tempo_markers) do
+                if math.abs((tm.start_qn or 0.0) - s_qn) < 0.05 and tm.type == (ctm.type or "absolute") then
+                    existing_tm = tm
+                    break
+                end
+            end
+            
+            if existing_tm then
+                existing_tm.label = ctm.label or existing_tm.label
+                existing_tm.modifier = ctm.modifier or existing_tm.modifier
+                existing_tm.bpm = ctm.bpm or existing_tm.bpm
+                existing_tm.end_qn = e_qn
+                existing_tm.target_bpm = ctm.target_bpm
+                existing_tm.custom_bpm_only = ctm.custom_bpm_only
+                existing_tm.custom_target_bpm = ctm.custom_target_bpm
+                state.selected_tempo_marker = existing_tm
+                pasted_tm_count = pasted_tm_count + 1
+            else
+                local new_tm = TempoMarker.new({
+                    type              = ctm.type or "absolute",
+                    label             = ctm.label or "",
+                    modifier          = ctm.modifier or "",
+                    bpm               = ctm.bpm or 120,
+                    start_qn          = s_qn,
+                    end_qn            = e_qn,
+                    target_bpm        = ctm.target_bpm,
+                    custom_bpm_only   = ctm.custom_bpm_only,
+                    custom_target_bpm = ctm.custom_target_bpm
+                })
+                table.insert(state.tempo_markers, new_tm)
+                state.selected_tempo_marker = new_tm
+                pasted_tm_count = pasted_tm_count + 1
+            end
         end
         TempoService.save_markers(state)
         TempoService.sync_all_to_reaper(state)

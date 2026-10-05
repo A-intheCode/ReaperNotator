@@ -216,9 +216,9 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
         reaper.ImGui_Spacing(ctx)
         
         -- Vertical distance of articulations from staff line (independent)
-        local cur_aoy = state.articulations_offset_y or 14.0
+        local cur_aoy = state.articulations_offset_y or 37.0
         reaper.ImGui_SetNextItemWidth(ctx, -1)
-        local aoy_changed, new_aoy = reaper.ImGui_SliderDouble(ctx, "##art_drawer_offset_slider", cur_aoy, -20.0, 100.0, "Offset to Staff: %.1f px")
+        local aoy_changed, new_aoy = reaper.ImGui_SliderDouble(ctx, "##art_drawer_offset_slider", cur_aoy, 0.0, 74.0, "Offset to Staff: %.1f px")
         if aoy_changed then
             state.articulations_offset_y = new_aoy
             require('state').save_settings(state)

@@ -451,10 +451,10 @@ function DynamicsDrawer.render(ctx, state, dynamics_engine, midi_service, active
     end
     reaper.ImGui_PopStyleColor(ctx, 2)
 
-    local cur_doy = state.dynamics_offset_y or 45.0
+    local cur_doy = state.dynamics_offset_y or 79.0
     reaper.ImGui_Spacing(ctx)
     reaper.ImGui_SetNextItemWidth(ctx, -1)
-    local doy_changed, new_doy = reaper.ImGui_SliderDouble(ctx, "##dyn_hairpin_offset_slider", cur_doy, 5.0, 120.0, "Dynamics & Hairpins: %.0f px")
+    local doy_changed, new_doy = reaper.ImGui_SliderDouble(ctx, "##dyn_hairpin_offset_slider", cur_doy, 20.0, 138.0, "Dynamics & Hairpins: %.0f px")
     if doy_changed then
         state.dynamics_offset_y = new_doy
         state.hairpins_offset_y = new_doy
@@ -574,7 +574,7 @@ function DynamicsDrawer.render(ctx, state, dynamics_engine, midi_service, active
     local cur_poy = state.pedal_offset_y or 75.0
     reaper.ImGui_Spacing(ctx)
     reaper.ImGui_SetNextItemWidth(ctx, -1)
-    local poy_changed, new_poy = reaper.ImGui_SliderDouble(ctx, "##ped_offset_slider", cur_poy, 10.0, 150.0, "Pedal Offset: %.0f px")
+    local poy_changed, new_poy = reaper.ImGui_SliderDouble(ctx, "##ped_offset_slider", cur_poy, 10.0, 140.0, "Pedal Offset: %.0f px")
     if poy_changed then
         state.pedal_offset_y = new_poy
         require('state').save_settings(state)

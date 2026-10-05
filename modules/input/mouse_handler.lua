@@ -1092,7 +1092,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     -- 4. CLICK IN EMPTY SPACE: Sets REAPER edit cursor & focuses track (or prepares Ctrl+marquee)
     local in_chord_lane = (state.show_chord_lane ~= false and canvas_info.canvas_p0_y and mouse_y >= canvas_info.canvas_p0_y and mouse_y <= (canvas_info.canvas_p0_y + 42 * s))
     local chord_h = (state.show_chord_lane ~= false) and (42 * s) or 0
-    local rm_off_y = (state.rehearsal_mark_offset_y or 0.0) * s
+    local rm_off_y = (state.rehearsal_mark_offset_y or -44.0) * s
     local reh_y0 = canvas_info.canvas_p0_y and (canvas_info.canvas_p0_y + 40 * s + chord_h + rm_off_y)
     local in_reh_lane = (state.show_rehearsal_lane ~= false and reh_y0 and mouse_y >= reh_y0 and mouse_y <= (reh_y0 + 28 * s))
     local empty_click = (state.input_mode_type ~= "draw") and reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)

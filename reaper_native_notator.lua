@@ -1,7 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.5.2
+-- @version 1.5.3
 -- @changelog
+--   + v1.5.3: Hotfix release: Selective Copy/Paste, SMuFL Staccatissimo, Staccato alignment, and removal of print.xml auto-generation:
+--             - Selective Note Copy/Paste Engine: Isolated note copying so that copying selected notes or chords never inadvertently captures unselected dynamics, hairpins, pedal markings, or tempo markers
+--             - Destination MIDI Take boundary preservation: Pasting notes into a MIDI item cleanly respects existing item boundaries without truncating or unexpectedly expanding takes
+--             - Authentic SMuFL Staccatissimo: Upgraded staccatissimo wedges from rough canvas polygons to authentic Bravura SMuFL glyphs (articStaccatissimoAbove / articStaccatissimoBelow) with pristine subpixel anti-aliasing
+--             - Standard-compliant Staccato Dot Placement: Aligned staccato dots consistently across beamed note clusters opposite beam stems (per Elaine Gould standard), complete with automatic staff-line avoidance
+--             - Decoupled print subsystem: completely removed background print XML auto-generation (*_print.xml) on project save and exit
+--             - Flush Bottom Bar: Eliminated right-margin gap on the bottom control bar, cleanly docking utility modals flush to the window edge
 --   + v1.5.2: Critical fix for Grand Staff system note assignment and interactive cross-staff management:
 --             - Fix high notes erroneously forced into lower bass staff with 12-14 ledger lines by eliminating flawed track_has_multi_staff_chan channel assumption
 --             - Natural pitch-based split in Grand Staff mode: notes >= 60 (Middle C) automatically allocate to upper Treble staff; notes < 60 allocate to lower Bass staff
@@ -165,8 +172,6 @@ local PatternService      = require("services.pattern_service")
 local PatternBrowser      = require("ui.pattern_browser")
 local ScaleService        = require("services.scale_service")
 local ScaleModal          = require("ui.scale_modal")
-local PrintSettingsService = require("services.print_settings_service")
-local PrintModal           = require("ui.print_modal")
 local KeySignatureService  = require("services.key_signature_service")
 local KeySignatureDrawer   = require("ui.key_signature_drawer")
 local MusicXmlModal        = require("ui.musicxml_modal")
@@ -184,7 +189,6 @@ TextItemService.load_text_items(state)
 RepeatService.load_repeat_marks(state)
 RehearsalMarkService.load_marks(state)
 ScaleService.load_chord_items(state)
-PrintSettingsService.load_settings(state)
 KeySignatureService.load(state)
 MidiService.cleanup_orphaned_score_elements(state)
 PatternService.init()
@@ -203,7 +207,6 @@ reaper.atexit(function()
     FermataService.save_fermatas(state)
     RehearsalMarkService.save_marks(state)
     ScaleService.save_chord_items(state)
-    PrintSettingsService.save_settings(state)
     KeySignatureService.save(state)
     state:save_settings()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
@@ -233,7 +236,6 @@ local function loop()
         RepeatService.load_repeat_marks(state)
         RehearsalMarkService.load_marks(state)
         ScaleService.load_chord_items(state)
-        PrintSettingsService.load_settings(state)
         MidiService.cleanup_orphaned_score_elements(state)
         state:clear_selection()
     end
@@ -456,7 +458,6 @@ local function loop()
         QuantizeModal.render(ctx, state, MidiService, state.active_tracks_cache)
         BankPickerModal.render(ctx, state, state.focused_track, state.active_tracks_cache)
         ScaleModal.render(ctx, state)
-        PrintModal.render(ctx, state, MidiService, project_tracks, fonts)
         MusicXmlModal.render(ctx, state, project_tracks)
         
         -- ======================================================================

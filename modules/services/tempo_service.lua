@@ -12,6 +12,7 @@ function TempoService.load_markers(state)
     state.tempo_markers = {}
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "tempo_markers")
     if raw and raw ~= "" then
+        local seen_tm = {}
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
             for part in (entry .. "|"):gmatch("([^|]*)|") do
@@ -19,19 +20,24 @@ function TempoService.load_markers(state)
             end
             local id, m_type = parts[1], parts[2]
             if id and id ~= "" and m_type and m_type ~= "" then
-                local tm = TempoMarker.new({
-                    id                = id,
-                    type              = m_type,
-                    label             = parts[3] or "",
-                    modifier          = parts[4] or "",
-                    bpm               = tonumber(parts[5]) or 120,
-                    start_qn          = tonumber(parts[6]) or 0.0,
-                    end_qn            = tonumber(parts[7]) or 4.0,
-                    target_bpm        = tonumber(parts[8]) or nil,
-                    custom_bpm_only   = (not parts[3] or parts[3] == ""),
-                    custom_target_bpm = (parts[9] == "1")
-                })
-                table.insert(state.tempo_markers, tm)
+                local s_qn = tonumber(parts[6]) or 0.0
+                local key = string.format("%s_%.2f", m_type, s_qn)
+                if not seen_tm[key] then
+                    seen_tm[key] = true
+                    local tm = TempoMarker.new({
+                        id                = id,
+                        type              = m_type,
+                        label             = parts[3] or "",
+                        modifier          = parts[4] or "",
+                        bpm               = tonumber(parts[5]) or 120,
+                        start_qn          = s_qn,
+                        end_qn            = tonumber(parts[7]) or 4.0,
+                        target_bpm        = tonumber(parts[8]) or nil,
+                        custom_bpm_only   = (not parts[3] or parts[3] == ""),
+                        custom_target_bpm = (parts[9] == "1")
+                    })
+                    table.insert(state.tempo_markers, tm)
+                end
             end
         end
     end

@@ -22,7 +22,7 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
     local tempo_handle_hovered_this_frame = nil
     
     if (state.show_tempo_layer ~= false) and state.tempo_markers and #state.tempo_markers > 0 and first_staff_top_y then
-        local tempo_offset_y = state.tempo_offset_y or 28.0
+        local tempo_offset_y = state.tempo_offset_y or 62.0
         local tempo_y = first_staff_top_y - tempo_offset_y * s
         local tempo_text_col = state.invert_mode and 0xFFFFFFFF or 0x111111FF
         local handle_radius = 5.0 * s
@@ -67,14 +67,15 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                 if tm.type == "absolute" then
                     -- ABSOLUTE TEMPO MARKING: e.g. Allegro (♩ = 140) or just ♩ = 140
                     local disp_str = tm:get_display_text()
-                    local txt_sz = 14.0 * s
+                    local base_sz = state.tempo_font_size or 16.0
+                    local txt_sz = base_sz * s
                     
                     -- Bounding box for hit-testing
-                    local approx_w = #disp_str * 8.0 * s
+                    local approx_w = #disp_str * (base_sz * 0.58) * s
                     local bb_x0 = x1 - 4 * s
-                    local bb_y0 = tempo_y - 12 * s
+                    local bb_y0 = tempo_y - (base_sz * 0.85) * s
                     local bb_x1 = x1 + approx_w + 4 * s
-                    local bb_y1 = tempo_y + 6 * s
+                    local bb_y1 = tempo_y + (base_sz * 0.45) * s
                     
                     local in_bb = (mouse_x >= bb_x0 and mouse_x <= bb_x1 and mouse_y >= bb_y0 and mouse_y <= bb_y1)
                     if in_bb and not state.is_dragging and not state.is_dragging_dynamic then
@@ -104,9 +105,9 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                     -- Draw text (regular, non-bold per user request)
                     local font_regular = (FontManager and FontManager.font_main) or (fonts and fonts.font_main)
                     if font_regular and reaper.APIExists("ImGui_DrawList_AddTextEx") then
-                        reaper.ImGui_DrawList_AddTextEx(draw_list, font_regular, txt_sz, x1, tempo_y - 10 * s, tempo_text_col, disp_str)
+                        reaper.ImGui_DrawList_AddTextEx(draw_list, font_regular, txt_sz, x1, tempo_y - (base_sz * 0.72) * s, tempo_text_col, disp_str)
                     else
-                        reaper.ImGui_DrawList_AddText(draw_list, x1, tempo_y - 10 * s, tempo_text_col, disp_str)
+                        reaper.ImGui_DrawList_AddText(draw_list, x1, tempo_y - (base_sz * 0.72) * s, tempo_text_col, disp_str)
                     end
                     
                     -- Click to select
@@ -127,8 +128,9 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                     -- GRADUAL TEMPO MARKING: e.g. poco accel. - - - - - - - ┤
                     local x2 = math.max(x1 + 30 * s, Engraver.qn_to_canvas_x(cur_end_qn, margin_left, s, qn_per_measure, measure_map))
                     local disp_str = tm:get_display_text()
-                    local txt_sz = 13.0 * s
-                    local text_w = #disp_str * 7.5 * s
+                    local base_sz = (state.tempo_font_size or 16.0) * (13.0 / 14.0)
+                    local txt_sz = base_sz * s
+                    local text_w = #disp_str * (base_sz * 0.58) * s
                     
                     local h1_x, h1_y = x1, tempo_y
                     local h2_x, h2_y = x2, tempo_y
@@ -164,19 +166,20 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                     
                     -- Selection highlight
                     if is_selected then
-                        reaper.ImGui_DrawList_AddRectFilled(draw_list, x1 - 4 * s, tempo_y - 12 * s, x2 + 4 * s, tempo_y + 8 * s, 0xFF9F1C22, 3.0)
-                        reaper.ImGui_DrawList_AddRect(draw_list, x1 - 4 * s, tempo_y - 12 * s, x2 + 4 * s, tempo_y + 8 * s, 0xFF9F1C88, 3.0, 0, 1.0 * s)
+                        reaper.ImGui_DrawList_AddRectFilled(draw_list, x1 - 4 * s, tempo_y - (base_sz * 0.9) * s, x2 + 4 * s, tempo_y + (base_sz * 0.6) * s, 0xFF9F1C22, 3.0)
+                        reaper.ImGui_DrawList_AddRect(draw_list, x1 - 4 * s, tempo_y - (base_sz * 0.9) * s, x2 + 4 * s, tempo_y + (base_sz * 0.6) * s, 0xFF9F1C88, 3.0, 0, 1.0 * s)
                     elseif is_hov then
-                        reaper.ImGui_DrawList_AddRectFilled(draw_list, x1 - 4 * s, tempo_y - 12 * s, x2 + 4 * s, tempo_y + 8 * s, 0xFF9F1C11, 3.0)
+                        reaper.ImGui_DrawList_AddRectFilled(draw_list, x1 - 4 * s, tempo_y - (base_sz * 0.9) * s, x2 + 4 * s, tempo_y + (base_sz * 0.6) * s, 0xFF9F1C11, 3.0)
                     end
                     
                     -- Italic text
+                    local font_italic = (FontManager and FontManager.font_italic) or (fonts and fonts.font_italic)
                     local drew_tempo = false
                     if reaper.APIExists("ImGui_DrawList_AddTextEx") and font_italic then
-                        drew_tempo = pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_italic, txt_sz, x1, tempo_y - 10 * s, tempo_text_col, disp_str)
+                        drew_tempo = pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_italic, txt_sz, x1, tempo_y - (base_sz * 0.75) * s, tempo_text_col, disp_str)
                     end
                     if not drew_tempo then
-                        reaper.ImGui_DrawList_AddText(draw_list, x1, tempo_y - 10 * s, tempo_text_col, disp_str)
+                        reaper.ImGui_DrawList_AddText(draw_list, x1, tempo_y - (base_sz * 0.75) * s, tempo_text_col, disp_str)
                     end
                     
                     -- Dashed line following text up to x2
@@ -685,7 +688,7 @@ function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, 
 
     if (state.show_rehearsal_lane ~= false) then
         local chord_h = (state.show_chord_lane ~= false) and (42 * s) or 0
-        local rm_off_y = (state.rehearsal_mark_offset_y or 0.0) * s
+        local rm_off_y = (state.rehearsal_mark_offset_y or -44.0) * s
         local lane_y0 = canvas_p0_y + 40 * s + chord_h + rm_off_y
         local lane_h = 28 * s
         local lane_y1 = lane_y0 + lane_h

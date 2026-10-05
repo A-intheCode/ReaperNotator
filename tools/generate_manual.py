@@ -47,7 +47,7 @@ MANUAL_DATA = [
                 "text": "The user interface is designed around an ergonomic three-column layout:\n\n"
                         "- Left Column (Sidebar Palette): Quick tools for note entry modes (pointer, pencil, text, eraser), rhythmic durations (whole to 32nd notes), augmentation dots, accidentals, tuplets, stem orientation, and articulation toggles.\n"
                         "- Center Column (Score Canvas): Infinite interactive notation canvas displaying visual staves, barlines, noteheads, stems, beams, ties, slurs, lyrics, and rehearsal marks.\n"
-                        "- Right Column (Context Drawers & Tool Panels): Collapsible slide-out panels for Dynamics automation, Reaticulate banks, Tempo maps, Clef palettes, Key signatures, Pattern browser, Settings, and Page Print layout."
+                        "- Right Column (Context Drawers & Tool Panels): Collapsible slide-out panels for Dynamics automation, Reaticulate banks, Tempo maps, Clef palettes, Key signatures, Pattern browser, and Settings."
             },
             {
                 "heading": "1.3 Window Resizing & Docking",
@@ -440,18 +440,20 @@ MANUAL_DATA = [
     },
     {
         "chapter": 13,
-        "title": "Page Print & PDF Score Layout",
+        "title": "Score Clipboard & Selective Copy/Paste Engine",
         "sections": [
             {
-                "heading": "13.1 Print Modal & Layout Setup",
-                "text": "Functions: Dedicated Print Settings dialog accessible from the top bar tools:\n"
-                        "- Paper Sizes: Standard A4, A3, Letter, Tabloid.\n"
-                        "- Orientation: Landscape (standard for orchestral conductor scores) or Portrait (standard for solo instrumental parts).\n"
-                        "- Systems per Page: Configure how many measures or systems appear per page."
+                "heading": "13.1 Selective Note & Score Clipboard",
+                "text": "Functions: High-precision clipboard operations (Ctrl+C / Ctrl+V) with strict element isolation:\n"
+                        "- Selective Note Copying: When copying selected notes, the clipboard selectively captures notes, chords, and explicit note articulations (staccato, accent, tenuto, fermatas) without inadvertently dragging along unselected dynamics, hairpins, pedal lines, or tempo markers.\n"
+                        "- Context-Aware Pasting: Pasting notes into a MIDI item respects the existing destination item boundaries and timeline cursor position without truncating or unexpectedly expanding underlying media items.\n"
+                        "- Independent Element Duplication: Dynamics, hairpins, and pedal lines can also be copied and pasted independently, ensuring modular workflow efficiency."
             },
             {
-                "heading": "13.2 Metadata & Publishing Header",
-                "text": "Functions: Inscribe Title, Subtitle, Composer, Arranger, and Copyright notices in classical engraving typography."
+                "heading": "13.2 Quantization & Sub-Tick Boundary Alignment",
+                "text": "Functions: Precision alignment engine across copy/paste and editing routines:\n"
+                        "- PPQ Temporal Integrity: Pasted notes maintain exact sub-tick delta relationships relative to the edit cursor.\n"
+                        "- Track-Targeting: Clipboard contents paste directly into the active or focused track, enabling rapid passage duplication across orchestral sections."
             }
         ]
     },

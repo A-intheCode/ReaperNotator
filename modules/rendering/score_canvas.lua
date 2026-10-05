@@ -457,7 +457,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         tdata.clef = trk_clef
         tdata.is_grand = (trk_clef == "grand")
         tdata.is_harp  = (trk_clef == "harp_3staff")
-        local user_spacing = state.track_spacing or 70.0
+        local user_spacing = state.track_spacing or 195.0
         
         -- Base staff height depending on clef type down to the bottom staff line
         local staff_h = tdata.is_harp and 224 or (tdata.is_grand and 148 or 80)
@@ -1492,6 +1492,16 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             for k in pairs(bmap) do beamed_notes_map[k] = true end
         end
         
+        -- Synchronize chord clusters with beamed stem directions before drawing noteheads & articulations
+        for _, cluster in ipairs(chord_clusters) do
+            for _, cvn in ipairs(cluster.notes) do
+                if cvn.beam_stem_down ~= nil then
+                    cluster.stem_down = cvn.beam_stem_down
+                    break
+                end
+            end
+        end
+        
         -- Draw noteheads, accidentals, ledger lines & articulations (visible notes only)
         for _, vn in ipairs(display_notes) do
             local nx = vn.vis_nx
@@ -1636,17 +1646,28 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
                 
                 if n.articulation then
+                    local eff_stem_down = vn.beam_stem_down
+                    if eff_stem_down == nil and vn.chord_cluster then
+                        eff_stem_down = vn.chord_cluster.stem_down
+                    end
+                    if eff_stem_down == nil then
+                        eff_stem_down = vn.stem_down
+                    end
+                    if eff_stem_down == nil then
+                        eff_stem_down = (vn.dstep >= 4)
+                    end
+
                     local is_extreme = true
                     if vn.chord_cluster and #vn.chord_cluster.notes > 1 then
                         local cnotes = vn.chord_cluster.notes
-                        if vn.chord_cluster.stem_down then
+                        if eff_stem_down then
                             is_extreme = (vn == cnotes[#cnotes])
                         else
                             is_extreme = (vn == cnotes[1])
                         end
                     end
                     if is_extreme then
-                        local is_above = vn.chord_cluster.stem_down
+                        local is_above = (eff_stem_down == true)
                         local art_y = is_above and (ny - 12*s) or (ny + 14*s)
                         
                         if n.articulation == "marcato" or n.articulation == "marc" then
@@ -1658,6 +1679,23 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             art_y = ny - 15*s
                         elseif n.articulation == "tenuto" or n.articulation == "ten" then
                             art_y = is_above and (ny - 11*s) or (ny + 13*s)
+                        end
+                        
+                        -- Gould ("Behind Bars" p. 115) / Gardner Read: Staccato dot must always sit in a space, never on a staff line
+                        if n.articulation == "staccato" or n.articulation == "stacc" then
+                            local cur_staff_bot = (tdata.is_grand and not vn.in_treble) and tdata.bass_bottom_y or staff_bottom_y
+                            local l_spacing = tdata.line_spacing or (8.0 * s)
+                            local cur_staff_top = cur_staff_bot - 4 * l_spacing
+                            if art_y >= cur_staff_top - 1.0 * s and art_y <= cur_staff_bot + 1.0 * s then
+                                local rel_y = (cur_staff_bot - art_y) / l_spacing
+                                local line_idx = math.floor(rel_y + 0.5)
+                                if line_idx >= 0 and line_idx <= 4 then
+                                    local dist_to_line = math.abs(art_y - (cur_staff_bot - line_idx * l_spacing))
+                                    if dist_to_line < 2.0 * s then
+                                        art_y = is_above and (art_y - 4.0 * s) or (art_y + 4.0 * s)
+                                    end
+                                end
+                            end
                         end
                         
                         Engraver.draw_articulation(draw_list, n.articulation, nx, art_y, s, head_col, font_music, is_above)
@@ -1787,7 +1825,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         end
         
         -- Dynamics for this track
-        local dyn_offset = (state.dynamics_offset_y or 45.0) * s
+        local dyn_offset = (state.dynamics_offset_y or 79.0) * s
         local dyn_base_y = staff_bottom_y + dyn_offset
         local dyn_font_sz = math.floor(34 * s + 0.5)
         local track_hairpins = nil
@@ -1920,7 +1958,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
 
-                local user_doy = state.dynamics_offset_y or 45.0
+                local user_doy = state.dynamics_offset_y or 79.0
                 local hp_y_mid = math.max(staff_bot + (user_doy * s), max_note_y + 6.0 * s)
                 hp.base_y = hp_y_mid
                 
@@ -2310,7 +2348,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             if not all_reaticulate_banks then
                 all_reaticulate_banks = ReaticulateParser.get_all_banks()
             end
-            local art_offset = (state.articulations_offset_y or 16.0) * s
+            local art_offset = (state.articulations_offset_y or 37.0) * s
             local art_base_y = staff_top_y - art_offset
             for _, art in ipairs(tdata.articulations) do
                 if not art.is_auto_return then
@@ -2682,9 +2720,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             -- Bar number above each staff system
             if (state.show_bar_numbers ~= false) then
                 local bar_num_col = Constants.COLORS.bar_num or Constants.COLORS.notehead_black or 0x111111FF
-                local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 0.0)) * s
+                local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 47.5)) * s
                 local bar_num_off_x = (state.bar_num_offset_x or 0.0) * s
-                local bar_num_sz = (state.bar_num_size or 14.0) * s
+                local bar_num_sz = (state.bar_num_size or 20.0) * s
                 for _, tdata in ipairs(active_tracks_data) do
                     if tdata.is_visible_vertically and tdata.staff_top_y then
                         local bx = mx + 4*s + bar_num_off_x
@@ -2742,7 +2780,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                     
                     -- Context menu for measure (right-click in measure header area)
-                    local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 0.0)) * s
+                    local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 47.5)) * s
                     local is_bar_hdr_hov = is_hovered and (mouse_x >= mx and mouse_x <= mx_next and mouse_y >= (tdata.staff_top_y - bar_num_off_y - 8 * s) and mouse_y <= (tdata.staff_top_y + 4 * s))
                     if is_bar_hdr_hov and reaper.ImGui_IsMouseClicked(ctx, 1) then
                         state.context_measure = m
@@ -3379,7 +3417,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
            and not octave_hovered_this_frame and not art_hovered_this_frame and not tempo_hovered_this_frame
            and not chord_hovered_this_frame and not state.hovered_fermata and not state.hovered_rehearsal_mark
            and not (state.show_chord_lane ~= false and mouse_y >= canvas_p0_y and mouse_y <= (canvas_p0_y + 42 * s))
-           and not (state.show_rehearsal_lane ~= false and mouse_y >= (canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + (state.rehearsal_mark_offset_y or 0.0) * s) and mouse_y <= (canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + (state.rehearsal_mark_offset_y or 0.0) * s + 28 * s)) then
+           and not (state.show_rehearsal_lane ~= false and mouse_y >= (canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + (state.rehearsal_mark_offset_y or -44.0) * s) and mouse_y <= (canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + (state.rehearsal_mark_offset_y or -44.0) * s + 28 * s)) then
             
             -- Find clicked track (staff) based on mouse_y
             local target_tdata = nil
