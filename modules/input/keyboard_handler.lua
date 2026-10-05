@@ -340,17 +340,17 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             state.selected_text_item = nil
             return
         end
+        if state:count_selected_notes() > 0 or state.selected_note then
+            midi_service.delete_selected_notes(state)
+            midi_service.sync_selection_to_reaper(state, active_tracks_data)
+            return
+        end
         if (state.selected_articulations and state:count_selected_articulations() > 0) or state.selected_articulation then
             midi_service.delete_selected_articulations(state)
             return
         end
         if state.selected_dynamic then
             dynamics_engine.delete_selected_dynamic(state, midi_service, active_tracks_data)
-            return
-        end
-        if state:count_selected_notes() > 0 or state.selected_note then
-            midi_service.delete_selected_notes(state)
-            midi_service.sync_selection_to_reaper(state, active_tracks_data)
             return
         end
     end

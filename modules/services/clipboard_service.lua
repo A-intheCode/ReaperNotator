@@ -12,6 +12,15 @@ local TempoMarker = require("classes.tempo_marker")
 
 local ClipboardService = {}
 
+local function get_track_from_take(take)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then return nil end
+    local item = reaper.GetMediaItemTake_Item(take)
+    if item and reaper.ValidatePtr(item, "MediaItem*") then
+        return reaper.GetMediaItem_Track(item) or reaper.GetMediaItemTrack(item)
+    end
+    return nil
+end
+
 function ClipboardService.copy(state, active_tracks_data)
     -- 1. Determine selected notes
     local sel_notes = {}
@@ -663,7 +672,7 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
     if not target_track or not reaper.ValidatePtr(target_track, "MediaTrack*") then
         local act_take = midi_service.get_active_midi_take and midi_service.get_active_midi_take()
         if act_take then
-            target_track = reaper.GetMediaItemTake_Track(act_take)
+            target_track = get_track_from_take(act_take)
         elseif reaper.CountTracks(0) > 0 then
             target_track = reaper.GetTrack(0, 0)
         end
@@ -716,6 +725,59 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
             state.selected_notes = {}
             state.selected_note = nil
             
+            -- Overwrite mode: Cleanly wipe existing notes and notation events in the paste target range!
+            local paste_s_qn = target_start_qn
+            local paste_e_qn = target_start_qn + (clip.total_dur_qn or 1.0)
+            local paste_s_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(target_take, paste_s_qn) + 0.5)
+            local paste_e_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(target_take, paste_e_qn) + 0.5)
+            
+            reaper.MIDI_DisableSort(target_take)
+            
+            -- 1. Remove or truncate existing notes in [paste_s_ppq, paste_e_ppq]
+            local _, notecnt = reaper.MIDI_CountEvts(target_take)
+            for ni = notecnt - 1, 0, -1 do
+                local ok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(target_take, ni)
+                if ok then
+                    if sppq >= (paste_s_ppq - 10) and sppq < (paste_e_ppq - 10) then
+                        -- Note starts inside paste range: delete it
+                        reaper.MIDI_DeleteNote(target_take, ni)
+                    elseif sppq < (paste_s_ppq - 10) and eppq > (paste_s_ppq + 10) then
+                        -- Note starts before paste range and extends into it: truncate to paste start
+                        reaper.MIDI_SetNote(target_take, ni, sel, muted, sppq, paste_s_ppq, chan, pitch, vel, false)
+                    end
+                end
+            end
+            
+            -- 2. Delete notation text events in paste range
+            local _, _, _, text_cnt = reaper.MIDI_CountEvts(target_take)
+            for ti = text_cnt - 1, 0, -1 do
+                local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(target_take, ti)
+                if ok and etype == 15 and ppq >= (paste_s_ppq - 10) and ppq <= (paste_e_ppq + 10) then
+                    if msg:match("^NOTE%s+") or msg:match("^NOTATOR_") or msg:match("^dynamic") then
+                        reaper.MIDI_DeleteTextSysexEvt(target_take, ti)
+                    end
+                end
+            end
+            
+            -- 3. Delete CCs and PCs in paste range
+            local _, _, cc_cnt = reaper.MIDI_CountEvts(target_take)
+            for ci = cc_cnt - 1, 0, -1 do
+                local ok, _, _, ppq, chanmsg, cchan, msg2 = reaper.MIDI_GetCC(target_take, ci)
+                if ok and ppq >= (paste_s_ppq - 10) and ppq <= (paste_e_ppq + 10) then
+                    local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
+                    local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
+                    if is_pc or is_bank then
+                        reaper.MIDI_DeleteCC(target_take, ci)
+                    end
+                end
+            end
+            
+            -- 4. Overwrite any existing dynamics, hairpins, pedal lines in this range
+            if target_track_guid then
+                ClipboardService.overwrite_track_bounds(state, target_track_guid, paste_s_qn, paste_e_qn, midi_service, active_tracks_data)
+            end
+            
+            -- 5. Insert pasted notes
             for _, cn in ipairs(clip.notes) do
                 local n_sqn = target_start_qn + cn.rel_qn
                 local n_obj = midi_service.insert_note(target_take, n_sqn, cn.pitch, cn.dur_qn, cn.vel, cn.chan, cn.articulation)
@@ -724,6 +786,14 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
                     pasted_notes_count = pasted_notes_count + 1
                 end
             end
+            
+            -- 6. Auto-chase articulations on the target take
+            local trk = get_track_from_take(target_take)
+            local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
+            local all_banks = ReaticulateParser and ReaticulateParser.get_all_banks()
+            local bank = trk and ReaticulateParser and ReaticulateParser.get_bank_for_track(trk, all_banks)
+            midi_service.auto_chase_momentary_articulations(target_take, bank)
+            
             reaper.MIDI_Sort(target_take)
         end
     end

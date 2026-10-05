@@ -466,6 +466,7 @@ local function loop()
         BankPickerModal.render(ctx, state, state.focused_track, state.active_tracks_cache)
         ScaleModal.render(ctx, state)
         MusicXmlModal.render(ctx, state, project_tracks)
+        ArticulationsDrawer.render_last_resort_modal(ctx, state, state.active_tracks_cache)
         
         -- ======================================================================
         -- 1. TOP BAR (Transport, time display, layout, tracks, zoom, lock, dynamics)

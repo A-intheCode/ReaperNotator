@@ -287,6 +287,34 @@ MANUAL_DATA = [
                 "text": "DAW Effect: Inserting an articulation writes:\n"
                         "  1. REAPER Type 15 notation text events into the MIDI take for persistent score recall.\n"
                         "  2. MIDI CC0 / CC32 Bank Select and Program Change messages at the note start position to trigger sample library key switches in Kontakt, Spitfire, VSL, Orchestral Tools, etc."
+            },
+            {
+                "heading": "6.4 Momentary Articulations & Auto-Chase Return Engine",
+                "text": "Functions & DAW Behavior:\n"
+                        "- Momentary vs. Persistent Articulations: Playing techniques such as Staccato, Staccatissimo, and Accent are momentary by nature. Unlike persistent articulations (such as Arco, Tremolo, or Con Sordino) which remain active indefinitely until changed, momentary articulations only apply to their specific notes. After the passage ends, the instrument must automatically revert to its default playing patch (typically Long / Sustain).\n"
+                        "- Automatic Chase Retrigger: When a momentary articulation is placed on notes, Notator automatically scans the passage, writes the corresponding Bank Select (CC0/CC32) and Program Change events at the note start positions, and places a dedicated Retrigger Chase event (`NOTATOR_CHASE` + base patch PC) at the exact end of the momentary passage (`last_momentary_end_ppq + 10`). This guarantees that subsequent unarticulated notes immediately trigger normal sustain without requiring manual keyswitch resets.\n"
+                        "- Synchronized Note Deletion: If notes are deleted within or at the end of an articulated passage (for instance, deleting bars 6-10 of a 10-bar staccato phrase), Notator's deletion engine dynamically pulls the Chase Retrigger event back to the end of the remaining momentary notes (the end of bar 5) and removes all orphaned Program Change and chase events in the deleted bars. The remaining notes continue triggering staccato smoothly, while subsequent measures cleanly return to standard playback.\n"
+                        "- Selective Articulation Removal: Clicking 'Remove Articulation' on selected notes strips the visual glyphs, Type 15 notation tags, and Program Change messages exclusively from those selected notes, preserving unaffected measures on the track intact."
+            },
+            {
+                "heading": "6.5 Playback Troubleshooting & The '⚡ Fix Playback' Workaround",
+                "text": "Functions & Troubleshooting Workaround:\n"
+                        "- The Problem (Cross-Track Duplication Desync): In REAPER's arrange view, composers frequently duplicate or copy MIDI items across tracks (e.g. duplicating a violin phrase down to celli or double basses). When an item is copied in REAPER, REAPER duplicates the underlying MIDI events verbatim. However, different sample libraries or instrument sections utilize different Reaticulate sound banks (for example, a Violin bank might assign PC 40 to Short/Staccato, while a Celli or Double Bass bank might use PC 49 for Staccato Dig). Because the duplicated item retains the old track's Program Changes and old auto-chase markers, playback on the new track breaks, produces silent or mismatched samples, or becomes stuck in an unwanted articulation.\n"
+                        "- The Solution ('⚡ Fix Playback' Engine): To resolve this without manual MIDI editing, REAPER-Notator provides an automated playback reconciler via the '⚡ Fix Playback' button in the Articulations drawer.\n"
+                        "- Intelligent Re-Mapping: Clicking '⚡ Fix Playback' scans the selected notes (or the selected MIDI item, or all items on the active track). Notator parses the persistent score notation markers (`NOTE <pitch> <chan> a <art_id>`), inspects the active track's Reaticulate bank, cleans out outdated or mismatched Program Changes from previous tracks, inserts the correct Bank Select and Program Change numbers for the current track's sound library, and re-calculates all auto-chase return events.\n"
+                        "- Handling Unsupported Articulations (e.g. Library Lacks Staccato): If the destination track's instrument or Reaticulate bank does not provide the requested articulation (for example, duplicating a violin staccato passage onto a flute, piano, synth, or library that lacks dedicated short patches), '⚡ Fix Playback' completely purges all foreign Program Changes (such as 121-0-42) and Bank Selects (CC0 / CC32) across the take, removes unsupported notation tags, clears obsolete chase events, and ensures the track's default base patch (Long / Sustain) is engaged once at the passage start so the notes play cleanly without stuck keyswitches.\n"
+                        "- Step-by-Step Workaround for Duplicated Items:\n"
+                        "    1. Duplicate or paste the MIDI item onto a new track in REAPER's arrange view.\n"
+                        "    2. Select the duplicated MIDI item or notes in REAPER-Notator.\n"
+                        "    3. Open the Articulations drawer on the right sidebar.\n"
+                        "    4. Left-click '⚡ Fix Playback'.\n"
+                        "    Playback immediately re-synchronizes to the destination track's virtual instrument bank with pristine staccato and sustain transitions.\n"
+                        "- Idempotency & Safe Multi-Click: The '⚡ Fix Playback' command is fully idempotent. If playback is already synchronized, repeating the click will never inadvertently erase or corrupt existing articulations.\n"
+                        "- Fix of Last Resort (Centered Popup Confirmation Modal):\n"
+                        "    * How It Works: When '⚡ Fix Playback' is clicked while playback is already synchronized (or right-clicked at any time), REAPER-Notator opens the dedicated '⚡ Fix Playback: Fix of Last Resort' confirmation modal window. The dialog automatically centers itself on the screen over the active score display.\n"
+                        "    * Target Confirmation: The modal clearly displays the target track name and confirms that note articulations currently match the active instrument sound bank.\n"
+                        "    * Emergency Reset Action: If playback remains stuck, silent, or corrupted by external MIDI CC messages, clicking the red button '[ 🧹 Purge All Articulations (Last Resort) ]' completely strips all articulation glyphs, Type 15 notation tags (`NOTE <pitch> <chan> a <art_id>`), Bank Selects (CC0 / CC32), keyswitch Program Changes, and auto-chase return events (`NOTATOR_CHASE`). It then re-engages the default base patch (Long / Sustain) at the item start, resetting the track to clean default sustain playback.\n"
+                        "    * Safe Cancellation: Clicking '[ ✕ Cancel (Keep Articulations) ]' or pressing Escape immediately dismisses the modal without altering any notes, articulations, or MIDI events."
             }
         ]
     },
@@ -453,7 +481,7 @@ MANUAL_DATA = [
                 "heading": "13.1 Selective Note & Score Clipboard",
                 "text": "Functions: High-precision clipboard operations (Ctrl+C / Ctrl+V) with strict element isolation:\n"
                         "- Selective Note Copying: When copying selected notes, the clipboard selectively captures notes, chords, and explicit note articulations (staccato, accent, tenuto, fermatas) without inadvertently dragging along unselected dynamics, hairpins, pedal lines, or tempo markers.\n"
-                        "- Context-Aware Pasting: Pasting notes into a MIDI item respects the existing destination item boundaries and timeline cursor position without truncating or unexpectedly expanding underlying media items.\n"
+                        "- Context-Aware Pasting & Range Overwrite: Pasting notes into a MIDI item (Ctrl+V) performs an intelligent range overwrite. Preexisting notes, notation text events, Program Changes, and obsolete chase events falling within the pasted time window `[target_start_qn, target_start_qn + total_dur_qn]` are cleanly replaced. Notes crossing the paste boundaries are cleanly truncated without overlapping voice collisions. Following the paste, Notator immediately recalculates and positions the Auto-Chase return events to preserve seamless articulation transitions.\n"
                         "- Independent Element Duplication: Dynamics, hairpins, and pedal lines can also be copied and pasted independently, ensuring modular workflow efficiency."
             },
             {

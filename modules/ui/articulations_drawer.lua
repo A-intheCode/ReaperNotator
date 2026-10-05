@@ -9,6 +9,19 @@ local ReaticulateParser = require("services.reaticulate_parser")
 
 local ArticulationsDrawer = {}
 
+local function format_track_name_with_idx(trk)
+    if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then return nil end
+    local tidx = reaper.GetMediaTrackInfo_Value(trk, "IP_TRACKNUMBER")
+    local _, tname = reaper.GetTrackName(trk)
+    local num_str = (tidx and tidx > 0) and string.format("Track %d", math.floor(tidx)) or "Track"
+    if tname and tname ~= "" then
+        return string.format("%s: %s", num_str, tname)
+    elseif tidx and tidx > 0 then
+        return num_str
+    end
+    return nil
+end
+
 -- Local state for Articulations Drawer
 local search_filter = ""
 local selected_bank_override = {} -- Map: trk_guid -> bank
@@ -108,9 +121,6 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
         if cur_track then
             bank = ReaticulateParser.get_bank_for_track(cur_track, all_banks, override_val)
         end
-        if not bank and #all_banks > 0 then
-            bank = all_banks[1]
-        end
         
         -- Bank tile and switch button (opens bank picker with search and libraries)
         local bank_lbl = bank and bank.name or "No Bank Selected"
@@ -181,36 +191,15 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
             reaper.ImGui_SetTooltip(ctx, "Removes articulation from selected notes or deleted selected articulation marker.")
         end
         
-        if reaper.ImGui_Button(ctx, "⚡ Auto-Chase & Return (Fix Playback)", -1, 24) then
-            local it, tk = midi_service.get_target_item_and_take(state, active_tracks_data)
-            if not tk and cur_track then
-                local it_cnt = reaper.CountTrackMediaItems(cur_track)
-                for ii = 0, it_cnt - 1 do
-                    local m_it = reaper.GetTrackMediaItem(cur_track, ii)
-                    local m_tk = m_it and reaper.GetActiveTake(m_it)
-                    if m_tk and reaper.TakeIsMIDI(m_tk) then
-                        it, tk = m_it, m_tk
-                        break
-                    end
-                end
-            end
-            if not tk then
-                tk = midi_service.get_active_midi_take()
-            end
-            if tk and reaper.ValidatePtr(tk, "MediaItem_Take*") then
-                reaper.Undo_BeginBlock2(0)
-                midi_service.auto_chase_momentary_articulations(tk, bank)
-                reaper.MIDI_Sort(tk)
-                reaper.Undo_EndBlock2(0, "Notator: Auto-Chase Articulations", -1)
-                reaper.UpdateArrange()
-                midi_service.invalidate_cache()
-                state.status_msg = "⚡ Recalculated auto-return articulations for active take!"
-            else
-                state.status_msg = "Please select or focus a track with MIDI item first."
-            end
+        if reaper.ImGui_Button(ctx, "⚡ Fix Playback", -1, 24) then
+            midi_service.fix_playback(state, active_tracks_data)
+        end
+        if reaper.ImGui_IsItemClicked(ctx, 1) then
+            state.show_fix_last_resort_modal = true
+            state.fix_last_resort_track_name = format_track_name_with_idx(cur_track) or (trk_name ~= "No Track" and trk_name) or "Track"
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Automatically recalculates and inserts return Program Changes & Bank Selects (CC0/CC32) for momentary articulations (Marcato, Staccato, etc.).")
+            reaper.ImGui_SetTooltip(ctx, "Left-click: Scans and reconciles all note articulations with the active track bank, fixing playback and auto-chase return points.\n\nRight-click (or click again when in sync): Opens 'Fix of Last Resort' confirmation modal to purge all articulations and reset to clean default sustain.")
         end
         
         reaper.ImGui_Spacing(ctx)
@@ -344,6 +333,111 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
     end
     
     reaper.ImGui_PopStyleColor(ctx)
+end
+
+function ArticulationsDrawer.render_last_resort_modal(ctx, state, active_tracks_data)
+    if not state.show_fix_last_resort_modal then return end
+    
+    -- Center modal precisely in the horizontal AND vertical middle of REAPER-Notator / screen
+    local cx, cy
+    if state.is_maximized and state.screen_work_w and state.screen_work_w > 200 then
+        cx = (state.screen_work_x or 0) + state.screen_work_w * 0.5
+        cy = (state.screen_work_y or 0) + state.screen_work_h * 0.5
+    elseif state.cur_win_x and state.cur_win_w and state.cur_win_w > 200 then
+        cx = state.cur_win_x + state.cur_win_w * 0.5
+        cy = state.cur_win_y + state.cur_win_h * 0.5
+    end
+    if not cx or not cy then
+        if reaper.APIExists("ImGui_GetWindowViewport") and reaper.APIExists("ImGui_Viewport_GetCenter") then
+            local vp = reaper.ImGui_GetWindowViewport(ctx)
+            if vp then
+                cx, cy = reaper.ImGui_Viewport_GetCenter(vp)
+            end
+        end
+    end
+    if not cx or not cy then
+        if reaper.APIExists("ImGui_GetMainViewport") and reaper.APIExists("ImGui_Viewport_GetCenter") then
+            local mvp = reaper.ImGui_GetMainViewport(ctx)
+            if mvp then
+                cx, cy = reaper.ImGui_Viewport_GetCenter(mvp)
+            end
+        end
+    end
+    
+    reaper.ImGui_OpenPopup(ctx, "⚡ Fix Playback: Fix of Last Resort###FixLastResortModal")
+    if cx and cy then
+        reaper.ImGui_SetNextWindowPos(ctx, cx, cy, reaper.ImGui_Cond_Always(), 0.5, 0.5)
+    end
+    
+    local popup_flags = reaper.ImGui_WindowFlags_AlwaysAutoResize()
+    if reaper.APIExists("ImGui_WindowFlags_NoSavedSettings") then
+        popup_flags = popup_flags | reaper.ImGui_WindowFlags_NoSavedSettings()
+    end
+    if reaper.APIExists("ImGui_WindowFlags_NoMove") then
+        popup_flags = popup_flags | reaper.ImGui_WindowFlags_NoMove()
+    end
+    
+    local visible, open = reaper.ImGui_BeginPopupModal(ctx, "⚡ Fix Playback: Fix of Last Resort###FixLastResortModal", true, popup_flags)
+    if not open then
+        state.show_fix_last_resort_modal = false
+        reaper.ImGui_CloseCurrentPopup(ctx)
+    end
+    if visible then
+        local trk_name = state.fix_last_resort_track_name
+        if not trk_name or trk_name == "Track" or trk_name == "" then
+            local trk = state.focused_track
+            if (not trk or not reaper.ValidatePtr(trk, "MediaTrack*")) and active_tracks_data and active_tracks_data[1] then
+                trk = active_tracks_data[1].track
+            end
+            if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then
+                trk = reaper.GetSelectedTrack(0, 0)
+            end
+            if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then
+                trk = reaper.GetTrack(0, 0)
+            end
+            trk_name = format_track_name_with_idx(trk) or "Active Track"
+        end
+        
+        reaper.ImGui_TextColored(ctx, 0x2ECC71FF, "✓ Playback is already synchronized with the active sound bank.")
+        reaper.ImGui_Spacing(ctx)
+        reaper.ImGui_Separator(ctx)
+        reaper.ImGui_Spacing(ctx)
+        
+        reaper.ImGui_TextColored(ctx, 0xE74C3CFF, "⚠️ Fix of Last Resort (Emergency Articulation Reset)")
+        reaper.ImGui_Spacing(ctx)
+        reaper.ImGui_TextWrapped(ctx, string.format(
+            "Target: %s\n\nAll note articulations in this item match the instrument bank. If playback is still corrupted, silent, or notes are stuck, you can perform a Last Resort purge.\n\nThis will completely strip ALL articulation marks, keyswitches (CC0/CC32/Program Changes), and auto-chase events from this item, resetting it to clean default sustain playback.",
+            trk_name
+        ))
+        
+        reaper.ImGui_Spacing(ctx)
+        reaper.ImGui_Separator(ctx)
+        reaper.ImGui_Spacing(ctx)
+        
+        -- Danger button in red
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0xC0392BFF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0xE74C3CFF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(), 0x962D22FF)
+        
+        if reaper.ImGui_Button(ctx, "🧹 Purge All Articulations (Last Resort)", 280, 28) then
+            state.show_fix_last_resort_modal = false
+            reaper.ImGui_CloseCurrentPopup(ctx)
+            local midi_service = require("services.midi_service")
+            midi_service.fix_playback(state, active_tracks_data, true)
+        end
+        reaper.ImGui_PopStyleColor(ctx, 3)
+        
+        reaper.ImGui_SameLine(ctx)
+        
+        if reaper.ImGui_Button(ctx, "✕ Cancel (Keep Articulations)", 200, 28) then
+            state.show_fix_last_resort_modal = false
+            reaper.ImGui_CloseCurrentPopup(ctx)
+        end
+        
+        reaper.ImGui_EndPopup(ctx)
+    else
+        state.show_fix_last_resort_modal = false
+    end
 end
 
 return ArticulationsDrawer

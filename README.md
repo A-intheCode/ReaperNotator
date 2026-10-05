@@ -52,7 +52,12 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Tempomap playback coupling with deterministic tempo-dip slowdown (1.25x to 3.0x) and automatic restoration.
   - Standard navigation symbols: Da Capo ($D.C.$ / $D.C. \text{ al Fine}$), Dal Segno ($D.S.$ / $D.S. \text{ al Coda}$), Segno, Coda, and Fine.
   - Arpeggiated chords with bezier wavy line engraving and non-destructive micro-strumming playback offset.
-  - Score Tools drawer: Make Notes Legato, Auto Voice & Auto Voice on Selection, and integrated Quantize Tools.
+- **Playback Reconciliation & Fix of Last Resort Hotfix (v1.5.5)**:
+  - **Idempotent Playback Reconciliation**: Left-clicking "⚡ Fix Playback" scans and reconciles all note articulations with the active track's Reaticulate sound bank without stripping or corrupting existing valid articulations.
+  - **Fix of Last Resort Modal**: Repeating click when already synchronized (or right-clicking at any time) presents a dedicated emergency confirmation modal window to purge corrupted keyswitches (CC0/CC32/PCs) and reset to clean default sustain.
+  - **Dead-Center Modal Placement**: Modal uses `Cond_Always()` with pivot `0.5, 0.5` dynamically computed from screen/window dimensions to guarantee perfect horizontal and vertical centering without jitter or 50Hz flickering.
+  - **Target Track Resolution**: Fixed REAPER C-API take track lookup (`get_track_from_take`) and implemented multi-tier track resolution so the modal header clearly displays the target track name (`Target: Track <num>: <name>`).
+  - **User Manual & Workaround Documentation**: Updated Section 6.5 in the User Manual with complete step-by-step instructions for troubleshooting third-party sample libraries lacking specific articulation keyswitches (e.g. staccato).
 - **MusicXML Import & Instant Note Audition Hotfix (v1.5.4)**:
   - **Intelligent Articulation Mapping on Import**: Prioritized 3-tier algorithm for staccato mappings ensuring dedicated short patches (such as Spitfire 'Staccato Dig') take precedence over duration fallbacks ('Short 0.5') during MusicXML import.
   - **Compact Import Layout**: Automatically reduces track heights to 25px upon MusicXML import for an organized orchestral overview.
