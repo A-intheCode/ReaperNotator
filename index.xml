@@ -6,8 +6,10 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.6.0" author="A-intheCode" time="2026-10-06T20:58:00Z">
+      <version name="1.6.1" author="A-intheCode" time="2026-10-06T21:08:12Z">
         <changelog><![CDATA[
++ v1.6.1: Hotfix: Add slur_service.lua to ReaPack package manifest:
+          - Package Manifest: Registered modules/services/slur_service.lua in index.xml to ensure ReaPack automatically installs the Slurs & Ties engine upon package synchronization.
 + v1.6.0: Slurs and Ties Engine fully implemented:
           - Complete Slurs & Ties Engine: Comprehensive implementation of musical slurs (legato phrase markings, key [S]) and ties (held notes, key [T]) with full Elaine Gould engraving standards and Reaticulate DAW playback.
           - Dual Reality Engine for Ties: In REAPER MIDI takes, Note 1 is extended across Note 2 while Note 2 is removed, delivering uninterrupted audio sustain with zero secondary re-strike artifacts. On the score canvas, Note 2 is seamlessly synthesized via persistent Type 15 metadata (NOTATOR_TIE / NOTATOR_TIE_SLAVE), ensuring both distinct noteheads remain visible connected by a Gould-compliant cubic Bezier curve.
@@ -143,6 +145,7 @@
         <source file="modules/services/scale_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/scale_service.lua</source>
         <source file="modules/services/selection_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/selection_service.lua</source>
         <source file="modules/services/shortcut_manager.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/shortcut_manager.lua</source>
+        <source file="modules/services/slur_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/slur_service.lua</source>
         <source file="modules/services/tempo_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/tempo_service.lua</source>
         <source file="modules/services/text_item_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/text_item_service.lua</source>
         <source file="modules/ui/articulations_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/articulations_drawer.lua</source>
