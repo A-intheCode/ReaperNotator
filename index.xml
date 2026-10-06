@@ -6,8 +6,14 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.6.1" author="A-intheCode" time="2026-10-06T21:08:12Z">
+      <version name="1.6.2" author="A-intheCode" time="2026-10-07T01:10:00Z">
         <changelog><![CDATA[
++ v1.6.2: Dual Playback Reconciliation (Selective vs. Global), Overlap Protection & Official Video Guide:
+          - Dual Playback Fix Engine: Introduced separate '⚡ Fix Playback (Selective)' and '⚡ Fix Playback (Global)' actions in the Articulations Drawer.
+          - Selective Playback Fix: Scans and reconciles strictly the single selected MIDI item (or item of selected notes) with the active sound bank without touching any other items on the track or in the project.
+          - Global Playback Fix: Project-wide scan that reconciles all MIDI items across all tracks, clearing outdated Program Changes, healing legacy hairpins, and recalculating auto-chase return points.
+          - Same-Pitch Legato Overlap Protection & Healing: Eliminates note-erasing bugs caused by former slur legato extensions when transposing or drawing adjacent notes on the same pitch. Tightly resolves voice conflicts down to 1 tick, clamps prior note tails on insertion, and cleans micro-legato remnants (<= 15 ticks same pitch, <= 5 ticks different pitch without active slur) on slur deletion and during playback fix.
+          - Official Video Guide: Embedded direct documentation link to the official video walkthrough: 'Reaper-Notator - Infos about Fix Playback , Ties and Slurs function' (https://youtu.be/ahpEfmgGb3M).
 + v1.6.1: Hotfix: Add slur_service.lua to ReaPack package manifest:
           - Package Manifest: Registered modules/services/slur_service.lua in index.xml to ensure ReaPack automatically installs the Slurs & Ties engine upon package synchronization.
 + v1.6.0: Slurs and Ties Engine fully implemented:

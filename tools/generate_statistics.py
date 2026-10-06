@@ -34,7 +34,7 @@ def get_version():
                 return f"{major.group(1)}.{minor.group(1)}.{patch.group(1)}{suf}"
     except Exception:
         pass
-    return "1.6.1"
+    return "1.6.2"
 
 VERSION = get_version()
 

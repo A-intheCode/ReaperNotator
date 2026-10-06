@@ -15,6 +15,12 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ---
 
+## Video Tutorials & Guides
+
+- 📺 **[Reaper-Notator - Infos about Fix Playback , Ties and Slurs function](https://youtu.be/ahpEfmgGb3M)**: Official tutorial demonstrating the **Selective vs. Global Fix Playback** buttons, **Ties and Slurs** MIDI architecture, and **same-pitch legato overlap protection**.
+
+---
+
 ## Key Features
 
 - **Standard-Compliant Music Engraving**:
@@ -52,6 +58,11 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - Tempomap playback coupling with deterministic tempo-dip slowdown (1.25x to 3.0x) and automatic restoration.
   - Standard navigation symbols: Da Capo ($D.C.$ / $D.C. \text{ al Fine}$), Dal Segno ($D.S.$ / $D.S. \text{ al Coda}$), Segno, Coda, and Fine.
   - Arpeggiated chords with bezier wavy line engraving and non-destructive micro-strumming playback offset.
+- **Dual Playback Reconciliation Engine & Overlap Protection (v1.6.2)**:
+  - **Selective Playback Fix (`⚡ Fix Playback (Selective)`)**: Scans and reconciles exclusively the single selected MIDI item (or item of selected notes) with the active sound bank without touching any other items on the track or in the project.
+  - **Global Playback Fix (`⚡ Fix Playback (Global)`)**: Project-wide scan that reconciles all MIDI items across all tracks, clearing outdated Program Changes, healing legacy hairpins, and recalculating auto-chase return points.
+  - **Same-Pitch Legato Overlap Protection & Healing**: Eliminates note-erasing bugs caused by former slur legato extensions when transposing or drawing adjacent notes on the same pitch. Tightly resolves voice conflicts down to 1 tick, clamps prior note tails on insertion, and cleans micro-legato remnants ($\le 15$ ticks same pitch, $\le 5$ ticks different pitch without active slur) on slur deletion and during playback fix.
+  - **Tutorial Video Integration**: Direct in-app and documentation link to the official video walkthrough: [Reaper-Notator - Infos about Fix Playback , Ties and Slurs function](https://youtu.be/ahpEfmgGb3M).
 - **Comprehensive Slurs & Ties Engine and Pattern Library (v1.6.0 & v1.6.1)**:
   - **Interactive Slur & Tie Creation**: Fast, one-key toggling for Slurs (`S`) and Ties (`T` or `Shift+T`) across single notes, chords, and multi-measure selections with automatic context-sensitive grouping.
   - **Authentic Bézier Engraving**: Gardner Read & Elaine Gould (*Behind Bars*) compliant cubic Bézier curves with dynamic curvature direction (arch-up / arch-down), automatic staff-line avoidance, and chord tie fan-out.

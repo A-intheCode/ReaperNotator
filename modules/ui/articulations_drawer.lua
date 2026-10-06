@@ -191,15 +191,24 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
             reaper.ImGui_SetTooltip(ctx, "Removes articulation from selected notes or deleted selected articulation marker.")
         end
         
-        if reaper.ImGui_Button(ctx, "⚡ Fix Playback", -1, 24) then
-            midi_service.fix_playback(state, active_tracks_data)
+        -- Selective Playback Fix (Selected MIDI Item only)
+        if reaper.ImGui_Button(ctx, "⚡ Fix Playback (Selective)##Drawer", -1, 24) then
+            midi_service.fix_playback(state, active_tracks_data, false, true)
         end
         if reaper.ImGui_IsItemClicked(ctx, 1) then
             state.show_fix_last_resort_modal = true
             state.fix_last_resort_track_name = format_track_name_with_idx(cur_track) or (trk_name ~= "No Track" and trk_name) or "Track"
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Left-click: Scans and reconciles all note articulations with the active track bank, fixing playback and auto-chase return points.\n\nRight-click (or click again when in sync): Opens 'Fix of Last Resort' confirmation modal to purge all articulations and reset to clean default sustain.")
+            reaper.ImGui_SetTooltip(ctx, "Fix Playback (Selective):\nScans and reconciles ONLY the selected MIDI item (or item of selected notes) with the active sound bank.\nFixes playback, cleans micro-overlaps, and recalculates auto-chase without touching any other items.\n\nRight-click: Opens 'Fix of Last Resort' confirmation modal for this item.")
+        end
+        
+        -- Global Playback Fix (All MIDI Items across entire project)
+        if reaper.ImGui_Button(ctx, "⚡ Fix Playback (Global)##Drawer", -1, 24) then
+            midi_service.fix_playback(state, active_tracks_data, false, false)
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Fix Playback (Global):\nScans and reconciles ALL MIDI items across all tracks in the entire project.\nReconciles all note articulations with their respective sound banks, heals all micro-overlaps, recalculates auto-chase return points, and heals legacy dynamic hairpins.")
         end
         
         -- Slurs & Ties
@@ -440,7 +449,7 @@ function ArticulationsDrawer.render_last_resort_modal(ctx, state, active_tracks_
             state.show_fix_last_resort_modal = false
             reaper.ImGui_CloseCurrentPopup(ctx)
             local midi_service = require("services.midi_service")
-            midi_service.fix_playback(state, active_tracks_data, true)
+            midi_service.fix_playback(state, active_tracks_data, true, true)
         end
         reaper.ImGui_PopStyleColor(ctx, 3)
         

@@ -299,29 +299,40 @@ MANUAL_DATA = [
                         "- Selective Articulation Removal: Clicking 'Remove Articulation' on selected notes strips the visual glyphs, Type 15 notation tags, and Program Change messages exclusively from those selected notes, preserving unaffected measures on the track intact."
             },
             {
-                "heading": "6.5 Playback Troubleshooting & The '⚡ Fix Playback' Workaround",
-                "text": "Functions & Troubleshooting Workaround:\n"
+                "heading": "6.5 Playback Troubleshooting & The 'Fix Playback' Engine (Selective vs. Global)",
+                "text": "Functions, Tutorial Video & Playback Reconciliation Engine:\n"
+                        "- Video Tutorial: For an in-depth video walkthrough of the Fix Playback, Ties, and Slurs features, watch the official tutorial:\n"
+                        "    * 'Reaper-Notator - Infos about Fix Playback , Ties and Slurs function': https://youtu.be/ahpEfmgGb3M\n"
+                        "- Dual Playback Fix Engine (Selective vs. Global):\n"
+                        "    * 'Fix Playback (Selective)': Scans and reconciles STRICTLY the single selected MIDI item. The target item is resolved with prioritized accuracy: (1) item containing currently selected notes, (2) item box clicked in Notator canvas, (3) media item selected in REAPER's timeline, or (4) item under the edit cursor on the focused track. It repairs articulations, cleans foreign keyswitches, recalculates auto-chase return events, heals legacy hairpins, and auto-heals micro-overlaps strictly within the boundaries of that single item, guaranteeing that no other items on the track or elsewhere in the project are touched.\n"
+                        "    * 'Fix Playback (Global)': Scans and reconciles ALL MIDI items across all tracks in the entire REAPER project. It iterates through every project track, reconciles note articulations with each track's respective Reaticulate bank, clears foreign or orphaned Program Changes, recalculates all auto-chase return points, and heals legacy dynamic hairpins project-wide. Ideal for refreshing entire multi-track arrangements or duplicated orchestral cues in one click.\n"
                         "- The Problem (Cross-Track Duplication Desync): In REAPER's arrange view, composers frequently duplicate or copy MIDI items across tracks (e.g. duplicating a violin phrase down to celli or double basses). When an item is copied in REAPER, REAPER duplicates the underlying MIDI events verbatim. However, different sample libraries or instrument sections utilize different Reaticulate sound banks (for example, a Violin bank might assign PC 40 to Short/Staccato, while a Celli or Double Bass bank might use PC 49 for Staccato Dig). Because the duplicated item retains the old track's Program Changes and old auto-chase markers, playback on the new track breaks, produces silent or mismatched samples, or becomes stuck in an unwanted articulation.\n"
-                        "- The Solution ('⚡ Fix Playback' Engine): To resolve this without manual MIDI editing, REAPER-Notator provides an automated playback reconciler via the '⚡ Fix Playback' button in the Articulations drawer.\n"
-                        "- Intelligent Re-Mapping: Clicking '⚡ Fix Playback' scans the selected notes (or the selected MIDI item, or all items on the active track). Notator parses the persistent score notation markers (`NOTE <pitch> <chan> a <art_id>`), inspects the active track's Reaticulate bank, cleans out outdated or mismatched Program Changes from previous tracks, inserts the correct Bank Select and Program Change numbers for the current track's sound library, and re-calculates all auto-chase return events.\n"
-                        "- Handling Unsupported Articulations (e.g. Library Lacks Staccato): If the destination track's instrument or Reaticulate bank does not provide the requested articulation (for example, duplicating a violin staccato passage onto a flute, piano, synth, or library that lacks dedicated short patches), '⚡ Fix Playback' completely purges all foreign Program Changes (such as 121-0-42) and Bank Selects (CC0 / CC32) across the take, removes unsupported notation tags, clears obsolete chase events, and ensures the track's default base patch (Long / Sustain) is engaged once at the passage start so the notes play cleanly without stuck keyswitches.\n"
+                        "- The Solution ('Fix Playback' Engine): To resolve this without manual MIDI editing, REAPER-Notator provides automated playback reconciliation via the 'Fix Playback (Selective)' and 'Fix Playback (Global)' buttons in the Articulations drawer.\n"
+                        "- Intelligent Re-Mapping: Fix Playback parses the persistent score notation markers (`NOTE <pitch> <chan> a <art_id>`), inspects the active track's Reaticulate bank, cleans out outdated or mismatched Program Changes from previous tracks, inserts the correct Bank Select and Program Change numbers for the current track's sound library, and re-calculates all auto-chase return events.\n"
+                        "- Handling Unsupported Articulations (e.g. Library Lacks Staccato): If the destination track's instrument or Reaticulate bank does not provide the requested articulation (for example, duplicating a violin staccato passage onto a flute, piano, synth, or library that lacks dedicated short patches), Fix Playback completely purges all foreign Program Changes (such as 121-0-42) and Bank Selects (CC0 / CC32) across the take, removes unsupported notation tags, clears obsolete chase events, and ensures the track's default base patch (Long / Sustain) is engaged once at the passage start so the notes play cleanly without stuck keyswitches.\n"
+                        "- Same-Pitch Legato Overlap Protection & Micro-Overlap Auto-Healing:\n"
+                        "    * The Mechanism: Sampler legato libraries require a small overlap (~2 PPQ ticks) between notes of different pitches to trigger true acoustic legato interval transitions. In MIDI 1.0, two notes of the exact same pitch cannot overlap on the same channel without voice cancellation. If a slurred note was transposed to the same pitch as the preceding note, REAPER's native MIDI sort flagged the 2-tick overlap as invalid and deleted the second note.\n"
+                        "    * Pre-Clamping on Note Entry & Transposition: Notator automatically clamps any preceding note tail bleeding into a new or transposed note's start position on the same pitch before MIDI_InsertNote and before MIDI_Sort.\n"
+                        "    * Automated Micro-Overlap Healing: Both Selective and Global Fix Playback scan takes and automatically trim micro-overlaps (<= 15 ticks on identical pitches, and <= 5 ticks on different pitches without an active slur), repairing corruptions from older projects.\n"
                         "- Step-by-Step Workaround for Duplicated Items:\n"
                         "    1. Duplicate or paste the MIDI item onto a new track in REAPER's arrange view.\n"
                         "    2. Select the duplicated MIDI item or notes in REAPER-Notator.\n"
                         "    3. Open the Articulations drawer on the right sidebar.\n"
-                        "    4. Left-click '⚡ Fix Playback'.\n"
+                        "    4. Left-click 'Fix Playback (Selective)' (or 'Fix Playback (Global)' for entire project).\n"
                         "    Playback immediately re-synchronizes to the destination track's virtual instrument bank with pristine staccato and sustain transitions.\n"
-                        "- Dynamic Object Healing: '⚡ Fix Playback' also scans for legacy hairpins or dynamic text markings that were previously compressed or collapsed (<= 0.75 QN) by articulation collisions. It restores their natural musical span, re-resolves dynamic continuity across the track, and regenerates uninterrupted CC curves.\n"
-                        "- Idempotency & Safe Multi-Click: The '⚡ Fix Playback' command is fully idempotent. If playback is already synchronized, repeating the click will never inadvertently erase or corrupt existing articulations.\n"
-                        "- Fix of Last Resort (Centered Popup Confirmation Modal):\n"
-                        "    * How It Works: When '⚡ Fix Playback' is clicked while playback is already synchronized (or right-clicked at any time), REAPER-Notator opens the dedicated '⚡ Fix Playback: Fix of Last Resort' confirmation modal window. The dialog automatically centers itself on the screen over the active score display.\n"
-                        "    * Target Confirmation: The modal clearly displays the target track name and confirms that note articulations currently match the active instrument sound bank.\n"
-                        "    * Emergency Reset Action: If playback remains stuck, silent, or corrupted by external MIDI CC messages, clicking the red button '[ 🧹 Purge All Articulations (Last Resort) ]' completely strips all articulation glyphs, Type 15 notation tags (`NOTE <pitch> <chan> a <art_id>`), Bank Selects (CC0 / CC32), keyswitch Program Changes, and auto-chase return events (`NOTATOR_CHASE`). It then re-engages the default base patch (Long / Sustain) at the item start, resetting the track to clean default sustain playback.\n"
-                        "    * Safe Cancellation: Clicking '[ ✕ Cancel (Keep Articulations) ]' or pressing Escape immediately dismisses the modal without altering any notes, articulations, or MIDI events."
+                        "- Dynamic Object Healing: Fix Playback also scans for legacy hairpins or dynamic text markings that were previously compressed or collapsed (<= 0.75 QN) by articulation collisions. It restores their natural musical span, re-resolves dynamic continuity across the track, and regenerates uninterrupted CC curves.\n"
+                        "- Idempotency & Safe Multi-Click: The Fix Playback command is fully idempotent. If playback is already synchronized, repeating the click will never inadvertently erase or corrupt existing articulations.\n"
+                        "- Fix of Last Resort (Emergency Articulation Reset):\n"
+                        "    * Right-Click Access: Right-clicking 'Fix Playback (Selective)' (or clicking again when already in sync) opens the dedicated 'Fix Playback: Fix of Last Resort' confirmation modal window, centered over the active score display.\n"
+                        "    * Target Confirmation: The modal clearly displays the target item and track name and confirms that note articulations currently match the active instrument sound bank.\n"
+                        "    * Emergency Reset Action: If playback remains stuck, silent, or corrupted by external MIDI CC messages, clicking the red button '[ Purge All Articulations (Last Resort) ]' completely strips all articulation glyphs, Type 15 notation tags (`NOTE <pitch> <chan> a <art_id>`), Bank Selects (CC0 / CC32), keyswitch Program Changes, and auto-chase return events (`NOTATOR_CHASE`). It then re-engages the default base patch (Long / Sustain) at the item start, resetting the item to clean default sustain playback.\n"
+                        "    * Safe Cancellation: Clicking '[ Cancel (Keep Articulations) ]' or pressing Escape immediately dismisses the modal without altering any notes, articulations, or MIDI events."
             },
             {
                 "heading": "6.6 Slurs (Legato Phrase Marks) & Ties (Held Notes)",
                 "text": "Functions, Workflow Architecture & DAW Engine:\n"
+                        "- Video Tutorial: Watch the official video guide for practical examples of Ties and Slurs:\n"
+                        "    * 'Reaper-Notator - Infos about Fix Playback , Ties and Slurs function': https://youtu.be/ahpEfmgGb3M\n"
                         "```\n"
                         "+-------------------------------------------------------------+\n"
                         "|                     SELECTION WORKFLOW                      |\n"
@@ -367,8 +378,9 @@ MANUAL_DATA = [
                         "|                RESIDUE-FREE REMOVAL & TOGGLE                |\n"
                         "|  - Direct Canvas Click: Click curve to select (gold highlight)|\n"
                         "|  - Key [Delete] / [Backspace] removes selected slur or tie  |\n"
-                        "|  - Key S or T (Toggle Off) / '✕ Remove Slur/Tie'            |\n"
+                        "|  - Key S or T (Toggle Off) / 'Remove Slur/Tie'              |\n"
                         "|  - Slur: Legato/Long PC removed, Auto-Chase resynchronized  |\n"
+                        "|  - Slur Cleanup: All micro-legato overlap remnants clamped  |\n"
                         "|  - Tie: Note 1 length restored, Note 2 re-inserted in take  |\n"
                         "|  - Type 15 tags purged; zero orphaned MIDI events left      |\n"
                         "+-------------------------------------------------------------+\n"
@@ -395,7 +407,8 @@ MANUAL_DATA = [
                         "    * Gunshot Bug Protection: Re-engineered auto-chase routines enforce strict range checks (0 <= pc <= 127). If an item has no previous articulation (pre_slur_pc = -1), Notator strictly avoids sending negative program change bytes, preventing the unintended playback of General MIDI Patch 127 ('Gunshot').\n"
                         "    * Dynamic Auto-Chase Return Engine: At the exact conclusion of the slur phrase (Nk), the auto-chase engine immediately sends a return Bank Select and Program Change restoring the pre-slur articulation (e.g. automatically resuming Tremolo without composer intervention).\n"
                         "- Residue-Free Removal & Toggle:\n"
-                        "    * Toggling 'Slur [S]' or 'Tie [T]' on an already slurred/tied note (or hitting Delete on a selected curve) removes the curve, restores Note 1's original duration, re-inserts Note 2 into the MIDI take, deletes Legato/Long Program Changes, and cleans all Auto-Chase return events with zero orphaned MIDI data."
+                        "    * Toggling 'Slur [S]' or 'Tie [T]' on an already slurred/tied note (or hitting Delete on a selected curve) removes the curve, restores Note 1's original duration, re-inserts Note 2 into the MIDI take, deletes Legato/Long Program Changes, and cleans all Auto-Chase return events with zero orphaned MIDI data.\n"
+                        "    * Automatic Legato Overlap Trimming: When a slur is deleted, Notator automatically scans all phrase notes and clamps any residual micro-legato overlap extensions (<= 10 ticks) back to note boundary, preventing note erasing when subsequently transposing adjacent notes to identical pitch."
             }
         ]
     },
@@ -751,6 +764,13 @@ def sanitize_pdf_text(text: str) -> str:
         "\u2265": ">=",
         "\u2248": "~",
         "\u2260": "!=",
+        "⚡": "[Fix]",
+        "🎥": "[Video]",
+        "📺": "[Video]",
+        "🧹": "[Purge]",
+        "✕": "[X]",
+        "⌒": "[Slur]",
+        "‿": "[Tie]",
     }
     for k, v in replacements.items():
         text = text.replace(k, v)

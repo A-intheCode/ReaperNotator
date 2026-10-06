@@ -1168,7 +1168,7 @@ function MidiService.resolve_voice_conflicts(take, ref_notes)
                 if pitch == ref.pitch and chan == ref.chan then
                     local ov_s = math.max(s_ppq, ref.sppq)
                     local ov_e = math.min(e_ppq, ref.eppq)
-                    if ov_e > ov_s + 5 then
+                    if ov_e > ov_s then
                         -- Collision:
                         if ref.sppq <= s_ppq and ref.eppq >= e_ppq then
                             -- Ref covers stationary note completely -> delete
@@ -1526,6 +1526,17 @@ function MidiService.insert_note(take, qn, pitch, dur_qn, vel, chan, articulatio
     local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, qn) + 0.5)
     local eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, qn + dur_qn) + 0.5)
     
+    -- Pre-clamp any prior note of the same voice/pitch whose tail bleeds into this note's start
+    local _, pre_notecnt = reaper.MIDI_CountEvts(take)
+    for ni = 0, pre_notecnt - 1 do
+        local ok_p, sel_p, mut_p, sp_p, ep_p, ch_p, pt_p, vel_p = reaper.MIDI_GetNote(take, ni)
+        if ok_p and not mut_p and pt_p == pitch and ch_p == (chan or 0) then
+            if sp_p < sppq and ep_p > sppq then
+                reaper.MIDI_SetNote(take, ni, sel_p, mut_p, sp_p, sppq, ch_p, pt_p, vel_p, false)
+            end
+        end
+    end
+    
     reaper.MIDI_InsertNote(take, true, false, sppq, eppq, chan or 0, pitch, vel or 96, false)
     
     if articulation and articulation ~= "" then
@@ -1602,6 +1613,17 @@ function MidiService.insert_note_at_qn(state, qn, pitch, dur)
     reaper.MIDI_DisableSort(take)
     local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, qn) + 0.5)
     local eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, qn + dur) + 0.5)
+    -- Pre-clamp any prior note of the same voice/pitch whose tail bleeds into this note's start
+    local _, pre_notecnt = reaper.MIDI_CountEvts(take)
+    for ni = 0, pre_notecnt - 1 do
+        local ok_p, sel_p, mut_p, sp_p, ep_p, ch_p, pt_p, vel_p = reaper.MIDI_GetNote(take, ni)
+        if ok_p and not mut_p and pt_p == midi_pitch and ch_p == chan then
+            if sp_p < sppq and ep_p > sppq then
+                reaper.MIDI_SetNote(take, ni, sel_p, mut_p, sp_p, sppq, ch_p, pt_p, vel_p, false)
+            end
+        end
+    end
+
     local n_obj = MidiService.insert_note(take, qn, midi_pitch, dur, 96, chan, state.active_articulation)
 
     if chord_orig_pitch then
@@ -2076,6 +2098,7 @@ function MidiService.transpose_selected(state, semitones)
     
     reaper.Undo_BeginBlock2(0)
     local affected_takes = {}
+    local take_transposed_notes = {}
     local new_selected = {}
     
     for _, sn in ipairs(targets) do
@@ -2101,6 +2124,9 @@ function MidiService.transpose_selected(state, semitones)
             
             if target_idx and ok then
                 reaper.MIDI_SetNote(take, target_idx, true, muted, s2, e2, chan, new_pitch, vel, false)
+                take_transposed_notes[take] = take_transposed_notes[take] or {}
+                table.insert(take_transposed_notes[take], { idx = target_idx, pitch = new_pitch, chan = chan, sppq = s2, eppq = e2 })
+
                 local updated = MidiNote.new({
                     idx = target_idx, pitch = new_pitch, start_qn = sn.start_qn, end_qn = sn.end_qn,
                     dur_qn = sn.dur_qn, vel = vel, chan = chan, take = take, item = sn.item,
@@ -2139,6 +2165,9 @@ function MidiService.transpose_selected(state, semitones)
         end
     end
     
+    for tk, ref_list in pairs(take_transposed_notes) do
+        MidiService.resolve_voice_conflicts(tk, ref_list)
+    end
     for take in pairs(affected_takes) do reaper.MIDI_Sort(take) end
     reaper.Undo_EndBlock2(0, string.format("Notator: Transponieren %+d", semitones), -1)
     reaper.UpdateArrange()
@@ -4093,13 +4122,15 @@ function MidiService.delete_selected_articulation(state)
     MidiService.delete_selected_articulations(state)
 end
 
-function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
+function MidiService.fix_playback(state, active_tracks_data, is_last_resort, is_selective)
     local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
     local all_banks = ReaticulateParser.get_all_banks()
+    local selective = (is_selective ~= false) -- defaults to true
     
     -- 1. Identify all target takes and tracks to scan
     local targets_by_take = {}
     local take_list = {}
+    local single_item_name = nil
     
     local function add_take(tk, trk)
         if tk and reaper.ValidatePtr(tk, "MediaItem_Take*") and reaper.TakeIsMIDI(tk) then
@@ -4108,67 +4139,81 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
                     trk = get_track_from_take(tk)
                 end
                 targets_by_take[tk] = trk or true
-                table.insert(take_list, { take = tk, track = trk })
+                local it = reaper.GetMediaItemTake_Item(tk)
+                local _, iname = reaper.GetSetMediaItemTakeInfo_String(tk, "P_NAME", "", false)
+                if iname and iname ~= "" then
+                    single_item_name = iname
+                elseif it then
+                    local _, take_name = reaper.GetSetMediaItemInfo_String(it, "P_NOTES", "", false)
+                    single_item_name = (take_name ~= "") and take_name or "MIDI Item"
+                end
+                table.insert(take_list, { take = tk, track = trk, item = it })
             end
         end
     end
     
-    -- Option A: Notes selected -> use takes of selected notes
-    if state.selected_notes and next(state.selected_notes) ~= nil then
-        for _, sn in pairs(state.selected_notes) do
-            add_take(sn.take, sn.track)
-        end
-    elseif state.selected_note then
-        add_take(state.selected_note.take, state.selected_note.track)
-    end
-    
-    -- Option B: Media items selected in REAPER -> use takes of selected items
-    if #take_list == 0 then
-        local sel_item_cnt = reaper.CountSelectedMediaItems(0)
-        for i = 0, sel_item_cnt - 1 do
-            local it = reaper.GetSelectedMediaItem(0, i)
-            local tk = it and reaper.GetActiveTake(it)
-            local trk = it and reaper.GetMediaItemTrack(it)
+    if selective then
+        -- SELECTIVE MODE: Strictly only the selected MIDI item!
+        -- 1. Explicitly selected item in Notator state
+        if state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*") then
+            local tk = state.selected_take or reaper.GetActiveTake(state.selected_item)
+            local trk = reaper.GetMediaItemTrack(state.selected_item)
             add_take(tk, trk)
         end
-    end
-    
-    -- Option C: Track focused/selected in Notator / REAPER -> scan all MIDI items on that track
-    if #take_list == 0 then
-        local trk = state.focused_track or (active_tracks_data and active_tracks_data[1] and active_tracks_data[1].track) or reaper.GetSelectedTrack(0, 0)
-        if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
-            local it_cnt = reaper.CountTrackMediaItems(trk)
-            for i = 0, it_cnt - 1 do
-                local it = reaper.GetTrackMediaItem(trk, i)
+        
+        -- 2. Item containing selected notes
+        if #take_list == 0 and state.selected_notes and next(state.selected_notes) ~= nil then
+            for _, sn in pairs(state.selected_notes) do
+                local it = sn.item or (sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") and reaper.GetMediaItemTake_Item(sn.take))
+                local tk = sn.take or (it and reaper.GetActiveTake(it))
+                local trk = sn.track or (it and reaper.GetMediaItemTrack(it))
+                add_take(tk, trk)
+                if #take_list > 0 then break end
+            end
+        elseif #take_list == 0 and state.selected_note then
+            local sn = state.selected_note
+            local it = sn.item or (sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") and reaper.GetMediaItemTake_Item(sn.take))
+            local tk = sn.take or (it and reaper.GetActiveTake(it))
+            local trk = sn.track or (it and reaper.GetMediaItemTrack(it))
+            add_take(tk, trk)
+        end
+        
+        -- 3. Media item selected in REAPER
+        if #take_list == 0 then
+            local sel_item_cnt = reaper.CountSelectedMediaItems(0)
+            if sel_item_cnt > 0 then
+                local it = reaper.GetSelectedMediaItem(0, 0)
                 local tk = it and reaper.GetActiveTake(it)
+                local trk = it and reaper.GetMediaItemTrack(it)
                 add_take(tk, trk)
             end
         end
-    end
-    
-    -- Option D: Active tracks data notes fallback
-    if #take_list == 0 and active_tracks_data then
-        for _, tdata in ipairs(active_tracks_data) do
-            if tdata.notes then
-                for _, n in ipairs(tdata.notes) do
-                    if n.take then
-                        add_take(n.take, tdata.track)
-                    end
+        
+        -- 4. Target item under cursor on focused track / active MIDI take
+        if #take_list == 0 then
+            local it, tk, trk = MidiService.get_target_item_and_take(state, active_tracks_data)
+            if tk then
+                add_take(tk, trk)
+            end
+        end
+    else
+        -- GLOBAL MODE: Entire project - all MIDI items across all tracks!
+        local num_tracks = reaper.CountTracks(0)
+        for t = 0, num_tracks - 1 do
+            local trk = reaper.GetTrack(0, t)
+            if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+                local it_cnt = reaper.CountTrackMediaItems(trk)
+                for i = 0, it_cnt - 1 do
+                    local it = reaper.GetTrackMediaItem(trk, i)
+                    local tk = it and reaper.GetActiveTake(it)
+                    add_take(tk, trk)
                 end
             end
         end
     end
     
-    -- Option E: Active MIDI take fallback
     if #take_list == 0 then
-        local act_tk = MidiService.get_active_midi_take()
-        if act_tk then
-            add_take(act_tk, nil)
-        end
-    end
-    
-    if #take_list == 0 then
-        state.status_msg = "Fix Playback: No track or MIDI items found to fix!"
+        state.status_msg = selective and "⚡ Fix Playback (Selective): No MIDI item selected to fix!" or "⚡ Fix Playback (Global): No MIDI items found in project to fix!"
         return false
     end
     
@@ -4265,23 +4310,26 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
         end
         state.fix_last_resort_track_name = last_trk_name
         
-        reaper.Undo_EndBlock2(0, "Notator: Fix Playback (Last Resort Purge)", -1)
+        local undo_title = selective and "Notator: Fix Playback (Last Resort Purge - Selective)" or "Notator: Fix Playback (Last Resort Purge - Global)"
+        reaper.Undo_EndBlock2(0, undo_title, -1)
         reaper.UpdateArrange()
         MidiService.invalidate_cache()
         state.active_tracks_cache = nil
         state.show_fix_last_resort_modal = false
-        state.status_msg = string.format("⚡ Fix of Last Resort: Purged all articulations on %s (%d item(s), %d events cleared, reset to default sustain)",
-            last_trk_name, processed_takes, total_cleared)
+        state.status_msg = string.format("⚡ Fix of Last Resort (%s): Purged all articulations on %s (%d item(s), %d events cleared, reset to default sustain)",
+            selective and "Selective" or "Global", single_item_name or last_trk_name, processed_takes, total_cleared)
         return true
     end
     
     -- MODE 2: STANDARD IDEMPOTENT PLAYBACK RECONCILIATION
+    local undo_title = selective and "Notator: Fix Playback (Selective)" or "Notator: Fix Playback (Global)"
     reaper.Undo_BeginBlock2(0)
     local total_fixed_notes = 0
     local total_cleared_events = 0
     local processed_takes = 0
     local last_trk_name = nil
     local processed_track_guids = {}
+    local item_bounds_by_track = {}
     
     for _, item_entry in ipairs(take_list) do
         local take = item_entry.take
@@ -4292,6 +4340,15 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
         local trk_guid = trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.GetTrackGUID(trk)
         if trk_guid then
             processed_track_guids[trk_guid] = true
+            local it = item_entry.item
+            if it then
+                local ipos = reaper.GetMediaItemInfo_Value(it, "D_POSITION")
+                local ilen = reaper.GetMediaItemInfo_Value(it, "D_LENGTH")
+                local sqn = reaper.TimeMap2_timeToQN(0, ipos)
+                local eqn = reaper.TimeMap2_timeToQN(0, ipos + ilen)
+                item_bounds_by_track[trk_guid] = item_bounds_by_track[trk_guid] or {}
+                table.insert(item_bounds_by_track[trk_guid], { sqn = sqn, eqn = eqn })
+            end
         end
         if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
             local formatted = format_track_name_with_idx(trk)
@@ -4613,6 +4670,43 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
             end
         end
         
+        -- 6b. Auto-heal micro-overlapping notes (e.g. slur legato remnants <= 15 ticks)
+        local _, fix_notecnt = reaper.MIDI_CountEvts(take)
+        for ni = 0, fix_notecnt - 1 do
+            local ok_a, sel_a, mut_a, s_a, e_a, ch_a, p_a, v_a = reaper.MIDI_GetNote(take, ni)
+            if ok_a and not mut_a then
+                for nj = 0, fix_notecnt - 1 do
+                    if ni ~= nj then
+                        local ok_b, _, mut_b, s_b, _, ch_b, p_b, _ = reaper.MIDI_GetNote(take, nj)
+                        if ok_b and not mut_b and ch_b == ch_a and s_b >= s_a and s_b < e_a then
+                            local overlap = e_a - s_b
+                            if p_b == p_a and overlap <= 15 then
+                                reaper.MIDI_SetNote(take, ni, sel_a, mut_a, s_a, s_b, ch_a, p_a, v_a, false)
+                                total_fixed_notes = total_fixed_notes + 1
+                                break
+                            elseif overlap <= 5 then
+                                local has_slur = false
+                                if state and state.user_slurs then
+                                    local a_qn = reaper.MIDI_GetProjQNFromPPQPos(take, s_a)
+                                    for _, sl in ipairs(state.user_slurs) do
+                                        if math.abs((sl.start_qn or 0) - a_qn) < 0.05 then
+                                            has_slur = true
+                                            break
+                                        end
+                                    end
+                                end
+                                if not has_slur then
+                                    reaper.MIDI_SetNote(take, ni, sel_a, mut_a, s_a, s_b, ch_a, p_a, v_a, false)
+                                    total_fixed_notes = total_fixed_notes + 1
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
         -- 7. Recalculate auto-chase return points for momentary articulations
         MidiService.auto_chase_momentary_articulations(take, bank)
         reaper.MIDI_Sort(take)
@@ -4642,16 +4736,27 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
         if state.hairpins then
             for _, hp in ipairs(state.hairpins) do
                 if hp.track_guid == trk_guid then
-                    local cur_len = (hp.end_qn or 0) - (hp.start_qn or 0)
-                    -- Collapsed or shrunken due to legacy articulation collision (<= 0.75 QN)
-                    if cur_len <= 0.75 then
-                        local _, r_b = HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
-                        if r_b and r_b > (hp.start_qn + 0.75) then
-                            local target_len = hp.saved_natural_len or 4.0
-                            local new_end = math.min(hp.start_qn + target_len, r_b - 0.05)
-                            if new_end > (hp.end_qn or 0) then
-                                hp.end_qn = new_end
-                                total_healed_dynamics = total_healed_dynamics + 1
+                    local in_scope = not selective
+                    if selective and item_bounds_by_track[trk_guid] then
+                        for _, b in ipairs(item_bounds_by_track[trk_guid]) do
+                            if (hp.start_qn or 0) >= b.sqn - 0.5 and (hp.start_qn or 0) <= b.eqn + 0.5 then
+                                in_scope = true
+                                break
+                            end
+                        end
+                    end
+                    if in_scope then
+                        local cur_len = (hp.end_qn or 0) - (hp.start_qn or 0)
+                        -- Collapsed or shrunken due to legacy articulation collision (<= 0.75 QN)
+                        if cur_len <= 0.75 then
+                            local _, r_b = HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
+                            if r_b and r_b > (hp.start_qn + 0.75) then
+                                local target_len = hp.saved_natural_len or 4.0
+                                local new_end = math.min(hp.start_qn + target_len, r_b - 0.05)
+                                if new_end > (hp.end_qn or 0) then
+                                    hp.end_qn = new_end
+                                    total_healed_dynamics = total_healed_dynamics + 1
+                                end
                             end
                         end
                     end
@@ -4662,15 +4767,26 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
         if state.dynamic_texts then
             for _, dt in ipairs(state.dynamic_texts) do
                 if dt.track_guid == trk_guid then
-                    local cur_len = (dt.end_qn or 0) - (dt.start_qn or 0)
-                    if cur_len <= 0.75 then
-                        local _, r_b = DynamicTextService.get_bounds(state, dt, active_tracks_data)
-                        if r_b and r_b > (dt.start_qn + 0.75) then
-                            local target_len = 4.0
-                            local new_end = math.min(dt.start_qn + target_len, r_b - 0.05)
-                            if new_end > (dt.end_qn or 0) then
-                                dt.end_qn = new_end
-                                total_healed_dynamics = total_healed_dynamics + 1
+                    local in_scope = not selective
+                    if selective and item_bounds_by_track[trk_guid] then
+                        for _, b in ipairs(item_bounds_by_track[trk_guid]) do
+                            if (dt.start_qn or 0) >= b.sqn - 0.5 and (dt.start_qn or 0) <= b.eqn + 0.5 then
+                                in_scope = true
+                                break
+                            end
+                        end
+                    end
+                    if in_scope then
+                        local cur_len = (dt.end_qn or 0) - (dt.start_qn or 0)
+                        if cur_len <= 0.75 then
+                            local _, r_b = DynamicTextService.get_bounds(state, dt, active_tracks_data)
+                            if r_b and r_b > (dt.start_qn + 0.75) then
+                                local target_len = 4.0
+                                local new_end = math.min(dt.start_qn + target_len, r_b - 0.05)
+                                if new_end > (dt.end_qn or 0) then
+                                    dt.end_qn = new_end
+                                    total_healed_dynamics = total_healed_dynamics + 1
+                                end
                             end
                         end
                     end
@@ -4683,14 +4799,36 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
         if state.hairpins then
             for _, hp in ipairs(state.hairpins) do
                 if hp.track_guid == trk_guid then
-                    HairpinService.apply_hairpin_cc(state, hp, MidiService, active_tracks_data)
+                    local in_scope = not selective
+                    if selective and item_bounds_by_track[trk_guid] then
+                        for _, b in ipairs(item_bounds_by_track[trk_guid]) do
+                            if (hp.start_qn or 0) >= b.sqn - 0.5 and (hp.start_qn or 0) <= b.eqn + 0.5 then
+                                in_scope = true
+                                break
+                            end
+                        end
+                    end
+                    if in_scope then
+                        HairpinService.apply_hairpin_cc(state, hp, MidiService, active_tracks_data)
+                    end
                 end
             end
         end
         if state.dynamic_texts then
             for _, dt in ipairs(state.dynamic_texts) do
                 if dt.track_guid == trk_guid then
-                    DynamicTextService.apply_cc(state, dt, MidiService, active_tracks_data)
+                    local in_scope = not selective
+                    if selective and item_bounds_by_track[trk_guid] then
+                        for _, b in ipairs(item_bounds_by_track[trk_guid]) do
+                            if (dt.start_qn or 0) >= b.sqn - 0.5 and (dt.start_qn or 0) <= b.eqn + 0.5 then
+                                in_scope = true
+                                break
+                            end
+                        end
+                    end
+                    if in_scope then
+                        DynamicTextService.apply_cc(state, dt, MidiService, active_tracks_data)
+                    end
                 end
             end
         end
@@ -4705,13 +4843,18 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
         -- Playback is already synchronized with track sound bank!
         state.show_fix_last_resort_modal = true
         state.fix_last_resort_track_name = last_trk_name
-        state.status_msg = string.format("⚡ Fix Playback: %s is already synchronized.", last_trk_name or "Track")
-        reaper.Undo_EndBlock2(0, "Notator: Fix Playback (In Sync)", -1)
+        if selective then
+            state.status_msg = string.format("⚡ Fix Playback (Selective): %s (%s) is already synchronized.",
+                last_trk_name or "Track", single_item_name or "Item")
+        else
+            state.status_msg = "⚡ Fix Playback (Global): All project tracks and items are already synchronized."
+        end
+        reaper.Undo_EndBlock2(0, selective and "Notator: Fix Playback (Selective - In Sync)" or "Notator: Fix Playback (Global - In Sync)", -1)
         return true
     end
     
     state.show_fix_last_resort_modal = false
-    reaper.Undo_EndBlock2(0, "Notator: Fix Playback", -1)
+    reaper.Undo_EndBlock2(0, undo_title, -1)
     reaper.UpdateArrange()
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
@@ -4722,8 +4865,15 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort)
     if total_healed_dynamics > 0 then table.insert(parts, string.format("%d dynamics healed", total_healed_dynamics)) end
     if #parts == 0 then table.insert(parts, "0 changes") end
     
-    state.status_msg = string.format("⚡ Fix Playback: %s (%d item(s), %s)",
-        last_trk_name or "Track", processed_takes or 0, table.concat(parts, ", "))
+    if selective then
+        state.status_msg = string.format("⚡ Fix Playback (Selective): %s (%s, %s)",
+            last_trk_name or "Track", single_item_name or "1 item", table.concat(parts, ", "))
+    else
+        local total_trks = 0
+        for _ in pairs(processed_track_guids) do total_trks = total_trks + 1 end
+        state.status_msg = string.format("⚡ Fix Playback (Global): %d track(s), %d item(s), %s",
+            total_trks, processed_takes or 0, table.concat(parts, ", "))
+    end
     return true
 end
 

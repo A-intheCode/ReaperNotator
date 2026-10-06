@@ -591,6 +591,23 @@ function SlurService.delete_slur(state, slur_or_id, midi_service, active_tracks_
             local orig_eppq1 = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, orig_eqn1) + 0.5)
             reaper.MIDI_SetNote(take, n1_idx, n1_data.sel, n1_data.muted, n1_data.sppq, orig_eppq1, n1_data.chan, n1_data.pitch, n1_data.vel, false)
         end
+        -- Also scan notes within slur time span and clamp any micro-legato overlap remnants (<= 10 ticks)
+        local _, slur_notecnt = reaper.MIDI_CountEvts(take)
+        for i = 0, slur_notecnt - 1 do
+            local ok_s, sel_s, mut_s, sp_s, ep_s, ch_s, pt_s, vel_s = reaper.MIDI_GetNote(take, i)
+            if ok_s and not mut_s and ch_s == (sl.chan or 0) and sp_s >= n1_sppq - 10 and sp_s <= n2_eppq + 10 then
+                for j = 0, slur_notecnt - 1 do
+                    if j ~= i then
+                        local ok_j, _, mut_j, sp_j, _, ch_j, _, _ = reaper.MIDI_GetNote(take, j)
+                        if ok_j and not mut_j and ch_j == ch_s and sp_j > sp_s and sp_j < ep_s and (ep_s - sp_j) <= 10 then
+                            reaper.MIDI_SetNote(take, i, sel_s, mut_s, sp_s, sp_j, ch_s, pt_s, vel_s, false)
+                            ep_s = sp_j
+                            break
+                        end
+                    end
+                end
+            end
+        end
         
         -- 2. Delete Type 15 tags: NOTATOR_SLUR and NOTE pitch chan a legato
         local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
