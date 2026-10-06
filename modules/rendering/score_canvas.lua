@@ -41,6 +41,7 @@ local DynamicTextService = require("services.dynamic_text_service")
 local TextItemService = require("services.text_item_service")
 local PatternService = require("services.pattern_service")
 local SelectionService = require("services.selection_service")
+local SlurService = require("services.slur_service")
 local StateModule = require("state")
 
 local function resolve_effective_key(state, track, item, qn)
@@ -502,6 +503,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 and not state.hovered_articulation and not state.hovered_item_edge
                                 and not state.hovered_tempo_marker and not state.hovered_octave_line
                                 and not state.hovered_chord_item
+                                and not state.hovered_slur and not state.hovered_tie
 
             if not empty_click and not reaper.ImGui_IsMouseClicked(ctx, 0) then
                 local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, cur_time), margin_left, s, qn_per_measure, measure_map)
@@ -581,6 +583,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local chord_hovered_this_frame = nil
     local chord_handle_hovered_this_frame = nil
     local hov = {}
+    state.hovered_slur = nil
+    state.hovered_tie = nil
     
     local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
     local rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
@@ -2406,6 +2410,53 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         is_standard_symbol = true
                     end
                 end
+                
+                -- Slurs and Ties (Legato / Long placed as slurs) and Auto-Chase Return events must NEVER show text badges (Long, Legato, Tremolo chase, etc.) above staff
+                if not is_standard_symbol then
+                    if art.is_slur or art.is_slur_pc or art.is_auto_return then
+                        is_standard_symbol = true
+                    elseif label then
+                        local l_low = label:lower()
+                        if l_low:find("legato") or l_low:find("^slur") then
+                            is_standard_symbol = true
+                        end
+                    end
+                end
+                if not is_standard_symbol and state.user_slurs then
+                    for _, sl in ipairs(state.user_slurs) do
+                        local s_sqn = sl.start_qn or 0.0
+                        local s_eqn = sl.end_qn or sl.n2_start_qn or (s_sqn + 1.0)
+                        if (sl.chan or 0) == (art.chan or 0) and (cur_qn >= s_sqn - 0.10 and cur_qn <= s_eqn + 0.10) then
+                            is_standard_symbol = true
+                            break
+                        end
+                    end
+                end
+                if not is_standard_symbol and state.user_ties then
+                    for _, tie in ipairs(state.user_ties) do
+                        local t_sqn1 = tie.n1_start_qn or 0.0
+                        local t_sqn2 = tie.n2_start_qn or (t_sqn1 + 1.0)
+                        if (tie.chan or 0) == (art.chan or 0) and (math.abs(t_sqn1 - cur_qn) < 0.15 or math.abs(t_sqn2 - cur_qn) < 0.15) then
+                            is_standard_symbol = true
+                            break
+                        end
+                    end
+                end
+                if not is_standard_symbol and tdata.notes then
+                    for _, n in ipairs(tdata.notes) do
+                        local n_sqn = n.start_qn or 0.0
+                        if math.abs(n_sqn - cur_qn) < 0.15 then
+                            if n.articulation and (n.articulation:lower():find("legato") or n.articulation:lower():find("slur")) then
+                                is_standard_symbol = true
+                                break
+                            end
+                            if n.slur_id or n.slur_to or n.is_tied_master or n.is_tied_slave then
+                                is_standard_symbol = true
+                                break
+                            end
+                        end
+                    end
+                end
                 if not is_standard_symbol and tdata.notes then
                     for _, n in ipairs(tdata.notes) do
                         if math.abs(n.start_qn - cur_qn) < 0.05 and n.articulation and n.articulation ~= "" and n.articulation ~= "none" then
@@ -2815,43 +2866,63 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     -- Ties: ONLY for split segments of the EXACT same original MIDI note across barlines!
     -- NO automatic chaining of different notes that simply lie sequentially!
+    -- Intra-measure ties are NEVER drawn automatically, only via SlurService.draw_user_ties!
     local drawn_ties = {}
     for _, bt in ipairs(all_bar_ties) do
-        local nd1 = all_note_render_by_key[bt.from_key]
-        local nd2 = all_note_render_by_key[bt.to_key]
-        if nd1 and nd2 and nd1.track == nd2.track then
-            local tie_min_x = math.min(nd1.nx, nd2.nx)
-            local tie_max_x = math.max(nd1.nx, nd2.nx)
-            if tie_max_x >= cull_min_x and tie_min_x <= cull_max_x and nd1.ny >= cull_min_y and nd1.ny <= cull_max_y then
-                -- Strict: both segments must verifiably belong to the same original note (identical orig or take & idx)
-                local is_same_note = false
-                if bt.orig and (nd1.orig == bt.orig or nd2.orig == bt.orig) then
-                    is_same_note = true
-                elseif nd1.orig and nd2.orig and nd1.orig == nd2.orig then
-                    is_same_note = true
-                elseif nd1.take and nd2.take and nd1.take == nd2.take and nd1.idx and nd2.idx and nd1.idx == nd2.idx then
-                    is_same_note = true
-                end
-                
-                if is_same_note and math.abs(nd1.ny - nd2.ny) <= 16*s then
-                    local tie_key = bt.from_key .. "->" .. bt.to_key
-                    if not drawn_ties[tie_key] then
-                        drawn_ties[tie_key] = true
-                        local is_ghost_tie = (nd1.is_ghost_voice == true) or (nd2.is_ghost_voice == true)
-                        local tie_col = Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
-                        if is_ghost_tie then
-                            local t_v = (nd1.orig and nd1.orig.chan or 0) + 1
-                            if (state.voice_color_mode ~= false) and t_v > 1 then
-                                tie_col = (Constants.get_voice_color(t_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
-                            else
-                                tie_col = global_ghost_col
+        if bt.is_cross_barline ~= false then
+            local nd1 = all_note_render_by_key[bt.from_key]
+            local nd2 = all_note_render_by_key[bt.to_key]
+            if nd1 and nd2 and nd1.track == nd2.track then
+                local eff_bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
+                local bar1 = math.floor(((nd1.start_qn or 0.0) + 0.001) / eff_bpi)
+                local bar2 = math.floor(((nd2.start_qn or 0.0) + 0.001) / eff_bpi)
+                if bar1 ~= bar2 then
+                    local tie_min_x = math.min(nd1.nx, nd2.nx)
+                    local tie_max_x = math.max(nd1.nx, nd2.nx)
+                    if tie_max_x >= cull_min_x and tie_min_x <= cull_max_x and nd1.ny >= cull_min_y and nd1.ny <= cull_max_y then
+                        -- Strict: both segments must verifiably belong to the same original note (identical orig or take & idx)
+                        local is_same_note = false
+                        if bt.orig and (nd1.orig == bt.orig or nd2.orig == bt.orig) then
+                            is_same_note = true
+                        elseif nd1.orig and nd2.orig and nd1.orig == nd2.orig then
+                            is_same_note = true
+                        elseif nd1.take and nd2.take and nd1.take == nd2.take and nd1.idx and nd2.idx and nd1.idx == nd2.idx then
+                            is_same_note = true
+                        end
+                        
+                        if is_same_note and math.abs(nd1.ny - nd2.ny) <= 16*s then
+                            local tie_key = bt.from_key .. "->" .. bt.to_key
+                            if not drawn_ties[tie_key] then
+                                drawn_ties[tie_key] = true
+                                local is_ghost_tie = (nd1.is_ghost_voice == true) or (nd2.is_ghost_voice == true)
+                                local tie_col = Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
+                                if is_ghost_tie then
+                                    local t_v = (nd1.orig and nd1.orig.chan or 0) + 1
+                                    if (state.voice_color_mode ~= false) and t_v > 1 then
+                                        tie_col = (Constants.get_voice_color(t_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                                    else
+                                        tie_col = global_ghost_col
+                                    end
+                                end
+                                local tie_above = (nd1.stem_down == true) or (nd1.dstep and nd1.dstep >= 4)
+                                Engraver.draw_tie(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, tie_col, tie_above)
                             end
                         end
-                        local tie_above = (nd1.stem_down == true) or (nd1.dstep and nd1.dstep >= 4)
-                        Engraver.draw_tie(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, tie_col, tie_above)
                     end
                 end
             end
+        end
+    end
+    
+    -- ======================================================================
+    -- SLURS & TIES (Legato Phrase Marks & Ties via SlurService)
+    -- ======================================================================
+    if SlurService then
+        if SlurService.draw_slurs then
+            SlurService.draw_slurs(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y)
+        end
+        if SlurService.draw_user_ties then
+            SlurService.draw_user_ties(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y)
         end
     end
     

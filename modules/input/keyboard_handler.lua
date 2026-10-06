@@ -294,6 +294,18 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             state.context_rehearsal_mark = nil
             return
         end
+        if state.selected_slur then
+            local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+            SlurService.delete_slur(state, state.selected_slur.id, midi_service, active_tracks_data)
+            state.selected_slur = nil
+            return
+        end
+        if state.selected_tie then
+            local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+            SlurService.delete_tie(state, state.selected_tie.id, midi_service, active_tracks_data)
+            state.selected_tie = nil
+            return
+        end
         local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
         if SelectionService and SelectionService.count_all_selected(state) > 1 then
             SelectionService.delete_all_selected(state, midi_service, active_tracks_data)
@@ -374,6 +386,8 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         state.editing_text_item = nil
         state.selected_chord_item = nil
         state.editing_chord_item = nil
+        state.selected_slur = nil
+        state.selected_tie = nil
         midi_service.sync_selection_to_reaper(state, active_tracks_data)
         state.status_msg = "Selection cleared"
     end
@@ -562,15 +576,13 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         state.status_msg = "Project saved (Ctrl+S)."
     end
 
-    -- Articulations & Legato (T for tie, S for slur, A for accent)
+    -- Articulations, Slurs & Ties (T for tie, S for slur, A for accent)
     if not is_ctrl and not is_alt and not is_shift then
-        if reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_T()) then
-            state.tie_active = not state.tie_active
-            state.status_msg = "Tie: " .. (state.tie_active and "ON" or "OFF")
+        if ShortcutManager.is_action_pressed("toggle_tie", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_T()) then
+            midi_service.toggle_tie(state, active_tracks_data)
         end
-        if reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_S()) then
-            state.slur_active = not state.slur_active
-            state.status_msg = "Slur: " .. (state.slur_active and "ON" or "OFF")
+        if ShortcutManager.is_action_pressed("toggle_slur", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_S()) then
+            midi_service.toggle_slur(state, active_tracks_data)
         end
         if not is_step and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_A()) then
             midi_service.toggle_selected_articulation(state, "accent")

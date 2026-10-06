@@ -371,6 +371,35 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
         reaper.ImGui_SetTooltip(ctx, "Clear Articulation: Removes articulation from selected notes or turns off sticky mode.")
     end
     
+    -- SLURS & TIES
+    reaper.ImGui_Spacing(ctx)
+    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "SLURS & TIES")
+    reaper.ImGui_Separator(ctx)
+    
+    local avail_w_slur = reaper.ImGui_GetContentRegionAvail(ctx)
+    local half_w_slur = math.floor((avail_w_slur - 4) / 2)
+    
+    if reaper.ImGui_Button(ctx, "⌒ Slur [S]##Side", half_w_slur, 26) then
+        midi_service.toggle_slur(state, active_tracks_data)
+    end
+    if reaper.ImGui_IsItemHovered(ctx) then
+        reaper.ImGui_SetTooltip(ctx, "Slur (Legato phrase mark) [Hotkey: S]:\nConnects 2 selected notes (or 1 note to next) with a Legato slur.\nPlays true Legato articulation and triggers sampler transitions.")
+    end
+    reaper.ImGui_SameLine(ctx)
+    if reaper.ImGui_Button(ctx, "‿ Tie [T]##Side", half_w_slur, 26) then
+        midi_service.toggle_tie(state, active_tracks_data)
+    end
+    if reaper.ImGui_IsItemHovered(ctx) then
+        reaper.ImGui_SetTooltip(ctx, "Tie (Held note) [Hotkey: T]:\nConnects 2 notes of the same pitch to combine their duration without re-striking.")
+    end
+    
+    if reaper.ImGui_Button(ctx, "✕ Clear Slur / Tie##Side", -1, 22) then
+        midi_service.remove_slurs_and_ties(state)
+    end
+    if reaper.ImGui_IsItemHovered(ctx) then
+        reaper.ImGui_SetTooltip(ctx, "Clear Slur / Tie:\nRemoves slurs, unties notes, clears legato keyswitches and restores durations.")
+    end
+    
     -- F. TRANSPOSE & OCTAVE
     reaper.ImGui_Spacing(ctx)
     reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "TRANSPOSE")

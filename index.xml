@@ -6,8 +6,15 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.5.6" author="A-intheCode" time="2026-10-06T00:15:00Z">
+      <version name="1.6.0" author="A-intheCode" time="2026-10-06T20:58:00Z">
         <changelog><![CDATA[
++ v1.6.0: Slurs and Ties Engine fully implemented:
+          - Complete Slurs & Ties Engine: Comprehensive implementation of musical slurs (legato phrase markings, key [S]) and ties (held notes, key [T]) with full Elaine Gould engraving standards and Reaticulate DAW playback.
+          - Dual Reality Engine for Ties: In REAPER MIDI takes, Note 1 is extended across Note 2 while Note 2 is removed, delivering uninterrupted audio sustain with zero secondary re-strike artifacts. On the score canvas, Note 2 is seamlessly synthesized via persistent Type 15 metadata (NOTATOR_TIE / NOTATOR_TIE_SLAVE), ensuring both distinct noteheads remain visible connected by a Gould-compliant cubic Bezier curve.
+          - Interactive Canvas Selection & Deletion: Direct left-click selection on any slur or tie curve in the score canvas with vivid gold highlighting, enabling immediate removal via the Delete / Backspace key or right-click context menu.
+          - Same-Pitch Slur Overlap Protection: Melodic slurs produce a 2-PPQ overlap for true acoustic interval sampling across different pitches, while strictly preventing overlap when consecutive notes share identical pitch to prevent REAPER from merging notes.
+          - Negative PC Gunshot Bug Protection: Re-engineered auto-chase and articulation removal routines with strict range guards (0 <= pc <= 127) to prevent undefined pre-slur states (-1) from triggering General MIDI patch 127 ('Gunshot').
+          - REAPER Piano Roll Synchronization: Instant C-API synchronization (reaper.MarkTrackItemsDirty and MIDIEditor_OnCommand 40435) guarantees all open REAPER MIDI editor windows refresh immediately upon toggling or deleting ties and slurs.
 + v1.5.6: Dynamic Object Scaling Decoupling & Legacy Hairpin Playback Healing:
           - Decoupled Dynamic Scaling: Hairpins (<, >) and Dynamic Texts (cresc., dim.) now strictly collide and bound only against dynamic markers (p, f, etc.), other hairpins, and dynamic texts, completely ignoring note articulations. Hairpins can now scale freely across dense staccato phrases without shrinking.
           - Legacy Hairpin Playback Healing: The '⚡ Fix Playback' command automatically detects collapsed hairpins and dynamic texts (<= 0.75 QN) in older projects, restores them to their natural musical phrase boundaries, re-resolves dynamic levels, and regenerates clean continuous CC automation ramps.

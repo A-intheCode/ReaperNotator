@@ -22,6 +22,13 @@ function MidiNote.new(data)
     self.stem_dir     = data.stem_dir
     self.arpeggio     = data.arpeggio
     self.staff        = data.staff
+    self.slur_to      = data.slur_to
+    self.slur_id      = data.slur_id
+    self.tied_to      = data.tied_to
+    self.tie_split    = data.tie_split
+    self.is_tied_master = data.is_tied_master
+    self.is_tied_slave  = data.is_tied_slave
+    self.tie_id         = data.tie_id
     self.key          = self:get_key()
     return self
 end

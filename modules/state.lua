@@ -164,6 +164,7 @@ function State.new()
         
         -- Manual Slurs & Ties
         user_slurs = {},
+        user_ties = {},
         
         -- Panel widths (resizable via splitter drag)
         sidebar_w = 210,          -- Width of left sidebar (resizable 140-500px)
@@ -402,6 +403,8 @@ function State.new()
         self.selected_pedal = nil
         self.selected_text_item = nil
         self.selected_chord_item = nil
+        self.selected_slur = nil
+        self.selected_tie = nil
         
         -- Multi-selection maps & bounds
         self.selected_dynamics = {}

@@ -264,6 +264,38 @@ function MidiService.find_reaticulate_art_for_id(bank, art_id)
                     return a
                 end
             end
+        elseif id == "legato" or id == "slur" then
+            if not is_harmonic then
+                if aname:find("legato") or aicon:find("legato") or aname:find("slur") or aicon:find("slur") then
+                    return a
+                end
+            end
+        end
+    end
+
+    -- Fallback for legato/slur on instruments without a dedicated legato articulation (User Requirement)
+    if id == "legato" or id == "slur" then
+        -- Tier 1: Look for standard long / sustain patches (excluding harmonics, sordino, short, and tremolo)
+        for _, a in ipairs(bank.articulations) do
+            local aname = (a.name or ""):lower()
+            local aicon = (a.icon or ""):lower()
+            local is_harmonic = aname:find("harm") or aname:find("flag") or aicon:find("harm") or aicon:find("flag")
+            local is_sordino = aname:find("sord") or aicon:find("sord") or aname:find("%f[%a]cs%f[%A]") or aicon:find("con%-sord")
+            local is_short = aname:find("short") or aname:find("stacc") or aname:find("spicc") or aname:find("pizz") or aname:find("trem")
+            if not is_harmonic and not is_sordino and not is_short then
+                if aname:find("long") or aicon:find("long") or aname:find("sustain") or aicon:find("sustain") or aname:find("norm") then
+                    return a
+                end
+            end
+        end
+        -- Tier 2: First non-momentary / non-tremolo articulation in bank
+        for _, a in ipairs(bank.articulations) do
+            local aname = (a.name or ""):lower()
+            local is_mom = aname:find("stacc") or aname:find("spicc") or aname:find("marc") or aname:find("tenuto")
+                or aname:find("accent") or aname:find("harm") or aname:find("trem") or aname:find("pizz")
+            if not is_mom then
+                return a
+            end
         end
     end
     return nil
@@ -300,6 +332,8 @@ function MidiService.art_id_from_reaticulate_art(art_def)
         return "tenuto"
     elseif aname:find("accent") or aicon:find("accent") then
         return "accent"
+    elseif aname:find("legato") or aicon:find("legato") or aname:find("slur") or aicon:find("slur") then
+        return "legato"
     end
     return nil
 end
@@ -355,6 +389,8 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     local note_staffs_list = {}
     local note_arpeggios_list = {}
     local chase_events_list = {}
+    local tie_masters = {}
+    local tie_slaves = {}
     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
     for ti = 0, text_cnt - 1 do
         local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
@@ -388,6 +424,31 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             if ch_c and pc_c then
                 table.insert(chase_events_list, { ppq = ppq, chan = tonumber(ch_c) or 0, pc = tonumber(pc_c) })
             end
+
+            -- Extract ties: master note keeps orig visual dur; slave note is preserved visually even if held as single note in REAPER take
+            local t_id, t_chan, tp, t_s1, t_d1, t_s2, t_d2, t_vel = msg:match("^NOTATOR_TIE%s+([%w_]+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%d*)")
+            if t_id then
+                local p_num = tonumber(tp)
+                local ch_num = tonumber(t_chan) or 0
+                local s1_qn = tonumber(t_s1)
+                local d1_qn = tonumber(t_d1)
+                local s2_qn = tonumber(t_s2)
+                local d2_qn = tonumber(t_d2)
+                local vel_num = (t_vel and t_vel ~= "") and tonumber(t_vel) or 96
+                local s1_ppq = ppq -- Use the exact event PPQ where master tag was inserted
+                local s2_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, s2_qn) + 0.5)
+                table.insert(tie_masters, { id = t_id, pitch = p_num, chan = ch_num, sppq = s1_ppq, orig_dur = d1_qn, s_qn = s1_qn, s2_qn = s2_qn, d2_qn = d2_qn, vel = vel_num })
+                table.insert(tie_slaves, { id = t_id, pitch = p_num, chan = ch_num, sppq = s2_ppq, orig_dur = d2_qn, s_qn = s2_qn, vel = vel_num })
+            end
+            local ts_id, ts_chan, tsp, ts_s2, ts_d2 = msg:match("^NOTATOR_TIE_SLAVE%s+([%w_]+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)")
+            if ts_id then
+                local p_num = tonumber(tsp)
+                local ch_num = tonumber(ts_chan) or 0
+                local s2_qn = tonumber(ts_s2)
+                local d2_qn = tonumber(ts_d2)
+                local s2_ppq = ppq -- Use the exact event PPQ where slave tag was inserted
+                table.insert(tie_slaves, { id = ts_id, pitch = p_num, chan = ch_num, sppq = s2_ppq, orig_dur = d2_qn, s_qn = s2_qn })
+            end
             
             -- Extract key signatures (NOTATOR_KEY_SIG <key_idx> <mode> or native key <val>)
             local idx_s, mode_s = msg:match("NOTATOR_KEY_SIG%s+(%-?%d+)%s*([%a%d_]*)")
@@ -415,6 +476,62 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
         end
     end
     
+    -- Dual persistence fallback: read ties from ProjExtState so tied notes are never dropped
+    local _, raw_user_ties = reaper.GetProjExtState(0, "REAPER_Notator", "user_ties")
+    if raw_user_ties and raw_user_ties ~= "" then
+        local trk_guid = track and reaper.GetTrackGUID(track)
+        for entry in raw_user_ties:gmatch("([^;]+)") do
+            local p = {}
+            for field in (entry .. "|"):gmatch("([^|]*)|") do table.insert(p, field) end
+            if p[1] and p[1] ~= "" and (p[2] == "" or not trk_guid or p[2] == trk_guid) then
+                local t_id = p[1]
+                local t_ch = tonumber(p[3]) or 0
+                local t_pitch = tonumber(p[4]) or 60
+                local t_s1_qn = tonumber(p[5]) or 0.0
+                local t_d1_qn = tonumber(p[6]) or 1.0
+                local t_s2_qn = tonumber(p[7]) or 1.0
+                local t_d2_qn = tonumber(p[8]) or 1.0
+                local t_vel = tonumber(p[9]) or 96
+                local s1_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, t_s1_qn) + 0.5)
+                local s2_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, t_s2_qn) + 0.5)
+                
+                local already_have = false
+                for _, tm in ipairs(tie_masters) do
+                    if tm.id == t_id then already_have = true; break end
+                end
+                if not already_have then
+                    table.insert(tie_masters, { id = t_id, pitch = t_pitch, chan = t_ch, sppq = s1_ppq, orig_dur = t_d1_qn, s_qn = t_s1_qn, s2_qn = t_s2_qn, d2_qn = t_d2_qn, vel = t_vel })
+                    table.insert(tie_slaves, { id = t_id, pitch = t_pitch, chan = t_ch, sppq = s2_ppq, orig_dur = t_d2_qn, s_qn = t_s2_qn, vel = t_vel })
+                end
+            end
+        end
+    end
+    
+    local function find_tie_master(p, ch, sppq, opt_sqn)
+        for _, tm in ipairs(tie_masters) do
+            if tm.pitch == p and tm.chan == ch then
+                if math.abs(tm.sppq - sppq) <= 120 then
+                    return tm
+                elseif opt_sqn and tm.s_qn and math.abs(tm.s_qn - opt_sqn) <= 0.15 then
+                    return tm
+                end
+            end
+        end
+        return nil
+    end
+    local function find_tie_slave(p, ch, sppq, opt_sqn)
+        for _, ts in ipairs(tie_slaves) do
+            if ts.pitch == p and ts.chan == ch then
+                if math.abs(ts.sppq - sppq) <= 120 then
+                    return ts
+                elseif opt_sqn and ts.s_qn and math.abs(ts.s_qn - opt_sqn) <= 0.15 then
+                    return ts
+                end
+            end
+        end
+        return nil
+    end
+
     -- If item_obj.key_sig was not populated via P_EXT, initialize from first key event
     if not item_obj.key_sig and item_obj.key_sig_events and #item_obj.key_sig_events > 0 then
         local first_k = item_obj.key_sig_events[1]
@@ -446,16 +563,16 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
         local loop_offset_qn = loop_idx * src_len_qn
         for ni = 0, notecnt - 1 do
             local ok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, ni)
-            if ok and not muted then
-                local base_sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
-                local base_eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
-                
-                -- Add loop offset, BUT we use the absolute project position
-                -- NOTE: MIDI_GetProjQNFromPPQPos calculates from the project start of the first take.
-                -- For loops, the relative QN length of the source must be added.
-                local n_sqn = base_sqn + loop_offset_qn
-                local n_eqn = base_eqn + loop_offset_qn
-                
+            local base_sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+            local base_eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
+            
+            -- Absolute project position with loop offset
+            local n_sqn = base_sqn + loop_offset_qn
+            local n_eqn = base_eqn + loop_offset_qn
+            
+            local tie_slave_info = find_tie_slave(pitch, chan, sppq, n_sqn)
+            local is_tie_slave = (tie_slave_info ~= nil)
+            if ok and (not muted or is_tie_slave) then
                 -- STRICT FILTERING:
                 if n_sqn < end_qn - 0.005 and n_eqn > start_qn + 0.005 then
                     local cl_sqn = math.max(start_qn, n_sqn)
@@ -464,6 +581,15 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                     if math.abs(cl_eqn - end_qn) < 0.005 then cl_eqn = end_qn end
                     
                     local dur = cl_eqn - cl_sqn
+                    local tie_master_info = find_tie_master(pitch, chan, sppq, n_sqn)
+                    if tie_master_info and tie_master_info.orig_dur and tie_master_info.orig_dur > 0.01 then
+                        dur = tie_master_info.orig_dur
+                        cl_eqn = cl_sqn + dur
+                    elseif tie_slave_info and tie_slave_info.orig_dur and tie_slave_info.orig_dur > 0.01 then
+                        dur = tie_slave_info.orig_dur
+                        cl_eqn = cl_sqn + dur
+                    end
+                    
                     if dur >= 0.03125 then
                         local art = nil
                         for _, na in ipairs(note_arts_list) do
@@ -511,7 +637,10 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                             articulation = art,
                             stem_dir = stem_dir,
                             arpeggio = arpeggio_dir,
-                            staff = staff_override
+                            staff = staff_override,
+                            is_tied_master = (tie_master_info ~= nil),
+                            is_tied_slave = is_tie_slave,
+                            tie_id = (tie_master_info and tie_master_info.id) or (tie_slave_info and tie_slave_info.id) or nil
                         })
                         table.insert(take_notes, note_obj)
                     end
@@ -519,6 +648,59 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             end
         end
     end
+    
+    -- Synthesize tied slave notes if missing from the MIDI take (e.g. when Note 1 is held continuously across tie in REAPER MIDI)
+    for _, tm in ipairs(tie_masters) do
+        if tm.s2_qn and tm.d2_qn then
+            local found_slave = false
+            for _, n in ipairs(take_notes) do
+                if n.pitch == tm.pitch and (n.chan == nil or n.chan == tm.chan) and math.abs(n.start_qn - tm.s2_qn) <= 0.15 then
+                    found_slave = true
+                    n.is_tied_slave = true
+                    n.tie_id = tm.id
+                    break
+                end
+            end
+            if not found_slave then
+                local s2_qn = tm.s2_qn
+                local d2_qn = tm.d2_qn
+                if s2_qn < end_qn - 0.005 and (s2_qn + d2_qn) > start_qn + 0.005 then
+                    local master_staff = nil
+                    for _, n in ipairs(take_notes) do
+                        if n.is_tied_master and n.tie_id == tm.id then
+                            master_staff = n.staff
+                            break
+                        end
+                    end
+                    local note2_obj = MidiNote.new({
+                        idx = -1,
+                        pitch = tm.pitch,
+                        start_qn = s2_qn,
+                        end_qn = s2_qn + d2_qn,
+                        dur_qn = d2_qn,
+                        vel = tm.vel or 96,
+                        chan = tm.chan,
+                        take = take,
+                        item = item,
+                        track = track,
+                        staff = master_staff,
+                        is_tied_master = false,
+                        is_tied_slave = true,
+                        tie_id = tm.id
+                    })
+                    table.insert(take_notes, note2_obj)
+                end
+            end
+        end
+    end
+    
+    -- Keep take_notes strictly sorted chronologically
+    table.sort(take_notes, function(a, b)
+        local as = a.start_qn or 0
+        local bs = b.start_qn or 0
+        if math.abs(as - bs) > 0.001 then return as < bs end
+        return (a.pitch or 0) < (b.pitch or 0)
+    end)
     
     -- Read dynamics with respect to item boundaries
     for ti = 0, text_cnt - 1 do
@@ -980,7 +1162,7 @@ function MidiService.resolve_voice_conflicts(take, ref_notes)
             end
         end
         
-        if ok and not is_ref then
+        if ok and not is_ref and not muted then
             for _, ref in ipairs(ref_notes) do
                 -- Only collide if same pitch AND same voice (same MIDI channel)!
                 if pitch == ref.pitch and chan == ref.chan then
@@ -1601,6 +1783,9 @@ function MidiService.delete_selected_notes(state)
     reaper.Undo_EndBlock2(0, string.format("Notator: Delete %d notes", del_cnt), -1)
     reaper.UpdateArrange()
     MidiService.invalidate_cache()
+    
+    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+    SlurService.remove_slurs_for_notes(state, targets)
     
     state.selected_notes = {}
     state.selected_note = nil
@@ -2541,6 +2726,7 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
     
     local note_arts_list = {}
     local chase_evts_list = {}
+    local slur_ranges_by_chan = {}
     for ti = 0, textcnt - 1 do
         local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
         if ok and etype == 15 then
@@ -2551,6 +2737,23 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
             local ch_c, pc_c = msg:match("NOTATOR_CHASE%s+(%d+)%s+(%d+)")
             if ch_c and pc_c then
                 table.insert(chase_evts_list, { idx = ti, ppq = ppq, chan = tonumber(ch_c), pc = tonumber(pc_c) })
+            end
+            local s_id, s_chan, p1, p2, sqn, n2sqn, odur, pre_pc, pre_msb, pre_lsb = msg:match("^NOTATOR_SLUR%s+([%w_]+)%s+(%d+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%-?%d*)%s*(%-?%d*)%s*(%-?%d*)")
+            if s_id then
+                local ch = tonumber(s_chan) or 0
+                if not slur_ranges_by_chan[ch] then slur_ranges_by_chan[ch] = {} end
+                local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, tonumber(sqn)) + 0.5)
+                local eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, tonumber(n2sqn)) + 0.5)
+                local eff_pc = (pre_pc and pre_pc ~= "") and tonumber(pre_pc) or nil
+                if eff_pc and (eff_pc < 0 or eff_pc > 127) then eff_pc = nil end
+                table.insert(slur_ranges_by_chan[ch], {
+                    id = s_id,
+                    sppq = sppq,
+                    eppq = eppq,
+                    pre_pc = eff_pc,
+                    pre_msb = (pre_msb and pre_msb ~= "") and tonumber(pre_msb) or -1,
+                    pre_lsb = (pre_lsb and pre_lsb ~= "") and tonumber(pre_lsb) or -1
+                })
             end
         end
     end
@@ -2642,7 +2845,7 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
         end
     end
     
-    -- 3. Determine per channel where a momentary articulation (e.g. Marcato/Staccato) ends
+    -- 3. Determine per channel where a momentary articulation (e.g. Marcato/Staccato/Slur) ends
     local needed_chase_at_ppq = {}
     for chan, n_list in pairs(notes_by_chan) do
         table.sort(n_list, function(a, b) return a.sppq < b.sppq end)
@@ -2655,6 +2858,18 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
         }
         local in_momentary = false
         local last_momentary_end_ppq = nil
+        local last_active_slur = nil
+        
+        local function get_active_slur_at(ppq)
+            local slurs = slur_ranges_by_chan[chan]
+            if not slurs then return nil end
+            for _, sl in ipairs(slurs) do
+                if ppq >= sl.sppq - 15 and ppq <= sl.eppq + 15 then
+                    return sl
+                end
+            end
+            return nil
+        end
         
         for idx, n in ipairs(n_list) do
             -- Check all program changes that occurred before or at this note
@@ -2668,7 +2883,8 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
                                 break
                             end
                         end
-                        if not is_this_chase and not is_momentary(nil, pc_ev.pc) then
+                        local is_slur_pc = (get_active_slur_at(pc_ev.ppq) ~= nil)
+                        if not is_this_chase and not is_momentary(nil, pc_ev.pc) and not is_slur_pc then
                             active_base = {
                                 pc = pc_ev.pc,
                                 msb = (pc_ev.msb >= 0) and pc_ev.msb or (chan_latest_msb[chan] or -1),
@@ -2679,13 +2895,21 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
                 end
             end
             
-            -- Check if this note is momentary articulated (via type 15 text or PC at note start)
+            -- Check if this note is momentary articulated (via type 15 text, slur range, or PC at note start)
             local is_mom = false
-            for _, na in ipairs(note_arts_list) do
-                if na.pitch == n.pitch and math.abs(na.ppq - n.sppq) <= 25 then
-                    if is_momentary(na.art, nil) then
-                        is_mom = true
-                        break
+            local cur_slur = get_active_slur_at(n.sppq)
+            if cur_slur then
+                is_mom = true
+                last_active_slur = cur_slur
+            end
+            
+            if not is_mom then
+                for _, na in ipairs(note_arts_list) do
+                    if na.pitch == n.pitch and math.abs(na.ppq - n.sppq) <= 25 then
+                        if is_momentary(na.art, nil) then
+                            is_mom = true
+                            break
+                        end
                     end
                 end
             end
@@ -2710,38 +2934,58 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
             else
                 if in_momentary and (not last_momentary_end_ppq or n.sppq >= last_momentary_end_ppq - 15) then
                     -- Momentary articulation passage ended here!
-                    -- Place return chase immediately after momentary passage ends (e.g. at end of bar)
-                    if active_base then
+                    -- Place return chase immediately after momentary passage ends
+                    local return_base = active_base
+                    if last_active_slur and last_active_slur.pre_pc and last_active_slur.pre_pc >= 0 and last_active_slur.pre_pc <= 127 then
+                        return_base = {
+                            pc = last_active_slur.pre_pc,
+                            msb = (last_active_slur.pre_msb and last_active_slur.pre_msb >= 0) and last_active_slur.pre_msb or (chan_latest_msb[chan] or -1),
+                            lsb = (last_active_slur.pre_lsb and last_active_slur.pre_lsb >= 0) and last_active_slur.pre_lsb or (chan_latest_lsb[chan] or -1),
+                        }
+                    end
+                    
+                    if return_base and return_base.pc and return_base.pc >= 0 and return_base.pc <= 127 then
                         local chase_ppq = (last_momentary_end_ppq and (last_momentary_end_ppq + 10 < n.sppq)) and (last_momentary_end_ppq + 10) or n.sppq
                         local chase_k = string.format("%d_%d", math.floor(chase_ppq + 0.5), chan)
-                        local eff_m = (active_base.msb and active_base.msb >= 0) and active_base.msb or (chan_latest_msb[chan] or -1)
-                        local eff_l = (active_base.lsb and active_base.lsb >= 0) and active_base.lsb or (chan_latest_lsb[chan] or -1)
+                        local eff_m = (return_base.msb and return_base.msb >= 0) and return_base.msb or (chan_latest_msb[chan] or -1)
+                        local eff_l = (return_base.lsb and return_base.lsb >= 0) and return_base.lsb or (chan_latest_lsb[chan] or -1)
                         needed_chase_at_ppq[chase_k] = {
                             sppq = chase_ppq,
                             chan = chan,
-                            pc = active_base.pc,
+                            pc = return_base.pc,
                             msb = eff_m,
                             lsb = eff_l
                         }
                     end
                     in_momentary = false
+                    last_active_slur = nil
                 end
             end
         end
         
         -- If the take ends inside a momentary articulation, restore base articulation right at the end of the note/bar
-        if in_momentary and last_momentary_end_ppq and active_base then
-            local chase_ppq = last_momentary_end_ppq + 10
-            local chase_k = string.format("%d_%d", math.floor(chase_ppq + 0.5), chan)
-            local eff_m = (active_base.msb and active_base.msb >= 0) and active_base.msb or (chan_latest_msb[chan] or -1)
-            local eff_l = (active_base.lsb and active_base.lsb >= 0) and active_base.lsb or (chan_latest_lsb[chan] or -1)
-            needed_chase_at_ppq[chase_k] = {
-                sppq = chase_ppq,
-                chan = chan,
-                pc = active_base.pc,
-                msb = eff_m,
-                lsb = eff_l
-            }
+        if in_momentary and last_momentary_end_ppq then
+            local return_base = active_base
+            if last_active_slur and last_active_slur.pre_pc and last_active_slur.pre_pc >= 0 and last_active_slur.pre_pc <= 127 then
+                return_base = {
+                    pc = last_active_slur.pre_pc,
+                    msb = (last_active_slur.pre_msb and last_active_slur.pre_msb >= 0) and last_active_slur.pre_msb or (chan_latest_msb[chan] or -1),
+                    lsb = (last_active_slur.pre_lsb and last_active_slur.pre_lsb >= 0) and last_active_slur.pre_lsb or (chan_latest_lsb[chan] or -1),
+                }
+            end
+            if return_base and return_base.pc and return_base.pc >= 0 and return_base.pc <= 127 then
+                local chase_ppq = last_momentary_end_ppq + 10
+                local chase_k = string.format("%d_%d", math.floor(chase_ppq + 0.5), chan)
+                local eff_m = (return_base.msb and return_base.msb >= 0) and return_base.msb or (chan_latest_msb[chan] or -1)
+                local eff_l = (return_base.lsb and return_base.lsb >= 0) and return_base.lsb or (chan_latest_lsb[chan] or -1)
+                needed_chase_at_ppq[chase_k] = {
+                    sppq = chase_ppq,
+                    chan = chan,
+                    pc = return_base.pc,
+                    msb = eff_m,
+                    lsb = eff_l
+                }
+            end
         end
     end
     
@@ -2750,11 +2994,12 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
     for ti = cur_text_cnt - 1, 0, -1 do
         local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
         if ok and etype == 15 then
-            local ch_c, pc_c = msg:match("NOTATOR_CHASE%s+(%d+)%s+(%d+)")
+            local ch_c, pc_c = msg:match("NOTATOR_CHASE%s+(%d+)%s+(%-?%d+)")
             if ch_c and pc_c then
+                local num_pc = tonumber(pc_c)
                 local k = string.format("%d_%d", math.floor(ppq + 0.5), tonumber(ch_c))
                 local needed = needed_chase_at_ppq[k]
-                if not needed or needed.pc ~= tonumber(pc_c) then
+                if not needed or needed.pc ~= num_pc or not num_pc or num_pc < 0 or num_pc > 127 then
                     reaper.MIDI_DeleteTextSysexEvt(take, ti)
                     local _, _, cur_ccs = reaper.MIDI_CountEvts(take)
                     for ci = cur_ccs - 1, 0, -1 do
@@ -2762,7 +3007,7 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
                         if ok_c and math.abs(c_ppq - ppq) <= 25 and c_chan == tonumber(ch_c) then
                             local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
                             local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
-                            if is_pc and msg2 == tonumber(pc_c) then
+                            if is_pc and (msg2 == num_pc or (num_pc and num_pc < 0 and msg2 == 127)) then
                                 reaper.MIDI_DeleteCC(take, ci)
                             elseif is_bank then
                                 reaper.MIDI_DeleteCC(take, ci)
@@ -3635,6 +3880,10 @@ function MidiService.remove_selected_articulations(state, active_tracks_data)
     
     reaper.Undo_EndBlock2(0, "Notator: Remove Articulations", -1)
     reaper.UpdateArrange()
+    
+    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+    SlurService.remove_slurs_for_notes(state, targets)
+    
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
     state:clear_articulation_selection()
@@ -4749,9 +4998,134 @@ function MidiService.cleanup_orphaned_score_elements(state)
         ScaleService.revert_orphaned_chord_notes(state)
     end
     
+    -- 9. Clean orphaned slurs and ties
+    if state.user_slurs and #state.user_slurs > 0 then
+        local kept_slurs = {}
+        local slur_changed = false
+        for _, sl in ipairs(state.user_slurs) do
+            if not sl.track_guid or sl.track_guid == "" or valid_tracks[sl.track_guid] then
+                table.insert(kept_slurs, sl)
+            else
+                slur_changed = true
+            end
+        end
+        if slur_changed then
+            state.user_slurs = kept_slurs
+            any_changed = true
+            local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+            SlurService.save_slurs(state)
+        end
+    end
+    if state.user_ties and #state.user_ties > 0 then
+        local kept_ties = {}
+        local tie_changed = false
+        for _, tie in ipairs(state.user_ties) do
+            local is_valid = false
+            if not tie.track_guid or tie.track_guid == "" then
+                is_valid = true
+            elseif valid_tracks[tie.track_guid] then
+                -- Locate the track and its takes
+                local trk = nil
+                for t = 0, num_tracks - 1 do
+                    local cand = reaper.GetTrack(0, t)
+                    if cand and reaper.GetTrackGUID(cand) == tie.track_guid then
+                        trk = cand; break
+                    end
+                end
+                if trk then
+                    local num_items = reaper.CountTrackMediaItems(trk)
+                    local found_take = false
+                    for ii = 0, num_items - 1 do
+                        local it = reaper.GetTrackMediaItem(trk, ii)
+                        local tk = it and reaper.GetActiveTake(it)
+                        if tk and reaper.ValidatePtr(tk, "MediaItem_Take*") and reaper.TakeIsMIDI(tk) then
+                            found_take = true
+                            local n1_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(tk, tie.n1_start_qn or 0.0) + 0.5)
+                            local n2_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(tk, tie.n2_start_qn or 1.0) + 0.5)
+                            
+                            local has_tag = false
+                            local _, _, _, text_cnt = reaper.MIDI_CountEvts(tk)
+                            for ti = 0, text_cnt - 1 do
+                                local ok, _, _, _, etype, msg = reaper.MIDI_GetTextSysexEvt(tk, ti)
+                                if ok and etype == 15 and msg:match("^NOTATOR_TIE%s+" .. tie.id) then
+                                    has_tag = true; break
+                                end
+                            end
+                            
+                            local n1_match = false
+                            local n2_match_muted = false
+                            local n2_match_unmuted = false
+                            local _, notecnt = reaper.MIDI_CountEvts(tk)
+                            for ni = 0, notecnt - 1 do
+                                local ok, _, muted, sppq, eppq, ch, p = reaper.MIDI_GetNote(tk, ni)
+                                if ok and p == tie.pitch and (tie.chan == nil or ch == (tie.chan or 0)) then
+                                    if math.abs(sppq - n1_sppq) <= 120 then
+                                        if eppq >= n2_sppq + 10 then n1_match = true end
+                                    end
+                                    if math.abs(sppq - n2_sppq) <= 120 then
+                                        if muted then n2_match_muted = true else n2_match_unmuted = true end
+                                    end
+                                end
+                            end
+                            
+                            -- A tie requires that either Note 1 sustains into Note 2, Note 2 is muted, or has a tie tag.
+                            -- If Note 2 is clearly unmuted and Note 1 does NOT cover Note 2,
+                            -- then the user separated the notes in REAPER, making the tie an orphan.
+                            if n2_match_unmuted and not n1_match and not n2_match_muted then
+                                is_valid = false
+                                if has_tag then
+                                    for ti = text_cnt - 1, 0, -1 do
+                                        local ok, _, _, _, etype, msg = reaper.MIDI_GetTextSysexEvt(tk, ti)
+                                        if ok and etype == 15 and (msg:match("^NOTATOR_TIE%s+" .. tie.id) or msg:match("^NOTATOR_TIE_SLAVE%s+" .. tie.id)) then
+                                            reaper.MIDI_DeleteTextSysexEvt(tk, ti)
+                                        end
+                                    end
+                                end
+                            elseif has_tag or n1_match or n2_match_muted then
+                                is_valid = true
+                                break
+                            end
+                        end
+                    end
+                    if not found_take then is_valid = false end
+                end
+            end
+            if is_valid then
+                table.insert(kept_ties, tie)
+            else
+                tie_changed = true
+            end
+        end
+        if tie_changed then
+            state.user_ties = kept_ties
+            any_changed = true
+            local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+            SlurService.save_slurs(state)
+        end
+    end
+    
     if any_changed and reaper.MarkProjectDirty then
         reaper.MarkProjectDirty(0)
     end
+end
+
+-- ==============================================================================
+-- SLURS & TIES DELEGATOR INTERFACE
+-- ==============================================================================
+
+function MidiService.toggle_slur(state, active_tracks_data)
+    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+    return SlurService.toggle_slur(state, active_tracks_data)
+end
+
+function MidiService.toggle_tie(state, active_tracks_data)
+    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+    return SlurService.toggle_tie(state, active_tracks_data)
+end
+
+function MidiService.remove_slurs_and_ties(state, opt_notes)
+    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+    return SlurService.remove_slurs_and_ties(state, opt_notes)
 end
 
 return MidiService

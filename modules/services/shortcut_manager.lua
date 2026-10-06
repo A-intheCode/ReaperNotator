@@ -225,6 +225,22 @@ ShortcutManager.DEFAULT_SHORTCUTS = {
         shift = false,
         alt  = false
     },
+    toggle_slur = {
+        name = "Toggle Slur (Legato phrase mark)",
+        cat  = "Edit & Selection",
+        key  = "S",
+        ctrl = false,
+        shift = false,
+        alt  = false
+    },
+    toggle_tie = {
+        name = "Toggle Tie (Hold same-pitch notes)",
+        cat  = "Edit & Selection",
+        key  = "T",
+        ctrl = false,
+        shift = false,
+        alt  = false
+    },
     select_next_note = {
         name = "Select next note on timeline",
         cat  = "Edit & Selection",

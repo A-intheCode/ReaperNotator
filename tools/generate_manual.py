@@ -318,6 +318,84 @@ MANUAL_DATA = [
                         "    * Target Confirmation: The modal clearly displays the target track name and confirms that note articulations currently match the active instrument sound bank.\n"
                         "    * Emergency Reset Action: If playback remains stuck, silent, or corrupted by external MIDI CC messages, clicking the red button '[ 🧹 Purge All Articulations (Last Resort) ]' completely strips all articulation glyphs, Type 15 notation tags (`NOTE <pitch> <chan> a <art_id>`), Bank Selects (CC0 / CC32), keyswitch Program Changes, and auto-chase return events (`NOTATOR_CHASE`). It then re-engages the default base patch (Long / Sustain) at the item start, resetting the track to clean default sustain playback.\n"
                         "    * Safe Cancellation: Clicking '[ ✕ Cancel (Keep Articulations) ]' or pressing Escape immediately dismisses the modal without altering any notes, articulations, or MIDI events."
+            },
+            {
+                "heading": "6.6 Slurs (Legato Phrase Marks) & Ties (Held Notes)",
+                "text": "Functions, Workflow Architecture & DAW Engine:\n"
+                        "```\n"
+                        "+-------------------------------------------------------------+\n"
+                        "|                     SELECTION WORKFLOW                      |\n"
+                        "|  - 2+ Notes Selected: Melodic phrase N1 .. Nk (all notes)   |\n"
+                        "|  - 1 Note Selected: N1 -> Auto-connects next note (N2)      |\n"
+                        "+------------------------------+------------------------------+\n"
+                        "                               |                               \n"
+                        "               +---------------+---------------+               \n"
+                        "               |                               |               \n"
+                        "               v                               v               \n"
+                        "+-----------------------------+ +-----------------------------+\n"
+                        "|          SLUR (S)           | |           TIE (T)           |\n"
+                        "|      Different Pitches      | |       Identical Pitch       |\n"
+                        "|      (Melodic Phrasing)     | |     (Duration Addition)     |\n"
+                        "+-----------------------------+ +-----------------------------+\n"
+                        "               |                               |               \n"
+                        "               v                               v               \n"
+                        "+-----------------------------+ +-----------------------------+\n"
+                        "|    PLAYBACK & AUTOMATION    | |      SCORE & ENGRAVING      |\n"
+                        "| - Pre-Slur Articulation:    | | - Both original noteheads   |\n"
+                        "|   Detects active patch      | |   remain visible on canvas  |\n"
+                        "|   (e.g. Tremolo PC/Bank)    | |   (e.g. 2 Half Notes stay;  |\n"
+                        "| - Intelligent Patch Match:  | |   NEVER merged to whole!)   |\n"
+                        "|   * Has Legato -> Legato PC | | - Engraver tie curve        |\n"
+                        "|   * No Legato  -> Long/     | |   (Cubic Bezier arch per    |\n"
+                        "|     Sustain Fallback Patch  | |   Gould / Read stem rules)  |\n"
+                        "| - Phrasing Overlap:         | +-----------------------------+\n"
+                        "|   Seamless overlap between  |                |               \n"
+                        "|   all steps (Ni -> Ni+1)    |                v               \n"
+                        "| - Auto-Chase Return Engine: | +-----------------------------+\n"
+                        "|   At phrase end (Nk),       | |       MIDI TAKE ENGINE      |\n"
+                        "|   automatically returns to  | | - Note 1 sustained to end   |\n"
+                        "|   pre-slur articulation     | |   of Note 2 for continuity  |\n"
+                        "|   (Tremolo restored!)       | | - Note 2 deleted from take  |\n"
+                        "| - Smooth Bezier phrase arch | |   (zero second-note strike) |\n"
+                        "|   rendered on score canvas  | | - Virtual Note 2 on canvas  |\n"
+                        "+-----------------------------+ +-----------------------------+\n"
+                        "               |                               |               \n"
+                        "               +---------------+---------------+               \n"
+                        "                               |                               \n"
+                        "                               v                               \n"
+                        "+-------------------------------------------------------------+\n"
+                        "|                RESIDUE-FREE REMOVAL & TOGGLE                |\n"
+                        "|  - Direct Canvas Click: Click curve to select (gold highlight)|\n"
+                        "|  - Key [Delete] / [Backspace] removes selected slur or tie  |\n"
+                        "|  - Key S or T (Toggle Off) / '✕ Remove Slur/Tie'            |\n"
+                        "|  - Slur: Legato/Long PC removed, Auto-Chase resynchronized  |\n"
+                        "|  - Tie: Note 1 length restored, Note 2 re-inserted in take  |\n"
+                        "|  - Type 15 tags purged; zero orphaned MIDI events left      |\n"
+                        "+-------------------------------------------------------------+\n"
+                        "```\n"
+                        "- Musical Distinction (Slur vs. Tie):\n"
+                        "    * Tie (Haltebogen): Exclusively connects notes of the IDENTICAL pitch. A tie performs mathematical duration addition (e.g. tying a half note to a quarter note produces a sounding duration of 3 beats). The tone sounds upon the initial attack and is held continuously; the second note is never struck again. Ties are standardly employed to cross barlines or metric half-measure divisions where single notes cannot legally be notated.\n"
+                        "    * Slur (Bindebogen / Legato): Connects notes of DIFFERENT pitches. A slur signifies that all notes within the marked phrase must be performed legato (smoothly connected without re-articulation or rhythmic separation between pitches).\n"
+                        "- Interactive Selection & Multi-Note Phrasing Workflow:\n"
+                        "    * Sidebar Access: Located in the dedicated 'SLURS & TIES' section between Articulations and Transpose on the main sidebar, as well as in the Articulations drawer.\n"
+                        "    * Direct Canvas Hit-Testing: Slurs and ties can be clicked directly on the score canvas. Clicking a curve highlights it in bright gold (#FFD700), and pressing the Delete or Backspace key immediately removes the slur or tie.\n"
+                        "    * 2 Notes Selected: Pressing 'S' or clicking 'Slur [S]' immediately connects Note 1 to Note 2. Pressing 'T' or clicking 'Tie [T]' verifies pitch equality and ties them.\n"
+                        "    * Multi-Note Selection (3+ Notes): Pressing 'S' or clicking 'Slur [S]' creates an expressive phrase slur spanning from N1 to Nk, incorporating all intermediate notes on that track and channel.\n"
+                        "    * 1 Note Selected: Pressing 'S' or clicking 'Slur [S]' automatically identifies the next chronological note on that track and creates the slur. Pressing 'T' or clicking 'Tie [T]' searches for the next chronological note sharing the identical pitch and ties them.\n"
+                        "    * Pitch Protection Guard: If 'Tie [T]' is clicked with notes of different pitches, Notator prevents an invalid tie and displays an advisory notification: 'Tie requires notes of the same pitch! Use Slur [S] for melodic phrases.'\n"
+                        "- Haltebogen / Tie Engine & Dual Reality Architecture:\n"
+                        "    * Notehead Preservation (No Collapsing): Both original noteheads and stems (e.g. two separate half notes) remain permanently visible and correctly positioned on the score canvas per Elaine Gould and Gardner Read engraving standards. They are NEVER collapsed or merged into a single whole note or altered note value.\n"
+                        "    * Score Engraver Tie Arch: A smooth cubic Bezier tie curve (Engraver.draw_tie) connects the noteheads, positioned per engraving standards opposite stems (below noteheads for stems-up notes, above noteheads for stems-down notes).\n"
+                        "    * Dual Reality MIDI Architecture: In REAPER's underlying MIDI take, Note 1 is extended through the end of Note 2 for uninterrupted sounding sustain, and Note 2 is deleted from the take via MIDI_DeleteNote to completely eliminate secondary audio re-strikes. On the score canvas, Note 2 is losslessly synthesized from Type 15 notation tags (NOTATOR_TIE / NOTATOR_TIE_SLAVE), ensuring perfect visual score fidelity across measures and barlines.\n"
+                        "    * REAPER Editor Synchronization: Every tie creation or deletion instantly triggers reaper.MarkTrackItemsDirty and reaper.MIDIEditor_OnCommand(40435), ensuring open REAPER Piano Roll editors synchronize immediately without manual window refresh.\n"
+                        "- Melodic Slur Phrasing, Same-Pitch Protection & Articulation Return Engine:\n"
+                        "    * Pre-Slur Articulation Memory: Before applying a slur, Notator scans active take events to record the current playing technique (e.g. Tremolo PC, MSB, LSB).\n"
+                        "    * Intelligent Patch Match with 'Long' / Sustain Fallback: When a slur starts, Notator queries the instrument's Reaticulate sound bank for a dedicated legato or slur patch. If the instrument library lacks an explicit legato articulation, Notator automatically falls back to long / sustain. This guarantees that the instrument cleanly transitions out of Tremolo (or other previous techniques) instead of remaining stuck in Tremolo.\n"
+                        "    * Same-Pitch Overlap Protection: To trigger true acoustic legato intervals in VST libraries, slurring notes of different pitches creates a 2-PPQ overlap. However, if consecutive notes share the exact same pitch, Notator strictly prohibits overlap (capping at next_sppq - 1), preventing REAPER from destructively merging identical pitch notes.\n"
+                        "    * Gunshot Bug Protection: Re-engineered auto-chase routines enforce strict range checks (0 <= pc <= 127). If an item has no previous articulation (pre_slur_pc = -1), Notator strictly avoids sending negative program change bytes, preventing the unintended playback of General MIDI Patch 127 ('Gunshot').\n"
+                        "    * Dynamic Auto-Chase Return Engine: At the exact conclusion of the slur phrase (Nk), the auto-chase engine immediately sends a return Bank Select and Program Change restoring the pre-slur articulation (e.g. automatically resuming Tremolo without composer intervention).\n"
+                        "- Residue-Free Removal & Toggle:\n"
+                        "    * Toggling 'Slur [S]' or 'Tie [T]' on an already slurred/tied note (or hitting Delete on a selected curve) removes the curve, restores Note 1's original duration, re-inserts Note 2 into the MIDI take, deletes Legato/Long Program Changes, and cleans all Auto-Chase return events with zero orphaned MIDI data."
             }
         ]
     },
@@ -536,8 +614,8 @@ MANUAL_DATA = [
                         "| 1 .. 6 | Rhythmic Values | 1=Whole, 2=Half, 3=Quarter, 4=Eighth, 5=16th, 6=32nd |\n"
                         "| . (Period) | Toggle Dot | Toggles dotted note duration (1.5x) |\n"
                         "| - / 0 / = | Accidentals | -=Flat (b), 0=Natural (nat), ==Sharp (#) |\n"
-                        "| T | Tie Note | Toggles tie / Bindebogen to adjacent note |\n"
-                        "| S | Slur Phrase | Toggles legato slur over selected passage |\n"
+                        "| S | Slur / Legato (⌒) | Toggles musical legato slur over 2 notes (or note to next); engages Legato keyswitch |\n"
+                        "| T | Tie / Haltebogen (‿) | Toggles tie between 2 notes of identical pitch (duration sum without second note attack) |\n"
                         "| A | Accent | Toggles accent mark (>) on selected note |\n"
                         "| Ctrl + T | New Text Item | Creates a floating text annotation at cursor position |\n"
                         "| Ctrl + S | Save Project | Triggers REAPER project save |"
@@ -712,9 +790,41 @@ for chap in MANUAL_DATA:
         lines = raw_text.split("\n")
         in_table = False
         table_rows = []
+        in_code = False
+        code_lines = []
         
         for l in lines:
             line_str = l.strip()
+            if line_str.startswith("```"):
+                if not in_code:
+                    in_code = True
+                    code_lines = []
+                else:
+                    in_code = False
+                    if code_lines:
+                        pdf.ln(1)
+                        needed_h = len(code_lines) * 3.3 + 4
+                        if pdf.get_y() + needed_h > 275:
+                            pdf.add_page()
+                            pdf.ln(2)
+                        box_y = pdf.get_y()
+                        pdf.set_fill_color(248, 250, 252)
+                        pdf.set_draw_color(203, 213, 225)
+                        pdf.rect(pdf.l_margin, box_y, pdf.epw, needed_h, "DF")
+                        pdf.set_font("Courier", "", 6.2)
+                        pdf.set_text_color(30, 41, 59)
+                        pdf.set_y(box_y + 2)
+                        for cl in code_lines:
+                            pdf.set_x(pdf.l_margin + 2)
+                            pdf.cell(pdf.epw - 4, 3.3, cl, new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                        pdf.set_font("Helvetica", "", 8.5)
+                        pdf.ln(2)
+                continue
+                
+            if in_code:
+                code_lines.append(l)
+                continue
+                
             if not line_str:
                 pdf.ln(2)
                 continue

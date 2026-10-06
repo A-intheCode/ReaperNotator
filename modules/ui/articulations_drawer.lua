@@ -202,6 +202,23 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
             reaper.ImGui_SetTooltip(ctx, "Left-click: Scans and reconciles all note articulations with the active track bank, fixing playback and auto-chase return points.\n\nRight-click (or click again when in sync): Opens 'Fix of Last Resort' confirmation modal to purge all articulations and reset to clean default sustain.")
         end
         
+        -- Slurs & Ties
+        local avail_w_dt = reaper.ImGui_GetContentRegionAvail(ctx)
+        local half_drawer_w = math.floor((avail_w_dt - 4) / 2)
+        if reaper.ImGui_Button(ctx, "⌒ Slur [S]##Drawer", half_drawer_w, 24) then
+            midi_service.toggle_slur(state, active_tracks_data)
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Slur (Legato phrase mark) [Hotkey: S]:\nConnects 2 selected notes (or 1 note to next) with a Legato slur.\nPlays true Legato articulation and triggers sampler transitions.")
+        end
+        reaper.ImGui_SameLine(ctx)
+        if reaper.ImGui_Button(ctx, "‿ Tie [T]##Drawer", half_drawer_w, 24) then
+            midi_service.toggle_tie(state, active_tracks_data)
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Tie (Held note) [Hotkey: T]:\nConnects 2 notes of the same pitch to combine their duration without re-striking.")
+        end
+        
         reaper.ImGui_Spacing(ctx)
         
         -- Vertical distance of articulations from staff line (independent)

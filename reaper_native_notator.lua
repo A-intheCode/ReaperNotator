@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.5.6
+-- @version 1.6.0
 -- @changelog
 --   + v1.5.6: Dynamic Object Scaling Decoupling & Legacy Hairpin Playback Healing:
 --             - Decoupled Dynamic Scaling: Hairpins (<, >) and Dynamic Texts (cresc., dim.) now strictly collide and bound only against dynamic markers (p, f, etc.), other hairpins, and dynamic texts, completely ignoring note articulations. Hairpins can now scale freely across dense staccato phrases without shrinking.
@@ -192,6 +192,7 @@ local ScaleModal          = require("ui.scale_modal")
 local KeySignatureService  = require("services.key_signature_service")
 local KeySignatureDrawer   = require("ui.key_signature_drawer")
 local MusicXmlModal        = require("ui.musicxml_modal")
+local SlurService          = require("services.slur_service")
 
 -- 4. Initialization of State & Fonts
 local state = State.new()
@@ -207,6 +208,7 @@ RepeatService.load_repeat_marks(state)
 RehearsalMarkService.load_marks(state)
 ScaleService.load_chord_items(state)
 KeySignatureService.load(state)
+SlurService.load_slurs(state)
 MidiService.cleanup_orphaned_score_elements(state)
 PatternService.init()
 local fonts = FontManager.init(ctx, state)
@@ -225,6 +227,7 @@ reaper.atexit(function()
     RehearsalMarkService.save_marks(state)
     ScaleService.save_chord_items(state)
     KeySignatureService.save(state)
+    SlurService.save_slurs(state)
     state:save_settings()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end)
@@ -253,6 +256,7 @@ local function loop()
         RepeatService.load_repeat_marks(state)
         RehearsalMarkService.load_marks(state)
         ScaleService.load_chord_items(state)
+        SlurService.load_slurs(state)
         MidiService.cleanup_orphaned_score_elements(state)
         state:clear_selection()
     end

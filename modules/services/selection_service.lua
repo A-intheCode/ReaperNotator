@@ -85,7 +85,9 @@ function SelectionService.count_all_selected(state)
     elseif state.selected_octave_line then
         ol_cnt = 1
     end
-    return n_cnt, d_cnt, hp_cnt, dt_cnt, p_cnt, ti_cnt, ol_cnt
+    local sl_cnt = state.selected_slur and 1 or 0
+    local tie_cnt = state.selected_tie and 1 or 0
+    return n_cnt, d_cnt, hp_cnt, dt_cnt, p_cnt, ti_cnt, ol_cnt, sl_cnt, tie_cnt
 end
 
 -- Determines the earliest start QN and bounds of current selection
@@ -610,6 +612,30 @@ function SelectionService.delete_all_selected(state, midi_service, active_tracks
         any_deleted = true
     end
 
+    -- Delete selected slur
+    if state.selected_slur then
+        local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+        SlurService.delete_slur(state, state.selected_slur.id, midi_service, active_tracks_data)
+        state.selected_slur = nil
+        any_deleted = true
+    end
+
+    -- Delete selected tie
+    if state.selected_tie then
+        local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+        SlurService.delete_tie(state, state.selected_tie.id, midi_service, active_tracks_data)
+        state.selected_tie = nil
+        any_deleted = true
+    end
+
+    -- Delete selected articulation(s)
+    if (state.selected_articulations and state.count_selected_articulations and state:count_selected_articulations() > 0) or state.selected_articulation then
+        if midi_service and midi_service.delete_selected_articulations then
+            midi_service.delete_selected_articulations(state)
+            any_deleted = true
+        end
+    end
+
     if midi_service then
         midi_service.sync_selection_to_reaper(state, active_tracks_data)
     end
@@ -619,8 +645,8 @@ end
 -- Renders the interactive selection & filter menu with checkboxes in right-click context menu
 function SelectionService.render_menu_items(ctx, state, active_tracks_data, midi_service)
     SelectionService.init_state(state)
-    local n_cnt, d_cnt, hp_cnt, dt_cnt, p_cnt, ti_cnt, ol_cnt = SelectionService.count_all_selected(state)
-    local total_cnt = n_cnt + d_cnt + hp_cnt + dt_cnt + p_cnt + ti_cnt + ol_cnt
+    local n_cnt, d_cnt, hp_cnt, dt_cnt, p_cnt, ti_cnt, ol_cnt, sl_cnt, tie_cnt = SelectionService.count_all_selected(state)
+    local total_cnt = n_cnt + d_cnt + hp_cnt + dt_cnt + p_cnt + ti_cnt + ol_cnt + (sl_cnt or 0) + (tie_cnt or 0)
     
     reaper.ImGui_TextColored(ctx, 0x3498DBFF, string.format("SELECTION (%d Item%s)", total_cnt, total_cnt == 1 and "" or "s"))
     reaper.ImGui_Separator(ctx)

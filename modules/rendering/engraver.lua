@@ -1227,8 +1227,8 @@ function Engraver.decompose_bar_segment(start_in_bar, raw_dur, bpi, depth, allow
         end
     end
     
-    -- 2. Full-measure whole note (in 4/4 time: start on beat 1, duration >= 3.85)
-    if start_in_bar < 0.05 and dur >= (bpi - 0.15) then
+    -- 2. Full-measure whole note (in 4/4 time: start on beat 1, duration >= bpi - 0.35)
+    if start_in_bar < 0.20 and dur >= (bpi - 0.35) then
         table.insert(segments, { start_in_bar = 0.0, dur_qn = bpi })
         return segments
     end
@@ -1358,6 +1358,7 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
             local end_bar = math.floor(math.max(clean_sqn, clean_eqn - 0.001) / bpi)
             
             local prev_seg_key = nil
+            local prev_seg_bar = nil
             for bar = start_bar, end_bar do
                 local bar_sqn = bar * bpi
                 local seg_sqn = math.max(clean_sqn, bar_sqn)
@@ -1385,14 +1386,25 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                             dur_qn = sub.dur_qn,
                             is_segment = is_segmented,
                             seg_idx = sub_i,
-                            key = seg_key
+                            key = seg_key,
+                            bar = bar
                         }
                         table.insert(visual_notes, seg)
                         
                         if prev_seg_key then
-                            table.insert(bar_ties, { from_key = prev_seg_key, to_key = seg_key, pitch = n.pitch, orig = n })
+                            local is_cross = (prev_seg_bar ~= nil and prev_seg_bar ~= bar)
+                            table.insert(bar_ties, {
+                                from_key = prev_seg_key,
+                                to_key = seg_key,
+                                pitch = n.pitch,
+                                orig = n,
+                                is_cross_barline = is_cross,
+                                from_bar = prev_seg_bar,
+                                to_bar = bar
+                            })
                         end
                         prev_seg_key = seg_key
+                        prev_seg_bar = bar
                     end
                 end
             end
@@ -2222,7 +2234,7 @@ function Engraver.draw_flags(draw_list, stem_x, stem_end_y, s, col, count, stem_
     end
 end
 
-function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above)
+function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above, opt_thickness)
     local dist = math.abs(x2 - x1)
     if dist < 6 * s then return end
     if math.abs(y2 - y1) > 16 * s then return end
@@ -2237,13 +2249,47 @@ function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above)
     local end_x   = x2 - 4 * s
     local start_y = y1 + dir * 5.0 * s
     local end_y   = y2 + dir * 5.0 * s
+    local thickness = opt_thickness or (2.0 * s)
     
     reaper.ImGui_DrawList_AddBezierCubic(draw_list,
         start_x, start_y,
         start_x + cp_offset, start_y + offset_y,
         end_x - cp_offset, end_y + offset_y,
         end_x, end_y,
-        tie_col, 2.0 * s)
+        tie_col, thickness)
+end
+
+function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickness)
+    local dist_x = x2 - x1
+    if math.abs(dist_x) < 4 * s then return end
+    
+    local dx = dist_x
+    local dy = y2 - y1
+    local chord_len = math.sqrt(dx * dx + dy * dy)
+    
+    local arc_h = math.min(26 * s, math.max(8 * s, chord_len * 0.12))
+    local dir = above and -1 or 1
+    
+    local start_x = x1 + 5.0 * s
+    local end_x   = x2 - 5.0 * s
+    local start_y = y1 + dir * 6.0 * s
+    local end_y   = y2 + dir * 6.0 * s
+    
+    local cp_dist = math.abs(start_x - end_x) * 0.28
+    local cp1_x = start_x + cp_dist
+    local cp1_y = start_y + dir * arc_h
+    local cp2_x = end_x - cp_dist
+    local cp2_y = end_y + dir * arc_h
+    
+    local slur_col = col or Constants.COLORS.slur_col or Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
+    local thickness = opt_thickness or (2.0 * s)
+    
+    reaper.ImGui_DrawList_AddBezierCubic(draw_list,
+        start_x, start_y,
+        cp1_x, cp1_y,
+        cp2_x, cp2_y,
+        end_x, end_y,
+        slur_col, thickness)
 end
 
 function Engraver.draw_rest(draw_list, r, staff_bottom_y, line_spacing, margin_left, s, qn_per_measure, col, font_music, measure_map, custom_x)
