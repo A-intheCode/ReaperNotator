@@ -1,7 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.6.3
+-- @version 1.6.4
 -- @changelog
+--   + v1.6.4: Hotfix: Non-visible Legato Articulation & Item Cleanup Tools Relocation:
+--             - Resolved Non-visible Legato Articulation: Legato chosen via the Articulations Drawer now renders a visible text badge above the staff (identical to Long), with complete support for font sizing, bold weight, dragging, and hover. Engraving slurs and ties continue to suppress redundant text badges per Gardner Read / Gould standards.
+--             - Item Cleanup Tools in Tools Drawer: Moved 'Clean Notation Events' to the Score Tools Drawer directly below Auto-Voice with a prominent safety separator ('ITEM CLEANUP (SELECTED ITEM)').
+--             - Clear all MIDI/Program Bank Events: Added dedicated action in Tools Drawer to strip Program Changes and Bank Select CCs (CC0/CC32) strictly from the selected MIDI item take.
 --   + v1.5.6: Dynamic Object Scaling Decoupling & Legacy Hairpin Playback Healing:
 --             - Decoupled Dynamic Scaling: Hairpins (<, >) and Dynamic Texts (cresc., dim.) now strictly collide and bound only against dynamic markers (p, f, etc.), other hairpins, and dynamic texts, completely ignoring note articulations. Hairpins can now scale freely across dense staccato phrases without shrinking.
 --             - Legacy Hairpin Playback Healing: The '⚡ Fix Playback' command automatically detects collapsed hairpins and dynamic texts (<= 0.75 QN) in older projects, restores them to their natural musical phrase boundaries, re-resolves dynamic levels, and regenerates clean continuous CC automation ramps.

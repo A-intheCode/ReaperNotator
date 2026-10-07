@@ -4878,6 +4878,138 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort, is_
 end
 
 -- ==============================================================================
+-- ITEM CLEANUP TOOLS (Strictly Selected MIDI Item)
+-- ==============================================================================
+
+--- Clears all Program Changes (0xC0) and Bank Selects (CC0 / CC32) from the
+--- active take of the selected MIDI item. Notes and other CCs are left untouched.
+--- @param state table
+--- @param active_tracks_data table|nil
+--- @return number total_deleted
+function MidiService.clear_program_bank_events(state, active_tracks_data)
+    local target_item = nil
+    if state and state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*") then
+        target_item = state.selected_item
+    elseif reaper.CountSelectedMediaItems(0) > 0 then
+        target_item = reaper.GetSelectedMediaItem(0, 0)
+    elseif state and state.selected_note and state.selected_note.item and reaper.ValidatePtr(state.selected_note.item, "MediaItem*") then
+        target_item = state.selected_note.item
+    elseif state and state.selected_notes and next(state.selected_notes) ~= nil then
+        for _, sn in pairs(state.selected_notes) do
+            if sn.item and reaper.ValidatePtr(sn.item, "MediaItem*") then
+                target_item = sn.item
+                break
+            end
+        end
+    end
+
+    if not target_item or not reaper.ValidatePtr(target_item, "MediaItem*") then
+        local it, tk = MidiService.get_target_item_and_take(state, active_tracks_data)
+        target_item = it
+    end
+
+    if not target_item or not reaper.ValidatePtr(target_item, "MediaItem*") then
+        if state then
+            state.status_msg = "Clear Program/Bank: Please select a MIDI item first!"
+        end
+        return 0
+    end
+
+    local take = (state and state.selected_take) or reaper.GetActiveTake(target_item)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) then
+        if state then
+            state.status_msg = "Clear Program/Bank: Selected item contains no active MIDI take!"
+        end
+        return 0
+    end
+
+    local _, item_name = reaper.GetSetMediaItemTakeInfo_String(take, "P_NAME", "", false)
+    if not item_name or item_name == "" then
+        local _, it_notes = reaper.GetSetMediaItemInfo_String(target_item, "P_NOTES", "", false)
+        item_name = (it_notes ~= "") and it_notes or "Selected MIDI Item"
+    end
+
+    reaper.Undo_BeginBlock2(0)
+    reaper.MIDI_DisableSort(take)
+
+    local pc_cnt = 0
+    local bank_cnt = 0
+
+    -- 1. Scan and delete all Program Changes (0xC0) and Bank Selects (CC0 / CC32)
+    local _, _, cccnt, textcnt = reaper.MIDI_CountEvts(take)
+    for ci = (cccnt or 0) - 1, 0, -1 do
+        local ok, _, _, _, chanmsg, _, msg2 = reaper.MIDI_GetCC(take, ci)
+        if ok then
+            local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
+            local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
+            if is_pc then
+                reaper.MIDI_DeleteCC(take, ci)
+                pc_cnt = pc_cnt + 1
+            elseif is_bank then
+                reaper.MIDI_DeleteCC(take, ci)
+                bank_cnt = bank_cnt + 1
+            end
+        end
+    end
+
+    -- 2. Remove any NOTATOR_CHASE text events in this take so old chase events don't retrigger
+    local chase_cnt = 0
+    for ti = (textcnt or 0) - 1, 0, -1 do
+        local ok_t, _, _, _, _, msg_t = reaper.MIDI_GetTextSysexEvt(take, ti)
+        if ok_t and msg_t and msg_t:find("NOTATOR_CHASE") then
+            reaper.MIDI_DeleteTextSysexEvt(take, ti)
+            chase_cnt = chase_cnt + 1
+        end
+    end
+
+    -- 3. Reset articulation tags on any selected notes in state belonging to this take
+    if state then
+        if state.selected_notes then
+            for _, sn in pairs(state.selected_notes) do
+                if sn.take == take then
+                    sn.articulation = nil
+                end
+            end
+        end
+        if state.selected_note and state.selected_note.take == take then
+            state.selected_note.articulation = nil
+        end
+    end
+
+    reaper.MIDI_Sort(take)
+    local parent_track = reaper.GetMediaItemTake_Track(take)
+    if parent_track and reaper.ValidatePtr(parent_track, "MediaTrack*") then
+        reaper.MarkTrackItemsDirty(parent_track, target_item)
+    end
+    reaper.Undo_EndBlock2(0, "Notator: Clear Program & Bank Events", -1)
+    reaper.UpdateArrange()
+
+    if MidiService.invalidate_cache then
+        MidiService.invalidate_cache()
+    end
+    if state then
+        state.active_tracks_cache = nil
+    end
+
+    local total_deleted = pc_cnt + bank_cnt + chase_cnt
+    if state then
+        state.status_msg = string.format("🗑 Removed %d Program Change(s) and %d Bank Select(s) from '%s'", pc_cnt, bank_cnt, item_name)
+    end
+
+    return total_deleted
+end
+
+--- Cleans Type 15 notation text events (dynamics) from the selected MIDI item.
+--- @param state table
+--- @param active_tracks_data table|nil
+function MidiService.clean_notation_events(state, active_tracks_data)
+    local DynamicsEngine = package.loaded["services.dynamics_engine"] or require("services.dynamics_engine")
+    if DynamicsEngine and DynamicsEngine.clean_notation_events then
+        DynamicsEngine.clean_notation_events(state, MidiService, active_tracks_data)
+    end
+end
+
+-- ==============================================================================
 -- ORPHAN CLEANUP & SYNCHRONISATION (Item / Track Deletion Watchdog)
 -- Cleans orphaned notation elements (hairpins, texts, pedals, octaves, dynamics,
 -- repeat marks, and note selections) when their REAPER MIDI item or track was deleted.

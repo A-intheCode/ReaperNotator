@@ -196,15 +196,6 @@ function DynamicsDrawer.render(ctx, state, dynamics_engine, midi_service, active
         reaper.ImGui_PopStyleColor(ctx, 2)
     end
     
-    -- CLEAN NOTATION EVENTS
-    reaper.ImGui_Spacing(ctx)
-    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x552222FF)
-    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x773333FF)
-    if reaper.ImGui_Button(ctx, "🗑 Clean Notation Events", -1, 24) then
-        dynamics_engine.clean_notation_events(state, midi_service, active_tracks_data)
-    end
-    reaper.ImGui_PopStyleColor(ctx, 2)
-    
     -- CC Assignment & Grid
     reaper.ImGui_Spacing(ctx)
     reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "CC ASSIGNMENT & GRID")

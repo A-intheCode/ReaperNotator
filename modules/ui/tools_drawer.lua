@@ -73,6 +73,45 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
             reaper.ImGui_SetTooltip(ctx, "Auto Voice (Whole Track):\nDetects note overlaps across entire track and splits them into voices 1-16.")
         end
 
+        -- ------------------------------------------------------------------
+        -- CLEANUP TOOLS (Selected MIDI Item) - Safety Section
+        -- ------------------------------------------------------------------
+        reaper.ImGui_Spacing(ctx)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Separator(), 0xE74C3C88)
+        reaper.ImGui_Separator(ctx)
+        reaper.ImGui_PopStyleColor(ctx)
+        reaper.ImGui_Spacing(ctx)
+
+        reaper.ImGui_TextColored(ctx, 0xE74C3CFF, "⚠ ITEM CLEANUP (SELECTED ITEM):")
+
+        -- 1. Clean Notation Events
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x552222FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x773333FF)
+        if reaper.ImGui_Button(ctx, "🗑 Clean Notation Events", width - 24, 25) then
+            if midi_service and midi_service.clean_notation_events then
+                midi_service.clean_notation_events(state, active_tracks_data)
+            end
+        end
+        reaper.ImGui_PopStyleColor(ctx, 2)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Clean Notation Events:\nRemoves Type 15 notation text events (dynamics) from the selected MIDI item take.\n(MIDI notes remain completely untouched).")
+        end
+
+        reaper.ImGui_Spacing(ctx)
+
+        -- 2. Clear all MIDI/Program Bank Events
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x6E2C00FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x873600FF)
+        if reaper.ImGui_Button(ctx, "🗑 Clear all MIDI/Program Bank Events", width - 24, 25) then
+            if midi_service and midi_service.clear_program_bank_events then
+                midi_service.clear_program_bank_events(state, active_tracks_data)
+            end
+        end
+        reaper.ImGui_PopStyleColor(ctx, 2)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Clear all MIDI/Program Bank Events:\nDeletes all Program Changes (0xC0) and Bank Selects (CC0 / CC32) strictly from the selected MIDI item.\n(Leaves notes and all other CC controllers completely untouched).")
+        end
+
         reaper.ImGui_Spacing(ctx)
         reaper.ImGui_Separator(ctx)
         reaper.ImGui_Spacing(ctx)

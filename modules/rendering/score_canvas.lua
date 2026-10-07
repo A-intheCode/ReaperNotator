@@ -2397,7 +2397,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 if bank and bank.articulations and midi_service and midi_service.art_id_from_reaticulate_art then
                     for _, ba in ipairs(bank.articulations) do
                         if ba.pc == art.pc then
-                            if midi_service.art_id_from_reaticulate_art(ba) then
+                            local mapped = midi_service.art_id_from_reaticulate_art(ba)
+                            if mapped and mapped ~= "legato" then
                                 is_standard_symbol = true
                             end
                             break
@@ -2417,7 +2418,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         is_standard_symbol = true
                     elseif label then
                         local l_low = label:lower()
-                        if l_low:find("legato") or l_low:find("^slur") then
+                        if l_low:find("^slur") then
                             is_standard_symbol = true
                         end
                     end
@@ -2446,7 +2447,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     for _, n in ipairs(tdata.notes) do
                         local n_sqn = n.start_qn or 0.0
                         if math.abs(n_sqn - cur_qn) < 0.15 then
-                            if n.articulation and (n.articulation:lower():find("legato") or n.articulation:lower():find("slur")) then
+                            if n.articulation and n.articulation:lower():find("slur") then
                                 is_standard_symbol = true
                                 break
                             end

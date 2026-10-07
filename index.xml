@@ -6,9 +6,13 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.6.3" author="A-intheCode" time="2026-10-07T18:41:38Z">
+      <version name="1.6.4" author="A-intheCode" time="2026-10-07T21:40:00Z">
         <changelog><![CDATA[
-+ v1.6.3: Release vpatch
++ v1.6.4: Hotfix: Non-visible Legato Articulation & Item Cleanup Tools Relocation:
+          - Resolved Non-visible Legato Articulation: Legato chosen via the Articulations Drawer now renders a visible text badge above the staff (identical to Long), with complete support for font sizing, bold weight, dragging, and hover. Engraving slurs and ties continue to suppress redundant text badges per Gardner Read / Gould standards.
+          - Item Cleanup Tools in Tools Drawer: Moved 'Clean Notation Events' to the Score Tools Drawer directly below Auto-Voice with a prominent safety separator ('ITEM CLEANUP (SELECTED ITEM)').
+          - Clear all MIDI/Program Bank Events: Added dedicated action in Tools Drawer to strip Program Changes and Bank Select CCs (CC0/CC32) strictly from the selected MIDI item take.
++ v1.6.3: Release v1.6.3
 + v1.6.2: Dual Playback Reconciliation (Selective vs. Global), Overlap Protection & Official Video Guide:
           - Dual Playback Fix Engine: Introduced separate '⚡ Fix Playback (Selective)' and '⚡ Fix Playback (Global)' actions in the Articulations Drawer.
           - Selective Playback Fix: Scans and reconciles strictly the single selected MIDI item (or item of selected notes) with the active sound bank without touching any other items on the track or in the project.
