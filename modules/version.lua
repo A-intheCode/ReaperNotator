@@ -6,7 +6,7 @@
 local Version = {
     major = 1,
     minor = 6,
-    patch = 4,
+    patch = 5,
     suffix = "", -- e.g. "-beta", "-rc1"
 }
 

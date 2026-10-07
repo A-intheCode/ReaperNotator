@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.6.4
+-- @version 1.6.5
 -- @changelog
+--   + v1.6.5: PreviewPlayback Hotfix: Track isolation, arm settling buffer & audition duration tuning:
+--             - Track Isolation: Temporarily disarms other armed tracks during score note click preview to strictly prevent foreign instruments from sounding via Virtual MIDI Keyboard.
+--             - Initial Arm Settling Buffer: Added a 250ms buffer upon mouse release after initial track arming to let VST audio buffers settle, guaranteeing clean initial note attacks with 0ms latency on consecutive notes.
+--             - Audition Duration Tuning: Extended Note-On hold duration to 450ms for Legato/Standard notes (giving full acoustic body) and 300ms for Staccato/Momentary notes.
+--             - Articulation Detection: Enhanced lookbehind and note-level articulation resolution ensuring exact technique triggers and bank overrides.
+--             - UI Selectable ID Guard: Added unique ImGui ID hashes for CC audition presets in SettingsModal to prevent item collision.
 --   + v1.6.4: Hotfix: Non-visible Legato Articulation & Item Cleanup Tools Relocation:
 --             - Resolved Non-visible Legato Articulation: Legato chosen via the Articulations Drawer now renders a visible text badge above the staff (identical to Long), with complete support for font sizing, bold weight, dragging, and hover. Engraving slurs and ties continue to suppress redundant text badges per Gardner Read / Gould standards.
 --             - Item Cleanup Tools in Tools Drawer: Moved 'Clean Notation Events' to the Score Tools Drawer directly below Auto-Voice with a prominent safety separator ('ITEM CLEANUP (SELECTED ITEM)').
