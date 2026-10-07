@@ -1548,7 +1548,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
                         reaper.SetOnlyTrackSelected(n.track)
                     end
-                    AudioPreview.play_note(state, n.pitch, n.vel, n.chan, n.track, n.start_qn, n)
+                    AudioPreview.prepare_for_note_click(state, n.pitch, n.vel, n.chan, n.track, n.start_qn, n)
                     state.last_drag_audition_pitch = n.pitch
                     if is_shift_or_ctrl then
                         state:toggle_note_selection(n)

@@ -240,7 +240,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
                         }
                         for _, p in ipairs(presets) do
                             local is_sel = (tostring(cur_cc) == p.id)
-                            if reaper.ImGui_Selectable(ctx, p.label, is_sel) then
+                            if reaper.ImGui_Selectable(ctx, p.label .. "##preset_" .. p.id, is_sel) then
                                 state.audition_cc = p.id
                                 require('state').save_settings(state)
                             end
@@ -254,7 +254,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
                             local cc_id = tostring(cc_idx)
                             local is_sel = (tostring(cur_cc) == cc_id)
                             local name = Constants.get_cc_name(cc_idx)
-                            local label = string.format("CC %3d  - %s", cc_idx, name)
+                            local label = string.format("CC %3d  - %s##cc_idx_%d", cc_idx, name, cc_idx)
                             if reaper.ImGui_Selectable(ctx, label, is_sel) then
                                 state.audition_cc = cc_id
                                 require('state').save_settings(state)

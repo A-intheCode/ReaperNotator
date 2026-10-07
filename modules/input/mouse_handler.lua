@@ -76,6 +76,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
         local dy = math.abs(mouse_y - state.drag_start_y)
         if dx > 3 or dy > 3 or reaper.ImGui_IsMouseDragging(ctx, 0, 3.0) then
             state.is_dragging = true
+            AudioPreview.arm_click_note = nil
             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeAll())
             
             -- Determine target track & staff under mouse (including ledger line tolerance)
@@ -162,7 +163,9 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     end
     
     if state.drag_note and reaper.ImGui_IsMouseReleased(ctx, 0) then
-        if state.is_dragging and not state.marquee_active and not state.marquee_potential then
+        if state.is_dragging then
+            AudioPreview.arm_click_note = nil
+            if not state.marquee_active and not state.marquee_potential then
             local orig_start_qn = state.drag_note and state.drag_note.start_qn or 0
             local orig_pitch = state.drag_note and state.drag_note.pitch or 60
             local delta_qn = state.drag_delta_qn or ((state.drag_target_qn or orig_start_qn) - orig_start_qn)
@@ -297,6 +300,9 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                 state.status_msg = string.format("Moved %d note(s) (Δ %.2f QN, %+d semitones)", #state.drag_selected_snapshot, delta_qn, delta_pitch)
             end
         end
+    else
+        AudioPreview.play_note_on_release(state)
+    end
         state.is_dragging = false
         state.drag_note = nil
         state.drag_selected_snapshot = {}
