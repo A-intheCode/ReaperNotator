@@ -562,29 +562,150 @@ local function loop()
         if reaper.APIExists("ImGui_WindowFlags_NoNavFocus") then
             canvas_flags = canvas_flags | reaper.ImGui_WindowFlags_NoNavFocus()
         end
+        if reaper.APIExists("ImGui_WindowFlags_NoScrollWithMouse") then
+            canvas_flags = canvas_flags | reaper.ImGui_WindowFlags_NoScrollWithMouse()
+        end
         reaper.ImGui_SameLine(ctx, 0, 2)
         if reaper.ImGui_BeginChild(ctx, "ScoreCanvas", canvas_w, main_content_h, child_none, canvas_flags) then
-            -- Horizontal scrolling via mouse wheel ONLY with Shift or true horizontal mouse wheel (wh_x)
-            -- Normal scrolling without modifiers remains purely vertical (standard ImGui)
-            if reaper.ImGui_IsWindowHovered(ctx) then
-                local is_shift = false
-                if reaper.APIExists("ImGui_Mod_Shift") and reaper.APIExists("ImGui_GetKeyMods") then
-                    is_shift = (reaper.ImGui_GetKeyMods(ctx) & reaper.ImGui_Mod_Shift()) ~= 0
-                end
-                if not is_shift and reaper.APIExists("ImGui_Key_LeftShift") and reaper.APIExists("ImGui_Key_RightShift") then
-                    is_shift = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftShift()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightShift())
-                end
+            local is_canvas_hovered = reaper.ImGui_IsWindowHovered(ctx)
+            if not is_canvas_hovered and reaper.APIExists("ImGui_HoveredFlags_ChildWindows") then
+                is_canvas_hovered = reaper.ImGui_IsWindowHovered(ctx, reaper.ImGui_HoveredFlags_ChildWindows())
+            end
 
+            -- Configurable Mouse & Keyboard View Navigation Engine
+            local is_shift = false
+            if reaper.APIExists("ImGui_Mod_Shift") and reaper.APIExists("ImGui_GetKeyMods") then
+                is_shift = (reaper.ImGui_GetKeyMods(ctx) & reaper.ImGui_Mod_Shift()) ~= 0
+            end
+            if not is_shift and reaper.APIExists("ImGui_Key_LeftShift") and reaper.APIExists("ImGui_Key_RightShift") then
+                is_shift = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftShift()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightShift())
+            end
+
+            local is_ctrl = false
+            if reaper.APIExists("ImGui_Mod_Ctrl") and reaper.APIExists("ImGui_GetKeyMods") then
+                is_ctrl = (reaper.ImGui_GetKeyMods(ctx) & reaper.ImGui_Mod_Ctrl()) ~= 0
+            end
+            if not is_ctrl and reaper.APIExists("ImGui_Key_LeftCtrl") and reaper.APIExists("ImGui_Key_RightCtrl") then
+                is_ctrl = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftCtrl()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightCtrl())
+            end
+
+            local is_alt = false
+            if reaper.APIExists("ImGui_Mod_Alt") and reaper.APIExists("ImGui_GetKeyMods") then
+                is_alt = (reaper.ImGui_GetKeyMods(ctx) & reaper.ImGui_Mod_Alt()) ~= 0
+            end
+            if not is_alt and reaper.APIExists("ImGui_Key_LeftAlt") and reaper.APIExists("ImGui_Key_RightAlt") then
+                is_alt = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftAlt()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightAlt())
+            end
+
+            local function check_nav_key(key_def)
+                if not key_def or key_def == "" or key_def:lower() == "none" then
+                    return not is_shift and not is_ctrl and not is_alt
+                end
+                local k = tostring(key_def):lower()
+                if k == "shift" then
+                    return is_shift and not is_ctrl and not is_alt
+                elseif k == "ctrl" then
+                    return is_ctrl and not is_shift and not is_alt
+                elseif k == "alt" then
+                    return is_alt and not is_ctrl and not is_shift
+                elseif k == "space" then
+                    return reaper.APIExists("ImGui_Key_Space") and reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_Space())
+                elseif k == "shift_ctrl" or k == "ctrl_shift" then
+                    return is_shift and is_ctrl and not is_alt
+                elseif k == "shift_alt" or k == "alt_shift" then
+                    return is_shift and is_alt and not is_ctrl
+                elseif k == "ctrl_alt" or k == "alt_ctrl" then
+                    return is_ctrl and is_alt and not is_shift
+                else
+                    local need_ctrl = k:find("ctrl") ~= nil
+                    local need_shift = k:find("shift") ~= nil
+                    local need_alt = k:find("alt") ~= nil
+                    if need_ctrl ~= is_ctrl then return false end
+                    if need_shift ~= is_shift then return false end
+                    if need_alt ~= is_alt then return false end
+
+                    local clean_k = k:gsub("ctrl%+", ""):gsub("shift%+", ""):gsub("alt%+", "")
+                    if clean_k == "space" then
+                        return reaper.APIExists("ImGui_Key_Space") and reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_Space())
+                    else
+                        local cap = clean_k:sub(1,1):upper() .. clean_k:sub(2)
+                        local k_code = ShortcutManager.get_key_enum(cap) or ShortcutManager.get_key_enum(clean_k:upper())
+                        if k_code and reaper.APIExists("ImGui_IsKeyDown") then
+                            return reaper.ImGui_IsKeyDown(ctx, k_code)
+                        end
+                    end
+                end
+                return false
+            end
+
+            -- Canvas Pan (Hand Tool / Drag Navigation)
+            local pan_mouse = (state.nav_pan_mouse or "mouse_mid"):lower()
+            local pan_btn = -1
+            if pan_mouse == "mouse_mid" then pan_btn = 2
+            elseif pan_mouse == "mouse_right" then pan_btn = 1
+            elseif pan_mouse == "mouse_left" then pan_btn = 0
+            end
+
+            if pan_btn >= 0 and pan_mouse ~= "disabled" then
+                if reaper.ImGui_IsMouseClicked(ctx, pan_btn) and is_canvas_hovered and check_nav_key(state.nav_pan_key or "none") then
+                    state._is_canvas_panning = true
+                end
+                if state._is_canvas_panning then
+                    if reaper.ImGui_IsMouseDown(ctx, pan_btn) then
+                        local delta_x, delta_y = reaper.ImGui_GetMouseDelta(ctx)
+                        if delta_x ~= 0 or delta_y ~= 0 then
+                            reaper.ImGui_SetScrollX(ctx, reaper.ImGui_GetScrollX(ctx) - delta_x)
+                            reaper.ImGui_SetScrollY(ctx, reaper.ImGui_GetScrollY(ctx) - delta_y)
+                        end
+                        reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeAll())
+                    else
+                        state._is_canvas_panning = false
+                    end
+                end
+            end
+
+            -- Mouse Wheel & Trackpad Navigation (Horizontal Scroll, Vertical Scroll, Canvas Zoom)
+            if is_canvas_hovered then
                 local wh_y = reaper.ImGui_GetMouseWheel(ctx)
                 local wh_x = 0
                 if reaper.APIExists("ImGui_GetMouseWheelH") then
                     wh_x = reaper.ImGui_GetMouseWheelH(ctx)
                 end
-                if wh_x ~= 0 or (is_shift and wh_y ~= 0) then
-                    local s_amt = (wh_x ~= 0) and wh_x or wh_y
-                    local cur_scroll = reaper.ImGui_GetScrollX(ctx)
-                    local sf = state.scroll_factor or 2.0
-                    reaper.ImGui_SetScrollX(ctx, cur_scroll - (s_amt * 40 * sf))
+
+                -- Dedicated horizontal mouse wheel / trackpad horizontal gesture
+                if wh_x ~= 0 then
+                    local sf_h = state.scroll_factor_h or state.scroll_factor or 3.0
+                    local dir_h = state.scroll_invert_h and -1 or 1
+                    local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
+                    reaper.ImGui_SetScrollX(ctx, cur_scroll_x - (wh_x * 40 * sf_h * dir_h))
+                end
+
+                if wh_y ~= 0 then
+                    local h_mouse = (state.nav_scroll_h_mouse or "wheel_v"):lower()
+                    local v_mouse = (state.nav_scroll_v_mouse or "wheel_v"):lower()
+                    local z_mouse = (state.nav_zoom_mouse or "wheel_v"):lower()
+
+                    local is_h = (h_mouse == "wheel_v" or h_mouse == "wheel_h") and check_nav_key(state.nav_scroll_h_key or "shift")
+                    local is_v = (v_mouse == "wheel_v") and check_nav_key(state.nav_scroll_v_key or "none")
+                    local is_z = (z_mouse == "wheel_v") and check_nav_key(state.nav_zoom_key or "ctrl")
+
+                    if is_h then
+                        local sf_h = state.scroll_factor_h or state.scroll_factor or 3.0
+                        local dir_h = state.scroll_invert_h and -1 or 1
+                        local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
+                        reaper.ImGui_SetScrollX(ctx, cur_scroll_x - (wh_y * 40 * sf_h * dir_h))
+                    elseif is_v then
+                        local has_no_wheel = reaper.APIExists("ImGui_WindowFlags_NoScrollWithMouse")
+                        if has_no_wheel or (state.nav_scroll_v_key and state.nav_scroll_v_key ~= "none") then
+                            local sf_v = state.scroll_factor_v or 2.0
+                            local dir_v = state.scroll_invert_v and -1 or 1
+                            local cur_scroll_y = reaper.ImGui_GetScrollY(ctx)
+                            reaper.ImGui_SetScrollY(ctx, cur_scroll_y - (wh_y * 40 * sf_v * dir_v))
+                        end
+                    elseif is_z then
+                        local z_step = (wh_y > 0) and 0.08 or -0.08
+                        state.zoom = math.max(0.6, math.min(2.0, state.zoom + z_step))
+                    end
                 end
             end
             

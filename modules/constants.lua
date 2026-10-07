@@ -909,4 +909,62 @@ function Constants.get_key_signature(idx)
     return Constants.KEY_SIGNATURES[k] or Constants.KEY_SIGNATURES[0]
 end
 
+-- Standard MIDI Continuous Controllers (CC 0 to 127) for Note Audio Preview and DAW routing
+Constants.MIDI_CC_NAMES = {
+    [0]   = "Bank Select (MSB)",
+    [1]   = "Modulation Wheel",
+    [2]   = "Breath Controller",
+    [4]   = "Foot Controller",
+    [5]   = "Portamento Time",
+    [6]   = "Data Entry (MSB)",
+    [7]   = "Channel Volume",
+    [8]   = "Balance",
+    [10]  = "Pan",
+    [11]  = "Expression",
+    [12]  = "Effect Control 1",
+    [13]  = "Effect Control 2",
+    [64]  = "Sustain Pedal (Damper)",
+    [65]  = "Portamento On/Off",
+    [66]  = "Sostenuto On/Off",
+    [67]  = "Soft Pedal (Una Corda)",
+    [68]  = "Legato Footswitch",
+    [69]  = "Hold 2",
+    [70]  = "Sound Variation",
+    [71]  = "Resonance / Timbre",
+    [72]  = "Release Time",
+    [73]  = "Attack Time",
+    [74]  = "Brightness / Cutoff",
+    [75]  = "Decay Time",
+    [76]  = "Vibrato Rate",
+    [77]  = "Vibrato Depth",
+    [78]  = "Vibrato Delay",
+    [84]  = "Portamento Control",
+    [91]  = "Reverb Send Level",
+    [92]  = "Tremolo Depth",
+    [93]  = "Chorus Send Level",
+    [94]  = "Celeste / Detune Depth",
+    [95]  = "Phaser Depth",
+    [120] = "All Sound Off",
+    [121] = "Reset All Controllers",
+    [123] = "All Notes Off",
+    [124] = "Omni Mode Off",
+    [125] = "Omni Mode On",
+    [126] = "Mono Mode On",
+    [127] = "Poly Mode On",
+}
+
+--- Returns the standard name for a MIDI CC number
+--- @param cc_num number|string
+--- @return string name
+function Constants.get_cc_name(cc_num)
+    local num = tonumber(cc_num) or 0
+    if Constants.MIDI_CC_NAMES[num] then
+        return Constants.MIDI_CC_NAMES[num]
+    elseif num >= 32 and num <= 63 then
+        return string.format("LSB for CC %d", num - 32)
+    else
+        return string.format("Controller %d", num)
+    end
+end
+
 return Constants

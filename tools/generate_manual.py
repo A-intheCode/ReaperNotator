@@ -83,10 +83,11 @@ MANUAL_DATA = [
                 "heading": "2.4 Audition Preview (Note Audio on Click)",
                 "text": "Functions:\n"
                         "- Single-Note Audition: Clicking or vertically dragging any note on the canvas triggers an immediate acoustic preview sound, arbitrated to audition strictly the single hovered note even in dense chords or adjacent systems.\n"
-                        "- Track Audition Isolation: Auditioning automatically isolates the target track and temporarily disarms concurrent project tracks, preventing Virtual MIDI Keyboard crosstalk across unrelated instruments sharing the same pitch/register.\n"
-                        "- Articulation Chasing: The engine scans the project timeline from measure 1 up to the clicked note position to chase active Program Changes and note-level articulation marks (Staccato, Marcato, Tenuto, Pizzicato, etc.), dispatching the authentic Reaticulate bank and patch.\n"
-                        "- Zero-Latency First Click: Implements a 1-frame pre-switch mechanism for Bank/Program Change before Note-On, eliminating sampler group switching lag so notes sound cleanly on the very first click.\n"
-                        "DAW Effect: Dispatches synchronized Bank Select, Program Change, and instantaneous MIDI Note-On/scheduled Note-Off events to the active track's virtual instrument synth via REAPER's Audio Preview API."
+                        "- Non-Intrusive Direct Playback: Auditioning operates purely via direct MIDI output without ever modifying track record-arm status (I_RECARM), input monitoring (I_RECMON), or input channel routing (I_RECINPUT), guaranteeing that track states in REAPER remain 100% pristine and unaltered.\n"
+                        "- Instant Zero-Latency Response: Notes trigger instantly on mouse click with 0 ms latency, exactly like auditioning within REAPER's native MIDI Editor.\n"
+                        "- Dynamics & Articulation Chasing: The engine scans the project timeline from measure 1 to chase active Program Changes, note-level articulation marks (Staccato, Marcato, Tenuto, Pizzicato), and configured CC dynamics (CC11 Expression / CC1 Modwheel).\n"
+                        "- Musical Minimum Duration: Short clicks sound for a minimum of 650 ms so that instrument attack transients, body, and acoustic room release tails ring out cleanly before Note-Off is dispatched.\n"
+                        "DAW Effect: Dispatches synchronized Bank Select, Program Change, CC controllers, and instantaneous MIDI Note-On / scheduled Note-Off events to the active track's virtual instrument synth without altering REAPER track record arming."
             },
             {
                 "heading": "2.5 Follow Playhead (Auto-Scroll)",

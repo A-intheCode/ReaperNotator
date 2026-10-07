@@ -111,6 +111,51 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             end
         end
 
+        -- Navigation Key Capture Listener
+        if state.capturing_nav_action then
+            if reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape()) then
+                state.capturing_nav_action = nil
+                state.status_msg = "Navigation key assignment cancelled"
+            elseif reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Backspace()) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Delete()) then
+                state[state.capturing_nav_action] = "none"
+                require('state').save_settings(state)
+                state.status_msg = "Navigation key cleared to None"
+                state.capturing_nav_action = nil
+            else
+                local pressed_pure_mod = nil
+                if reaper.APIExists("ImGui_Key_LeftShift") and (reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_LeftShift()) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_RightShift())) then
+                    pressed_pure_mod = is_ctrl and "shift_ctrl" or (is_alt and "shift_alt" or "shift")
+                elseif reaper.APIExists("ImGui_Key_LeftCtrl") and (reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_LeftCtrl()) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_RightCtrl())) then
+                    pressed_pure_mod = is_shift and "shift_ctrl" or (is_alt and "ctrl_alt" or "ctrl")
+                elseif reaper.APIExists("ImGui_Key_LeftAlt") and (reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_LeftAlt()) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_RightAlt())) then
+                    pressed_pure_mod = is_shift and "shift_alt" or (is_ctrl and "ctrl_alt" or "alt")
+                end
+
+                if pressed_pure_mod then
+                    state[state.capturing_nav_action] = pressed_pure_mod
+                    require('state').save_settings(state)
+                    state.status_msg = "Navigation key assigned: " .. pressed_pure_mod
+                    state.capturing_nav_action = nil
+                else
+                    for _, key_name in ipairs(shortcut_manager.SCAN_KEYS) do
+                        local k_code = shortcut_manager.get_key_enum(key_name)
+                        if k_code and reaper.ImGui_IsKeyPressed(ctx, k_code) then
+                            local final_key = key_name:lower()
+                            if key_name == "Space" then final_key = "space" end
+                            if is_shift and final_key ~= "shift" then final_key = "shift+" .. final_key end
+                            if is_ctrl and not final_key:find("ctrl") then final_key = "ctrl+" .. final_key end
+                            if is_alt and not final_key:find("alt") then final_key = "alt+" .. final_key end
+                            state[state.capturing_nav_action] = final_key
+                            require('state').save_settings(state)
+                            state.status_msg = "Navigation key assigned: " .. final_key
+                            state.capturing_nav_action = nil
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
         local default_open = (reaper.APIExists("ImGui_TreeNodeFlags_DefaultOpen") and reaper.ImGui_TreeNodeFlags_DefaultOpen()) or 32
         local avail_w, avail_h = reaper.ImGui_GetContentRegionAvail(ctx)
         local footer_h = 44
@@ -124,18 +169,15 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             if reaper.ImGui_CollapsingHeader(ctx, "⚙ General Settings###hdr_general", nil, default_open) then
                 reaper.ImGui_Spacing(ctx)
                 
-                -- --- 1. Navigation & Canvas Layout ---
+                -- --- 1. Canvas Layout & Track Spacing ---
                 if reaper.APIExists("ImGui_SeparatorText") then
-                    reaper.ImGui_SeparatorText(ctx, "Navigation & Canvas Layout")
+                    reaper.ImGui_SeparatorText(ctx, "Canvas Layout & Track Spacing")
                 else
-                    reaper.ImGui_TextDisabled(ctx, "Navigation & Canvas Layout")
+                    reaper.ImGui_TextDisabled(ctx, "Canvas Layout & Track Spacing")
                     reaper.ImGui_Separator(ctx)
                 end
-                
-                local sf = state.scroll_factor or 3.0
-                local sf_changed, new_sf = reaper.ImGui_SliderDouble(ctx, "Mouse Wheel Scroll Speed", sf, 1.0, 5.0, "%.1fx")
-                if sf_changed then state.scroll_factor = new_sf; require('state').save_settings(state) end
-                
+
+                -- Track Spacing & Item Bounds
                 local ts = state.track_spacing or 195.0
                 local ts_changed, new_ts = reaper.ImGui_SliderDouble(ctx, "Track Spacing", ts, 70.0, 320.0, "%.1f px")
                 if ts_changed then state.track_spacing = new_ts; require('state').save_settings(state) end
@@ -171,6 +213,68 @@ function SettingsModal.render(ctx, state, shortcut_manager)
                     if av_changed then
                         state.audition_volume = new_av
                         require('state').save_settings(state)
+                    end
+
+                    -- Preview Volume CC Controller Dropdown
+                    local cur_cc = state.audition_cc or "11_1"
+                    local function get_audition_cc_display(val)
+                        if val == "none" or val == -1 or val == "-1" then
+                            return "None (Velocity Only)"
+                        elseif val == "11_1" then
+                            return "CC  11 + CC 1 - Expression & Mod Wheel (Default / Orchestral)"
+                        end
+                        local num = tonumber(val) or 11
+                        local name = Constants.get_cc_name(num)
+                        return string.format("CC %3d  - %s", num, name)
+                    end
+
+                    reaper.ImGui_SetNextItemWidth(ctx, 320)
+                    if reaper.ImGui_BeginCombo(ctx, "Preview Volume Controller (MIDI CC)##audition_cc_combo", get_audition_cc_display(cur_cc)) then
+                        -- Presets
+                        local presets = {
+                            { id = "11_1", label = "CC  11 + CC 1 - Expression & Mod Wheel (Default / Orchestral)" },
+                            { id = "11",   label = "CC  11  - Expression" },
+                            { id = "1",    label = "CC   1  - Modulation Wheel" },
+                            { id = "7",    label = "CC   7  - Channel Volume" },
+                            { id = "none", label = "None (Velocity Only — Recommended for Pianos & Synths)" },
+                        }
+                        for _, p in ipairs(presets) do
+                            local is_sel = (tostring(cur_cc) == p.id)
+                            if reaper.ImGui_Selectable(ctx, p.label, is_sel) then
+                                state.audition_cc = p.id
+                                require('state').save_settings(state)
+                            end
+                            if is_sel then reaper.ImGui_SetItemDefaultFocus(ctx) end
+                        end
+
+                        reaper.ImGui_Separator(ctx)
+
+                        -- All 128 MIDI CC Channels (0 to 127)
+                        for cc_idx = 0, 127 do
+                            local cc_id = tostring(cc_idx)
+                            local is_sel = (tostring(cur_cc) == cc_id)
+                            local name = Constants.get_cc_name(cc_idx)
+                            local label = string.format("CC %3d  - %s", cc_idx, name)
+                            if reaper.ImGui_Selectable(ctx, label, is_sel) then
+                                state.audition_cc = cc_id
+                                require('state').save_settings(state)
+                            end
+                            if is_sel then reaper.ImGui_SetItemDefaultFocus(ctx) end
+                        end
+                        reaper.ImGui_EndCombo(ctx)
+                    end
+                    if reaper.ImGui_IsItemHovered(ctx) then
+                        reaper.ImGui_SetTooltip(ctx, "Select which MIDI Controller is temporarily modified by the preview volume slider.\n- Choose 'CC 11 + CC 1' (Default) for orchestral sample libraries (Spitfire, Orchestral Tools, SINE, etc.).\n- Choose 'None' for Pianos, Keyboards & Synths (only Note Velocity is sent).")
+                    end
+
+                    local r_cc = (state.audition_restore_cc ~= false)
+                    local r_cc_chg, new_r_cc = reaper.ImGui_Checkbox(ctx, "Restore original controller value after preview", r_cc)
+                    if r_cc_chg then
+                        state.audition_restore_cc = new_r_cc
+                        require('state').save_settings(state)
+                    end
+                    if reaper.ImGui_IsItemHovered(ctx) then
+                        reaper.ImGui_SetTooltip(ctx, "When enabled, any temporarily altered CC value is automatically restored to its original value\nwhen the note is released, preventing permanent volume drops in instruments like SINE Player or UVI Falcon.")
                     end
                 end
 
@@ -458,7 +562,190 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             reaper.ImGui_Spacing(ctx)
 
             -- ==============================================================
-            -- 5. Customize Keyboard Shortcuts
+            -- 5. View Navigation and Mouse Settings
+            -- ==============================================================
+            if reaper.ImGui_CollapsingHeader(ctx, "🖱 View Navigation and Mouse Settings###hdr_nav_mouse", nil, default_open) then
+                reaper.ImGui_Spacing(ctx)
+                
+                local KEY_PRESETS = {
+                    { id = "none",       label = "None (No Key)" },
+                    { id = "shift",      label = "Shift" },
+                    { id = "ctrl",       label = "Ctrl / Cmd" },
+                    { id = "alt",        label = "Alt / Opt" },
+                    { id = "space",      label = "Space" },
+                    { id = "shift_ctrl", label = "Shift + Ctrl" },
+                    { id = "shift_alt",  label = "Shift + Alt" },
+                    { id = "ctrl_alt",   label = "Ctrl + Alt" },
+                }
+
+                local MOUSE_PRESETS = {
+                    { id = "wheel_v",     label = "Mouse Wheel (Vertical)" },
+                    { id = "wheel_h",     label = "Mouse Wheel (Horizontal Tilt)" },
+                    { id = "mouse_mid",   label = "Middle Mouse Button" },
+                    { id = "mouse_right", label = "Right Mouse Button" },
+                    { id = "mouse_left",  label = "Left Mouse Button" },
+                    { id = "disabled",    label = "Disabled" },
+                }
+
+                local function get_key_display(k_id)
+                    if not k_id or k_id == "" or k_id == "none" then return "None" end
+                    for _, opt in ipairs(KEY_PRESETS) do
+                        if opt.id == k_id then return opt.label end
+                    end
+                    local d = k_id:gsub("shift%+", "Shift + "):gsub("ctrl%+", "Ctrl + "):gsub("alt%+", "Alt + ")
+                    return d:sub(1,1):upper() .. d:sub(2)
+                end
+
+                local function get_mouse_display(m_id)
+                    if not m_id or m_id == "" then return "Disabled" end
+                    for _, opt in ipairs(MOUSE_PRESETS) do
+                        if opt.id == m_id then return opt.label end
+                    end
+                    return m_id
+                end
+
+                local function render_nav_row(action_title, key_prop, mouse_prop, default_key, default_mouse)
+                    local cur_k = state[key_prop] or default_key
+                    local cur_m = state[mouse_prop] or default_mouse
+                    local is_capturing = (state.capturing_nav_action == key_prop)
+
+                    -- 1. Action Label (aligned to 165px)
+                    reaper.ImGui_AlignTextToFramePadding(ctx)
+                    reaper.ImGui_Text(ctx, action_title)
+                    reaper.ImGui_SameLine(ctx, 175)
+
+                    -- 2. Keyboard Shortcut Dropdown (125px)
+                    reaper.ImGui_SetNextItemWidth(ctx, 125)
+                    if reaper.ImGui_BeginCombo(ctx, "##kcombo_" .. key_prop, get_key_display(cur_k)) then
+                        for _, opt in ipairs(KEY_PRESETS) do
+                            local is_sel = (opt.id == cur_k)
+                            if reaper.ImGui_Selectable(ctx, opt.label, is_sel) then
+                                state[key_prop] = opt.id
+                                require('state').save_settings(state)
+                            end
+                            if is_sel then reaper.ImGui_SetItemDefaultFocus(ctx) end
+                        end
+                        reaper.ImGui_EndCombo(ctx)
+                    end
+                    if reaper.ImGui_IsItemHovered(ctx) then
+                        reaper.ImGui_SetTooltip(ctx, "Select key/modifier from list, or click 'Assign' to press any key.")
+                    end
+
+                    -- 3. Assign Button (58px)
+                    reaper.ImGui_SameLine(ctx, 0, 5)
+                    if is_capturing then
+                        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0xE06610FF)
+                        if reaper.ImGui_Button(ctx, "Press...##btn_" .. key_prop, 58, 22) then
+                            state.capturing_nav_action = nil
+                        end
+                        reaper.ImGui_PopStyleColor(ctx)
+                    else
+                        if reaper.ImGui_Button(ctx, "Assign##btn_" .. key_prop, 58, 22) then
+                            state.capturing_nav_action = key_prop
+                        end
+                    end
+                    if reaper.ImGui_IsItemHovered(ctx) then
+                        reaper.ImGui_SetTooltip(ctx, is_capturing and "Press any key on keyboard (or Esc to cancel, Backspace to clear)" or "Click and press any key on keyboard")
+                    end
+
+                    -- 4. Plus text
+                    reaper.ImGui_SameLine(ctx, 0, 8)
+                    reaper.ImGui_TextDisabled(ctx, "+")
+
+                    -- 5. Mouse Action Dropdown (240px)
+                    reaper.ImGui_SameLine(ctx, 0, 8)
+                    reaper.ImGui_SetNextItemWidth(ctx, 240)
+                    if reaper.ImGui_BeginCombo(ctx, "##mcombo_" .. mouse_prop, get_mouse_display(cur_m)) then
+                        for _, opt in ipairs(MOUSE_PRESETS) do
+                            local is_sel = (opt.id == cur_m)
+                            if reaper.ImGui_Selectable(ctx, opt.label, is_sel) then
+                                state[mouse_prop] = opt.id
+                                require('state').save_settings(state)
+                            end
+                            if is_sel then reaper.ImGui_SetItemDefaultFocus(ctx) end
+                        end
+                        reaper.ImGui_EndCombo(ctx)
+                    end
+                end
+
+                render_nav_row("Horizontal View Scroll", "nav_scroll_h_key", "nav_scroll_h_mouse", "shift", "wheel_v")
+                render_nav_row("Vertical View Scroll",   "nav_scroll_v_key", "nav_scroll_v_mouse", "none",  "wheel_v")
+                render_nav_row("Canvas Pan (Hand-Tool)", "nav_pan_key",      "nav_pan_mouse",      "none",  "mouse_mid")
+                render_nav_row("Canvas Zoom (In / Out)", "nav_zoom_key",     "nav_zoom_mouse",     "ctrl",  "wheel_v")
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- Duplicate modifier warning
+                local h_k = state.nav_scroll_h_key or "shift"
+                local h_m = state.nav_scroll_h_mouse or "wheel_v"
+                local v_k = state.nav_scroll_v_key or "none"
+                local v_m = state.nav_scroll_v_mouse or "wheel_v"
+                if h_m ~= "disabled" and h_m == v_m and h_k == v_k then
+                    reaper.ImGui_TextColored(ctx, 0xF59E0BFF, "  ⚠ Note: Horizontal & Vertical scroll share the exact same Shortcut and Mouse input.")
+                end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- Scroll Speeds
+                reaper.ImGui_SetNextItemWidth(ctx, 220)
+                local sf_h = state.scroll_factor_h or state.scroll_factor or 3.0
+                local sf_h_chg, new_sf_h = reaper.ImGui_SliderDouble(ctx, "Horizontal Scroll Speed##sf_h", sf_h, 0.5, 5.0, "%.1fx")
+                if sf_h_chg then
+                    state.scroll_factor_h = new_sf_h
+                    state.scroll_factor = new_sf_h
+                    require('state').save_settings(state)
+                end
+
+                reaper.ImGui_SetNextItemWidth(ctx, 220)
+                local sf_v = state.scroll_factor_v or 2.0
+                local sf_v_chg, new_sf_v = reaper.ImGui_SliderDouble(ctx, "Vertical Scroll Speed##sf_v", sf_v, 0.5, 5.0, "%.1fx")
+                if sf_v_chg then
+                    state.scroll_factor_v = new_sf_v
+                    require('state').save_settings(state)
+                end
+
+                -- Invert Directions
+                local inv_h = (state.scroll_invert_h == true)
+                local inv_h_chg, new_inv_h = reaper.ImGui_Checkbox(ctx, "Invert Horizontal Direction", inv_h)
+                if inv_h_chg then
+                    state.scroll_invert_h = new_inv_h
+                    require('state').save_settings(state)
+                end
+
+                reaper.ImGui_SameLine(ctx, 0, 24)
+                local inv_v = (state.scroll_invert_v == true)
+                local inv_v_chg, new_inv_v = reaper.ImGui_Checkbox(ctx, "Invert Vertical Direction", inv_v)
+                if inv_v_chg then
+                    state.scroll_invert_v = new_inv_v
+                    require('state').save_settings(state)
+                end
+
+                reaper.ImGui_Spacing(ctx)
+
+                if reaper.ImGui_SmallButton(ctx, "↺ Reset Navigation Defaults") then
+                    state.nav_scroll_h_key   = "shift"
+                    state.nav_scroll_h_mouse = "wheel_v"
+                    state.nav_scroll_v_key   = "none"
+                    state.nav_scroll_v_mouse = "wheel_v"
+                    state.nav_pan_key        = "none"
+                    state.nav_pan_mouse      = "mouse_mid"
+                    state.nav_zoom_key       = "ctrl"
+                    state.nav_zoom_mouse     = "wheel_v"
+                    state.scroll_factor_h    = 3.0
+                    state.scroll_factor_v    = 2.0
+                    state.scroll_factor      = 3.0
+                    state.scroll_invert_h    = false
+                    state.scroll_invert_v    = false
+                    require('state').save_settings(state)
+                end
+
+                reaper.ImGui_Spacing(ctx)
+            end
+            
+            reaper.ImGui_Spacing(ctx)
+
+            -- ==============================================================
+            -- 6. Customize Keyboard Shortcuts
             -- ==============================================================
             if reaper.ImGui_CollapsingHeader(ctx, "⌨ Customize Keyboard Shortcuts###hdr_shortcuts", nil, default_open) then
                 reaper.ImGui_Spacing(ctx)

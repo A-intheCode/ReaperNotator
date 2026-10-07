@@ -13,6 +13,22 @@ function State.new()
         view_mode = "auto",       -- "auto", "treble", "bass", "grand"
         zoom = 1.0,              -- 0.6 to 2.0
         scroll_factor = 3.0,
+        scroll_factor_h = 3.0,    -- Horizontal scroll speed factor
+        scroll_factor_v = 2.0,    -- Vertical scroll speed factor
+        nav_scroll_h_key   = "shift",     -- Keyboard shortcut / modifier for horizontal scroll
+        nav_scroll_h_mouse = "wheel_v",   -- Mouse action: "wheel_v", "wheel_h", "mouse_mid", "mouse_right", "mouse_left", "disabled"
+        nav_scroll_v_key   = "none",      -- Keyboard shortcut / modifier for vertical scroll
+        nav_scroll_v_mouse = "wheel_v",
+        nav_pan_key        = "none",      -- Keyboard shortcut / modifier for canvas pan (e.g. "none", "space")
+        nav_pan_mouse      = "mouse_mid", -- Mouse action: "mouse_mid", "mouse_left", "mouse_right", "disabled"
+        nav_zoom_key       = "ctrl",      -- Keyboard shortcut / modifier for canvas zoom
+        nav_zoom_mouse     = "wheel_v",
+        scroll_invert_h       = false,   -- Invert horizontal scroll
+        scroll_invert_v       = false,   -- Invert vertical scroll
+        scroll_mod_horizontal = "shift", -- Aliases for backward compatibility
+        scroll_mod_vertical   = "none",
+        scroll_mod_zoom       = "ctrl",
+        middle_drag_pan       = true,
         bar_num_offset_x = -10.0,
         bar_num_offset_y = 47.5,
         bar_num_size = 20.0,      -- Speed factor for canvas scrolling
@@ -384,6 +400,8 @@ function State.new()
         audition_notes = true,
         audition_active_note = nil,
         audition_volume = 50,     -- 0 to 100% (50 = Written dynamic/velocity, 100 = 100% Max)
+        audition_cc = "11_1",     -- MIDI CC used for preview volume/dynamics: "11_1", "11", "7", "1", "none", or 0..127
+        audition_restore_cc = true, -- Automatically restore original CC value after note preview ends
         
         -- Copy & Paste Clipboard (notes & events)
         clipboard = nil,          -- { notes = {}, dynamics = {}, total_dur_qn = 0 }
@@ -642,6 +660,24 @@ function State:load_settings()
     end
 
     self.scroll_factor = load_num("scroll_factor", 3.0)
+    self.scroll_factor_h = load_num("scroll_factor_h", self.scroll_factor or 3.0)
+    self.scroll_factor_v = load_num("scroll_factor_v", 2.0)
+    self.nav_scroll_h_key   = load_str("nav_scroll_h_key", load_str("scroll_mod_horizontal", "shift"))
+    self.nav_scroll_h_mouse = load_str("nav_scroll_h_mouse", "wheel_v")
+    self.nav_scroll_v_key   = load_str("nav_scroll_v_key", load_str("scroll_mod_vertical", "none"))
+    self.nav_scroll_v_mouse = load_str("nav_scroll_v_mouse", "wheel_v")
+    self.nav_pan_key        = load_str("nav_pan_key", "none")
+    self.nav_pan_mouse      = load_str("nav_pan_mouse", (load_bool("middle_drag_pan", true) and "mouse_mid" or "disabled"))
+    self.nav_zoom_key       = load_str("nav_zoom_key", load_str("scroll_mod_zoom", "ctrl"))
+    self.nav_zoom_mouse     = load_str("nav_zoom_mouse", "wheel_v")
+    self.scroll_invert_h    = load_bool("scroll_invert_h", false)
+    self.scroll_invert_v    = load_bool("scroll_invert_v", false)
+    -- Backward compatibility aliases
+    self.scroll_factor         = self.scroll_factor_h
+    self.scroll_mod_horizontal = self.nav_scroll_h_key
+    self.scroll_mod_vertical   = self.nav_scroll_v_key
+    self.scroll_mod_zoom       = self.nav_zoom_key
+    self.middle_drag_pan       = (self.nav_pan_mouse ~= "disabled")
     self.bar_num_offset_x = load_num("bar_num_offset_x", -10.0)
     self.bar_num_offset_y = load_num("bar_num_offset_y", 47.5)
     self.bar_num_size = load_num("bar_num_size", 20.0)
@@ -674,6 +710,8 @@ function State:load_settings()
     self.show_chord_lane = load_bool("show_chord_lane", true)
     self.audition_notes = load_bool("audition_notes", true)
     self.audition_volume = load_num("audition_volume", 50)
+    self.audition_cc = load_str("audition_cc", "11_1")
+    self.audition_restore_cc = load_bool("audition_restore_cc", true)
     self.tempo_offset_y = load_num("tempo_offset_y", 62.0)
     self.tempo_font_size = load_num("tempo_font_size", 16.0)
     self.octave_offset_y = load_num("octave_offset_y", 18.0)
@@ -788,7 +826,24 @@ function State.save_settings(self)
         reaper.SetExtState("REAPER_Notator", key, str, true)
     end
 
-    save_val("scroll_factor", self.scroll_factor or 3.0)
+    save_val("scroll_factor", self.scroll_factor_h or self.scroll_factor or 3.0)
+    save_val("scroll_factor_h", self.scroll_factor_h or self.scroll_factor or 3.0)
+    save_val("scroll_factor_v", self.scroll_factor_v or 2.0)
+    save_val("nav_scroll_h_key", self.nav_scroll_h_key or "shift")
+    save_val("nav_scroll_h_mouse", self.nav_scroll_h_mouse or "wheel_v")
+    save_val("nav_scroll_v_key", self.nav_scroll_v_key or "none")
+    save_val("nav_scroll_v_mouse", self.nav_scroll_v_mouse or "wheel_v")
+    save_val("nav_pan_key", self.nav_pan_key or "none")
+    save_val("nav_pan_mouse", self.nav_pan_mouse or "mouse_mid")
+    save_val("nav_zoom_key", self.nav_zoom_key or "ctrl")
+    save_val("nav_zoom_mouse", self.nav_zoom_mouse or "wheel_v")
+    save_val("scroll_invert_h", self.scroll_invert_h == true)
+    save_val("scroll_invert_v", self.scroll_invert_v == true)
+    -- Backward compatibility saves
+    save_val("scroll_mod_horizontal", self.nav_scroll_h_key or "shift")
+    save_val("scroll_mod_vertical", self.nav_scroll_v_key or "none")
+    save_val("scroll_mod_zoom", self.nav_zoom_key or "ctrl")
+    save_val("middle_drag_pan", self.nav_pan_mouse ~= "disabled")
     save_val("bar_num_offset_x", self.bar_num_offset_x or -10.0)
     save_val("bar_num_offset_y", self.bar_num_offset_y or 47.5)
     save_val("bar_num_size", self.bar_num_size or 20.0)
@@ -817,6 +872,8 @@ function State.save_settings(self)
     save_val("show_chord_lane", self.show_chord_lane ~= false)
     save_val("audition_notes", self.audition_notes ~= false)
     save_val("audition_volume", math.floor(self.audition_volume or 50))
+    save_val("audition_cc", tostring(self.audition_cc or "11_1"))
+    save_val("audition_restore_cc", self.audition_restore_cc ~= false)
     save_val("tempo_offset_y", self.tempo_offset_y or 62.0)
     save_val("tempo_font_size", self.tempo_font_size or 16.0)
     save_val("octave_offset_y", self.octave_offset_y or 18.0)

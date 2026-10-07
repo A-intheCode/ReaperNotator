@@ -15,6 +15,7 @@ local MouseHandler = {}
 
 function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_engine)
     if not canvas_info then return end
+    if state._is_canvas_panning then return end
     local margin_left = canvas_info.margin_left
     local qn_per_measure = canvas_info.qn_per_measure
     local measure_map = canvas_info.measure_map or state.measure_map

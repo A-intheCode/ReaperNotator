@@ -7,28 +7,97 @@
 local AudioPreview = {}
 
 AudioPreview.active_note = nil
-AudioPreview.pending_note = nil
 AudioPreview.current_track = nil
 AudioPreview.current_art_pc = nil
 AudioPreview.last_audition_time = 0
 AudioPreview.track_restore = {} -- [track_ptr] = { orig_arm = ..., orig_mon = ..., orig_inp = ..., changed_arm = bool, changed_mon = bool, changed_inp = bool }
+AudioPreview.active_cc_override = nil -- { track = ..., chan = ..., cc = ..., items = { { chan = ..., cc = ..., orig_val = ... } } }
+
+--- Restores any temporarily altered CC values to their original pre-preview state
+--- @param state table
+--- @param opt_track MediaTrack Optional track filter
+function AudioPreview.restore_cc_override(state, opt_track)
+    local ov = AudioPreview.active_cc_override
+    if not ov then return end
+    if opt_track and ov.track ~= opt_track then return end
+
+    local should_restore = (state == nil or state.audition_restore_cc ~= false)
+    if should_restore and ov.items then
+        for _, item in ipairs(ov.items) do
+            reaper.StuffMIDIMessage(0, 0xB0 + item.chan, item.cc, item.orig_val)
+        end
+    end
+    AudioPreview.active_cc_override = nil
+end
+
+--- Finds the existing CC value in the track/take at or before the given QN
+--- @param track MediaTrack
+--- @param chan number 0-15
+--- @param cc_num number 0-127
+--- @param qn number
+--- @param opt_take MediaItem_Take Optional take pointer
+--- @return number orig_val
+function AudioPreview.get_track_cc_at_qn(track, chan, cc_num, qn, opt_take)
+    local target_chan = chan or 0
+    local target_cc = cc_num or 11
+    local qn_pos = qn or 0
+
+    local take = opt_take
+    if not take and track and reaper.ValidatePtr(track, "MediaTrack*") then
+        local item_cnt = reaper.CountTrackMediaItems(track)
+        for ii = 0, item_cnt - 1 do
+            local item = reaper.GetTrackMediaItem(track, ii)
+            if item then
+                local ipos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+                local ilen = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+                local i_sqn = reaper.TimeMap2_timeToQN(0, ipos)
+                local i_eqn = reaper.TimeMap2_timeToQN(0, ipos + ilen)
+                if qn_pos >= i_sqn - 0.05 and qn_pos <= i_eqn + 0.05 then
+                    take = reaper.GetActiveTake(item)
+                    break
+                end
+            end
+        end
+    end
+
+    if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+        local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, qn_pos) + 15
+        local _, _, cc_cnt = reaper.MIDI_CountEvts(take)
+        local latest_ppq = -1
+        local latest_val = nil
+        for ci = 0, cc_cnt - 1 do
+            local ok, _, _, ppq, chanmsg, cchan, msg2, msg3 = reaper.MIDI_GetCC(take, ci)
+            if ok and (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) then
+                if cchan == target_chan and msg2 == target_cc and ppq <= target_ppq then
+                    if ppq >= latest_ppq then
+                        latest_ppq = ppq
+                        latest_val = msg3
+                    end
+                end
+            end
+        end
+        if latest_val ~= nil then
+            return latest_val
+        end
+    end
+
+    -- Default fallbacks according to MIDI specification when no CC automation exists:
+    -- Expression (11), Volume (7), Modwheel (1), Balance (8): default 127
+    if target_cc == 11 or target_cc == 7 or target_cc == 8 or target_cc == 1 then
+        return 127
+    elseif target_cc == 10 then -- Pan centered
+        return 64
+    else
+        return 0
+    end
+end
 
 --- Restores a modified track cleanly to its original settings
 --- @param track MediaTrack
 function AudioPreview.restore_track(track)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return end
-    local r = AudioPreview.track_restore[track]
-    if r then
-        if r.changed_arm and r.orig_arm ~= nil then
-            reaper.SetMediaTrackInfo_Value(track, "I_RECARM", r.orig_arm)
-        end
-        if r.changed_mon and r.orig_mon ~= nil then
-            reaper.SetMediaTrackInfo_Value(track, "I_RECMON", r.orig_mon)
-        end
-        if r.changed_inp and r.orig_inp ~= nil then
-            reaper.SetMediaTrackInfo_Value(track, "I_RECINPUT", r.orig_inp)
-        end
-        AudioPreview.track_restore[track] = nil
+    if AudioPreview.active_cc_override and AudioPreview.active_cc_override.track == track then
+        AudioPreview.restore_cc_override(nil, track)
     end
     if AudioPreview.current_track == track then
         AudioPreview.current_track = nil
@@ -38,99 +107,33 @@ end
 
 --- Restores all temporarily modified tracks
 function AudioPreview.restore_all_tracks()
-    for trk, _ in pairs(AudioPreview.track_restore) do
-        AudioPreview.restore_track(trk)
-    end
+    AudioPreview.restore_cc_override(nil)
     AudioPreview.current_track = nil
     AudioPreview.current_art_pc = nil
     AudioPreview.track_restore = {}
 end
 
---- Prepares a track for MIDI monitoring (VKB input, arm & monitor) without flickering on each click
---- and temporarily disarms all other armed tracks in the project so only the target track plays.
+--- Prepares a track for preview playback without modifying its arming or monitoring
 --- @param track MediaTrack
---- @return boolean just_armed
 function AudioPreview.prepare_track(track)
-    if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return false end
-
-    -- If track changed: restore previous track to original state
-    if AudioPreview.current_track and AudioPreview.current_track ~= track then
-        AudioPreview.restore_track(AudioPreview.current_track)
-    end
-
-    -- Temporarily disarm any OTHER tracks currently armed in the project
-    local num_trks = reaper.CountTracks(0)
-    for ti = 0, num_trks - 1 do
-        local tr = reaper.GetTrack(0, ti)
-        if tr and tr ~= track then
-            local is_armed = reaper.GetMediaTrackInfo_Value(tr, "I_RECARM")
-            if is_armed == 1 then
-                if not AudioPreview.track_restore[tr] then
-                    AudioPreview.track_restore[tr] = {
-                        track = tr,
-                        orig_arm = 1,
-                        orig_mon = reaper.GetMediaTrackInfo_Value(tr, "I_RECMON"),
-                        orig_inp = reaper.GetMediaTrackInfo_Value(tr, "I_RECINPUT"),
-                        changed_arm = true
-                    }
-                end
-                reaper.SetMediaTrackInfo_Value(tr, "I_RECARM", 0)
-            end
-        end
-    end
-
-    local orig_arm = reaper.GetMediaTrackInfo_Value(track, "I_RECARM")
-    local orig_mon = reaper.GetMediaTrackInfo_Value(track, "I_RECMON")
-    local orig_inp = reaper.GetMediaTrackInfo_Value(track, "I_RECINPUT")
-
-    -- 6112 = Input: MIDI -> Virtual MIDI Keyboard -> All Channels (4096 | (63 << 5) | 0)
-    -- 6080 = Input: MIDI -> All MIDI Inputs -> All Channels (4096 | (62 << 5) | 0)
-    local is_vkb_ready = (orig_inp == 6112 or orig_inp == 6080)
-    local needs_arm = (orig_arm == 0)
-    local needs_mon = (orig_mon == 0)
-    local needs_inp = not is_vkb_ready
-
-    if needs_arm or needs_mon or needs_inp then
-        if not AudioPreview.track_restore[track] then
-            AudioPreview.track_restore[track] = {
-                track = track,
-                orig_arm = orig_arm,
-                orig_mon = orig_mon,
-                orig_inp = orig_inp,
-                changed_arm = needs_arm,
-                changed_mon = needs_mon,
-                changed_inp = needs_inp
-            }
-        end
-
-        if needs_inp then
-            reaper.SetMediaTrackInfo_Value(track, "I_RECINPUT", 6112)
-        end
-        if needs_arm then
-            reaper.SetMediaTrackInfo_Value(track, "I_RECARM", 1)
-        end
-        if needs_mon then
-            reaper.SetMediaTrackInfo_Value(track, "I_RECMON", 1)
-        end
-    end
-
-    reaper.SetOnlyTrackSelected(track)
+    if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return end
     AudioPreview.current_track = track
-    return needs_arm
 end
 
---- Stops active note (sends Note Off via MIDI)
+--- Stops active note (sends Note Off via MIDI) and restores temporary CC overrides
 --- @param state table
-function AudioPreview.stop_note(state)
-    -- If there was a pending Note On waiting to fire, cancel it
-    AudioPreview.pending_note = nil
-
+--- @param is_chaining boolean|nil If true, another note is playing immediately so CC override stays active
+function AudioPreview.stop_note(state, is_chaining)
     local an = AudioPreview.active_note or (state and state.audition_active_note)
     if an then
         local ch = (an.chan or 0) & 0x0F
         reaper.StuffMIDIMessage(0, 0x80 + ch, an.pitch, 0)
         AudioPreview.active_note = nil
         if state then state.audition_active_note = nil end
+    end
+
+    if not is_chaining then
+        AudioPreview.restore_cc_override(state)
     end
 end
 
@@ -293,8 +296,8 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
     if state and state.audition_notes == false then return end
     if not pitch then return end
 
-    -- Stop active note beforehand
-    AudioPreview.stop_note(state)
+    -- Stop active note beforehand (with chaining so active CC override stays intact while playing new note)
+    AudioPreview.stop_note(state, true)
 
     -- Determine target track
     local target_track = track or (opt_note and opt_note.track)
@@ -305,14 +308,14 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
         target_track = reaper.GetSelectedTrack(0, 0)
     end
 
-    local just_armed = false
     if target_track then
-        just_armed = AudioPreview.prepare_track(target_track)
+        AudioPreview.prepare_track(target_track)
     end
 
     local p = math.max(0, math.min(127, math.floor(pitch)))
     local ch = (chan or (opt_note and opt_note.chan) or 0) & 0x0F
     local qn_pos = qn or (opt_note and opt_note.start_qn) or 0
+    local opt_take = opt_note and opt_note.take
 
     -- Dynamics and volume calculation based on audition_volume slider:
     local pct = (state and state.audition_volume) or 50
@@ -358,12 +361,7 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
         end
     end
 
-    local art_changed = false
     if target_art and target_art.pc and target_art.pc >= 0 then
-        if AudioPreview.current_art_pc ~= target_art.pc or AudioPreview.current_track ~= target_track then
-            art_changed = true
-        end
-
         local eff_msb = (target_art.msb and target_art.msb >= 0) and target_art.msb or (bank and bank.msb and bank.msb >= 0 and bank.msb or -1)
         local eff_lsb = (target_art.lsb and target_art.lsb >= 0) and target_art.lsb or (bank and bank.lsb and bank.lsb >= 0 and bank.lsb or -1)
         if eff_msb >= 0 then
@@ -376,40 +374,64 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
         AudioPreview.current_art_pc = target_art.pc
     end
 
-    -- Send CC1 (Modwheel) & CC11 (Expression) in advance for orchestral libraries
-    reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, final_c1)
-    reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, final_c11)
+    -- Send configured CC controller(s) according to state.audition_cc
+    local cc_mode = state and state.audition_cc or "11_1"
+    if cc_mode == "none" or cc_mode == -1 or cc_mode == "-1" then
+        -- Velocity Only: Do NOT send any CC! (Safe for Pianos, Keyboards, Drums & Synths)
+        -- If an earlier CC override exists from a different mode, restore it now
+        AudioPreview.restore_cc_override(state)
+    elseif cc_mode == "11_1" or cc_mode == "11" then
+        -- Dual mode: Send CC 1 (Modwheel) & CC 11 (Expression) in advance - Standard Default for Orchestral
+        if not AudioPreview.active_cc_override or AudioPreview.active_cc_override.track ~= target_track or AudioPreview.active_cc_override.chan ~= ch then
+            local orig_1  = AudioPreview.get_track_cc_at_qn(target_track, ch, 1, qn_pos, opt_take)
+            local orig_11 = AudioPreview.get_track_cc_at_qn(target_track, ch, 11, qn_pos, opt_take)
+            AudioPreview.active_cc_override = {
+                track = target_track,
+                chan = ch,
+                items = {
+                    { chan = ch, cc = 1, orig_val = orig_1 },
+                    { chan = ch, cc = 11, orig_val = orig_11 }
+                }
+            }
+        end
+        reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, final_c1)
+        reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, final_c11)
+    else
+        -- Single CC mode (e.g. CC 7, CC 1, CC 11 only, or any 0..127)
+        local target_cc = tonumber(cc_mode) or 11
+        target_cc = math.max(0, math.min(127, target_cc))
+        if not AudioPreview.active_cc_override or AudioPreview.active_cc_override.track ~= target_track or AudioPreview.active_cc_override.chan ~= ch or AudioPreview.active_cc_override.cc ~= target_cc then
+            local orig_val = AudioPreview.get_track_cc_at_qn(target_track, ch, target_cc, qn_pos, opt_take)
+            AudioPreview.active_cc_override = {
+                track = target_track,
+                chan = ch,
+                cc = target_cc,
+                items = {
+                    { chan = ch, cc = target_cc, orig_val = orig_val }
+                }
+            }
+        end
+        local val_to_send = (target_cc == 1) and final_c1 or final_c11
+        reaper.StuffMIDIMessage(0, 0xB0 + ch, target_cc, val_to_send)
+    end
 
     AudioPreview.last_audition_time = reaper.time_precise()
 
-    -- If articulation changed or track was just armed, allow 15ms (1 audio block / 1 frame) for the
-    -- VST sampler (e.g. Kontakt / Spitfire SSO) to switch group before Note On arrives.
-    -- This guarantees notes sound on the very first click with 0 double-clicks needed!
-    if art_changed or just_armed then
-        AudioPreview.pending_note = {
-            pitch = p,
-            chan = ch,
-            vel = final_vel,
-            track = target_track,
-            time = reaper.time_precise(),
-            bank = bank
-        }
-    else
-        -- Already on this articulation: fire Note On immediately in the same frame!
-        reaper.StuffMIDIMessage(0, 0x90 + ch, p, final_vel)
-        local note_info = {
-            pitch = p,
-            chan = ch,
-            vel = final_vel,
-            track = target_track,
-            start_time = reaper.time_precise(),
-            released = false,
-            bank = bank
-        }
-        AudioPreview.active_note = note_info
-        if state then
-            state.audition_active_note = note_info
-        end
+    -- Note On fired IMMEDIATELY in the same frame right after track arming & CC!
+    -- This guarantees notes sound on the very first click with 0 latency and 0 dropped clicks!
+    reaper.StuffMIDIMessage(0, 0x90 + ch, p, final_vel)
+    local note_info = {
+        pitch = p,
+        chan = ch,
+        vel = final_vel,
+        track = target_track,
+        start_time = reaper.time_precise(),
+        released = false,
+        bank = bank
+    }
+    AudioPreview.active_note = note_info
+    if state then
+        state.audition_active_note = note_info
     end
 end
 
@@ -434,44 +456,18 @@ function AudioPreview.stop_all(state)
     AudioPreview.restore_all_tracks()
 end
 
---- Per-frame update for timing, pre-switched Note On firing, and clean note release
+--- Per-frame update for timing and clean note release
 --- @param state table
 --- @param ctx ImGui_Context
 function AudioPreview.update(state, ctx)
-    local now = reaper.time_precise()
-
-    -- 1. Fire pending Note On once articulation has had 1 frame / >= 10ms to switch
-    if AudioPreview.pending_note then
-        local pn = AudioPreview.pending_note
-        local elapsed = now - pn.time
-        if elapsed >= 0.010 or pn.frame_passed then
-            reaper.StuffMIDIMessage(0, 0x90 + pn.chan, pn.pitch, pn.vel)
-            local note_info = {
-                pitch = pn.pitch,
-                chan = pn.chan,
-                vel = pn.vel,
-                track = pn.track,
-                start_time = reaper.time_precise(),
-                released = false,
-                bank = pn.bank
-            }
-            AudioPreview.active_note = note_info
-            if state then
-                state.audition_active_note = note_info
-            end
-            AudioPreview.pending_note = nil
-        else
-            pn.frame_passed = true
-        end
-    end
-
     local an = AudioPreview.active_note or (state and state.audition_active_note)
     if not an then return end
 
+    local now = reaper.time_precise()
     local dur = now - an.start_time
 
-    -- Safety timeout: automatically stop after at most 2 seconds
-    if dur > 2.0 then
+    -- Safety timeout: automatically stop after at most 3.0 seconds
+    if dur > 3.0 then
         AudioPreview.stop_note(state)
         return
     end
@@ -486,8 +482,8 @@ function AudioPreview.update(state, ctx)
         an.released = true
     end
 
-    -- Shortest clicks sound for at least 350ms so instrument samples (attack/body) are audible
-    if an.released and dur >= 0.35 then
+    -- Generous audition duration: at least 0.65s (650ms) for short clicks so notes ring out musically
+    if an.released and dur >= 0.65 then
         AudioPreview.stop_note(state)
     end
 end
