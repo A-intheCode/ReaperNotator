@@ -1,7 +1,16 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.6.5
+-- @version 1.7.0
 -- @changelog
+--   + v1.7.0: Complete Glissando & Portamento System, Cross-Staff Support, and Dual Persistence:
+--             - Glissando Engine: Real chromatic pitch steps generated in MIDI takes (NOTATOR_GLISS_STEP / NOTATOR_GLISSANDO) with full acoustic playback.
+--             - Dual-Reality Score Rendering: Intermediate chromatic ladder steps are 100% hidden from the score canvas while Note 1 retains its full visual duration.
+--             - Cross-Staff Glissando: Full support for cross-staff glissandi (e.g. Harp/Piano connecting Bass Clef to Treble Clef) with automatic clef split detection across staves.
+--             - Wavy Line Styles: Configurable visual styles including Sinusoidal wave ('sine'), Sawtooth/Zigzag ('saw'), and Straight line ('straight').
+--             - Dynamic "gliss." Text Badge: Italicized badge placed automatically above the wavy line via upward normal vectors, with hit-testing and toggle in context menu.
+--             - Portamento Engine: Acoustic blending via CC64 Pedal Hold (50% Note 1 to 50% Note 2) or continuous CC controllers (CC34/CC5/CC65) with straight diagonal canvas line and 'port.' badge.
+--             - Settings Modal & Batch Operations: Dedicated Glissando and Portamento sections in Settings Modal with configurable defaults and 1-click project sync.
+--             - Dual Persistence & Take Auto-Recovery: Full project persistence via ExtState and MIDI take Type 15 Sysex events ensuring marks survive across sessions.
 --   + v1.6.5: PreviewPlayback Hotfix: Track isolation, arm settling buffer & audition duration tuning:
 --             - Track Isolation: Temporarily disarms other armed tracks during score note click preview to strictly prevent foreign instruments from sounding via Virtual MIDI Keyboard.
 --             - Initial Arm Settling Buffer: Added a 250ms buffer upon mouse release after initial track arming to let VST audio buffers settle, guaranteeing clean initial note attacks with 0ms latency on consecutive notes.
@@ -203,6 +212,8 @@ local KeySignatureService  = require("services.key_signature_service")
 local KeySignatureDrawer   = require("ui.key_signature_drawer")
 local MusicXmlModal        = require("ui.musicxml_modal")
 local SlurService          = require("services.slur_service")
+local PortamentoService    = require("services.portamento_service")
+local GlissandoService     = require("services.glissando_service")
 
 -- 4. Initialization of State & Fonts
 local state = State.new()
@@ -219,6 +230,8 @@ RehearsalMarkService.load_marks(state)
 ScaleService.load_chord_items(state)
 KeySignatureService.load(state)
 SlurService.load_slurs(state)
+PortamentoService.load_portamentos(state)
+GlissandoService.load_glissandos(state)
 MidiService.cleanup_orphaned_score_elements(state)
 PatternService.init()
 local fonts = FontManager.init(ctx, state)
@@ -238,6 +251,8 @@ reaper.atexit(function()
     ScaleService.save_chord_items(state)
     KeySignatureService.save(state)
     SlurService.save_slurs(state)
+    PortamentoService.save_portamentos(state)
+    GlissandoService.save_glissandos(state)
     state:save_settings()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end)
@@ -267,6 +282,8 @@ local function loop()
         RehearsalMarkService.load_marks(state)
         ScaleService.load_chord_items(state)
         SlurService.load_slurs(state)
+        PortamentoService.load_portamentos(state)
+        GlissandoService.load_glissandos(state)
         MidiService.cleanup_orphaned_score_elements(state)
         state:clear_selection()
     end

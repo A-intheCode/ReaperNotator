@@ -90,10 +90,12 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         if state.input_mode_type and state.input_mode_type ~= "select" then
             change_mode("select")
             return
-        elseif (state:count_selected_notes() > 0) or state.selected_dynamic or state.selected_hairpin or state.selected_dynamic_text or state.selected_pedal or state.selected_tempo_marker or state.selected_octave_line or state.selected_text_item or state.selected_chord_item then
+        elseif (state:count_selected_notes() > 0) or state.selected_dynamic or state.selected_hairpin or state.selected_dynamic_text or state.selected_pedal or state.selected_portamento or state.selected_glissando or state.selected_tempo_marker or state.selected_octave_line or state.selected_text_item or state.selected_chord_item then
             state:clear_selection()
             state.selected_dynamic_text = nil
             state.selected_pedal = nil
+            state.selected_portamento = nil
+            state.selected_glissando = nil
             state.selected_text_item = nil
             state.editing_text_item = nil
             state.selected_chord_item = nil
@@ -306,6 +308,18 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             state.selected_tie = nil
             return
         end
+        if state.selected_portamento then
+            local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+            PortamentoService.delete_portamento(state, state.selected_portamento.id, active_tracks_data)
+            state.selected_portamento = nil
+            return
+        end
+        if state.selected_glissando then
+            local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+            GlissandoService.delete_glissando(state, state.selected_glissando.id, active_tracks_data)
+            state.selected_glissando = nil
+            return
+        end
         local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
         if SelectionService and SelectionService.count_all_selected(state) > 1 then
             SelectionService.delete_all_selected(state, midi_service, active_tracks_data)
@@ -388,6 +402,8 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         state.editing_chord_item = nil
         state.selected_slur = nil
         state.selected_tie = nil
+        state.selected_portamento = nil
+        state.selected_glissando = nil
         midi_service.sync_selection_to_reaper(state, active_tracks_data)
         state.status_msg = "Selection cleared"
     end
@@ -583,6 +599,12 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         end
         if ShortcutManager.is_action_pressed("toggle_slur", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_S()) then
             midi_service.toggle_slur(state, active_tracks_data)
+        end
+        if ShortcutManager.is_action_pressed("toggle_portamento", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_P()) then
+            midi_service.toggle_portamento(state, active_tracks_data)
+        end
+        if ShortcutManager.is_action_pressed("toggle_glissando", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_G()) then
+            midi_service.toggle_glissando(state, active_tracks_data)
         end
         if not is_step and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_A()) then
             midi_service.toggle_selected_articulation(state, "accent")

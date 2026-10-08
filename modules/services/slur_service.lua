@@ -506,6 +506,25 @@ function SlurService.toggle_tie(state, active_tracks_data)
     }
     table.insert(state.user_ties, tie_obj)
     
+    -- If Note 1 has an existing portamento, shift it to start at Note 2!
+    if state.portamento_marks then
+        local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+        local changed_port = false
+        for _, pm in ipairs(state.portamento_marks) do
+            if pm.pitch1 == n1.pitch and math.abs(pm.start_qn1 - n1.start_qn) < 0.05 then
+                pm.start_qn1 = n2.start_qn
+                pm.dur_qn1   = n2_dur
+                pm.n1_key    = n2_k
+                pm:recalculate_timing()
+                PortamentoService.apply_cc(state, pm, active_tracks_data)
+                changed_port = true
+            end
+        end
+        if changed_port then
+            PortamentoService.save_portamentos(state)
+        end
+    end
+    
     reaper.MIDI_Sort(take)
     
     -- Refresh REAPER audio engine and open MIDI editor window

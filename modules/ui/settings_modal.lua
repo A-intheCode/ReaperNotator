@@ -354,7 +354,373 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             reaper.ImGui_Spacing(ctx)
 
             -- ==============================================================
-            -- 2. REAPER User Directory & Paths
+            -- 2. Portamento Defaults & Playback Settings
+            -- ==============================================================
+            if reaper.ImGui_CollapsingHeader(ctx, "〰 Portamento Defaults & Playback###hdr_portamento", nil, default_open) then
+                reaper.ImGui_Spacing(ctx)
+
+                -- 1. Default Playback Mode
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Default Playback Blend & Control Mode")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Default Playback Blend & Control Mode")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                local cur_mode = state.portamento_default_mode or "cc64"
+                local mode_labels = {
+                    cc64 = "CC 64 (Pedal Hold Blend) [Standard]",
+                    cc34 = "CC 34 (Portamento Control)",
+                    cc5  = "CC 5 (Portamento Time)",
+                    cc65 = "CC 65 (Portamento Switch On/Off)",
+                }
+                reaper.ImGui_SetNextItemWidth(ctx, 320)
+                if reaper.ImGui_BeginCombo(ctx, "Default MIDI CC Mode##port_def_mode_combo", mode_labels[cur_mode] or cur_mode) then
+                    local modes = {
+                        { id = "cc64", label = "CC 64 (Pedal Hold Blend) [Standard]" },
+                        { id = "cc34", label = "CC 34 (Portamento Control)" },
+                        { id = "cc5",  label = "CC 5 (Portamento Time)" },
+                        { id = "cc65", label = "CC 65 (Portamento Switch On/Off)" },
+                    }
+                    for _, m in ipairs(modes) do
+                        local is_sel = (cur_mode == m.id)
+                        if reaper.ImGui_Selectable(ctx, m.label .. "##def_mode_" .. m.id, is_sel) then
+                            state.portamento_default_mode = m.id
+                            require('state').save_settings(state)
+                        end
+                        if is_sel then reaper.ImGui_SetItemDefaultFocus(ctx) end
+                    end
+                    reaper.ImGui_EndCombo(ctx)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Select default MIDI controller mode for newly created portamentos:\n- CC 64 (Pedal Hold): Holds previous note over into the arrival notehead for acoustic blending (Recommended for orchestral strings & woodwinds).\n- CC 34: Standard MIDI Portamento Control.\n- CC 5: Portamento Time (Glide speed).\n- CC 65: Portamento On/Off Switch.")
+                end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- 2. Timing (% of Note Length)
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Default Timing (% of Note Duration)")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Default Timing (% of Note Duration)")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                -- Start Timing (Note 1)
+                local cur_s = math.floor(state.portamento_default_start_pct or 50)
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local s_chg, new_s = reaper.ImGui_SliderInt(ctx, "Default Start at Note 1##port_def_s_slider", cur_s, 0, 100, "%d%%")
+                if s_chg then
+                    state.portamento_default_start_pct = new_s
+                    require('state').save_settings(state)
+                end
+                reaper.ImGui_SameLine(ctx)
+                reaper.ImGui_TextDisabled(ctx, "Presets:")
+                for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                    reaper.ImGui_SameLine(ctx)
+                    local is_sel = (cur_s == pct)
+                    local tag = (pct == 50) and "50% [Std]" or string.format("%d%%", pct)
+                    if is_sel then
+                        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x3498DBFF)
+                    end
+                    if reaper.ImGui_Button(ctx, tag .. "##port_def_s_" .. pct) then
+                        state.portamento_default_start_pct = pct
+                        require('state').save_settings(state)
+                    end
+                    if is_sel then
+                        reaper.ImGui_PopStyleColor(ctx)
+                    end
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Percentage of Note 1 duration where the portamento hold is engaged (50% = halfway through Note 1).")
+                end
+
+                -- End Timing (Note 2)
+                local cur_e = math.floor(state.portamento_default_end_pct or 50)
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local e_chg, new_e = reaper.ImGui_SliderInt(ctx, "Default End at Note 2##port_def_e_slider", cur_e, 0, 100, "%d%%")
+                if e_chg then
+                    state.portamento_default_end_pct = new_e
+                    require('state').save_settings(state)
+                end
+                reaper.ImGui_SameLine(ctx)
+                reaper.ImGui_TextDisabled(ctx, "Presets:")
+                for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                    reaper.ImGui_SameLine(ctx)
+                    local is_sel = (cur_e == pct)
+                    local tag = (pct == 50) and "50% [Std]" or string.format("%d%%", pct)
+                    if is_sel then
+                        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x3498DBFF)
+                    end
+                    if reaper.ImGui_Button(ctx, tag .. "##port_def_e_" .. pct) then
+                        state.portamento_default_end_pct = pct
+                        require('state').save_settings(state)
+                    end
+                    if is_sel then
+                        reaper.ImGui_PopStyleColor(ctx)
+                    end
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Percentage of Note 2 arrival notehead duration where the portamento hold is released (50% = halfway through Note 2).")
+                end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- 3. Visual & Text Badges
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Visual Appearance & Badge Defaults")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Visual Appearance & Badge Defaults")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                local def_txt = (state.portamento_default_show_text == true)
+                local txt_chg, new_txt = reaper.ImGui_Checkbox(ctx, 'Show "port." text badge by default##port_def_txt_chk', def_txt)
+                if txt_chg then
+                    state.portamento_default_show_text = new_txt
+                    require('state').save_settings(state)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "When enabled, newly created portamento lines display an italic 'port.' label above the line.")
+                end
+
+                local def_gap = state.portamento_default_gap or 16.0
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local gap_chg, new_gap = reaper.ImGui_SliderDouble(ctx, "Notehead Gap Distance##port_def_gap", def_gap, 4.0, 32.0, "%.1f px")
+                if gap_chg then
+                    state.portamento_default_gap = new_gap
+                    require('state').save_settings(state)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Spacing distance between notehead centers and the ends of the diagonal portamento line (Default: 16.0 px).")
+                end
+
+                local def_th = state.portamento_default_thickness or 1.6
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local th_chg, new_th = reaper.ImGui_SliderDouble(ctx, "Line Thickness##port_def_th", def_th, 0.8, 4.0, "%.1f px")
+                if th_chg then
+                    state.portamento_default_thickness = new_th
+                    require('state').save_settings(state)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Drawing thickness of portamento lines on the score canvas (Default: 1.6 px).")
+                end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- 4. Batch Actions
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Actions & Project Sync")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Actions & Project Sync")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                local num_existing = (state.portamento_marks and #state.portamento_marks) or 0
+                if reaper.ImGui_Button(ctx, string.format("🔄 Apply Defaults to All Existing Portamentos (%d in project)##port_apply_all", num_existing)) then
+                    local PortamentoService = require("services.portamento_service")
+                    local updated_cnt = PortamentoService.apply_defaults_to_all(state, state.active_tracks_cache)
+                    state.status_msg = string.format("Updated %d portamentos in project to current default settings.", updated_cnt)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Applies the current default settings (Mode, Start %, End %, and 'port.' text visibility) to all portamentos in this project and synchronizes MIDI CCs.")
+                end
+
+                reaper.ImGui_SameLine(ctx)
+                if reaper.ImGui_Button(ctx, "↺ Reset to Factory Defaults##port_reset_defaults") then
+                    state.portamento_default_mode = "cc64"
+                    state.portamento_default_start_pct = 50
+                    state.portamento_default_end_pct = 50
+                    state.portamento_default_show_text = false
+                    state.portamento_default_gap = 16.0
+                    state.portamento_default_thickness = 1.6
+                    require('state').save_settings(state)
+                    state.status_msg = "Reset portamento defaults to factory settings (CC64, 50% Start, 50% End, Text Off, Gap 16px, 1.6px Thickness)."
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Resets all portamento default settings to standard: CC 64, 50% Start, 50% End, Text Off, 16.0 px Gap, 1.6 px Thickness.")
+                end
+
+                reaper.ImGui_Spacing(ctx)
+            end
+
+            reaper.ImGui_Spacing(ctx)
+
+            -- ==============================================================
+            -- 2b. Glissando Defaults & Playback Configuration
+            -- ==============================================================
+            if reaper.ImGui_CollapsingHeader(ctx, "〰 Glissando Defaults & Playback###hdr_glissando") then
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_TextWrapped(ctx, "Configure global defaults for newly created Glissando marks. Glissandos play real chromatic pitch steps in MIDI while keeping the score canvas clean with an elegant wavy line.")
+                reaper.ImGui_Spacing(ctx)
+
+                -- 1. Timing & Playback Defaults
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Timing & Playback Defaults")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Timing & Playback Defaults")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                -- Start Timing (Note 1)
+                local cur_s = math.floor(state.glissando_default_start_pct or 50)
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local s_chg, new_s = reaper.ImGui_SliderInt(ctx, "Default Start at Note 1##gliss_def_s_slider", cur_s, 0, 100, "%d%%")
+                if s_chg then
+                    state.glissando_default_start_pct = new_s
+                    require('state').save_settings(state)
+                end
+                reaper.ImGui_SameLine(ctx)
+                reaper.ImGui_TextDisabled(ctx, "Presets:")
+                for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                    reaper.ImGui_SameLine(ctx)
+                    local is_sel = (cur_s == pct)
+                    local tag = (pct == 50) and "50% [Std]" or string.format("%d%%", pct)
+                    if is_sel then
+                        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x3498DBFF)
+                    end
+                    if reaper.ImGui_Button(ctx, tag .. "##gliss_def_s_" .. pct) then
+                        state.glissando_default_start_pct = pct
+                        require('state').save_settings(state)
+                    end
+                    if is_sel then
+                        reaper.ImGui_PopStyleColor(ctx)
+                    end
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Percentage of Note 1 duration where the chromatic pitch staircase begins (50% = halfway through Note 1).")
+                end
+
+                -- Velocity Mode
+                local cur_vel_mode = state.glissando_default_vel_mode or "interpolate"
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local vel_label = (cur_vel_mode == "interpolate") and "Linear Ramp (Note 1 -> Note 2)" or "Flat (Note 1 Velocity)"
+                if reaper.ImGui_BeginCombo(ctx, "Velocity Mode##gliss_def_vel_combo", vel_label) then
+                    local modes = {
+                        { id = "interpolate", label = "Linear Ramp (Note 1 -> Note 2)" },
+                        { id = "flat",        label = "Flat (Note 1 Velocity)" }
+                    }
+                    for _, vm in ipairs(modes) do
+                        local is_sel = (cur_vel_mode == vm.id)
+                        if reaper.ImGui_Selectable(ctx, vm.label .. "##gliss_vm_" .. vm.id, is_sel) then
+                            state.glissando_default_vel_mode = vm.id
+                            require('state').save_settings(state)
+                        end
+                        if is_sel then reaper.ImGui_SetItemDefaultFocus(ctx) end
+                    end
+                    reaper.ImGui_EndCombo(ctx)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Velocity shaping for intermediate chromatic steps. Linear Ramp creates dynamic transitions between Note 1 and Note 2.")
+                end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- 2. Visual Appearance & Badge Defaults
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Visual Appearance & Badge Defaults")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Visual Appearance & Badge Defaults")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                -- Wave Style
+                local cur_style = state.glissando_default_wave_style or "sine"
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local style_label = (cur_style == "sine") and "Sinusoidal Wave (Smooth)" or ((cur_style == "saw") and "Sawtooth / Zigzag Wave" or "Straight Line")
+                if reaper.ImGui_BeginCombo(ctx, "Wave Style##gliss_def_style_combo", style_label) then
+                    if reaper.ImGui_Selectable(ctx, "Sinusoidal Wave (Smooth)##gliss_ws_sine", cur_style == "sine") then
+                        state.glissando_default_wave_style = "sine"
+                        require('state').save_settings(state)
+                    end
+                    if reaper.ImGui_Selectable(ctx, "Sawtooth / Zigzag Wave##gliss_ws_saw", cur_style == "saw") then
+                        state.glissando_default_wave_style = "saw"
+                        require('state').save_settings(state)
+                    end
+                    if reaper.ImGui_Selectable(ctx, "Straight Line##gliss_ws_straight", cur_style == "straight" or cur_style == "line") then
+                        state.glissando_default_wave_style = "straight"
+                        require('state').save_settings(state)
+                    end
+                    reaper.ImGui_EndCombo(ctx)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Visual drawing style of the wavy glissando line on the score canvas.")
+                end
+
+                local def_txt = (state.glissando_default_show_text == true)
+                local txt_chg, new_txt = reaper.ImGui_Checkbox(ctx, 'Show "gliss." text badge by default##gliss_def_txt_chk', def_txt)
+                if txt_chg then
+                    state.glissando_default_show_text = new_txt
+                    require('state').save_settings(state)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "When enabled, newly created glissando lines display an italic 'gliss.' label above the wavy line.")
+                end
+
+                local def_gap = state.glissando_default_gap or 16.0
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local gap_chg, new_gap = reaper.ImGui_SliderDouble(ctx, "Notehead Gap Distance##gliss_def_gap", def_gap, 4.0, 32.0, "%.1f px")
+                if gap_chg then
+                    state.glissando_default_gap = new_gap
+                    require('state').save_settings(state)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Spacing distance between notehead centers and the ends of the wavy line (Default: 16.0 px).")
+                end
+
+                local def_th = state.glissando_default_thickness or 1.6
+                reaper.ImGui_SetNextItemWidth(ctx, 240)
+                local th_chg, new_th = reaper.ImGui_SliderDouble(ctx, "Line Thickness##gliss_def_th", def_th, 0.8, 4.0, "%.1f px")
+                if th_chg then
+                    state.glissando_default_thickness = new_th
+                    require('state').save_settings(state)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Drawing thickness of glissando waves on the score canvas (Default: 1.6 px).")
+                end
+
+                reaper.ImGui_Spacing(ctx)
+
+                -- 3. Batch Actions
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Actions & Project Sync")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Actions & Project Sync")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                local num_existing = (state.glissando_marks and #state.glissando_marks) or 0
+                if reaper.ImGui_Button(ctx, string.format("🔄 Apply Defaults to All Existing Glissandos (%d in project)##gliss_apply_all", num_existing)) then
+                    local GlissandoService = require("services.glissando_service")
+                    local updated_cnt = GlissandoService.apply_defaults_to_all(state, state.active_tracks_cache)
+                    state.status_msg = string.format("Updated %d glissandos in project to current default settings.", updated_cnt)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Applies the current default settings to all glissandos in this project and synchronizes MIDI chromatic steps.")
+                end
+
+                reaper.ImGui_SameLine(ctx)
+                if reaper.ImGui_Button(ctx, "↺ Reset to Factory Defaults##gliss_reset_defaults") then
+                    state.glissando_default_start_pct = 50
+                    state.glissando_default_vel_mode = "interpolate"
+                    state.glissando_default_wave_style = "sine"
+                    state.glissando_default_show_text = true
+                    state.glissando_default_gap = 14.0
+                    state.glissando_default_thickness = 1.6
+                    require('state').save_settings(state)
+                    state.status_msg = "Reset glissando defaults to factory settings (50% Start, Linear Ramp, Sine Wave, Text On, Gap 14px, 1.6px Thickness)."
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Resets all glissando default settings to standard: 50% Start, Linear Ramp, Sine Wave, Text On, 14.0 px Gap, 1.6 px Thickness.")
+                end
+
+                reaper.ImGui_Spacing(ctx)
+            end
+
+            reaper.ImGui_Spacing(ctx)
+
+            -- ==============================================================
+            -- 3. REAPER User Directory & Paths
             -- ==============================================================
             if reaper.ImGui_CollapsingHeader(ctx, "📁 REAPER User Directory & Paths###hdr_paths") then
                 reaper.ImGui_Spacing(ctx)

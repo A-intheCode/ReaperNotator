@@ -391,6 +391,8 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     local chase_events_list = {}
     local tie_masters = {}
     local tie_slaves = {}
+    local gliss_steps = {}
+    local gliss_masters = {}
     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
     for ti = 0, text_cnt - 1 do
         local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
@@ -449,6 +451,31 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 local s2_ppq = ppq -- Use the exact event PPQ where slave tag was inserted
                 table.insert(tie_slaves, { id = ts_id, pitch = p_num, chan = ch_num, sppq = s2_ppq, orig_dur = d2_qn, s_qn = s2_qn })
             end
+
+            -- Extract glissando steps & masters:
+            local g_step_id = msg:match("^NOTATOR_GLISS_STEP%s+([%w_]+)")
+            if g_step_id then
+                table.insert(gliss_steps, { ppq = ppq, id = g_step_id })
+            end
+            if msg:match("^NOTATOR_GLISSANDO|") then
+                local g_parts = {}
+                for field in (msg .. "|"):gmatch("([^|]*)|") do table.insert(g_parts, field) end
+                local g_id = g_parts[2]
+                if g_id and g_id ~= "" then
+                    local ch_num  = tonumber(g_parts[4]) or 0
+                    local p1_num  = tonumber(g_parts[5]) or 60
+                    local s1_qn   = tonumber(g_parts[6]) or 0.0
+                    local d1_orig = tonumber(g_parts[7]) or 1.0
+                    local p2_num  = tonumber(g_parts[8])
+                    local s2_qn   = tonumber(g_parts[9])
+                    local d2_qn   = tonumber(g_parts[10])
+                    local pct_num = tonumber(g_parts[11]) or 50
+                    table.insert(gliss_masters, {
+                        id = g_id, pitch = p1_num, chan = ch_num, s_qn = s1_qn, orig_dur = d1_orig,
+                        pitch2 = p2_num, s2_qn = s2_qn, d2_qn = d2_qn, pct = pct_num
+                    })
+                end
+            end
             
             -- Extract key signatures (NOTATOR_KEY_SIG <key_idx> <mode> or native key <val>)
             local idx_s, mode_s = msg:match("NOTATOR_KEY_SIG%s+(%-?%d+)%s*([%a%d_]*)")
@@ -502,6 +529,39 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 if not already_have then
                     table.insert(tie_masters, { id = t_id, pitch = t_pitch, chan = t_ch, sppq = s1_ppq, orig_dur = t_d1_qn, s_qn = t_s1_qn, s2_qn = t_s2_qn, d2_qn = t_d2_qn, vel = t_vel })
                     table.insert(tie_slaves, { id = t_id, pitch = t_pitch, chan = t_ch, sppq = s2_ppq, orig_dur = t_d2_qn, s_qn = t_s2_qn, vel = t_vel })
+                end
+            end
+        end
+    end
+    
+    -- Dual persistence fallback: read glissandos from ProjExtState so chromatic steps are filtered even if take tags were modified
+    local _, raw_user_gliss = reaper.GetProjExtState(0, "REAPER_Notator", "glissando_marks")
+    if raw_user_gliss and raw_user_gliss ~= "" then
+        local trk_guid = track and reaper.GetTrackGUID(track)
+        for entry in raw_user_gliss:gmatch("([^;]+)") do
+            local gp = {}
+            for field in (entry .. "|"):gmatch("([^|]*)|") do table.insert(gp, field) end
+            local gid = gp[1]
+            local g_guid = gp[2]
+            if gid and gid ~= "" and (g_guid == "" or not trk_guid or g_guid == trk_guid) then
+                local g_ch  = tonumber(gp[3]) or 0
+                local g_p1  = tonumber(gp[4]) or 60
+                local g_s1  = tonumber(gp[5]) or 0.0
+                local g_d1  = tonumber(gp[6]) or 1.0
+                local g_p2  = tonumber(gp[7])
+                local g_s2  = tonumber(gp[8])
+                local g_d2  = tonumber(gp[9])
+                local g_pct = tonumber(gp[10]) or 50
+
+                local already_have = false
+                for _, gm in ipairs(gliss_masters) do
+                    if gm.id == gid then already_have = true; break end
+                end
+                if not already_have then
+                    table.insert(gliss_masters, {
+                        id = gid, pitch = g_p1, chan = g_ch, s_qn = g_s1, orig_dur = g_d1,
+                        pitch2 = g_p2, s2_qn = g_s2, d2_qn = g_d2, pct = g_pct
+                    })
                 end
             end
         end
@@ -570,9 +630,32 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             local n_sqn = base_sqn + loop_offset_qn
             local n_eqn = base_eqn + loop_offset_qn
             
+            local is_gliss_step = false
+            for _, gs in ipairs(gliss_steps) do
+                if math.abs(gs.ppq - sppq) <= 15 then
+                    is_gliss_step = true
+                    break
+                end
+            end
+            if not is_gliss_step then
+                for _, gm in ipairs(gliss_masters) do
+                    if (gm.chan == nil or gm.chan == chan) and gm.pitch2 and gm.s2_qn then
+                        local p_min = math.min(gm.pitch, gm.pitch2)
+                        local p_max = math.max(gm.pitch, gm.pitch2)
+                        if pitch > p_min and pitch < p_max then
+                            local t_start_qn = gm.s_qn + ((gm.pct or 50) / 100.0) * (gm.orig_dur or 1.0)
+                            if n_sqn >= (t_start_qn - 0.05) and n_sqn < (gm.s2_qn - 0.005) then
+                                is_gliss_step = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            
             local tie_slave_info = find_tie_slave(pitch, chan, sppq, n_sqn)
             local is_tie_slave = (tie_slave_info ~= nil)
-            if ok and (not muted or is_tie_slave) then
+            if ok and not is_gliss_step and (not muted or is_tie_slave) then
                 -- STRICT FILTERING:
                 if n_sqn < end_qn - 0.005 and n_eqn > start_qn + 0.005 then
                     local cl_sqn = math.max(start_qn, n_sqn)
@@ -588,6 +671,16 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                     elseif tie_slave_info and tie_slave_info.orig_dur and tie_slave_info.orig_dur > 0.01 then
                         dur = tie_slave_info.orig_dur
                         cl_eqn = cl_sqn + dur
+                    end
+
+                    for _, gm in ipairs(gliss_masters) do
+                        if gm.pitch == pitch and (gm.chan == nil or gm.chan == chan) and math.abs(n_sqn - gm.s_qn) <= 0.05 then
+                            if gm.orig_dur and gm.orig_dur > 0.01 then
+                                dur = gm.orig_dur
+                                cl_eqn = cl_sqn + dur
+                            end
+                            break
+                        end
                     end
                     
                     if dur >= 0.03125 then
@@ -1808,6 +1901,10 @@ function MidiService.delete_selected_notes(state)
     
     local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
     SlurService.remove_slurs_for_notes(state, targets)
+    local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+    PortamentoService.remove_portamentos_for_notes(state, targets)
+    local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+    GlissandoService.remove_glissandos_for_notes(state, targets)
     
     state.selected_notes = {}
     state.selected_note = nil
@@ -5386,6 +5483,28 @@ function MidiService.cleanup_orphaned_score_elements(state)
         end
     end
     
+    -- 10. Clean orphaned glissandos
+    if state.glissando_marks and #state.glissando_marks > 0 then
+        local kept_gliss = {}
+        local gliss_changed = false
+        for _, gm in ipairs(state.glissando_marks) do
+            if not gm.track_guid or gm.track_guid == "" or valid_tracks[gm.track_guid] then
+                table.insert(kept_gliss, gm)
+            else
+                gliss_changed = true
+                if state.selected_glissando and state.selected_glissando.id == gm.id then
+                    state.selected_glissando = nil
+                end
+            end
+        end
+        if gliss_changed then
+            state.glissando_marks = kept_gliss
+            any_changed = true
+            local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+            GlissandoService.save_glissandos(state)
+        end
+    end
+    
     if any_changed and reaper.MarkProjectDirty then
         reaper.MarkProjectDirty(0)
     end
@@ -5408,6 +5527,36 @@ end
 function MidiService.remove_slurs_and_ties(state, opt_notes)
     local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
     return SlurService.remove_slurs_and_ties(state, opt_notes)
+end
+
+function MidiService.toggle_portamento(state, active_tracks_data)
+    local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+    return PortamentoService.toggle_portamento(state, active_tracks_data)
+end
+
+function MidiService.delete_portamento(state, port_id, active_tracks_data)
+    local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+    return PortamentoService.delete_portamento(state, port_id, active_tracks_data)
+end
+
+function MidiService.remove_portamentos_for_notes(state, notes, active_tracks_data)
+    local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+    return PortamentoService.remove_portamentos_for_notes(state, notes, active_tracks_data)
+end
+
+function MidiService.toggle_glissando(state, active_tracks_data)
+    local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+    return GlissandoService.toggle_glissando(state, active_tracks_data)
+end
+
+function MidiService.delete_glissando(state, gliss_id, active_tracks_data)
+    local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+    return GlissandoService.delete_glissando(state, gliss_id, active_tracks_data)
+end
+
+function MidiService.remove_glissandos_for_notes(state, notes, active_tracks_data)
+    local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+    return GlissandoService.remove_glissandos_for_notes(state, notes, active_tracks_data)
 end
 
 return MidiService
