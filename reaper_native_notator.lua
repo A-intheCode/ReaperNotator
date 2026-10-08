@@ -1,8 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0
+-- @version 1.7.0-beta
 -- @changelog
---   + v1.7.0: Complete Glissando & Portamento System, Cross-Staff Support, and Dual Persistence:
+--   + v1.7.0-beta: Complete Glissando & Portamento System, Cross-Staff Support, and Dual Persistence:
 --             - Glissando Engine: Real chromatic pitch steps generated in MIDI takes (NOTATOR_GLISS_STEP / NOTATOR_GLISSANDO) with full acoustic playback.
 --             - Dual-Reality Score Rendering: Intermediate chromatic ladder steps are 100% hidden from the score canvas while Note 1 retains its full visual duration.
 --             - Cross-Staff Glissando: Full support for cross-staff glissandi (e.g. Harp/Piano connecting Bass Clef to Treble Clef) with automatic clef split detection across staves.
