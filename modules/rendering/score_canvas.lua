@@ -1554,6 +1554,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.selected_octave_line = nil
                     state.selected_portamento = nil
                     state.context_portamento = nil
+                    state.selected_slur = nil
+                    state.selected_tie = nil
+                    state.context_slur = nil
+                    state.context_tie = nil
                     state.focused_track = n.track
                     if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
                         reaper.SetOnlyTrackSelected(n.track)
@@ -1598,6 +1602,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.selected_dynamic = nil
                     state.selected_tempo_marker = nil
                     state.selected_octave_line = nil
+                    state.selected_slur = nil
+                    state.selected_tie = nil
+                    state.context_slur = nil
+                    state.context_tie = nil
                     state.focused_track = n.track
                     if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
                         reaper.SetOnlyTrackSelected(n.track)
@@ -2947,10 +2955,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- ======================================================================
     if SlurService then
         if SlurService.draw_slurs then
-            SlurService.draw_slurs(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y)
+            SlurService.draw_slurs(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered_this_frame)
         end
         if SlurService.draw_user_ties then
-            SlurService.draw_user_ties(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y)
+            SlurService.draw_user_ties(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered_this_frame)
         end
     end
 

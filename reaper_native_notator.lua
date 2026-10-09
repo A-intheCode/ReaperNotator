@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.3
+-- @version 1.7.0-beta.4
 -- @changelog
+--   + v1.7.0-beta.4: Slur & Tie Hitbox Arbitration, Notehead Click Priority, and Auto-Advance Phrasing:
+--             - Notehead Click Priority: Clicking or right-clicking noteheads now strictly suppresses slur and tie curve hit-testing, clearing active curve selection and ensuring note editing focus is never captured by underlying phrasing curves.
+--             - Radial Deadzones & Center-Arc Clamping: Slur and tie Bezier hit-testing is clamped to the central arc (t in [0.15, 0.85]) with a 14px radial exclusion zone around notehead centers, eliminating curve click-theft at phrase endpoints.
+--             - Auto-Advancing Phrasing Chaining: Creating a single-note slur or tie [S / T] automatically transfers score selection focus to the destination note, allowing rapid consecutive phrase chaining without deselecting.
+--             - Resilient Track Scoping: Slur and tie hotkeys [S, T] and drawer/sidebar buttons reliably resolve active track take data even when active_tracks_data is empty, preventing accidental slur toggling.
 --   + v1.7.0-beta.3: Tempo Lane Double-Click Custom BPM Creation & Quick-Access Overhaul:
 --             - Tempo Track Double-Click Creation: Double-clicking anywhere on the empty tempo lane now instantly creates a new tempo marking at that measure/beat and immediately opens the edit dialog with auto-focus on the Custom BPM input field.
 --             - Custom BPM Sync & Persistence: Allows entering any custom BPM number (e.g. 128, 95) or text term; automatically writes to REAPER project tempo envelope and synchronizes seamlessly.

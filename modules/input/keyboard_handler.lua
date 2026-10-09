@@ -593,18 +593,19 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     end
 
     -- Articulations, Slurs & Ties (T for tie, S for slur, A for accent)
+    local eff_tracks_data = active_tracks_data or state.active_tracks_cache
     if not is_ctrl and not is_alt and not is_shift then
         if ShortcutManager.is_action_pressed("toggle_tie", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_T()) then
-            midi_service.toggle_tie(state, active_tracks_data)
+            midi_service.toggle_tie(state, eff_tracks_data)
         end
         if ShortcutManager.is_action_pressed("toggle_slur", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_S()) then
-            midi_service.toggle_slur(state, active_tracks_data)
+            midi_service.toggle_slur(state, eff_tracks_data)
         end
         if ShortcutManager.is_action_pressed("toggle_portamento", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_P()) then
-            midi_service.toggle_portamento(state, active_tracks_data)
+            midi_service.toggle_portamento(state, eff_tracks_data)
         end
         if ShortcutManager.is_action_pressed("toggle_glissando", ctx) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_G()) then
-            midi_service.toggle_glissando(state, active_tracks_data)
+            midi_service.toggle_glissando(state, eff_tracks_data)
         end
         if not is_step and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_A()) then
             midi_service.toggle_selected_articulation(state, "accent")

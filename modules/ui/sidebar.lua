@@ -379,15 +379,16 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
     local avail_w_slur = reaper.ImGui_GetContentRegionAvail(ctx)
     local half_w_slur = math.floor((avail_w_slur - 4) / 2)
     
+    local eff_tracks_data = active_tracks_data or state.active_tracks_cache
     if reaper.ImGui_Button(ctx, "⌒ Slur [S]##Side", half_w_slur, 26) then
-        midi_service.toggle_slur(state, active_tracks_data)
+        midi_service.toggle_slur(state, eff_tracks_data)
     end
     if reaper.ImGui_IsItemHovered(ctx) then
         reaper.ImGui_SetTooltip(ctx, "Slur (Legato phrase mark) [Hotkey: S]:\nConnects 2 selected notes (or 1 note to next) with a Legato slur.\nPlays true Legato articulation and triggers sampler transitions.")
     end
     reaper.ImGui_SameLine(ctx)
     if reaper.ImGui_Button(ctx, "‿ Tie [T]##Side", half_w_slur, 26) then
-        midi_service.toggle_tie(state, active_tracks_data)
+        midi_service.toggle_tie(state, eff_tracks_data)
     end
     if reaper.ImGui_IsItemHovered(ctx) then
         reaper.ImGui_SetTooltip(ctx, "Tie (Held note) [Hotkey: T]:\nConnects 2 notes of the same pitch to combine their duration without re-striking.")

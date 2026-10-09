@@ -214,15 +214,16 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
         -- Slurs & Ties
         local avail_w_dt = reaper.ImGui_GetContentRegionAvail(ctx)
         local half_drawer_w = math.floor((avail_w_dt - 4) / 2)
+        local eff_tracks_data = active_tracks_data or state.active_tracks_cache
         if reaper.ImGui_Button(ctx, "⌒ Slur [S]##Drawer", half_drawer_w, 24) then
-            midi_service.toggle_slur(state, active_tracks_data)
+            midi_service.toggle_slur(state, eff_tracks_data)
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Slur (Legato phrase mark) [Hotkey: S]:\nConnects 2 selected notes (or 1 note to next) with a Legato slur.\nPlays true Legato articulation and triggers sampler transitions.")
         end
         reaper.ImGui_SameLine(ctx)
         if reaper.ImGui_Button(ctx, "‿ Tie [T]##Drawer", half_drawer_w, 24) then
-            midi_service.toggle_tie(state, active_tracks_data)
+            midi_service.toggle_tie(state, eff_tracks_data)
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Tie (Held note) [Hotkey: T]:\nConnects 2 notes of the same pitch to combine their duration without re-striking.")

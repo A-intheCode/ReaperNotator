@@ -194,6 +194,8 @@ local function find_next_chronological_note(n1, active_tracks_data, require_same
     -- Fallback: scan directly in n1.take if active_tracks_data didn't contain it
     if not best_note and n1.take and reaper.ValidatePtr(n1.take, "MediaItem_Take*") then
         local take = n1.take
+        local item = n1.item or (reaper.GetMediaItemTake_Item and reaper.GetMediaItemTake_Item(take))
+        local MidiNote = package.loaded["classes.note"] or require("classes.note")
         local _, notecnt = reaper.MIDI_CountEvts(take)
         for i = 0, notecnt - 1 do
             local ok, _, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
@@ -205,18 +207,18 @@ local function find_next_chronological_note(n1, active_tracks_data, require_same
                     if not require_same_pitch or pitch == n1.pitch then
                         if dt < min_dt then
                             min_dt = dt
-                            best_note = {
+                            best_note = MidiNote.new({
                                 idx = i,
                                 take = take,
+                                item = item,
                                 track = n1.track,
                                 chan = chan,
                                 pitch = pitch,
                                 vel = vel,
                                 start_qn = cand_sqn,
                                 end_qn = cand_eqn,
-                                dur_qn = cand_eqn - cand_sqn,
-                                key = string.format("%d_%.4f_%d", pitch, cand_sqn, chan)
-                            }
+                                dur_qn = cand_eqn - cand_sqn
+                            })
                         end
                     end
                 end
@@ -232,6 +234,7 @@ end
 -- ------------------------------------------------------------------------------
 
 function SlurService.toggle_slur(state, active_tracks_data)
+    local eff_tracks_data = active_tracks_data or state.active_tracks_cache
     local targets = get_target_notes(state)
     if #targets == 0 then
         state.status_msg = "Select 1 note (to slur to next) or 2+ notes to slur."
@@ -257,7 +260,7 @@ function SlurService.toggle_slur(state, active_tracks_data)
         end
     else
         n1 = targets[1]
-        n_last = find_next_chronological_note(n1, active_tracks_data, false)
+        n_last = find_next_chronological_note(n1, eff_tracks_data, false)
         if not n_last then
             state.status_msg = "⚠️ No subsequent note found to slur to on this track/voice."
             return
@@ -267,7 +270,7 @@ function SlurService.toggle_slur(state, active_tracks_data)
     end
     
     -- Expand to all intermediate notes between n1 and n_last on the same voice/channel strictly within this track!
-    if active_tracks_data and #targets >= 2 and n_last.start_qn - n1.start_qn > 0.005 then
+    if eff_tracks_data and #targets >= 2 and n_last.start_qn - n1.start_qn > 0.005 then
         local all_cands = {}
         local n1_guid = get_track_guid_from_note(n1)
         local n1_trk = get_track_from_note(n1)
@@ -447,6 +450,16 @@ function SlurService.toggle_slur(state, active_tracks_data)
     SlurService.save_slurs(state)
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
+
+    -- Auto-advance selection focus to the arrival note (n_last)
+    if #targets == 1 and n_last then
+        state:clear_selection()
+        state:select_note(n_last)
+        if MidiService and MidiService.sync_selection_to_reaper then
+            MidiService.sync_selection_to_reaper(state, eff_tracks_data)
+        end
+    end
+
     local art_label = (art_match and art_match.name) or "Legato"
     state.status_msg = string.format("Slur created [S] (%s %s -> %s, %d notes)", art_label, pitch_to_name(n1.pitch), pitch_to_name(n_last.pitch), #phrase_notes)
 end
@@ -456,6 +469,7 @@ end
 -- ------------------------------------------------------------------------------
 
 function SlurService.toggle_tie(state, active_tracks_data)
+    local eff_tracks_data = active_tracks_data or state.active_tracks_cache
     local targets = get_target_notes(state)
     if #targets == 0 then
         state.status_msg = "Select 1 note (to tie to next of same pitch) or 2 notes to tie."
@@ -484,7 +498,7 @@ function SlurService.toggle_tie(state, active_tracks_data)
     if existing_tie_idx then
         -- UNTIE / TOGGLE OFF
         local tie = state.user_ties[existing_tie_idx]
-        SlurService.delete_tie(state, tie, MidiService, active_tracks_data)
+        SlurService.delete_tie(state, tie, MidiService, eff_tracks_data)
         return
     end
     
@@ -503,7 +517,7 @@ function SlurService.toggle_tie(state, active_tracks_data)
         end
     else
         n1 = targets[1]
-        n2 = find_next_chronological_note(n1, active_tracks_data, true)
+        n2 = find_next_chronological_note(n1, eff_tracks_data, true)
         if not n2 then
             state.status_msg = "⚠️ No subsequent note with the same pitch found to tie."
             return
@@ -643,6 +657,16 @@ function SlurService.toggle_tie(state, active_tracks_data)
     SlurService.save_slurs(state)
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
+
+    -- Auto-advance selection focus to tied note (n2)
+    if #targets == 1 and n2 then
+        state:clear_selection()
+        state:select_note(n2)
+        if MidiService and MidiService.sync_selection_to_reaper then
+            MidiService.sync_selection_to_reaper(state, eff_tracks_data)
+        end
+    end
+
     state.status_msg = string.format("Tied notes [T] (%s, visual separate notes preserved, held audio)", pitch_to_name(n1.pitch))
 end
 
@@ -1176,8 +1200,8 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
     return nd1, nd2
 end
 
-function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, all_notes_or_s, s_or_cminx, cminx_or_cmaxx, cmaxx_or_cminy, cminy_or_cmaxy, cmaxy_or_hov, opt_hov, opt_mx, opt_my)
-    local ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y
+function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, all_notes_or_s, s_or_cminx, cminx_or_cmaxx, cmaxx_or_cminy, cminy_or_cmaxy, cmaxy_or_hov, opt_hov, opt_mx, opt_my, opt_note_hovered)
+    local ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered
     if reaper.APIExists("ImGui_ValidatePtr") and reaper.ImGui_ValidatePtr(ctx_or_dl, "ImGui_Context*") then
         ctx = ctx_or_dl
         draw_list = draw_list_or_state
@@ -1191,6 +1215,7 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
         is_hovered = opt_hov
         mouse_x = opt_mx
         mouse_y = opt_my
+        note_hovered = opt_note_hovered
     else
         draw_list = ctx_or_dl
         state = draw_list_or_state
@@ -1203,6 +1228,7 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
         is_hovered = cmaxy_or_hov
         mouse_x = opt_hov
         mouse_y = opt_mx
+        note_hovered = opt_my
     end
 
     if not state or not state.user_slurs or #state.user_slurs == 0 then return end
@@ -1240,15 +1266,22 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                 local cp2_x = end_x - cp_dist
                 local cp2_y = end_y + dir * arc_h
                 
-                -- Interactive Bezier Hit-testing
+                -- Interactive Bezier Hit-testing (strictly prioritizes notehead clicks!)
                 local is_hit = false
-                if ctx and is_hovered and mouse_x and mouse_y and end_x > start_x then
-                    if mouse_x >= start_x - 6.0 * s and mouse_x <= end_x + 6.0 * s then
-                        local t = math.max(0.0, math.min(1.0, (mouse_x - start_x) / (end_x - start_x)))
-                        local u = 1.0 - t
-                        local y_curve = (u * u * u * start_y) + (3.0 * u * u * t * cp1_y) + (3.0 * u * t * t * cp2_y) + (t * t * t * end_y)
-                        if math.abs(mouse_y - y_curve) <= 8.0 * s then
-                            is_hit = true
+                local note_is_hovered = note_hovered or (state and state.hovered_note)
+                if ctx and is_hovered and mouse_x and mouse_y and end_x > start_x and not note_is_hovered then
+                    local d1 = math.sqrt((mouse_x - nd1.nx)^2 + (mouse_y - nd1.ny)^2)
+                    local d2 = math.sqrt((mouse_x - nd2.nx)^2 + (mouse_y - nd2.ny)^2)
+                    if d1 >= 14.0 * s and d2 >= 14.0 * s then
+                        if mouse_x >= start_x and mouse_x <= end_x then
+                            local t = (mouse_x - start_x) / (end_x - start_x)
+                            if t >= 0.15 and t <= 0.85 then
+                                local u = 1.0 - t
+                                local y_curve = (u * u * u * start_y) + (3.0 * u * u * t * cp1_y) + (3.0 * u * t * t * cp2_y) + (t * t * t * end_y)
+                                if math.abs(mouse_y - y_curve) <= 8.0 * s then
+                                    is_hit = true
+                                end
+                            end
                         end
                     end
                 end
@@ -1280,8 +1313,8 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
     end
 end
 
-function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_notes, all_notes_or_s, s_or_cminx, cminx_or_cmaxx, cmaxx_or_cminy, cminy_or_cmaxy, cmaxy_or_hov, opt_hov, opt_mx, opt_my)
-    local ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y
+function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_notes, all_notes_or_s, s_or_cminx, cminx_or_cmaxx, cmaxx_or_cminy, cminy_or_cmaxy, cmaxy_or_hov, opt_hov, opt_mx, opt_my, opt_note_hovered)
+    local ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered
     if reaper.APIExists("ImGui_ValidatePtr") and reaper.ImGui_ValidatePtr(ctx_or_dl, "ImGui_Context*") then
         ctx = ctx_or_dl
         draw_list = draw_list_or_state
@@ -1295,6 +1328,7 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
         is_hovered = opt_hov
         mouse_x = opt_mx
         mouse_y = opt_my
+        note_hovered = opt_note_hovered
     else
         draw_list = ctx_or_dl
         state = draw_list_or_state
@@ -1307,6 +1341,7 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
         is_hovered = cmaxy_or_hov
         mouse_x = opt_hov
         mouse_y = opt_mx
+        note_hovered = opt_my
     end
 
     if not state or not state.user_ties or #state.user_ties == 0 then return end
@@ -1344,15 +1379,22 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
                 local cp2_x = end_x - cp_offset
                 local cp2_y = end_y + offset_y
                 
-                -- Interactive Bezier Hit-testing
+                -- Interactive Bezier Hit-testing (strictly prioritizes notehead clicks!)
                 local is_hit = false
-                if ctx and is_hovered and mouse_x and mouse_y and end_x > start_x then
-                    if mouse_x >= start_x - 6.0 * s and mouse_x <= end_x + 6.0 * s then
-                        local t = math.max(0.0, math.min(1.0, (mouse_x - start_x) / (end_x - start_x)))
-                        local u = 1.0 - t
-                        local y_curve = (u * u * u * start_y) + (3.0 * u * u * t * cp1_y) + (3.0 * u * t * t * cp2_y) + (t * t * t * end_y)
-                        if math.abs(mouse_y - y_curve) <= 8.0 * s then
-                            is_hit = true
+                local note_is_hovered = note_hovered or (state and state.hovered_note)
+                if ctx and is_hovered and mouse_x and mouse_y and end_x > start_x and not note_is_hovered then
+                    local d1 = math.sqrt((mouse_x - nd1.nx)^2 + (mouse_y - nd1.ny)^2)
+                    local d2 = math.sqrt((mouse_x - nd2.nx)^2 + (mouse_y - nd2.ny)^2)
+                    if d1 >= 14.0 * s and d2 >= 14.0 * s then
+                        if mouse_x >= start_x and mouse_x <= end_x then
+                            local t = (mouse_x - start_x) / (end_x - start_x)
+                            if t >= 0.15 and t <= 0.85 then
+                                local u = 1.0 - t
+                                local y_curve = (u * u * u * start_y) + (3.0 * u * u * t * cp1_y) + (3.0 * u * t * t * cp2_y) + (t * t * t * end_y)
+                                if math.abs(mouse_y - y_curve) <= 8.0 * s then
+                                    is_hit = true
+                                end
+                            end
                         end
                     end
                 end
