@@ -24,6 +24,81 @@ local function get_track_from_take(take)
     return reaper.GetMediaItem_Track(item)
 end
 
+local function normalize_guid(g)
+    if not g then return "" end
+    return g:upper():gsub("[^%w]", "")
+end
+
+local function get_track_from_note(n)
+    if not n then return nil end
+    if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
+        return n.track
+    end
+    if n.take and reaper.ValidatePtr(n.take, "MediaItem_Take*") then
+        local item = reaper.GetMediaItemTake_Item(n.take)
+        if item and reaper.ValidatePtr(item, "MediaItem*") then
+            local trk = reaper.GetMediaItem_Track(item)
+            if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+                return trk
+            end
+        end
+    end
+    if n.orig then
+        return get_track_from_note(n.orig)
+    end
+    return nil
+end
+
+local function get_item_from_note(n)
+    if not n then return nil end
+    if n.item and reaper.ValidatePtr(n.item, "MediaItem*") then
+        return n.item
+    end
+    if n.take and reaper.ValidatePtr(n.take, "MediaItem_Take*") then
+        local item = reaper.GetMediaItemTake_Item(n.take)
+        if item and reaper.ValidatePtr(item, "MediaItem*") then
+            return item
+        end
+    end
+    if n.orig then
+        return get_item_from_note(n.orig)
+    end
+    return nil
+end
+
+local function get_track_guid_from_note(n)
+    if not n then return nil end
+    if n.track_guid and n.track_guid ~= "" then
+        return n.track_guid
+    end
+    if n.orig and n.orig.track_guid and n.orig.track_guid ~= "" then
+        return n.orig.track_guid
+    end
+    local trk = get_track_from_note(n)
+    if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+        return reaper.GetTrackGUID(trk)
+    end
+    return nil
+end
+
+local function notes_share_same_track(n1, n2)
+    if not n1 or not n2 then return false end
+    local trk1 = get_track_from_note(n1)
+    local trk2 = get_track_from_note(n2)
+    if trk1 and trk2 and trk1 ~= trk2 then
+        return false
+    end
+    local guid1 = get_track_guid_from_note(n1)
+    local guid2 = get_track_guid_from_note(n2)
+    if guid1 and guid2 and guid1 ~= "" and guid2 ~= "" then
+        if normalize_guid(guid1) ~= normalize_guid(guid2) then
+            return false
+        end
+    end
+    return true
+end
+
+
 local function find_take_note_by_pos(take, pitch, chan, target_qn, opt_tolerance_qn)
     if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then return nil, nil end
     local tol_qn = opt_tolerance_qn or 0.10
@@ -77,13 +152,17 @@ local function find_next_chronological_note(n1, active_tracks_data, require_same
     if not n1 then return nil end
     local n1_sqn = n1.start_qn or 0
     local n1_chan = n1.chan or 0
+    local n1_guid = get_track_guid_from_note(n1)
+    local n1_trk = get_track_from_note(n1)
     local best_note = nil
     local min_dt = 999999.0
     
     if active_tracks_data then
         for _, td in ipairs(active_tracks_data) do
             local is_match_track = false
-            if td.track and n1.track and td.track == n1.track then
+            if td.track and n1_trk and td.track == n1_trk then
+                is_match_track = true
+            elseif n1_guid and td.guid and normalize_guid(td.guid) == normalize_guid(n1_guid) then
                 is_match_track = true
             elseif td.track and n1.take and reaper.ValidatePtr(n1.take, "MediaItem_Take*") then
                 local take_trk = get_track_from_take(n1.take)
@@ -162,6 +241,13 @@ function SlurService.toggle_slur(state, active_tracks_data)
     local n1, n_last
     local phrase_notes = {}
     if #targets >= 2 then
+        -- Strict Cross-Track Guard: all selected notes MUST belong to the same instrument/track!
+        for i = 2, #targets do
+            if not notes_share_same_track(targets[1], targets[i]) then
+                state.status_msg = "⚠️ Slurs can only connect notes within the same instrument."
+                return
+            end
+        end
         n1 = targets[1]
         n_last = targets[#targets]
         for _, t in ipairs(targets) do
@@ -180,11 +266,19 @@ function SlurService.toggle_slur(state, active_tracks_data)
         table.insert(phrase_notes, n_last)
     end
     
-    -- Expand to all intermediate notes between n1 and n_last on the same voice/channel
+    -- Expand to all intermediate notes between n1 and n_last on the same voice/channel strictly within this track!
     if active_tracks_data and #targets >= 2 and n_last.start_qn - n1.start_qn > 0.005 then
         local all_cands = {}
+        local n1_guid = get_track_guid_from_note(n1)
+        local n1_trk = get_track_from_note(n1)
         for _, td in ipairs(active_tracks_data) do
-            if td.notes then
+            local is_match = false
+            if n1_trk and td.track and td.track == n1_trk then
+                is_match = true
+            elseif n1_guid and td.guid and normalize_guid(td.guid) == normalize_guid(n1_guid) then
+                is_match = true
+            end
+            if is_match and td.notes then
                 for _, cand in ipairs(td.notes) do
                     if (cand.chan or 0) == (n1.chan or 0) and cand.start_qn >= n1.start_qn - 0.005 and cand.start_qn <= n_last.start_qn + 0.005 then
                         table.insert(all_cands, cand)
@@ -399,6 +493,10 @@ function SlurService.toggle_tie(state, active_tracks_data)
     if #targets >= 2 then
         n1 = targets[1]
         n2 = targets[2]
+        if not notes_share_same_track(n1, n2) then
+            state.status_msg = "⚠️ Ties can only connect notes within the same instrument."
+            return
+        end
         if n1.pitch ~= n2.pitch then
             state.status_msg = "⚠️ Tie requires notes of the same pitch! Use Slur [S] for melodic phrases."
             return
@@ -490,10 +588,11 @@ function SlurService.toggle_tie(state, active_tracks_data)
         tie_id, n1.chan or 0, n1.pitch, n2.start_qn, n2_dur))
     
     -- 4. Store in state
-    local trk = get_track_from_take(take)
+    local trk = get_track_from_note(n1) or (take and get_track_from_take(take))
+    local trk_guid = get_track_guid_from_note(n1) or (trk and reaper.GetTrackGUID(trk)) or ""
     local tie_obj = {
         id = tie_id,
-        track_guid = (trk and reaper.GetTrackGUID(trk)) or "",
+        track_guid = trk_guid,
         chan = n1.chan or 0,
         pitch = n1.pitch,
         n1_start_qn = n1.start_qn,
@@ -834,7 +933,8 @@ function SlurService.remove_slurs_for_notes(state, notes)
     for _, n in ipairs(notes) do
         local k = n.key or (n.get_key and n:get_key())
         if k then note_keys[k] = true end
-        table.insert(note_positions, { pitch = n.pitch, chan = n.chan or 0, sqn = n.start_qn or 0 })
+        local n_guid = get_track_guid_from_note(n)
+        table.insert(note_positions, { pitch = n.pitch, chan = n.chan or 0, sqn = n.start_qn or 0, guid = n_guid })
     end
     
     local to_del_slurs = {}
@@ -843,8 +943,13 @@ function SlurService.remove_slurs_for_notes(state, notes)
         if not match then
             local sl_sqn = sl.start_qn or 0.0
             local sl_end = sl.end_qn or sl.n2_start_qn or (sl_sqn + 1.0)
+            local sl_guid = sl.track_guid and normalize_guid(sl.track_guid)
             for _, np in ipairs(note_positions) do
-                if (sl.chan or 0) == np.chan and (math.abs(sl_sqn - np.sqn) < 0.10 or math.abs(sl_end - np.sqn) < 0.10) then
+                local guid_match = true
+                if sl_guid and sl_guid ~= "" and np.guid and np.guid ~= "" then
+                    guid_match = (sl_guid == normalize_guid(np.guid))
+                end
+                if guid_match and (sl.chan or 0) == np.chan and (math.abs(sl_sqn - np.sqn) < 0.10 or math.abs(sl_end - np.sqn) < 0.10) then
                     match = true; break
                 end
             end
@@ -861,8 +966,13 @@ function SlurService.remove_slurs_for_notes(state, notes)
         if not match then
             local t_sqn1 = tie.n1_start_qn or 0.0
             local t_sqn2 = tie.n2_start_qn or (t_sqn1 + 1.0)
+            local tie_guid = tie.track_guid and normalize_guid(tie.track_guid)
             for _, np in ipairs(note_positions) do
-                if tie.pitch == np.pitch and (tie.chan or 0) == np.chan and (math.abs(t_sqn1 - np.sqn) < 0.10 or math.abs(t_sqn2 - np.sqn) < 0.10) then
+                local guid_match = true
+                if tie_guid and tie_guid ~= "" and np.guid and np.guid ~= "" then
+                    guid_match = (tie_guid == normalize_guid(np.guid))
+                end
+                if guid_match and tie.pitch == np.pitch and (tie.chan or 0) == np.chan and (math.abs(t_sqn1 - np.sqn) < 0.10 or math.abs(t_sqn2 - np.sqn) < 0.10) then
                     match = true; break
                 end
             end
@@ -887,6 +997,184 @@ end
 -- ------------------------------------------------------------------------------
 -- Rendering: Cubic Bézier Slurs & Ties
 -- ------------------------------------------------------------------------------
+
+local function resolve_effective_slur_notes(state, sl, all_note_render_by_key)
+    if not sl or not all_note_render_by_key then return nil, nil end
+
+    local sl_guid = sl.track_guid and normalize_guid(sl.track_guid)
+    
+    local function note_matches_slur_track(nd)
+        if not nd then return false end
+        if sl_guid and sl_guid ~= "" then
+            local nd_guid = get_track_guid_from_note(nd)
+            if nd_guid and nd_guid ~= "" then
+                if normalize_guid(nd_guid) ~= sl_guid then
+                    return false
+                end
+            end
+        end
+        return true
+    end
+
+    local nd1 = all_note_render_by_key[sl.n1_key]
+    local nd2 = all_note_render_by_key[sl.n2_key]
+
+    if nd1 and not note_matches_slur_track(nd1) then nd1 = nil end
+    if nd2 and not note_matches_slur_track(nd2) then nd2 = nil end
+
+    -- Fallback by pitch and start_qn if key was re-keyed, strictly scoped to matching track & channel
+    if not nd1 or not nd2 then
+        local best_d1 = 999999
+        local best_d2 = 999999
+        for _, nd in pairs(all_note_render_by_key) do
+            if note_matches_slur_track(nd) and (sl.chan == nil or (nd.chan or (nd.orig and nd.orig.chan) or 0) == (sl.chan or 0)) then
+                local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
+                if not nd1 and nd.pitch == sl.pitch1 then
+                    local d = math.abs(sqn - sl.start_qn)
+                    if d < 0.05 and d < best_d1 then
+                        best_d1 = d
+                        nd1 = nd
+                    end
+                end
+                if not nd2 and nd.pitch == sl.pitch2 then
+                    local d = math.abs(sqn - (sl.n2_start_qn or sl.start_qn))
+                    if d < 0.05 and d < best_d2 then
+                        best_d2 = d
+                        nd2 = nd
+                    end
+                end
+            end
+        end
+    end
+
+    if not nd1 or not nd2 then return nil, nil end
+
+    -- If sl.track_guid was missing (legacy), inherit and persist from matched note
+    if (not sl.track_guid or sl.track_guid == "") and nd1 then
+        sl.track_guid = get_track_guid_from_note(nd1) or ""
+    end
+
+    -- STRICT GUARD: Notes MUST share same track!
+    if not notes_share_same_track(nd1, nd2) then
+        return nil, nil
+    end
+
+    local base_sqn1 = nd1.start_qn or (nd1.orig and nd1.orig.start_qn) or sl.start_qn or 0
+
+    -- Segment arrival handling (Elaine Gould standard):
+    -- If nd2 has multiple barline segments or is tied, ensure the slur lands on the FIRST segment
+    if nd2.orig and nd2.is_segment then
+        local first_seg = nd2
+        local first_sqn = nd2.start_qn or 999999
+        for _, nd in pairs(all_note_render_by_key) do
+            if notes_share_same_track(nd, nd2) then
+                local is_same_note = (nd.orig and nd2.orig and nd.orig == nd2.orig)
+                if not is_same_note and nd2.orig and nd.orig and nd2.orig.take and nd.orig.take and nd2.orig.take == nd.orig.take and nd2.orig.idx and nd.orig.idx and nd2.orig.idx == nd.orig.idx then
+                    is_same_note = true
+                end
+                if is_same_note and nd.is_segment then
+                    local sqn = nd.start_qn or 0
+                    if sqn < first_sqn and sqn > (base_sqn1 + 0.01) then
+                        first_sqn = sqn
+                        first_seg = nd
+                    end
+                end
+            end
+        end
+        nd2 = first_seg
+    end
+
+    return nd1, nd2
+end
+
+local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
+    if not tie or not all_note_render_by_key then return nil, nil end
+
+    local tie_guid = tie.track_guid and normalize_guid(tie.track_guid)
+    
+    local function note_matches_tie_track(nd)
+        if not nd then return false end
+        if tie_guid and tie_guid ~= "" then
+            local nd_guid = get_track_guid_from_note(nd)
+            if nd_guid and nd_guid ~= "" then
+                if normalize_guid(nd_guid) ~= tie_guid then
+                    return false
+                end
+            end
+        end
+        return true
+    end
+
+    local nd1 = all_note_render_by_key[tie.n1_key]
+    local nd2 = all_note_render_by_key[tie.n2_key]
+
+    if nd1 and not note_matches_tie_track(nd1) then nd1 = nil end
+    if nd2 and not note_matches_tie_track(nd2) then nd2 = nil end
+
+    -- Fallback by pitch and start_qn if key was re-keyed, strictly scoped to matching track & channel
+    if not nd1 or not nd2 then
+        local best_d1 = 999999
+        local best_d2 = 999999
+        for _, nd in pairs(all_note_render_by_key) do
+            if note_matches_tie_track(nd) and (tie.chan == nil or (nd.chan or (nd.orig and nd.orig.chan) or 0) == (tie.chan or 0)) then
+                local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
+                if not nd1 and nd.pitch == tie.pitch then
+                    local d = math.abs(sqn - (tie.n1_start_qn or 0.0))
+                    if d < 0.05 and d < best_d1 then
+                        best_d1 = d
+                        nd1 = nd
+                    end
+                end
+                if not nd2 and nd.pitch == tie.pitch then
+                    local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
+                    if d < 0.05 and d < best_d2 then
+                        best_d2 = d
+                        nd2 = nd
+                    end
+                end
+            end
+        end
+    end
+
+    if not nd1 or not nd2 then return nil, nil end
+
+    -- If tie.track_guid was missing (legacy), inherit from note
+    if (not tie.track_guid or tie.track_guid == "") and nd1 then
+        tie.track_guid = get_track_guid_from_note(nd1) or ""
+    end
+
+    -- STRICT GUARD: Notes MUST share same track and same pitch!
+    if not notes_share_same_track(nd1, nd2) then
+        return nil, nil
+    end
+    if nd1.pitch ~= nd2.pitch then
+        return nil, nil
+    end
+
+    local base_sqn1 = nd1.start_qn or (nd1.orig and nd1.orig.start_qn) or tie.n1_start_qn or 0
+    if nd2.orig and nd2.is_segment then
+        local first_seg = nd2
+        local first_sqn = nd2.start_qn or 999999
+        for _, nd in pairs(all_note_render_by_key) do
+            if notes_share_same_track(nd, nd2) then
+                local is_same_note = (nd.orig and nd2.orig and nd.orig == nd2.orig)
+                if not is_same_note and nd2.orig and nd.orig and nd2.orig.take and nd.orig.take and nd2.orig.take == nd.orig.take and nd2.orig.idx and nd.orig.idx and nd2.orig.idx == nd.orig.idx then
+                    is_same_note = true
+                end
+                if is_same_note and nd.is_segment then
+                    local sqn = nd.start_qn or 0
+                    if sqn < first_sqn and sqn > (base_sqn1 + 0.01) then
+                        first_sqn = sqn
+                        first_seg = nd
+                    end
+                end
+            end
+        end
+        nd2 = first_seg
+    end
+
+    return nd1, nd2
+end
 
 function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, all_notes_or_s, s_or_cminx, cminx_or_cmaxx, cmaxx_or_cminy, cminy_or_cmaxy, cmaxy_or_hov, opt_hov, opt_mx, opt_my)
     local ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y
@@ -920,20 +1208,7 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
     if not state or not state.user_slurs or #state.user_slurs == 0 then return end
     
     for _, sl in ipairs(state.user_slurs) do
-        local nd1 = all_note_render_by_key[sl.n1_key]
-        local nd2 = all_note_render_by_key[sl.n2_key]
-        
-        -- Fallback: if not found by strict key, find by start_qn and pitch
-        if not nd1 or not nd2 then
-            for k, nd in pairs(all_note_render_by_key) do
-                if not nd1 and nd.pitch == sl.pitch1 and math.abs((nd.orig and nd.orig.start_qn or 0) - sl.start_qn) < 0.02 then
-                    nd1 = nd
-                end
-                if not nd2 and nd.pitch == sl.pitch2 and math.abs((nd.orig and nd.orig.start_qn or 0) - sl.n2_start_qn) < 0.02 then
-                    nd2 = nd
-                end
-            end
-        end
+        local nd1, nd2 = resolve_effective_slur_notes(state, sl, all_note_render_by_key)
         
         if nd1 and nd2 and nd1.nx and nd2.nx then
             local x_min = math.min(nd1.nx, nd2.nx)
@@ -1037,21 +1312,7 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
     if not state or not state.user_ties or #state.user_ties == 0 then return end
     
     for _, tie in ipairs(state.user_ties) do
-        local nd1 = all_note_render_by_key[tie.n1_key]
-        local nd2 = all_note_render_by_key[tie.n2_key]
-        
-        -- Fallback: if not found by strict key, find by start_qn and pitch
-        if not nd1 or not nd2 then
-            for _, nd in pairs(all_note_render_by_key) do
-                local nd_sqn = nd.start_qn or (nd.orig and nd.orig.start_qn or 0)
-                if not nd1 and nd.pitch == tie.pitch and math.abs(nd_sqn - tie.n1_start_qn) < 0.05 then
-                    nd1 = nd
-                end
-                if not nd2 and nd.pitch == tie.pitch and math.abs(nd_sqn - tie.n2_start_qn) < 0.05 then
-                    nd2 = nd
-                end
-            end
-        end
+        local nd1, nd2 = resolve_effective_tie_notes(state, tie, all_note_render_by_key)
         
         if nd1 and nd2 and nd1.nx and nd2.nx then
             local x_min = math.min(nd1.nx, nd2.nx)
@@ -1219,6 +1480,14 @@ function SlurService.load_slurs(state)
                                     n1_key      = string.format("%d_%.4f_%d", tonumber(p1) or 60, tonumber(sqn) or 0.0, tonumber(s_chan) or 0),
                                     n2_key      = string.format("%d_%.4f_%d", tonumber(p2) or 62, tonumber(n2sqn) or 1.0, tonumber(s_chan) or 0)
                                 })
+                            elseif s_id and known_slurs[s_id] then
+                                -- Restore missing track_guid from take's track if missing
+                                for _, es in ipairs(state.user_slurs) do
+                                    if es.id == s_id and (not es.track_guid or es.track_guid == "") then
+                                        es.track_guid = trk_guid
+                                        break
+                                    end
+                                end
                             end
                             local t_id, t_chan, tp, t_s1, t_d1, t_s2, t_d2, t_vel = msg:match("^NOTATOR_TIE%s+([%w_]+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%d*)")
                             if t_id and not known_ties[t_id] then
@@ -1236,6 +1505,14 @@ function SlurService.load_slurs(state)
                                     n1_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s1) or 0.0, tonumber(t_chan) or 0),
                                     n2_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s2) or 1.0, tonumber(t_chan) or 0)
                                 })
+                            elseif t_id and known_ties[t_id] then
+                                -- Restore missing track_guid from take's track if missing
+                                for _, et in ipairs(state.user_ties) do
+                                    if et.id == t_id and (not et.track_guid or et.track_guid == "") then
+                                        et.track_guid = trk_guid
+                                        break
+                                    end
+                                end
                             end
                         end
                     end
@@ -1243,6 +1520,48 @@ function SlurService.load_slurs(state)
             end
         end
     end
+end
+
+function SlurService.heal_slurs_and_ties(state)
+    if not state then return end
+    state.user_slurs = state.user_slurs or {}
+    state.user_ties = state.user_ties or {}
+    
+    local valid_guids = {}
+    local trk_cnt = reaper.CountTracks(0)
+    for ti = 0, trk_cnt - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk then
+            local g = reaper.GetTrackGUID(trk)
+            if g then valid_guids[normalize_guid(g)] = true end
+        end
+    end
+    
+    local clean_slurs = {}
+    for _, sl in ipairs(state.user_slurs) do
+        local keep = true
+        if sl.track_guid and sl.track_guid ~= "" then
+            if not valid_guids[normalize_guid(sl.track_guid)] then
+                keep = false -- Track no longer exists in project
+            end
+        end
+        if keep then table.insert(clean_slurs, sl) end
+    end
+    state.user_slurs = clean_slurs
+    
+    local clean_ties = {}
+    for _, tie in ipairs(state.user_ties) do
+        local keep = true
+        if tie.track_guid and tie.track_guid ~= "" then
+            if not valid_guids[normalize_guid(tie.track_guid)] then
+                keep = false -- Track no longer exists in project
+            end
+        end
+        if keep then table.insert(clean_ties, tie) end
+    end
+    state.user_ties = clean_ties
+    
+    SlurService.save_slurs(state)
 end
 
 function SlurService.save_slurs(state)

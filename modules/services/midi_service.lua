@@ -4936,6 +4936,11 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort, is_
         if DynamicTextService.save_dynamic_texts then DynamicTextService.save_dynamic_texts(state) end
     end
     
+    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+    if SlurService and SlurService.heal_slurs_and_ties then
+        SlurService.heal_slurs_and_ties(state)
+    end
+    
     if total_fixed_notes == 0 and total_cleared_events == 0 and total_healed_dynamics == 0 then
         -- Playback is already synchronized with track sound bank!
         state.show_fix_last_resort_modal = true

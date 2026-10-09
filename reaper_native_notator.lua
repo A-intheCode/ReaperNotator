@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta
+-- @version 1.7.0-beta.1
 -- @changelog
+--   + v1.7.0-beta.1: Slur & Tie Track-Isolation Hotfix, Cross-Instrument Leaking Elimination:
+--             - Strict Track Isolation: Slurs and ties are strictly constrained to the same instrument/track, preventing phrase curves from bridging across multiple staves in multi-track/orchestral views.
+--             - Robust Candidate Scoping: Toggle slur [S] and tie [T] now validate target selections and restrict intermediate phrase note lookups strictly to the primary note's track.
+--             - Legacy Project Auto-Healing: Heals missing track GUIDs upon loading and automatically reconciles project slurs/ties via '⚡ Fix Playback' in the Articulations Drawer.
+--             - Segment-Arrival Precision: Ties and slurs landing on segmented or tied notes attach accurately to the initial notehead per Elaine Gould standards.
 --   + v1.7.0-beta: Complete Glissando & Portamento System, Cross-Staff Support, and Dual Persistence:
 --             - Glissando Engine: Real chromatic pitch steps generated in MIDI takes (NOTATOR_GLISS_STEP / NOTATOR_GLISSANDO) with full acoustic playback.
 --             - Dual-Reality Score Rendering: Intermediate chromatic ladder steps are 100% hidden from the score canvas while Note 1 retains its full visual duration.
