@@ -2972,7 +2972,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- TEMPO, OCTAVE & CHORD LANE (Delegated to CanvasDecorations)
     -- ======================================================================
     if CanvasDecorations then
-        CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, first_staff_top_y, s, margin_left, system_start_x, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, hov)
+        CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, first_staff_top_y, s, margin_left, system_start_x, staff_end_x, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, hov)
         CanvasDecorations.draw_octave_lines(ctx, draw_list, state, fonts, active_tracks_data, s, margin_left, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, is_ctrl, hov)
         CanvasDecorations.draw_chord_scale_lane(ctx, draw_list, state, fonts, s, canvas_p0_x, canvas_p0_y, staff_end_x, margin_left, system_start_x, hdr_x0, hdr_x1, qn_per_measure, measure_map, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, is_shift, hov)
         CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, canvas_p0_x, canvas_p0_y, staff_end_x, margin_left, system_start_x, hdr_x0, hdr_x1, qn_per_measure, measure_map, cull_min_x, cull_max_x, is_hovered, mouse_x, mouse_y, hov)
@@ -3662,6 +3662,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         measure_map = measure_map,
         qn_per_measure = qn_per_measure,
         canvas_p0_y = canvas_p0_y,
+        first_staff_top_y = first_staff_top_y,
         all_note_render_data = all_note_render_data,
         all_articulation_render_data = all_articulation_render_data,
         active_tracks_data = active_tracks_data

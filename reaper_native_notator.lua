@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.2
+-- @version 1.7.0-beta.3
 -- @changelog
+--   + v1.7.0-beta.3: Tempo Lane Double-Click Custom BPM Creation & Quick-Access Overhaul:
+--             - Tempo Track Double-Click Creation: Double-clicking anywhere on the empty tempo lane now instantly creates a new tempo marking at that measure/beat and immediately opens the edit dialog with auto-focus on the Custom BPM input field.
+--             - Custom BPM Sync & Persistence: Allows entering any custom BPM number (e.g. 128, 95) or text term; automatically writes to REAPER project tempo envelope and synchronizes seamlessly.
+--             - Empty Tempo Lane Context Menu: Right-clicking empty space on the tempo lane opens an options menu to insert custom BPM markings, choose preset tempi, or jump directly to the Tempo Drawer.
+--             - Tempo Drawer Custom BPM Insertion: Added a dedicated Custom BPM input and "Insert BPM" button to the Tempo Drawer for instant manual insertion without presets.
+--             - Non-Destructive Dialog Cancel: Canceling the edit popup for a newly double-clicked tempo marking cleans up the marker and removes any ghost tempo envelope points.
 --   + v1.7.0-beta.2: Note & Staff Context Menu Priority Hotfix (Top Staff Line / Header Hitbox Fix):
 --             - Note Right-Click Priority: Right-clicking any notehead (including top staff lines F5/A3 or high ledger lines) now reliably opens the comprehensive NoteContextMenu (Select to End, Voice, Stem, Quantize, Glissando/Portamento).
 --             - Measure Header Hitbox Clamping: Clamped 'Bar Actions' (measure_header_context_popup) strictly to the bar number lane above the staff (mouse_y < staff_top_y - 25*s) and guarded against hovered notes and symbols.

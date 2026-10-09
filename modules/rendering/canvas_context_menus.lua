@@ -1665,9 +1665,10 @@ end
 function CanvasContextMenus.render_tempo_popup(ctx, state, midi_service, active_tracks_data, qn_per_measure)
     if reaper.ImGui_BeginPopup(ctx, "tempo_context_popup") then
         local tm = state.context_tempo_marker or state.selected_tempo_marker
+        local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
+        local bpi = get_qn_per_measure(state, qn_per_measure)
+        
         if tm then
-            local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
-            local bpi = get_qn_per_measure(state, qn_per_measure)
             local disp_txt = (type(tm.get_display_text) == "function" and tm:get_display_text()) or tostring(tm.bpm or "120")
             reaper.ImGui_TextColored(ctx, 0xF39C12FF, string.format("⏱ Tempo: %s", disp_txt))
             reaper.ImGui_TextDisabled(ctx, string.format("Measure %.2f (QN %.2f)", (tm.start_qn / bpi) + 1, tm.start_qn))
@@ -1697,6 +1698,68 @@ function CanvasContextMenus.render_tempo_popup(ctx, state, midi_service, active_
                 state.selected_tempo_marker = nil
                 state.context_tempo_marker = nil
             end
+        else
+            -- Empty tempo lane context menu
+            local click_qn = state.context_tempo_qn or 0.0
+            reaper.ImGui_TextColored(ctx, 0xF39C12FF, "⏱ Tempo Track")
+            reaper.ImGui_TextDisabled(ctx, string.format("Measure %.2f (QN %.2f)", (click_qn / bpi) + 1, click_qn))
+            reaper.ImGui_Separator(ctx)
+            
+            if reaper.ImGui_MenuItem(ctx, "➕ Insert Custom Tempo Marking Here...") then
+                local cur_bpm = TempoService.get_tempo_at_qn(state, click_qn) or 120
+                local new_tm = TempoService.add_tempo_marker(state, {
+                    type            = "absolute",
+                    bpm             = math.floor(cur_bpm),
+                    label           = "",
+                    start_qn        = click_qn,
+                    force_new       = true,
+                    custom_bpm_only = true
+                })
+                state.selected_tempo_marker = new_tm
+                state.editing_tempo_marker = new_tm
+                state.editing_tempo_val = tostring(math.floor(cur_bpm))
+                state._edit_tempo_label = ""
+                state._edit_tempo_bpm = math.floor(cur_bpm)
+                state._edit_tempo_is_new = true
+                state._edit_tempo_marker_id = new_tm.id
+                state._edit_tempo_focus_done = false
+                reaper.ImGui_OpenPopup(ctx, "edit_tempo_popup")
+            end
+            
+            if reaper.ImGui_BeginMenu(ctx, "⚡ Insert Preset Tempo") then
+                local presets = {
+                    { "Largo", 50 },
+                    { "Adagio", 70 },
+                    { "Andante", 90 },
+                    { "Moderato", 110 },
+                    { "Allegro", 130 },
+                    { "Presto", 170 }
+                }
+                for _, p in ipairs(presets) do
+                    if reaper.ImGui_MenuItem(ctx, string.format("%s (♩ = %d)", p[1], p[2])) then
+                        TempoService.add_tempo_marker(state, {
+                            type            = "absolute",
+                            bpm             = p[2],
+                            label           = p[1],
+                            start_qn        = click_qn,
+                            force_new       = true,
+                            custom_bpm_only = false
+                        })
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+            
+            if reaper.ImGui_MenuItem(ctx, "📖 Open Tempo Drawer (T)") then
+                state.show_tempo = true
+                state.show_dynamics = false
+                state.show_articulations_drawer = false
+                state.show_clefs = false
+            end
+            
+            reaper.ImGui_Separator(ctx)
+            local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
+            SelectionService.render_menu_items(ctx, state, active_tracks_data, midi_service)
         end
         reaper.ImGui_EndPopup(ctx)
     end
@@ -1761,8 +1824,13 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                 end
                 reaper.ImGui_SameLine(ctx)
                 if reaper.ImGui_Button(ctx, "Cancel", 75, 24) then
+                    if state._edit_tempo_is_new and tm then
+                        TempoService.delete_tempo_marker(state, tm)
+                        state.selected_tempo_marker = nil
+                    end
                     state.editing_tempo_marker = nil
                     state._edit_tempo_marker_id = nil
+                    state._edit_tempo_is_new = nil
                     reaper.ImGui_CloseCurrentPopup(ctx)
                 end
                 
@@ -1772,6 +1840,7 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                     tm.bpm = final_bpm
                     tm.label = final_lbl
                     tm.custom_bpm_only = (final_lbl == "")
+                    state._edit_tempo_is_new = nil
                     
                     TempoService.save_markers(state)
                     TempoService.sync_all_to_reaper(state)
@@ -1837,8 +1906,13 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                 end
                 reaper.ImGui_SameLine(ctx)
                 if reaper.ImGui_Button(ctx, "Cancel", 75, 24) then
+                    if state._edit_tempo_is_new and tm then
+                        TempoService.delete_tempo_marker(state, tm)
+                        state.selected_tempo_marker = nil
+                    end
                     state.editing_tempo_marker = nil
                     state._edit_tempo_marker_id = nil
+                    state._edit_tempo_is_new = nil
                     reaper.ImGui_CloseCurrentPopup(ctx)
                 end
                 
@@ -1848,6 +1922,7 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                     tm.modifier = state._edit_tempo_modifier or tm.modifier
                     tm.label = state._edit_tempo_label or tm.label
                     tm.custom_target_bpm = true
+                    state._edit_tempo_is_new = nil
                     
                     TempoService.save_markers(state)
                     TempoService.sync_all_to_reaper(state)

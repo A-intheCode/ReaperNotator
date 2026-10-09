@@ -1102,8 +1102,11 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     local rm_off_y = (state.rehearsal_mark_offset_y or -44.0) * s
     local reh_y0 = canvas_info.canvas_p0_y and (canvas_info.canvas_p0_y + 40 * s + chord_h + rm_off_y)
     local in_reh_lane = (state.show_rehearsal_lane ~= false and reh_y0 and mouse_y >= reh_y0 and mouse_y <= (reh_y0 + 28 * s))
+    local tempo_offset_y = (state.tempo_offset_y or 62.0) * s
+    local tempo_lane_y = canvas_info.first_staff_top_y and (canvas_info.first_staff_top_y - tempo_offset_y)
+    local in_tempo_lane = (state.show_tempo_layer ~= false and tempo_lane_y and mouse_y >= (tempo_lane_y - 14 * s) and mouse_y <= (tempo_lane_y + 14 * s))
     local empty_click = (state.input_mode_type ~= "draw") and reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
-                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not state.hovered_slur and not state.hovered_tie and not state.hovered_portamento and not in_chord_lane and not in_reh_lane and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark
+                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not state.hovered_slur and not state.hovered_tie and not state.hovered_portamento and not in_chord_lane and not in_reh_lane and not in_tempo_lane and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark
                         
     if empty_click then
         state.drag_note = nil

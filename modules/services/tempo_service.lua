@@ -273,15 +273,15 @@ function TempoService.add_tempo_marker(state, data)
     state.tempo_markers = state.tempo_markers or {}
     local bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or 4.0
     
-    -- If a tempo marker is currently focused/selected and no note is selected, update it directly
+    -- If a tempo marker is currently focused/selected and no note is selected, update it directly (unless force_new is true)
     local m_type = data.type or "absolute"
-    if state.selected_tempo_marker and not state.selected_note and (data.type == nil or data.type == state.selected_tempo_marker.type) then
+    if not data.force_new and state.selected_tempo_marker and not state.selected_note and (data.type == nil or data.type == state.selected_tempo_marker.type) then
         local tm = state.selected_tempo_marker
         tm.bpm = data.bpm or tm.bpm
-        tm.label = data.label or tm.label
+        tm.label = (data.label ~= nil) and data.label or tm.label
         tm.modifier = data.modifier or tm.modifier
         if data.target_bpm then tm.target_bpm = data.target_bpm end
-        tm.custom_bpm_only = (data.custom_bpm_only == true)
+        tm.custom_bpm_only = (data.custom_bpm_only == true) or (tm.label == "")
         TempoService.save_markers(state)
         TempoService.sync_all_to_reaper(state)
         reaper.Undo_OnStateChange2(0, "Notator: Update Tempo Marker")
@@ -290,14 +290,16 @@ function TempoService.add_tempo_marker(state, data)
     end
 
     local start_qn = 0.0
-    if state.selected_note then
+    if data.start_qn then
+        start_qn = tonumber(data.start_qn) or 0.0
+    elseif state.selected_note then
         start_qn = state.selected_note.start_qn
     else
         local cursor_pos = reaper.GetCursorPosition()
         start_qn = reaper.TimeMap2_timeToQN(0, cursor_pos)
     end
     
-    if state.grid_qn and state.grid_qn > 0.001 then
+    if data.snap ~= false and state.grid_qn and state.grid_qn > 0.001 then
         start_qn = math.floor((start_qn / state.grid_qn) + 0.5) * state.grid_qn
     end
     if start_qn < 0 then start_qn = 0 end
@@ -310,7 +312,7 @@ function TempoService.add_tempo_marker(state, data)
         end
     end
     
-    if not state.selected_note and not has_initial_marker and start_qn <= 0.5 then
+    if not data.start_qn and not state.selected_note and not has_initial_marker and start_qn <= 0.5 then
         start_qn = 0.0
     end
     
@@ -336,20 +338,20 @@ function TempoService.add_tempo_marker(state, data)
     local tm = existing_tm
     if tm then
         tm.bpm = bpm
-        tm.label = data.label or tm.label
+        tm.label = (data.label ~= nil) and data.label or tm.label
         tm.modifier = data.modifier or ""
         tm.target_bpm = target_bpm
-        tm.custom_bpm_only = (data.custom_bpm_only == true)
+        tm.custom_bpm_only = (data.custom_bpm_only == true) or (tm.label == "")
     else
         tm = TempoMarker.new({
             type            = m_type,
-            label           = data.label or "Allegro",
+            label           = (data.label ~= nil) and data.label or (data.custom_bpm_only and "" or "Allegro"),
             modifier        = data.modifier or "",
             bpm             = bpm,
             target_bpm      = target_bpm,
             start_qn        = start_qn,
             end_qn          = end_qn,
-            custom_bpm_only = (data.custom_bpm_only == true)
+            custom_bpm_only = (data.custom_bpm_only == true) or (data.label == "")
         })
         table.insert(state.tempo_markers, tm)
     end
@@ -384,13 +386,21 @@ function TempoService.set_custom_bpm(state, tm, new_bpm)
     reaper.Undo_OnStateChange2(0, "Notator: Adjust Tempo")
 end
 
-function TempoService.delete_selected_tempo_marker(state)
-    if not state.selected_tempo_marker or not state.tempo_markers then return false end
-    local sel_id = state.selected_tempo_marker.id
+function TempoService.delete_tempo_marker(state, target_tm)
+    if not target_tm or not state or not state.tempo_markers then return false end
+    local sel_id = target_tm.id
     for idx, tm in ipairs(state.tempo_markers) do
         if tm.id == sel_id then
             table.remove(state.tempo_markers, idx)
-            state.selected_tempo_marker = nil
+            if state.selected_tempo_marker and state.selected_tempo_marker.id == sel_id then
+                state.selected_tempo_marker = nil
+            end
+            if state.editing_tempo_marker and state.editing_tempo_marker.id == sel_id then
+                state.editing_tempo_marker = nil
+            end
+            if state.context_tempo_marker and state.context_tempo_marker.id == sel_id then
+                state.context_tempo_marker = nil
+            end
             TempoService.save_markers(state)
             TempoService.sync_all_to_reaper(state)
             reaper.Undo_OnStateChange2(0, "Notator: Delete Tempo Marker")
@@ -399,6 +409,10 @@ function TempoService.delete_selected_tempo_marker(state)
         end
     end
     return false
+end
+
+function TempoService.delete_selected_tempo_marker(state)
+    return TempoService.delete_tempo_marker(state, state.selected_tempo_marker)
 end
 
 -- Synchronizes all Notator tempo markers with REAPER's timeline
