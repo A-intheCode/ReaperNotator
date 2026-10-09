@@ -1271,9 +1271,11 @@ function GlissandoService.draw_glissandos(ctx, draw_list, state, all_note_render
                     -- Text Badge: "gliss." placed above the wavy line
                     if show_badge then
                         local f_it = (fonts and (fonts.font_italic or fonts.italic))
-                        if f_it then reaper.ImGui_PushFont(ctx, f_it) end
-                        reaper.ImGui_DrawList_AddText(draw_list, badge_x - 12 * s, badge_y - 6 * s, col, "gliss.")
-                        if f_it then reaper.ImGui_PopFont(ctx) end
+                        if f_it and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+                            reaper.ImGui_DrawList_AddTextEx(draw_list, f_it, 13.0 * s, badge_x - 12 * s, badge_y - 6 * s, col, "gliss.")
+                        else
+                            reaper.ImGui_DrawList_AddText(draw_list, badge_x - 12 * s, badge_y - 6 * s, col, "gliss.")
+                        end
                     end
                 end
             end
