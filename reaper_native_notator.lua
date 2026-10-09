@@ -1,7 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.6
+-- @version 1.7.0-beta.7
 -- @changelog
+--   + v1.7.0-beta.7: MusicXML Multi-Notations Slur Import & Dynamic MIDI Item Mark Reconciliation:
+--             - MusicXML Multi-Notations & Grand-Staff Slur Import: Parses all <notations> nodes per note and direct note children. Slur and tie matching is decoupled from track/channel splits, resolving cross-staff and polyphonic slur phrases. Suppressed redundant literal text ("legato") above exported slurs.
+--             - Dynamic MIDI Item Move/Copy Mark Reconciliation: Moving or duplicating MIDI items across tracks or within a track automatically re-keys and re-parents slurs, glissandi, and portamenti without mark loss or ID collision.
+--             - Glissando & Slide Export: Exports chromatic glissandi (<glissando line-type="wavy|solid">) and portamento marks (<slide line-type="solid">). Automatically filters out internal chromatic playback steps (is_gliss_step), restoring full visual duration to starting notes in exported scores.
+--             - Glissando & Portamento Import: Accurately parses <glissando>, <slide>, and <other-notation> into GlissandoMark and PortamentoMark objects, synthesizing chromatic ladder take events (resync_glissando_in_take) and CC hold automation (apply_cc).
+--             - Glissando DrawList Bugfix: Replaced invalid ImGui_PushFont on DrawList with ImGui_DrawList_AddTextEx.
+--             - MusicXML Modal Controls: Dedicated option toggles in MusicXML Export and Import dialog tabs for Slurs & Ties and Glissandi & Portamento with persistent project settings.
 --   + v1.7.0-beta.6: Full MusicXML 3.1 & 4.0 Bidirectional Support for Slurs, Ties, Glissandi & Slides:
 --             - Bidirectional Slurs & Ties: Full MusicXML 3.1/4.0 export and import for slurs (<slur>) and ties (<tied> / <tie>). Export maps concurrent phrase marks with Gould placement (above/below) and preserves markings across measure-boundary splits. Import creates ScoreCanvas curves, injects NOTATOR_SLUR / NOTATOR_TIE take events, and triggers Reaticulate legato patches while preserving Note 2 notehead visuals.
 --             - MusicXML Multi-Notations & Cross-Staff Import Fix: Accurately parses multi-block <notations> elements and resolves slurs across different channels/voices (grand staff & polyphonic voices). Suppressed redundant literal text ("legato") above exported slurs.
