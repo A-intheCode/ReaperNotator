@@ -407,9 +407,19 @@ function SlurService.toggle_slur(state, active_tracks_data)
         reaper.MIDI_InsertCC(take, false, false, n1_sppq, 0xC0, chan, art_match.pc, 0)
     end
     
-    -- 4. Tag all notes in phrase with Type 15 "NOTE pitch chan a legato"
+    -- 4. Tag all notes in phrase with Type 15 "NOTE pitch chan a legato" and clean conflicting staccato tags
     for _, pn in ipairs(phrase_notes) do
         local pn_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, pn.start_qn) + 0.5)
+        local _, _, _, textcnt = reaper.MIDI_CountEvts(take)
+        for ti = (textcnt or 0) - 1, 0, -1 do
+            local ok_t, _, _, t_ppq, etype, msg_t = reaper.MIDI_GetTextSysexEvt(take, ti)
+            if ok_t and etype == 15 and math.abs(t_ppq - pn_sppq) <= 25 then
+                local low_msg = msg_t:lower()
+                if low_msg:find("stacc") or low_msg:find("spicc") or low_msg:find("wedge") then
+                    reaper.MIDI_DeleteTextSysexEvt(take, ti)
+                end
+            end
+        end
         reaper.MIDI_InsertTextSysexEvt(take, false, false, pn_sppq, 15, string.format("NOTE %d %d a legato", pn.pitch, chan))
         pn.articulation = "legato"
     end
@@ -1198,6 +1208,35 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
     end
 
     return nd1, nd2
+end
+
+function SlurService.is_note_slurred(n, state, trk_guid)
+    if not n then return false end
+    if n.slur_id or n.slur_to or n.is_slurred then return true end
+    if n.articulation == "legato" then return true end
+    if state and state.user_slurs then
+        local n_k = n.key or (n.get_key and n:get_key())
+        local sqn = n.start_qn or (n.orig and n.orig.start_qn) or 0.0
+        local ch = n.chan or (n.orig and n.orig.chan) or 0
+        local p = n.pitch or (n.orig and n.orig.pitch)
+        local t_norm = trk_guid and normalize_guid(trk_guid)
+        for _, sl in ipairs(state.user_slurs) do
+            if not t_norm or not sl.track_guid or sl.track_guid == "" or normalize_guid(sl.track_guid) == t_norm then
+                -- 1. Direct match on slur phrase endpoints: matches regardless of channel splits (crucial for Grand Staff cross-staff slurs)
+                if (n_k and (sl.n1_key == n_k or sl.n2_key == n_k))
+                    or (p and math.abs(sl.start_qn - sqn) < 0.02 and sl.pitch1 == p)
+                    or (p and math.abs((sl.n2_start_qn or sl.start_qn) - sqn) < 0.02 and sl.pitch2 == p) then
+                    return true
+                end
+                -- 2. Intermediate notes within the slur duration span on this track
+                local chan_matches = (sl.chan == nil or (sl.chan or 0) == ch)
+                if chan_matches and (sqn >= sl.start_qn - 0.01 and sqn <= (sl.end_qn or (sl.start_qn + 1.0)) + 0.01) then
+                    return true
+                end
+            end
+        end
+    end
+    return false
 end
 
 function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, all_notes_or_s, s_or_cminx, cminx_or_cmaxx, cmaxx_or_cminy, cminy_or_cmaxy, cmaxy_or_hov, opt_hov, opt_mx, opt_my, opt_note_hovered)

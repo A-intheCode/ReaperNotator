@@ -19,6 +19,7 @@ local TempoService       = require("services.tempo_service")
 local TextItemService    = require("services.text_item_service")
 local DynamicTextService = require("services.dynamic_text_service")
 local RepeatService      = require("services.repeat_service")
+local SlurService        = require("services.slur_service")
 
 local SystemEngraver = {}
 
@@ -508,9 +509,14 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
 
         -- Articulation
         if vn.orig and vn.orig.articulation then
-            local is_above = vn.chord_cluster and vn.chord_cluster.stem_down or false
-            local art_y = is_above and (ny - 12 * eng_s) or (ny + 14 * eng_s)
-            Engraver.draw_articulation(dl, vn.orig.articulation, nx, art_y, eng_s, 0x111111FF, font_music, is_above)
+            local note_is_slurred = SlurService and SlurService.is_note_slurred(vn.orig, state, track_guid)
+            local art_type = tostring(vn.orig.articulation):lower()
+            local is_stacc = (art_type == "staccato" or art_type == "stacc" or art_type == "staccatissimo" or art_type == "staccatiss" or art_type == "wedge" or art_type == "spiccato")
+            if not (note_is_slurred and is_stacc) then
+                local is_above = vn.chord_cluster and vn.chord_cluster.stem_down or false
+                local art_y = is_above and (ny - 12 * eng_s) or (ny + 14 * eng_s)
+                Engraver.draw_articulation(dl, vn.orig.articulation, nx, art_y, eng_s, 0x111111FF, font_music, is_above)
+            end
         end
 
         -- Ledger Lines

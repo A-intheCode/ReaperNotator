@@ -1707,42 +1707,49 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                     if is_extreme then
-                        local is_above = (eff_stem_down == true)
-                        local art_y = is_above and (ny - 12*s) or (ny + 14*s)
-                        
-                        if n.articulation == "marcato" or n.articulation == "marc" then
-                            art_y = is_above and (ny - 19*s) or (ny + 20*s)
-                        elseif n.articulation == "staccatissimo" or n.articulation == "staccatiss" or n.articulation == "wedge" then
-                            art_y = is_above and (ny - 14*s) or (ny + 15*s)
-                        elseif n.articulation == "harmonic" or n.articulation == "harm" or n.articulation == "flageolet" then
-                            is_above = true
-                            art_y = ny - 15*s
-                        elseif n.articulation == "tenuto" or n.articulation == "ten" then
-                            art_y = is_above and (ny - 11*s) or (ny + 13*s)
-                        end
-                        
-                        -- Gould ("Behind Bars" p. 115) / Gardner Read: Staccato dot must always sit in a space, never on a staff line
-                        if n.articulation == "staccato" or n.articulation == "stacc" then
-                            local cur_staff_bot = (tdata.is_grand and not vn.in_treble) and tdata.bass_bottom_y or staff_bottom_y
-                            local l_spacing = tdata.line_spacing or (8.0 * s)
-                            local cur_staff_top = cur_staff_bot - 4 * l_spacing
-                            if art_y >= cur_staff_top - 1.0 * s and art_y <= cur_staff_bot + 1.0 * s then
-                                local rel_y = (cur_staff_bot - art_y) / l_spacing
-                                local line_idx = math.floor(rel_y + 0.5)
-                                if line_idx >= 0 and line_idx <= 4 then
-                                    local dist_to_line = math.abs(art_y - (cur_staff_bot - line_idx * l_spacing))
-                                    if dist_to_line < 2.0 * s then
-                                        art_y = is_above and (art_y - 4.0 * s) or (art_y + 4.0 * s)
+                        local note_is_slurred = SlurService and SlurService.is_note_slurred(n, state, tdata.guid)
+                        local is_stacc = (n.articulation == "staccato" or n.articulation == "stacc" or n.articulation == "staccatissimo" or n.articulation == "staccatiss" or n.articulation == "wedge" or n.articulation == "spiccato")
+                        if not (note_is_slurred and is_stacc) then
+                            local is_above = (eff_stem_down == true)
+                            local art_y = is_above and (ny - 12*s) or (ny + 14*s)
+                            
+                            if n.articulation == "marcato" or n.articulation == "marc" then
+                                art_y = is_above and (ny - 19*s) or (ny + 20*s)
+                            elseif n.articulation == "staccatissimo" or n.articulation == "staccatiss" or n.articulation == "wedge" then
+                                art_y = is_above and (ny - 14*s) or (ny + 15*s)
+                            elseif n.articulation == "harmonic" or n.articulation == "harm" or n.articulation == "flageolet" then
+                                is_above = true
+                                art_y = ny - 15*s
+                            elseif n.articulation == "tenuto" or n.articulation == "ten" then
+                                art_y = is_above and (ny - 11*s) or (ny + 13*s)
+                            end
+                            
+                            -- Gould ("Behind Bars" p. 115) / Gardner Read: Staccato dot must always sit in a space, never on a staff line
+                            if n.articulation == "staccato" or n.articulation == "stacc" then
+                                local cur_staff_bot = staff_bottom_y
+                                if tdata.is_grand then
+                                    cur_staff_bot = vn.in_treble and (tdata.treble_bottom_y or (tdata.staff_top_y + 32 * s)) or (tdata.bass_bottom_y or staff_bottom_y)
+                                end
+                                local l_spacing = tdata.line_spacing or (8.0 * s)
+                                local cur_staff_top = cur_staff_bot - 4 * l_spacing
+                                if art_y >= cur_staff_top - 1.0 * s and art_y <= cur_staff_bot + 1.0 * s then
+                                    local rel_y = (cur_staff_bot - art_y) / l_spacing
+                                    local line_idx = math.floor(rel_y + 0.5)
+                                    if line_idx >= 0 and line_idx <= 4 then
+                                        local dist_to_line = math.abs(art_y - (cur_staff_bot - line_idx * l_spacing))
+                                        if dist_to_line < 2.0 * s then
+                                            art_y = is_above and (art_y - 4.0 * s) or (art_y + 4.0 * s)
+                                        end
                                     end
                                 end
                             end
+                            
+                            local art_col = head_col
+                            if state.invert_mode and (art_col == 0x111111FF or art_col == 0x000000FF) then
+                                art_col = 0xEEEEEEFF
+                            end
+                            Engraver.draw_articulation(draw_list, n.articulation, nx, art_y, s, art_col, font_music, is_above)
                         end
-                        
-                        local art_col = head_col
-                        if state.invert_mode and (art_col == 0x111111FF or art_col == 0x000000FF) then
-                            art_col = 0xEEEEEEFF
-                        end
-                        Engraver.draw_articulation(draw_list, n.articulation, nx, art_y, s, art_col, font_music, is_above)
                     end
                 end
             end

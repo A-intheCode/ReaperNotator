@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.4
+-- @version 1.7.0-beta.5
 -- @changelog
+--   + v1.7.0-beta.5: Legato & Slur Articulation Isolation & Grand Staff Phrasing Hotfix:
+--             - Legato & Slur Articulation Isolation: Notes covered by or connected to a slur strictly suppress staccato, staccatissimo, spiccato, and wedge articulation symbols in both ScoreCanvas and SystemEngraver engines per standard music engraving practice (legato phrasing mutually excludes staccato marks).
+--             - MIDI Take Staccato Event Purging: Placing or toggling a slur ([S] / Articulations Drawer) now automatically purges any conflicting Type 15 text/sysex staccato events (NOTE pitch chan a staccato/spiccato/wedge) from the MIDI take for all phrase notes, preventing stale staccato flags from lingering in takes.
+--             - Grand Staff Cross-Staff & Voice-Independent Slur Resolution: SlurService.is_note_slurred now matches slur endpoints by pitch and chronological time independently of MIDI channel splits (voice 1 vs. voice 3), correctly identifying slurred notes in Piano and Harp dual-staff contexts.
+--             - Grand Staff Vertical Articulation Baseline Fix: Corrected treble staff vertical baseline referencing (tdata.treble_bottom_y) for upper-system notes in Grand Staff tracks, eliminating erratic space/line collision clamping.
 --   + v1.7.0-beta.4: Slur & Tie Hitbox Arbitration, Notehead Click Priority, and Auto-Advance Phrasing:
 --             - Notehead Click Priority: Clicking or right-clicking noteheads now strictly suppresses slur and tie curve hit-testing, clearing active curve selection and ensuring note editing focus is never captured by underlying phrasing curves.
 --             - Radial Deadzones & Center-Arc Clamping: Slur and tie Bezier hit-testing is clamped to the central arc (t in [0.15, 0.85]) with a 14px radial exclusion zone around notehead centers, eliminating curve click-theft at phrase endpoints.
