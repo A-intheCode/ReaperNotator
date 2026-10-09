@@ -589,6 +589,55 @@ function PortamentoService.load_portamentos(state)
             end
         end
     end
+
+    -- 2. Dual persistence: scan takes for Type 15 NOTATOR_PORTAMENTO
+    local trk_count = reaper.CountTracks(0)
+    for ti = 0, trk_count - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk then
+            local trk_guid = reaper.GetTrackGUID(trk)
+            local item_count = reaper.CountTrackMediaItems(trk)
+            for ii = 0, item_count - 1 do
+                local item = reaper.GetTrackMediaItem(trk, ii)
+                local take = item and reaper.GetActiveTake(item)
+                if take and reaper.TakeIsMIDI(take) then
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                    for text_i = 0, text_cnt - 1 do
+                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                        if ok and ev_type == 15 and msg:match("^NOTATOR_PORTAMENTO|") then
+                            local parts = {}
+                            for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
+                            local id = parts[2]
+                            if id and id ~= "" and not known[id] then
+                                known[id] = true
+                                local pm = PortamentoMark.new({
+                                    id            = id,
+                                    track_guid    = (parts[3] and parts[3] ~= "") and parts[3] or trk_guid,
+                                    chan          = tonumber(parts[4]) or 0,
+                                    n1_key        = parts[5],
+                                    pitch1        = tonumber(parts[6]) or 60,
+                                    start_qn1     = tonumber(parts[7]) or 0.0,
+                                    dur_qn1       = tonumber(parts[8]) or 1.0,
+                                    n2_key        = parts[9],
+                                    pitch2        = tonumber(parts[10]) or 62,
+                                    start_qn2     = tonumber(parts[11]) or 1.0,
+                                    dur_qn2       = tonumber(parts[12]) or 1.0,
+                                    hold_start_qn = tonumber(parts[13]),
+                                    hold_end_qn   = tonumber(parts[14]),
+                                    mode          = (parts[15] and parts[15] ~= "") and parts[15] or "cc64",
+                                    show_text     = (parts[16] == "1" or parts[16] == "true"),
+                                    start_pct1    = tonumber(parts[17]) or 50,
+                                    end_pct2      = tonumber(parts[18]) or 50
+                                })
+                                pm:recalculate_timing()
+                                table.insert(state.portamento_marks, pm)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
 end
 
 -- ------------------------------------------------------------------------------
@@ -991,6 +1040,7 @@ local function resolve_effective_portamento_notes(state, pm, all_note_render_by_
     if not nd1 or not nd2 then
         local best_d1 = 999999
         local best_d2 = 999999
+        -- Pass 1: Try channel affinity
         for _, nd in pairs(all_note_render_by_key) do
             if note_matches_pm_track(nd) and (pm.chan == nil or (nd.chan or (nd.orig and nd.orig.chan) or 0) == (pm.chan or 0)) then
                 if not nd1 and nd.pitch == pm.pitch1 then
@@ -1007,6 +1057,29 @@ local function resolve_effective_portamento_notes(state, pm, all_note_render_by_
                     if d < 0.05 and d < best_d2 then
                         best_d2 = d
                         nd2 = nd
+                    end
+                end
+            end
+        end
+        -- Pass 2: Fallback across any channel on the same track
+        if not nd1 or not nd2 then
+            for _, nd in pairs(all_note_render_by_key) do
+                if note_matches_pm_track(nd) then
+                    if not nd1 and nd.pitch == pm.pitch1 then
+                        local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
+                        local d = math.abs(sqn - pm.start_qn1)
+                        if d < 0.05 and d < best_d1 then
+                            best_d1 = d
+                            nd1 = nd
+                        end
+                    end
+                    if not nd2 and nd.pitch == pm.pitch2 then
+                        local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
+                        local d = math.abs(sqn - pm.start_qn2)
+                        if d < 0.05 and d < best_d2 then
+                            best_d2 = d
+                            nd2 = nd
+                        end
                     end
                 end
             end
@@ -1277,12 +1350,117 @@ function PortamentoService.draw_portamentos(ctx, draw_list, state, all_note_rend
                 end
             end
         end
-    end
-
     if is_hovered then
         state.hovered_portamento = now_hovered_pm
     end
     return now_hovered_pm
+end
+
+function PortamentoService.reconcile_from_takes(state)
+    if not state then return false end
+    state.portamento_marks = state.portamento_marks or {}
+    local any_changed = false
+
+    local port_by_id = {}
+    for _, pm in ipairs(state.portamento_marks) do
+        if pm.id then port_by_id[pm.id] = pm end
+    end
+    local seen_port_ids = {}
+
+    local trk_count = reaper.CountTracks(0)
+    for ti = 0, trk_count - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk then
+            local trk_guid = reaper.GetTrackGUID(trk)
+            local item_count = reaper.CountTrackMediaItems(trk)
+            for ii = 0, item_count - 1 do
+                local item = reaper.GetTrackMediaItem(trk, ii)
+                local take = item and reaper.GetActiveTake(item)
+                if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                    for text_i = 0, text_cnt - 1 do
+                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                        if ok and ev_type == 15 and msg:match("^NOTATOR_PORTAMENTO|") then
+                            local parts = {}
+                            for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
+                            local id = parts[2]
+                            if id and id ~= "" then
+                                if not seen_port_ids[id] then
+                                    seen_port_ids[id] = trk_guid
+                                    local ep = port_by_id[id]
+                                    if ep then
+                                        if ep.track_guid ~= trk_guid then
+                                            ep.track_guid = trk_guid
+                                            any_changed = true
+                                        end
+                                    else
+                                        local pm = PortamentoMark.new({
+                                            id            = id,
+                                            track_guid    = trk_guid,
+                                            chan          = tonumber(parts[4]) or 0,
+                                            n1_key        = parts[5],
+                                            pitch1        = tonumber(parts[6]) or 60,
+                                            start_qn1     = tonumber(parts[7]) or 0.0,
+                                            dur_qn1       = tonumber(parts[8]) or 1.0,
+                                            n2_key        = parts[9],
+                                            pitch2        = tonumber(parts[10]) or 62,
+                                            start_qn2     = tonumber(parts[11]) or 1.0,
+                                            dur_qn2       = tonumber(parts[12]) or 1.0,
+                                            hold_start_qn = tonumber(parts[13]),
+                                            hold_end_qn   = tonumber(parts[14]),
+                                            mode          = (parts[15] and parts[15] ~= "") and parts[15] or "cc64",
+                                            show_text     = (parts[16] == "1" or parts[16] == "true"),
+                                            start_pct1    = tonumber(parts[17]) or 50,
+                                            end_pct2      = tonumber(parts[18]) or 50
+                                        })
+                                        pm:recalculate_timing()
+                                        table.insert(state.portamento_marks, pm)
+                                        port_by_id[id] = pm
+                                        any_changed = true
+                                    end
+                                else
+                                    local new_id = "port_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
+                                    parts[2] = new_id
+                                    parts[3] = trk_guid
+                                    local new_msg = table.concat(parts, "|", 1, #parts - 1)
+                                    reaper.MIDI_SetTextSysexEvt(take, text_i, false, false, ppq, 15, new_msg, false)
+                                    local pm = PortamentoMark.new({
+                                        id            = new_id,
+                                        track_guid    = trk_guid,
+                                        chan          = tonumber(parts[4]) or 0,
+                                        n1_key        = parts[5],
+                                        pitch1        = tonumber(parts[6]) or 60,
+                                        start_qn1     = tonumber(parts[7]) or 0.0,
+                                        dur_qn1       = tonumber(parts[8]) or 1.0,
+                                        n2_key        = parts[9],
+                                        pitch2        = tonumber(parts[10]) or 62,
+                                        start_qn2     = tonumber(parts[11]) or 1.0,
+                                        dur_qn2       = tonumber(parts[12]) or 1.0,
+                                        hold_start_qn = tonumber(parts[13]),
+                                        hold_end_qn   = tonumber(parts[14]),
+                                        mode          = (parts[15] and parts[15] ~= "") and parts[15] or "cc64",
+                                        show_text     = (parts[16] == "1" or parts[16] == "true"),
+                                        start_pct1    = tonumber(parts[17]) or 50,
+                                        end_pct2      = tonumber(parts[18]) or 50
+                                    })
+                                    pm:recalculate_timing()
+                                    table.insert(state.portamento_marks, pm)
+                                    port_by_id[new_id] = pm
+                                    seen_port_ids[new_id] = trk_guid
+                                    any_changed = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if any_changed then
+        PortamentoService.save_portamentos(state)
+    end
+    return any_changed
 end
 
 return PortamentoService

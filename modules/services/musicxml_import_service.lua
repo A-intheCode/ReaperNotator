@@ -1072,18 +1072,19 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                 if tc.attr and tc.attr.type == "stop" then has_tie_stop = true end
                             end
 
-                            local notations_node = get_first_child(child, "notations")
-                            if notations_node then
-                                for _, tc in ipairs(get_all_children(notations_node, "tied")) do
-                                    if tc.attr and tc.attr.type == "start" then has_tie_start = true end
-                                    if tc.attr and tc.attr.type == "stop" then has_tie_stop = true end
+                            local notations_nodes = get_all_children(child, "notations")
+                            for _, n_node in ipairs(notations_nodes) do
+                                for _, tc in ipairs(get_all_children(n_node, "tied")) do
+                                    local t_type = tc.attr and tc.attr.type and tostring(tc.attr.type):lower()
+                                    if t_type == "start" then has_tie_start = true end
+                                    if t_type == "stop" then has_tie_stop = true end
                                 end
                             end
 
                             -- Articulations
                             local note_art = nil
-                            if notations_node then
-                                local arts_node = get_first_child(notations_node, "articulations")
+                            for _, n_node in ipairs(notations_nodes) do
+                                local arts_node = get_first_child(n_node, "articulations")
                                 if arts_node then
                                     if get_first_child(arts_node, "staccatissimo") then note_art = "staccatissimo"
                                     elseif get_first_child(arts_node, "staccato") then note_art = "staccato"
@@ -1100,7 +1101,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                     end
                                 end
                                 if not note_art then
-                                    local tech_node = get_first_child(notations_node, "technical")
+                                    local tech_node = get_first_child(n_node, "technical")
                                     if tech_node then
                                         if get_first_child(tech_node, "harmonic") then note_art = "harmonic"
                                         elseif get_first_child(tech_node, "snap-pizzicato") then note_art = "snap-pizzicato"
@@ -1116,7 +1117,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                     end
                                 end
                                 if not note_art then
-                                    local orn_node = get_first_child(notations_node, "ornaments")
+                                    local orn_node = get_first_child(n_node, "ornaments")
                                     if orn_node then
                                         if get_first_child(orn_node, "trill-mark") then note_art = "trill"
                                         elseif get_first_child(orn_node, "tremolo") then note_art = "tremolo"
@@ -1125,13 +1126,13 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                 end
 
                                 -- Arpeggio (<arpeggiate direction="up|down"/>)
-                                local arp_node = get_first_child(notations_node, "arpeggiate")
+                                local arp_node = get_first_child(n_node, "arpeggiate")
                                 if arp_node then
                                     note_arp = (arp_node.attr and arp_node.attr.direction == "down") and "down" or "up"
                                 end
 
                                 -- Fermata (<fermata type="upright">normal</fermata>)
-                                local ferm_node = get_first_child(notations_node, "fermata")
+                                local ferm_node = get_first_child(n_node, "fermata")
                                 if ferm_node then
                                     note_art = "fermata"
                                     local ferm_shape = get_text(ferm_node) or ""
@@ -1169,29 +1170,29 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             local note_slide_starts = {}
                             local note_slide_stops = {}
 
-                            if notations_node then
-                                for _, sc in ipairs(get_all_children(notations_node, "slur")) do
-                                    local s_type = sc.attr and sc.attr.type
+                            for _, n_node in ipairs(notations_nodes) do
+                                for _, sc in ipairs(get_all_children(n_node, "slur")) do
+                                    local s_type = sc.attr and sc.attr.type and tostring(sc.attr.type):lower():match("^%s*(.-)%s*$")
                                     local s_num = tonumber(sc.attr and sc.attr.number) or 1
                                     if s_type == "start" then table.insert(note_slur_starts, s_num) end
                                     if s_type == "stop" then table.insert(note_slur_stops, s_num) end
                                 end
 
-                                for _, gc in ipairs(get_all_children(notations_node, "glissando")) do
-                                    local g_type = gc.attr and gc.attr.type
+                                for _, gc in ipairs(get_all_children(n_node, "glissando")) do
+                                    local g_type = gc.attr and gc.attr.type and tostring(gc.attr.type):lower():match("^%s*(.-)%s*$")
                                     local g_num = tonumber(gc.attr and gc.attr.number) or 1
                                     if g_type == "start" then table.insert(note_gliss_starts, g_num) end
                                     if g_type == "stop" then table.insert(note_gliss_stops, g_num) end
                                 end
 
-                                for _, sc in ipairs(get_all_children(notations_node, "slide")) do
-                                    local s_type = sc.attr and sc.attr.type
+                                for _, sc in ipairs(get_all_children(n_node, "slide")) do
+                                    local s_type = sc.attr and sc.attr.type and tostring(sc.attr.type):lower():match("^%s*(.-)%s*$")
                                     local s_num = tonumber(sc.attr and sc.attr.number) or 1
                                     if s_type == "start" then table.insert(note_slide_starts, s_num) end
                                     if s_type == "stop" then table.insert(note_slide_stops, s_num) end
                                 end
 
-                                for _, on in ipairs(get_all_children(notations_node, "other-notation")) do
+                                for _, on in ipairs(get_all_children(n_node, "other-notation")) do
                                     local o_type = (on.attr and on.attr.type or ""):lower()
                                     local o_txt = (get_text(on) or ""):lower()
                                     if o_type:find("gliss") or o_txt:find("gliss") then
@@ -1202,6 +1203,14 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                         if on.attr and on.attr.type == "stop" then table.insert(note_slide_stops, 1) end
                                     end
                                 end
+                            end
+
+                            -- Also check direct child <slur> on <note> (handles non-standard MusicXML files)
+                            for _, sc in ipairs(get_all_children(child, "slur")) do
+                                local s_type = sc.attr and sc.attr.type and tostring(sc.attr.type):lower():match("^%s*(.-)%s*$")
+                                local s_num = tonumber(sc.attr and sc.attr.number) or 1
+                                if s_type == "start" then table.insert(note_slur_starts, s_num) end
+                                if s_type == "stop" then table.insert(note_slur_stops, s_num) end
                             end
 
                             -- Check pending text articulations from <words>
@@ -1236,7 +1245,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
 
                             -- Ties handling (dual-reality preservation)
                             if do_import_slurs_ties then
-                                local tie_key = string.format("%d_%d", chan, pitch)
+                                local tie_key = pitch
                                 if has_tie_stop and open_ties[tie_key] then
                                     local prev_info = open_ties[tie_key]
                                     local prev_note = prev_info.note_entry
@@ -1252,7 +1261,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                         id = t_id,
                                         n1 = prev_note,
                                         n2 = note_entry,
-                                        chan = chan,
+                                        chan = prev_note.chan or chan,
                                         pitch = pitch
                                     })
 
@@ -1268,69 +1277,102 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                 end
                             end
 
-                            -- Slurs handling
+                            -- Slurs handling (robust MusicXML part-level numbering across staves & voices)
                             if do_import_slurs_ties then
                                 for _, s_num in ipairs(note_slur_stops) do
-                                    local sl_key = string.format("%d_%d", chan, s_num)
-                                    if open_slurs[sl_key] then
-                                        local prev_sl = open_slurs[sl_key]
+                                    local prev_sl = open_slurs[s_num]
+                                    local matched_num = s_num
+                                    if not prev_sl then
+                                        if open_slurs[1] then
+                                            prev_sl = open_slurs[1]
+                                            matched_num = 1
+                                        else
+                                            for k, sl_cand in pairs(open_slurs) do
+                                                prev_sl = sl_cand
+                                                matched_num = k
+                                                break
+                                            end
+                                        end
+                                    end
+                                    if prev_sl then
                                         table.insert(part_slurs, {
                                             id = prev_sl.slur_id,
                                             n1 = prev_sl.note_entry,
                                             n2 = note_entry,
-                                            chan = chan
+                                            chan = prev_sl.note_entry.chan or chan
                                         })
-                                        open_slurs[sl_key] = nil
+                                        open_slurs[matched_num] = nil
                                     end
                                 end
                                 for _, s_num in ipairs(note_slur_starts) do
-                                    local sl_key = string.format("%d_%d", chan, s_num)
                                     local new_slur_id = "slur_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
-                                    open_slurs[sl_key] = { note_entry = note_entry, slur_id = new_slur_id }
+                                    open_slurs[s_num] = { note_entry = note_entry, slur_id = new_slur_id }
                                 end
                             end
 
                             -- Glissandi handling
                             if do_import_gliss_port then
                                 for _, g_num in ipairs(note_gliss_stops) do
-                                    local gl_key = string.format("%d_%d", chan, g_num)
-                                    if open_glissandi[gl_key] then
-                                        local prev_gl = open_glissandi[gl_key]
+                                    local prev_gl = open_glissandi[g_num]
+                                    local matched_num = g_num
+                                    if not prev_gl then
+                                        if open_glissandi[1] then
+                                            prev_gl = open_glissandi[1]
+                                            matched_num = 1
+                                        else
+                                            for k, gl_cand in pairs(open_glissandi) do
+                                                prev_gl = gl_cand
+                                                matched_num = k
+                                                break
+                                            end
+                                        end
+                                    end
+                                    if prev_gl then
                                         table.insert(part_glissandi, {
                                             id = prev_gl.gliss_id,
                                             n1 = prev_gl.note_entry,
                                             n2 = note_entry,
-                                            chan = chan
+                                            chan = prev_gl.note_entry.chan or chan
                                         })
-                                        open_glissandi[gl_key] = nil
+                                        open_glissandi[matched_num] = nil
                                     end
                                 end
                                 for _, g_num in ipairs(note_gliss_starts) do
-                                    local gl_key = string.format("%d_%d", chan, g_num)
                                     local new_gliss_id = "gliss_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
-                                    open_glissandi[gl_key] = { note_entry = note_entry, gliss_id = new_gliss_id }
+                                    open_glissandi[g_num] = { note_entry = note_entry, gliss_id = new_gliss_id }
                                 end
                             end
 
                             -- Slides / Portamento handling
                             if do_import_gliss_port then
                                 for _, s_num in ipairs(note_slide_stops) do
-                                    local sl_key = string.format("%d_%d", chan, s_num)
-                                    if open_slides[sl_key] then
-                                        local prev_sl = open_slides[sl_key]
+                                    local prev_sl = open_slides[s_num]
+                                    local matched_num = s_num
+                                    if not prev_sl then
+                                        if open_slides[1] then
+                                            prev_sl = open_slides[1]
+                                            matched_num = 1
+                                        else
+                                            for k, sl_cand in pairs(open_slides) do
+                                                prev_sl = sl_cand
+                                                matched_num = k
+                                                break
+                                            end
+                                        end
+                                    end
+                                    if prev_sl then
                                         table.insert(part_slides, {
                                             id = prev_sl.port_id,
                                             n1 = prev_sl.note_entry,
                                             n2 = note_entry,
-                                            chan = chan
+                                            chan = prev_sl.note_entry.chan or chan
                                         })
-                                        open_slides[sl_key] = nil
+                                        open_slides[matched_num] = nil
                                     end
                                 end
                                 for _, s_num in ipairs(note_slide_starts) do
-                                    local sl_key = string.format("%d_%d", chan, s_num)
                                     local new_port_id = "port_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
-                                    open_slides[sl_key] = { note_entry = note_entry, port_id = new_port_id }
+                                    open_slides[s_num] = { note_entry = note_entry, port_id = new_port_id }
                                 end
                             end
                         end
@@ -1549,17 +1591,18 @@ function MusicXmlImportService.import_file(file_path, state, options)
                         local slur_id = sl.id
                         local n1_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
 
-                        -- Tag all notes in phrase with NOTE <pitch> <chan> a legato
+                        -- Tag all notes in phrase with NOTE <pitch> <chan> a legato (using note's channel)
                         for _, pn in ipairs(track_notes) do
-                            if (pn.chan or 0) == (sl.chan or 0) and pn.start_qn >= n1.start_qn - 0.01 and pn.start_qn <= n_last.start_qn + 0.01 then
+                            if pn.start_qn >= n1.start_qn - 0.01 and pn.start_qn <= n_last.start_qn + 0.01 then
                                 local pn_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, pn.start_qn) + 0.5)
-                                reaper.MIDI_InsertTextSysexEvt(take, false, false, pn_sppq, 15, string.format("NOTE %d %d a legato", pn.pitch, sl.chan or 0))
+                                reaper.MIDI_InsertTextSysexEvt(take, false, false, pn_sppq, 15, string.format("NOTE %d %d a legato", pn.pitch, pn.chan or sl.chan or 0))
                                 pn.articulation = "legato"
                             end
                         end
 
+                        local s_chan = n1.chan or sl.chan or 0
                         reaper.MIDI_InsertTextSysexEvt(take, false, false, n1_sppq, 15, string.format("NOTATOR_SLUR %s %d %d %d %.4f %.4f %.4f",
-                            slur_id, sl.chan or 0, n1.pitch, n_last.pitch, n1.start_qn, n_last.start_qn, n1.dur_qn))
+                            slur_id, s_chan, n1.pitch, n_last.pitch, n1.start_qn, n_last.start_qn, n1.dur_qn))
 
                         local track_bank = target_banks[pi]
                         if track_bank then
@@ -1567,24 +1610,26 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             if art_match then
                                 local eff_msb = (track_bank.msb and track_bank.msb >= 0) and track_bank.msb or -1
                                 local eff_lsb = (track_bank.lsb and track_bank.lsb >= 0) and track_bank.lsb or -1
-                                if eff_msb >= 0 then reaper.MIDI_InsertCC(take, false, false, n1_sppq, 0xB0, sl.chan or 0, 0, eff_msb) end
-                                if eff_lsb >= 0 then reaper.MIDI_InsertCC(take, false, false, n1_sppq, 0xB0, sl.chan or 0, 32, eff_lsb) end
-                                reaper.MIDI_InsertCC(take, false, false, n1_sppq, 0xC0, sl.chan or 0, art_match.pc, 0)
+                                if eff_msb >= 0 then reaper.MIDI_InsertCC(take, false, false, n1_sppq, 0xB0, s_chan, 0, eff_msb) end
+                                if eff_lsb >= 0 then reaper.MIDI_InsertCC(take, false, false, n1_sppq, 0xB0, s_chan, 32, eff_lsb) end
+                                reaper.MIDI_InsertCC(take, false, false, n1_sppq, 0xC0, s_chan, art_match.pc, 0)
                             end
                         end
 
                         local slur_obj = {
                             id = slur_id,
                             track_guid = trk_guid,
-                            chan = sl.chan or 0,
+                            chan = s_chan,
+                            n1_chan = n1.chan or s_chan,
+                            n2_chan = n_last.chan or s_chan,
                             pitch1 = n1.pitch,
                             pitch2 = n_last.pitch,
                             start_qn = n1.start_qn,
                             n2_start_qn = n_last.start_qn,
                             end_qn = n_last.start_qn + n_last.dur_qn,
                             orig_dur1 = n1.dur_qn,
-                            n1_key = string.format("%d_%.4f_%d", n1.pitch, n1.start_qn, sl.chan or 0),
-                            n2_key = string.format("%d_%.4f_%d", n_last.pitch, n_last.start_qn, sl.chan or 0)
+                            n1_key = string.format("%d_%.4f_%d", n1.pitch, n1.start_qn, n1.chan or s_chan),
+                            n2_key = string.format("%d_%.4f_%d", n_last.pitch, n_last.start_qn, n_last.chan or s_chan)
                         }
                         if not state.user_slurs then state.user_slurs = {} end
                         table.insert(state.user_slurs, slur_obj)

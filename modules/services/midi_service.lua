@@ -5509,6 +5509,20 @@ function MidiService.cleanup_orphaned_score_elements(state)
             GlissandoService.save_glissandos(state)
         end
     end
+
+    -- 11. Reconcile moved / copied / duplicated items across tracks
+    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+    if SlurService and SlurService.reconcile_from_takes then
+        if SlurService.reconcile_from_takes(state) then any_changed = true end
+    end
+    local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+    if GlissandoService and GlissandoService.reconcile_from_takes then
+        if GlissandoService.reconcile_from_takes(state) then any_changed = true end
+    end
+    local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+    if PortamentoService and PortamentoService.reconcile_from_takes then
+        if PortamentoService.reconcile_from_takes(state) then any_changed = true end
+    end
     
     if any_changed and reaper.MarkProjectDirty then
         reaper.MarkProjectDirty(0)

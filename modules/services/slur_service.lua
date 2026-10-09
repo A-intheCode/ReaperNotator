@@ -1056,25 +1056,54 @@ local function resolve_effective_slur_notes(state, sl, all_note_render_by_key)
     if nd1 and not note_matches_slur_track(nd1) then nd1 = nil end
     if nd2 and not note_matches_slur_track(nd2) then nd2 = nil end
 
-    -- Fallback by pitch and start_qn if key was re-keyed, strictly scoped to matching track & channel
+    -- Fallback by pitch and start_qn if key was re-keyed, supporting cross-staff and cross-voice phrases
     if not nd1 or not nd2 then
         local best_d1 = 999999
         local best_d2 = 999999
+        local target_n2_qn = sl.n2_start_qn or sl.end_qn or (sl.start_qn + 1.0)
+        local eff_chan1 = sl.n1_chan or sl.chan
+        local eff_chan2 = sl.n2_chan or sl.chan
+
+        -- Pass 1: Try channel affinity
         for _, nd in pairs(all_note_render_by_key) do
-            if note_matches_slur_track(nd) and (sl.chan == nil or (nd.chan or (nd.orig and nd.orig.chan) or 0) == (sl.chan or 0)) then
+            if note_matches_slur_track(nd) then
+                local nd_ch = nd.chan or (nd.orig and nd.orig.chan) or 0
                 local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
-                if not nd1 and nd.pitch == sl.pitch1 then
+                if not nd1 and nd.pitch == sl.pitch1 and (eff_chan1 == nil or nd_ch == eff_chan1) then
                     local d = math.abs(sqn - sl.start_qn)
                     if d < 0.05 and d < best_d1 then
                         best_d1 = d
                         nd1 = nd
                     end
                 end
-                if not nd2 and nd.pitch == sl.pitch2 then
-                    local d = math.abs(sqn - (sl.n2_start_qn or sl.start_qn))
+                if not nd2 and nd.pitch == sl.pitch2 and (eff_chan2 == nil or nd_ch == eff_chan2) then
+                    local d = math.abs(sqn - target_n2_qn)
                     if d < 0.05 and d < best_d2 then
                         best_d2 = d
                         nd2 = nd
+                    end
+                end
+            end
+        end
+
+        -- Pass 2: Fallback across any channel on the same track (essential for grand staff & multi-voice)
+        if not nd1 or not nd2 then
+            for _, nd in pairs(all_note_render_by_key) do
+                if note_matches_slur_track(nd) then
+                    local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
+                    if not nd1 and nd.pitch == sl.pitch1 then
+                        local d = math.abs(sqn - sl.start_qn)
+                        if d < 0.05 and d < best_d1 then
+                            best_d1 = d
+                            nd1 = nd
+                        end
+                    end
+                    if not nd2 and nd.pitch == sl.pitch2 then
+                        local d = math.abs(sqn - target_n2_qn)
+                        if d < 0.05 and d < best_d2 then
+                            best_d2 = d
+                            nd2 = nd
+                        end
                     end
                 end
             end
@@ -1149,21 +1178,45 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
     if not nd1 or not nd2 then
         local best_d1 = 999999
         local best_d2 = 999999
+        -- Pass 1: Try channel affinity
         for _, nd in pairs(all_note_render_by_key) do
-            if note_matches_tie_track(nd) and (tie.chan == nil or (nd.chan or (nd.orig and nd.orig.chan) or 0) == (tie.chan or 0)) then
+            if note_matches_tie_track(nd) then
+                local nd_ch = nd.chan or (nd.orig and nd.orig.chan) or 0
                 local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
-                if not nd1 and nd.pitch == tie.pitch then
+                if not nd1 and nd.pitch == tie.pitch and (tie.chan == nil or nd_ch == tie.chan) then
                     local d = math.abs(sqn - (tie.n1_start_qn or 0.0))
                     if d < 0.05 and d < best_d1 then
                         best_d1 = d
                         nd1 = nd
                     end
                 end
-                if not nd2 and nd.pitch == tie.pitch then
+                if not nd2 and nd.pitch == tie.pitch and (tie.chan == nil or nd_ch == tie.chan) then
                     local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
                     if d < 0.05 and d < best_d2 then
                         best_d2 = d
                         nd2 = nd
+                    end
+                end
+            end
+        end
+        -- Pass 2: Fallback across any channel on the same track
+        if not nd1 or not nd2 then
+            for _, nd in pairs(all_note_render_by_key) do
+                if note_matches_tie_track(nd) then
+                    local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
+                    if not nd1 and nd.pitch == tie.pitch then
+                        local d = math.abs(sqn - (tie.n1_start_qn or 0.0))
+                        if d < 0.05 and d < best_d1 then
+                            best_d1 = d
+                            nd1 = nd
+                        end
+                    end
+                    if not nd2 and nd.pitch == tie.pitch then
+                        local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
+                        if d < 0.05 and d < best_d2 then
+                            best_d2 = d
+                            nd2 = nd
+                        end
                     end
                 end
             end
@@ -1643,6 +1696,162 @@ function SlurService.heal_slurs_and_ties(state)
     state.user_ties = clean_ties
     
     SlurService.save_slurs(state)
+end
+
+function SlurService.reconcile_from_takes(state)
+    if not state then return false end
+    state.user_slurs = state.user_slurs or {}
+    state.user_ties = state.user_ties or {}
+    local any_changed = false
+
+    local slur_by_id = {}
+    for _, sl in ipairs(state.user_slurs) do
+        if sl.id then slur_by_id[sl.id] = sl end
+    end
+    local tie_by_id = {}
+    for _, tie in ipairs(state.user_ties) do
+        if tie.id then tie_by_id[tie.id] = tie end
+    end
+
+    local seen_slur_ids = {}
+    local seen_tie_ids = {}
+
+    local trk_count = reaper.CountTracks(0)
+    for ti = 0, trk_count - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk then
+            local trk_guid = reaper.GetTrackGUID(trk)
+            local item_count = reaper.CountTrackMediaItems(trk)
+            for ii = 0, item_count - 1 do
+                local item = reaper.GetTrackMediaItem(trk, ii)
+                local take = item and reaper.GetActiveTake(item)
+                if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                    for text_i = 0, text_cnt - 1 do
+                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                        if ok and ev_type == 15 then
+                            local s_id, s_chan, p1, p2, sqn, n2sqn, odur, pre_pc, pre_msb, pre_lsb = msg:match("^NOTATOR_SLUR%s+([%w_]+)%s+(%d+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%-?%d*)%s*(%-?%d*)%s*(%-?%d*)")
+                            if s_id then
+                                if not seen_slur_ids[s_id] then
+                                    seen_slur_ids[s_id] = trk_guid
+                                    local es = slur_by_id[s_id]
+                                    if es then
+                                        if es.track_guid ~= trk_guid then
+                                            es.track_guid = trk_guid
+                                            any_changed = true
+                                        end
+                                    else
+                                        local nsl = {
+                                            id          = s_id,
+                                            track_guid  = trk_guid,
+                                            chan        = tonumber(s_chan) or 0,
+                                            pitch1      = tonumber(p1) or 60,
+                                            pitch2      = tonumber(p2) or 62,
+                                            start_qn    = tonumber(sqn) or 0.0,
+                                            n2_start_qn = tonumber(n2sqn) or 1.0,
+                                            end_qn      = (tonumber(n2sqn) or 1.0) + 1.0,
+                                            orig_dur1   = tonumber(odur) or 1.0,
+                                            pre_slur_pc = (pre_pc and pre_pc ~= "") and tonumber(pre_pc) or nil,
+                                            pre_slur_msb = tonumber(pre_msb) or -1,
+                                            pre_slur_lsb = tonumber(pre_lsb) or -1,
+                                            n1_key      = string.format("%d_%.4f_%d", tonumber(p1) or 60, tonumber(sqn) or 0.0, tonumber(s_chan) or 0),
+                                            n2_key      = string.format("%d_%.4f_%d", tonumber(p2) or 62, tonumber(n2sqn) or 1.0, tonumber(s_chan) or 0)
+                                        }
+                                        table.insert(state.user_slurs, nsl)
+                                        slur_by_id[s_id] = nsl
+                                        any_changed = true
+                                    end
+                                else
+                                    local new_s_id = "slur_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
+                                    local new_msg = string.format("NOTATOR_SLUR %s %s %s %s %s %s %s %s %s %s",
+                                        new_s_id, s_chan, p1, p2, sqn, n2sqn, odur, pre_pc or "", pre_msb or "-1", pre_lsb or "-1")
+                                    reaper.MIDI_SetTextSysexEvt(take, text_i, false, false, ppq, 15, new_msg, false)
+                                    local nsl = {
+                                        id          = new_s_id,
+                                        track_guid  = trk_guid,
+                                        chan        = tonumber(s_chan) or 0,
+                                        pitch1      = tonumber(p1) or 60,
+                                        pitch2      = tonumber(p2) or 62,
+                                        start_qn    = tonumber(sqn) or 0.0,
+                                        n2_start_qn = tonumber(n2sqn) or 1.0,
+                                        end_qn      = (tonumber(n2sqn) or 1.0) + 1.0,
+                                        orig_dur1   = tonumber(odur) or 1.0,
+                                        pre_slur_pc = (pre_pc and pre_pc ~= "") and tonumber(pre_pc) or nil,
+                                        pre_slur_msb = tonumber(pre_msb) or -1,
+                                        pre_slur_lsb = tonumber(pre_lsb) or -1,
+                                        n1_key      = string.format("%d_%.4f_%d", tonumber(p1) or 60, tonumber(sqn) or 0.0, tonumber(s_chan) or 0),
+                                        n2_key      = string.format("%d_%.4f_%d", tonumber(p2) or 62, tonumber(n2sqn) or 1.0, tonumber(s_chan) or 0)
+                                    }
+                                    table.insert(state.user_slurs, nsl)
+                                    slur_by_id[new_s_id] = nsl
+                                    seen_slur_ids[new_s_id] = trk_guid
+                                    any_changed = true
+                                end
+                            end
+
+                            local t_id, t_chan, tp, t_s1, t_d1, t_s2, t_d2, t_vel = msg:match("^NOTATOR_TIE%s+([%w_]+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%d*)")
+                            if t_id then
+                                if not seen_tie_ids[t_id] then
+                                    seen_tie_ids[t_id] = trk_guid
+                                    local et = tie_by_id[t_id]
+                                    if et then
+                                        if et.track_guid ~= trk_guid then
+                                            et.track_guid = trk_guid
+                                            any_changed = true
+                                        end
+                                    else
+                                        local ntie = {
+                                            id          = t_id,
+                                            track_guid  = trk_guid,
+                                            chan        = tonumber(t_chan) or 0,
+                                            pitch       = tonumber(tp) or 60,
+                                            n1_start_qn = tonumber(t_s1) or 0.0,
+                                            n1_dur      = tonumber(t_d1) or 1.0,
+                                            n2_start_qn = tonumber(t_s2) or 1.0,
+                                            n2_dur      = tonumber(t_d2) or 1.0,
+                                            n2_vel      = (t_vel and t_vel ~= "") and tonumber(t_vel) or 96,
+                                            n1_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s1) or 0.0, tonumber(t_chan) or 0),
+                                            n2_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s2) or 1.0, tonumber(t_chan) or 0)
+                                        }
+                                        table.insert(state.user_ties, ntie)
+                                        tie_by_id[t_id] = ntie
+                                        any_changed = true
+                                    end
+                                else
+                                    local new_t_id = "tie_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
+                                    local new_msg = string.format("NOTATOR_TIE %s %s %s %s %s %s %s %s",
+                                        new_t_id, t_chan, tp, t_s1, t_d1, t_s2, t_d2, t_vel or "96")
+                                    reaper.MIDI_SetTextSysexEvt(take, text_i, false, false, ppq, 15, new_msg, false)
+                                    local ntie = {
+                                        id          = new_t_id,
+                                        track_guid  = trk_guid,
+                                        chan        = tonumber(t_chan) or 0,
+                                        pitch       = tonumber(tp) or 60,
+                                        n1_start_qn = tonumber(t_s1) or 0.0,
+                                        n1_dur      = tonumber(t_d1) or 1.0,
+                                        n2_start_qn = tonumber(t_s2) or 1.0,
+                                        n2_dur      = tonumber(t_d2) or 1.0,
+                                        n2_vel      = (t_vel and t_vel ~= "") and tonumber(t_vel) or 96,
+                                        n1_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s1) or 0.0, tonumber(t_chan) or 0),
+                                        n2_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s2) or 1.0, tonumber(t_chan) or 0)
+                                    }
+                                    table.insert(state.user_ties, ntie)
+                                    tie_by_id[new_t_id] = ntie
+                                    seen_tie_ids[new_t_id] = trk_guid
+                                    any_changed = true
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    if any_changed then
+        SlurService.save_slurs(state)
+    end
+    return any_changed
 end
 
 function SlurService.save_slurs(state)
