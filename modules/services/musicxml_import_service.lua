@@ -947,7 +947,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                     local matched_art = detect_articulation_from_text(txt)
                                     local is_notehead_symbol = false
                                     if matched_art then
-                                        local syms = { staccato=true, staccatissimo=true, tenuto=true, harmonic=true, marcato=true, accent=true }
+                                        local syms = { staccato=true, staccatissimo=true, tenuto=true, harmonic=true, marcato=true, accent=true, legato=true, slur=true }
                                         if syms[matched_art] then is_notehead_symbol = true end
                                         table.insert(pending_text_arts, {
                                             qn = dir_qn,
@@ -957,7 +957,8 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                     end
 
                                     -- Gould / Gardner Read standard: Instrumental performance techniques & words belong above the staff
-                                    if (not is_notehead_symbol) and options.import_text_items ~= false then
+                                    local is_legato_or_slur = (clean_w == "legato" or clean_w == "slur" or clean_w:match("^legato") or matched_art == "legato")
+                                    if (not is_notehead_symbol) and (not is_legato_or_slur) and options.import_text_items ~= false then
                                         local dir_placement = child.attr and child.attr.placement
                                         local raw_fs = tonumber(words_node.attr and words_node.attr["font-size"])
                                         local fsize = 16.0

@@ -187,7 +187,9 @@ local function is_standard_musicxml_articulation(art)
         or a == "accent" or a == "marcato" or a == "harmonic" or a == "flageolet"
         or a == "fermata" or a == "up-bow" or a == "down-bow" or a == "snap-pizzicato"
         or a == "trill" or a == "tremolo"
+        or a == "legato" or a == "slur"
         or a:match("^stacc") or a:match("^ten") or a:match("^marc") or a:match("^acc") or a:match("harm")
+        or a:match("^legato") or a:match("^slur")
 end
 
 -- ------------------------------------------------------------------------------
@@ -371,6 +373,10 @@ end
 
 local function emit_note_notations(emit, cn, trk_clef)
     local art = cn.articulation and tostring(cn.articulation):lower()
+    -- Elaine Gould / MusicXML standard: legato/slur is exclusively expressed by <slur>, never as <other-articulation>
+    if art == "legato" or art == "slur" or (art and (art:match("^legato") or art:match("^slur"))) then
+        art = nil
+    end
     local is_arp = cn.arpeggio or (art and (art == "arpeggio" or art:find("arpegg")))
     local has_tied = cn.tie_start or cn.tie_stop
     local has_slur = (cn.slur_starts and #cn.slur_starts > 0) or (cn.slur_stops and #cn.slur_stops > 0)
@@ -1268,14 +1274,18 @@ function MusicXmlExportService.export_project(state, options)
                 for _, ti in ipairs(state.text_items) do
                     local matches_trk = (not ti.track_guid) or (ti.track_guid == trk_guid) or (pi == 1 and not ti.track_guid)
                     if matches_trk and ti.qn >= m_start_qn - 0.001 and ti.qn < m_end_qn - 0.001 then
-                        emit('      <direction placement="above">\n')
-                        emit('        <direction-type>\n')
-                        local font_size = ti.font_size or 14
-                        local font_style = (ti.style == "italic" or ti.style == "bold_italic") and ' font-style="italic"' or ''
-                        local font_weight = (ti.style == "bold" or ti.style == "bold_italic") and ' font-weight="bold"' or ''
-                        emit('          <words font-size="%.1f"%s%s>%s</words>\n', font_size, font_style, font_weight, xml_escape(ti.text))
-                        emit('        </direction-type>\n')
-                        emit('      </direction>\n')
+                        local ti_clean = ti.text and tostring(ti.text):lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
+                        local is_redundant_legato = (ti_clean == "legato" or ti_clean == "slur" or ti_clean:match("^legato$") or ti_clean:match("^slur$"))
+                        if not is_redundant_legato then
+                            emit('      <direction placement="above">\n')
+                            emit('        <direction-type>\n')
+                            local font_size = ti.font_size or 14
+                            local font_style = (ti.style == "italic" or ti.style == "bold_italic") and ' font-style="italic"' or ''
+                            local font_weight = (ti.style == "bold" or ti.style == "bold_italic") and ' font-weight="bold"' or ''
+                            emit('          <words font-size="%.1f"%s%s>%s</words>\n', font_size, font_style, font_weight, xml_escape(ti.text))
+                            emit('        </direction-type>\n')
+                            emit('      </direction>\n')
+                        end
                     end
                 end
             end
@@ -1527,17 +1537,23 @@ function MusicXmlExportService.export_project(state, options)
             local text_arts_by_qn = {}
             for _, n in ipairs(m_notes) do
                 if n.articulation and not n.is_auto_return and not is_standard_musicxml_articulation(n.articulation) then
-                    local q = math.floor(n.start_qn * 1000 + 0.5) / 1000
-                    if not text_arts_by_qn[q] then text_arts_by_qn[q] = n.articulation end
+                    local a_clean = tostring(n.articulation):lower():gsub("^%s+", ""):gsub("%s+$", "")
+                    if a_clean ~= "legato" and not a_clean:match("^legato") and a_clean ~= "slur" and not a_clean:match("^slur") and not a_clean:match("^tie") then
+                        local q = math.floor(n.start_qn * 1000 + 0.5) / 1000
+                        if not text_arts_by_qn[q] then text_arts_by_qn[q] = n.articulation end
+                    end
                 end
             end
             if tracks_articulations[pi] then
                 for _, a in ipairs(tracks_articulations[pi]) do
-                    if not a.is_auto_return and (a.qn and a.qn >= m_start_qn - 0.001 and a.qn < m_end_qn - 0.001) then
+                    if not a.is_auto_return and not a.is_slur and not a.is_slur_pc and (a.qn and a.qn >= m_start_qn - 0.001 and a.qn < m_end_qn - 0.001) then
                         local lbl = a.label or a.name or a.art
                         if lbl and not is_standard_musicxml_articulation(lbl) then
-                            local q = math.floor(a.qn * 1000 + 0.5) / 1000
-                            if not text_arts_by_qn[q] then text_arts_by_qn[q] = lbl end
+                            local l_clean = tostring(lbl):lower():gsub("^%s+", ""):gsub("%s+$", "")
+                            if l_clean ~= "legato" and not l_clean:match("^legato") and l_clean ~= "slur" and not l_clean:match("^slur") and not l_clean:match("^tie") then
+                                local q = math.floor(a.qn * 1000 + 0.5) / 1000
+                                if not text_arts_by_qn[q] then text_arts_by_qn[q] = lbl end
+                            end
                         end
                     end
                 end
