@@ -120,8 +120,8 @@ function MusicXmlModal.render(ctx, state, project_tracks)
 
                 reaper.ImGui_SameLine(ctx)
                 if reaper.ImGui_Button(ctx, "Browse...##BrowseExport") then
-                    local ok, file_picked = reaper.GetUserFileNameForRead(export_file_path, "Save MusicXML File", "musicxml")
-                    if ok and file_picked and file_picked ~= "" then
+                    local file_picked = PathService.browse_for_save_file(export_file_path, "Save MusicXML File", "musicxml")
+                    if file_picked and file_picked ~= "" then
                         export_file_path = file_picked
                     end
                 end
