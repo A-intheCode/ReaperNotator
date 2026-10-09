@@ -1350,6 +1350,8 @@ function PortamentoService.draw_portamentos(ctx, draw_list, state, all_note_rend
                 end
             end
         end
+    end
+
     if is_hovered then
         state.hovered_portamento = now_hovered_pm
     end

@@ -1,7 +1,10 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.7
+-- @version 1.7.0-beta.8
 -- @changelog
+--   + v1.7.0-beta.8: Portamento Service Syntax Hotfix & Dynamic Path Purge:
+--             - Portamento Syntax Hotfix: Resolved missing 'end' statement in PortamentoService.draw_portamentos.
+--             - Pure Dynamic Paths: Fully purged any remaining local development path fallbacks. All operations run 100% dynamically via REAPER APIs.
 --   + v1.7.0-beta.7: MusicXML Multi-Notations Slur Import & Dynamic MIDI Item Mark Reconciliation:
 --             - MusicXML Multi-Notations & Grand-Staff Slur Import: Parses all <notations> nodes per note and direct note children. Slur and tie matching is decoupled from track/channel splits, resolving cross-staff and polyphonic slur phrases. Suppressed redundant literal text ("legato") above exported slurs.
 --             - Dynamic MIDI Item Move/Copy Mark Reconciliation: Moving or duplicating MIDI items across tracks or within a track automatically re-keys and re-parents slurs, glissandi, and portamenti without mark loss or ID collision.

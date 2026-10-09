@@ -496,10 +496,9 @@ function PatternService.start_factory_download(state)
         local status_path = marker_file:gsub("/", "\\")
         local local_zip1 = (s_dir .. "/patterns.zip"):gsub("/", "\\")
         local local_zip2 = (s_dir .. "/../patterns.zip"):gsub("/", "\\")
-        local local_zip3 = "D:\\programmieren\\REAPER-Notator\\patterns.zip"
         
-        local ps_script = string.format([[$ProgressPreference = 'SilentlyContinue'; $statusFile = '%s'; $targetParent = '%s'; $localZip1 = '%s'; $localZip2 = '%s'; $localZip3 = '%s'; try { if (Test-Path $localZip1) { $srcZip = $localZip1 } elseif (Test-Path $localZip2) { $srcZip = $localZip2 } elseif (Test-Path $localZip3) { $srcZip = $localZip3 } else { $srcZip = Join-Path $env:TEMP 'notator_patterns.zip'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip' -OutFile $srcZip; } Expand-Archive -Path $srcZip -DestinationPath $targetParent -Force; Set-Content -Path $statusFile -Value 'OK:1200'; } catch { Set-Content -Path $statusFile -Value ('ERROR:' + $_.Exception.Message); }]],
-            status_path, target_parent, local_zip1, local_zip2, local_zip3)
+        local ps_script = string.format([[$ProgressPreference = 'SilentlyContinue'; $statusFile = '%s'; $targetParent = '%s'; $localZip1 = '%s'; $localZip2 = '%s'; try { if (Test-Path $localZip1) { $srcZip = $localZip1 } elseif (Test-Path $localZip2) { $srcZip = $localZip2 } else { $srcZip = Join-Path $env:TEMP 'notator_patterns.zip'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip' -OutFile $srcZip; } Expand-Archive -Path $srcZip -DestinationPath $targetParent -Force; Set-Content -Path $statusFile -Value 'OK:1200'; } catch { Set-Content -Path $statusFile -Value ('ERROR:' + $_.Exception.Message); }]],
+            status_path, target_parent, local_zip1, local_zip2)
             
         -- Execute via background PowerShell without command prompt window
         cmd = string.format('start /b powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -Command "%s"', ps_script)
