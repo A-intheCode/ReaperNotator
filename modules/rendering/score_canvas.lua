@@ -575,6 +575,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     
     local note_hovered_this_frame = nil
+    local note_right_clicked_this_frame = false
     local dyn_hovered_this_frame = nil
     local art_hovered_this_frame = nil
     local item_edge_hovered_this_frame = nil
@@ -1593,6 +1594,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 
                 -- Note right-click: open context menu (quantize, legato, delete)
                 if is_the_closest and reaper.ImGui_IsMouseClicked(ctx, 1) and state.input_mode_type ~= "draw" then
+                    note_right_clicked_this_frame = true
                     state.selected_dynamic = nil
                     state.selected_tempo_marker = nil
                     state.selected_octave_line = nil
@@ -2861,9 +2863,25 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                     
-                    -- Context menu for measure (right-click in measure header area)
+                    -- Context menu for measure (right-click in measure header area strictly above the staff)
                     local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 47.5)) * s
-                    local is_bar_hdr_hov = is_hovered and (mouse_x >= mx and mouse_x <= mx_next and mouse_y >= (tdata.staff_top_y - bar_num_off_y - 8 * s) and mouse_y <= (tdata.staff_top_y + 4 * s))
+                    local bar_num_sz = (state.bar_num_size or 20.0) * s
+                    local by = tdata.staff_top_y - bar_num_off_y
+                    local is_bar_hdr_hov = is_hovered
+                        and not note_right_clicked_this_frame
+                        and not closest_hovered_vn
+                        and not note_hovered_this_frame
+                        and not dyn_hovered_this_frame
+                        and not hairpin_hovered_this_frame
+                        and not art_hovered_this_frame
+                        and not text_item_hovered_this_frame
+                        and not state.hovered_fermata
+                        and not state.hovered_rehearsal_mark
+                        and not state.hovered_portamento
+                        and not state.hovered_glissando
+                        and (mouse_x >= mx and mouse_x <= mx_next)
+                        and (mouse_y >= (by - 8 * s) and mouse_y <= (by + bar_num_sz + 8 * s))
+                        and (mouse_y < (tdata.staff_top_y - 25 * s))
                     if is_bar_hdr_hov and reaper.ImGui_IsMouseClicked(ctx, 1) then
                         state.context_measure = m
                         state.context_measure_track = tdata.track

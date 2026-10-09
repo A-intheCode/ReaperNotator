@@ -1,7 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.1
+-- @version 1.7.0-beta.2
 -- @changelog
+--   + v1.7.0-beta.2: Note & Staff Context Menu Priority Hotfix (Top Staff Line / Header Hitbox Fix):
+--             - Note Right-Click Priority: Right-clicking any notehead (including top staff lines F5/A3 or high ledger lines) now reliably opens the comprehensive NoteContextMenu (Select to End, Voice, Stem, Quantize, Glissando/Portamento).
+--             - Measure Header Hitbox Clamping: Clamped 'Bar Actions' (measure_header_context_popup) strictly to the bar number lane above the staff (mouse_y < staff_top_y - 25*s) and guarded against hovered notes and symbols.
+--             - Rehearsal Marks in Staff Menu: Added '🔖 Rehearsal & Navigation Marks' submenu to the empty staff context menu for convenient placement anywhere in the measure.
 --   + v1.7.0-beta.1: Slur & Tie Track-Isolation Hotfix, Cross-Instrument Leaking Elimination:
 --             - Strict Track Isolation: Slurs and ties are strictly constrained to the same instrument/track, preventing phrase curves from bridging across multiple staves in multi-track/orchestral views.
 --             - Robust Candidate Scoping: Toggle slur [S] and tie [T] now validate target selections and restrict intermediate phrase note lookups strictly to the primary note's track.

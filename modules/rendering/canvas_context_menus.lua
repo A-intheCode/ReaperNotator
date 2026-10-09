@@ -1080,6 +1080,42 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 end
             end
             
+            -- Rehearsal & Navigation Marks for this measure
+            if click_bar and state.context_measure ~= nil then
+                local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+                if reaper.ImGui_BeginMenu(ctx, "🔖 Rehearsal & Navigation Marks") then
+                    if reaper.ImGui_MenuItem(ctx, "🔤 Add Letter Mark [A], [B]... (Auto)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "letter")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "🔢 Add Number Mark [1], [2]... (Auto)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "number")
+                    end
+                    reaper.ImGui_Separator(ctx)
+                    if reaper.ImGui_MenuItem(ctx, "Da Capo (D.C.)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "dc")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "D.C. al Fine") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "dc_al_fine")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "Dal Segno (D.S.)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "ds")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "D.S. al Coda") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "ds_al_coda")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "Segno (𝄋)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "segno")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "Coda (𝄌)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "coda")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "Fine") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "fine")
+                    end
+                    reaper.ImGui_EndMenu(ctx)
+                end
+            end
+            
             -- Track-specific actions
             if reaper.ImGui_MenuItem(ctx, "⚡ Auto-Voice Track Overlaps") then
                 if midi_service and midi_service.auto_split_overlaps_to_voices then
