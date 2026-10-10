@@ -67,7 +67,7 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
     local widths = {}
     local pad_lefts = {}
     local onsets_by_bar = {}
-    local num_m = math.max(total_measures + 4, 32)
+    local num_m = math.max((total_measures or 16) + 64, 64)
     
     local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
     if not has_kss or not KeySignatureService then

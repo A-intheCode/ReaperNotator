@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.18
+-- @version 1.8.0-beta.19
 -- @changelog
+--   + v1.8.0-beta.19: Barline Horizontal Scroll Synchronization & Tooltip Fix:
+--             - Barline & Measure Number Scroll Synchronization: Measure boundaries, barlines, and measure numbers are now strictly rendered using Engraver.cursor_qn_to_canvas_x, guaranteeing 100% position parity with notes, playback cursor, and dynamic spacing on horizontal scroll.
+--             - Unclamped Viewport Measure Range: Removed restrictive total_measures clamping from visible measure bounds (vis_max_measure / end_m) so barlines smoothly render into any scrolled region.
+--             - Measure Map Buffer Expansion: Expanded build_measure_map buffer from +4 to +64 measures beyond project length to provide continuous measure start coordinates.
+--             - Settings Modal Tooltip Fix: Corrected tooltip association for 'Clear Project Undo History' and refined the anti-aliasing description to clarify ReaImGui backend vector line rendering.
 --   + v1.8.0-beta.18: ScoreCanvas Render Engine Overhaul (60+ FPS on 30+ Tracks):
 --             - Rest Layout Memoization: Rest generation, display quantize gap calculations, and collision avoidance are now precomputed once during layout building, completely eliminating per-frame rest calculations and table sorting.
 --             - Zero-Allocation Visible Note Rendering: Reused layout visual note structures directly, eliminating ~36,000 table allocations per second during playback across 30 tracks.

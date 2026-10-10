@@ -628,8 +628,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
             local min_gap = 14 * s
             if cur_min_x < prev_max_x + min_gap then
                 local push = (prev_max_x + min_gap) - cur_min_x
-                local measure_w = Engraver.get_measure_layout(s, qn_per_measure)
-                local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or (margin_left + (cur_m + 1) * measure_w)
+                local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or Engraver.cursor_qn_to_canvas_x((cur_m + 1) * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
                 local max_allowed_x = m_end_x - 18 * s
                 for _, cvn in ipairs(cur_c.notes) do
                     local pushed_x = math.min(max_allowed_x, cvn.vis_nx + push)
@@ -960,7 +959,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         end
     end
     state.measure_map = measure_map
-    local staff_end_x = (measure_map.starts[total_measures] or (margin_left + total_measures * measure_w)) + 40 * s
+    local min_scroll_reach_x = canvas_p0_x + (reaper.ImGui_GetScrollX(ctx) or 0) + avail_w + 200 * s
+    local staff_end_x = math.max(min_scroll_reach_x, ((measure_map and measure_map.starts and measure_map.starts[total_measures]) or Engraver.cursor_qn_to_canvas_x(total_measures * qn_per_measure, margin_left, s, qn_per_measure, measure_map)) + 40 * s)
     
     local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
     local rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
@@ -1047,7 +1047,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local vis_min_qn = math.max(0, Engraver.canvas_x_to_qn(cull_min_x, margin_left, s, qn_per_measure, 0.001, measure_map) - 2.0)
     local vis_max_qn = Engraver.canvas_x_to_qn(cull_max_x, margin_left, s, qn_per_measure, 0.001, measure_map) + 2.0
     local vis_min_measure = math.max(0, math.floor(vis_min_qn / qn_per_measure))
-    local vis_max_measure = math.min(total_measures, math.ceil(vis_max_qn / qn_per_measure))
+    local vis_max_measure = math.ceil(vis_max_qn / qn_per_measure)
 
     local is_hovered = reaper.ImGui_IsItemHovered(ctx) and not is_playing
     local is_active  = reaper.ImGui_IsItemActive(ctx) and not is_playing
@@ -1518,7 +1518,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     if r.is_full_measure then
                         if measure_map and measure_map.starts then
                             local m_idx = r.measure_idx or 0
-                            local m_start = measure_map.starts[m_idx] or (margin_left + m_idx * measure_map.base_w)
+                            local m_start = (measure_map and measure_map.starts and measure_map.starts[m_idx]) or Engraver.cursor_qn_to_canvas_x(m_idx * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
                             local m_w = measure_map.widths[m_idx] or measure_map.base_w
                             rx = m_start + (m_w / 2)
                         else
@@ -1656,7 +1656,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     if r.is_full_measure then
                         if measure_map and measure_map.starts then
                             local m_idx = r.measure_idx or 0
-                            local m_start = measure_map.starts[m_idx] or (margin_left + m_idx * measure_map.base_w)
+                            local m_start = (measure_map and measure_map.starts and measure_map.starts[m_idx]) or Engraver.cursor_qn_to_canvas_x(m_idx * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
                             local m_w = measure_map.widths[m_idx] or measure_map.base_w
                             rx = m_start + (m_w / 2)
                         else
@@ -2029,7 +2029,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     local min_gap = 14 * s
                     if cur_min_x < prev_max_x + min_gap then
                         local push = (prev_max_x + min_gap) - cur_min_x
-                        local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or (margin_left + (cur_m + 1) * measure_w)
+                        local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or Engraver.cursor_qn_to_canvas_x((cur_m + 1) * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
                         local max_allowed_x = m_end_x - 18 * s
                         for _, cvn in ipairs(cur_c.notes) do
                             cvn.vis_nx = math.min(max_allowed_x, cvn.vis_nx + push)
@@ -3393,7 +3393,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     
     local start_m = math.max(0, vis_min_measure - 1)
-    local end_m = math.min(total_measures, vis_max_measure + 1)
+    local end_m = vis_max_measure + 1
     local bar_num_col = Constants.COLORS.bar_num or Constants.COLORS.notehead_black or 0x111111FF
     local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 47.5)) * s
     local bar_num_off_x = (state.bar_num_offset_x or 0.0) * s
@@ -3401,10 +3401,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local has_add_text_ex = (reaper.APIExists("ImGui_DrawList_AddTextEx") and font_main ~= nil)
 
     for m = start_m, end_m do
-        local mx = (measure_map and measure_map.starts and measure_map.starts[m]) or (margin_left + (m * measure_w))
-        if mx >= cull_min_x - 10 * s and mx <= cull_max_x + 10 * s and mx <= staff_end_x then
+        local mx = (measure_map and measure_map.starts and measure_map.starts[m]) or Engraver.cursor_qn_to_canvas_x(m * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
+        if mx >= cull_min_x - 10 * s and mx <= cull_max_x + 10 * s and mx <= (staff_end_x + 2000 * s) then
             local is_key_change = (measure_map and measure_map.key_changes and measure_map.key_changes[m])
-            local mx_next = (measure_map and measure_map.starts and measure_map.starts[m + 1]) or (margin_left + ((m + 1) * measure_w))
+            local mx_next = (measure_map and measure_map.starts and measure_map.starts[m + 1]) or Engraver.cursor_qn_to_canvas_x((m + 1) * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
             local rep_cx = (mx + mx_next) / 2
             local num_val = m + 1
             local bar_str = BAR_NUM_STRINGS[num_val] or tostring(num_val)
