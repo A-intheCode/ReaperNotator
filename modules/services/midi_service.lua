@@ -5677,4 +5677,103 @@ function MidiService.sync_take_note_selection(take, note_idx, is_sel, no_sort)
     return false
 end
 
+--- Retrieves all CC events from a take matching a specific CC number (0-127)
+function MidiService.get_take_ccs_for_editor(take, cc_num)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) or not cc_num then
+        return {}
+    end
+    local _, _, cccnt = reaper.MIDI_CountEvts(take)
+    local ccs = {}
+    local target_cc = math.floor(tonumber(cc_num) or 1)
+    for i = 0, cccnt - 1 do
+        local ok, sel, muted, ppq, chanmsg, chan, msg2, msg3 = reaper.MIDI_GetCC(take, i)
+        if ok and not muted and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == target_cc then
+            local qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+            table.insert(ccs, {
+                idx = i,
+                ppq = ppq,
+                qn = qn,
+                val = msg3,
+                chan = chan,
+                sel = sel
+            })
+        end
+    end
+    table.sort(ccs, function(a, b) return a.ppq < b.ppq end)
+    return ccs
+end
+
+--- Updates a CC event's value in the REAPER take
+function MidiService.set_cc_value(take, cc_idx, new_val, no_sort)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not cc_idx or cc_idx < 0 then
+        return false
+    end
+    local ok, sel, muted, ppq, chanmsg, chan, msg2, _ = reaper.MIDI_GetCC(take, cc_idx)
+    if ok then
+        local clamped_val = math.max(0, math.min(127, math.floor(new_val + 0.5)))
+        reaper.MIDI_SetCC(take, cc_idx, sel, muted, ppq, chanmsg, chan, msg2, clamped_val, no_sort or false)
+        return true
+    end
+    return false
+end
+
+--- Draws/updates a CC curve across a time range with given points [{qn, val}, ...]
+function MidiService.draw_cc_curve(take, cc_num, points, chan)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) or not cc_num or not points or #points == 0 then
+        return false
+    end
+    local target_cc = math.floor(tonumber(cc_num) or 1)
+    table.sort(points, function(a, b) return a.qn < b.qn end)
+    local min_qn = points[1].qn
+    local max_qn = points[#points].qn
+    local min_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, min_qn)
+    local max_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, max_qn)
+    local eff_chan = chan or 0
+
+    -- 1. Delete existing CCs in this time segment for this CC number
+    local _, _, cccnt = reaper.MIDI_CountEvts(take)
+    for i = cccnt - 1, 0, -1 do
+        local ok, _, _, ppq, chanmsg, c_chan, msg2, _ = reaper.MIDI_GetCC(take, i)
+        if ok and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == target_cc then
+            if ppq >= (min_ppq - 1) and ppq <= (max_ppq + 1) then
+                eff_chan = c_chan or eff_chan
+                reaper.MIDI_DeleteCC(take, i)
+            end
+        end
+    end
+
+    -- 2. Insert new CC points
+    for _, pt in ipairs(points) do
+        local ppq = reaper.MIDI_GetPPQPosFromProjQN(take, pt.qn)
+        local val = math.max(0, math.min(127, math.floor(pt.val + 0.5)))
+        reaper.MIDI_InsertCC(take, false, false, ppq, 176, eff_chan, target_cc, val)
+    end
+
+    reaper.MIDI_Sort(take)
+    reaper.UpdateArrange()
+    return true
+end
+
+--- Clears all CC events of a specific CC number from a take
+function MidiService.clear_take_ccs(take, cc_num)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) or not cc_num then
+        return false
+    end
+    local target_cc = math.floor(tonumber(cc_num) or 1)
+    local _, _, cccnt = reaper.MIDI_CountEvts(take)
+    local count = 0
+    for i = cccnt - 1, 0, -1 do
+        local ok, _, _, _, chanmsg, _, msg2, _ = reaper.MIDI_GetCC(take, i)
+        if ok and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == target_cc then
+            reaper.MIDI_DeleteCC(take, i)
+            count = count + 1
+        end
+    end
+    if count > 0 then
+        reaper.MIDI_Sort(take)
+        reaper.UpdateArrange()
+    end
+    return true, count
+end
+
 return MidiService

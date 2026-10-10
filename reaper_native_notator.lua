@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.3
+-- @version 1.8.0-beta.4
 -- @changelog
+--   + v1.8.0-beta.4: MIDI Editor CC Lanes & Dynamic CC Shaping Protection:
+--             - Halved Stems: Vertical velocity stalks refined to 3.0px width (3.5px hover/selected) with crisp 22.5px flag handles.
+--             - 128 CC Controller Lanes: Far-left dropdown allows selecting Velocity or any of the 128 MIDI CC channels (CC 0-127).
+--             - Continuous CC Curve Drawing: Freehand pencil tool draws continuous CC curves into the MIDI take; Select tool moves and edits control nodes.
+--             - Dynamic CC Shaping Protection: CC lanes automated by Notator dynamics (CC 1 & 11 by default, or configured item CCs) are locked and grayed out unless 'Bypass Dynamic CC Shaping' is enabled, with one-click unlock.
 --   + v1.8.0-beta.3: MIDI Editor Stalk & Flag Proportion Swap:
 --             - Solid 6.0px Stalks: Vertical stems widened to full 6.0px column thickness matching previous flag height.
 --             - Fine 1.6px Flags: Top horizontal flags streamlined to crisp 1.6px thickness.
@@ -860,7 +865,7 @@ local function loop()
                 reaper.SetExtState("REAPER_Notator", "MidiEditorHeight", "180", true)
             end
 
-            MidiEditorDrawer.render(ctx, state, MidiService, AudioPreview, main_avail_w, state.midi_editor_h, project_tracks, fonts.font_main)
+            MidiEditorDrawer.render(ctx, state, MidiService, AudioPreview, DynamicsEngine, main_avail_w, state.midi_editor_h, project_tracks, fonts.font_main)
         end
         
         -- ======================================================================

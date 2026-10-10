@@ -287,9 +287,10 @@ function State.new()
         dragged_pattern = nil,
         is_dragging_pattern = false,
 
-        -- MIDI Editor (Velocity Lane & Graph View) Bottom Pane System
+        -- MIDI Editor (Velocity & CC Lanes Graph View) Bottom Pane System
         show_midi_editor = (reaper.GetExtState("REAPER_Notator", "ShowMidiEditor") == "true"),
         midi_editor_h = tonumber(reaper.GetExtState("REAPER_Notator", "MidiEditorHeight")) or 180,
+        midi_editor_lane = "velocity", -- "velocity" or integer 0..127 (CC Number)
         midi_editor_tool = "select", -- "select" | "draw"
         midi_editor_zoom_x = 1.0,
         midi_editor_scroll_x = 0,
@@ -792,6 +793,12 @@ function State:load_settings()
     self.hide_inactive_voices = load_bool("hide_inactive_voices", false)
     self.ghost_voice_opacity = load_num("ghost_voice_opacity", 0.25)
     self.custom_resource_path = load_str("reaper_resource_path", "")
+    local saved_lane = load_str("midi_editor_lane", "velocity")
+    if tonumber(saved_lane) then
+        self.midi_editor_lane = tonumber(saved_lane)
+    else
+        self.midi_editor_lane = saved_lane or "velocity"
+    end
 
     -- Track Clefs
     local _, raw_clefs = reaper.GetProjExtState(0, "REAPER_Notator", "track_clefs")
@@ -966,6 +973,7 @@ function State.save_settings(self)
     save_val("hide_inactive_voices", self.hide_inactive_voices == true)
     save_val("ghost_voice_opacity", self.ghost_voice_opacity or 0.25)
     save_val("reaper_resource_path", self.custom_resource_path or "")
+    save_val("midi_editor_lane", tostring(self.midi_editor_lane or "velocity"))
 
     -- Track Clefs
     if self.track_clefs then
