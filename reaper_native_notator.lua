@@ -1,64 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.9
+-- @version 1.7.0
 -- @changelog
---   + v1.7.0-beta.9: Acoustic Legato Playback & Cross-Voice Slur Import Overhaul:
---             - True Acoustic Legato Playback: MusicXML import now extends all consecutive notes under slurs with micro-legato overlap (+2 PPQ ticks) in REAPER MIDI takes, ensuring samplers (Kontakt, Spitfire, Cinematic Studio Strings, Orchestral Tools, VSL) trigger seamless legato transition intervals instead of detaché attacks. Same-pitch notes are protected from note-merging.
---             - Channel-Isolated Multi-Voice Slur & Tie Pairing: Keyed open slurs, ties, glissandi, and portamentos by channel and voice, preventing cross-voice and grand-staff slur clobbering while preserving cross-staff slur matching fallbacks.
---             - Full Phrase Articulation & Keyswitch Mapping: Tags all notes under slurs with NOTE <pitch> <chan> a legato sysex events, clears conflicting staccato events, injects Reaticulate legato/long/sustain keyswitches, writes full 10-token NOTATOR_SLUR sysex events, and invokes auto-chase restoration at the end of each phrase.
---             - Cross-Track MIDI Copy Persistence: Scoped take scan dual-persistence by track GUID, preserving slurs, glissandi, and portamentos without collision or loss when copying MIDI items between instruments.
---   + v1.7.0-beta.8: MusicXML Save File Dialog & Portamento Syntax Hotfix:
---             - Native Save File Dialog: Fixed MusicXML Export Browse button requiring an existing file by implementing a dedicated Save File dialog (JS_Dialog_BrowseForSaveFile with native Windows SaveFileDialog fallback).
---             - Portamento Syntax Hotfix: Resolved missing 'end' statement in PortamentoService.draw_portamentos.
---             - Pure Dynamic Paths: Fully purged any remaining local development path fallbacks. All operations run 100% dynamically via REAPER APIs.
---   + v1.7.0-beta.7: MusicXML Multi-Notations Slur Import & Dynamic MIDI Item Mark Reconciliation:
---             - MusicXML Multi-Notations & Grand-Staff Slur Import: Parses all <notations> nodes per note and direct note children. Slur and tie matching is decoupled from track/channel splits, resolving cross-staff and polyphonic slur phrases. Suppressed redundant literal text ("legato") above exported slurs.
---             - Dynamic MIDI Item Move/Copy Mark Reconciliation: Moving or duplicating MIDI items across tracks or within a track automatically re-keys and re-parents slurs, glissandi, and portamenti without mark loss or ID collision.
---             - Glissando & Slide Export: Exports chromatic glissandi (<glissando line-type="wavy|solid">) and portamento marks (<slide line-type="solid">). Automatically filters out internal chromatic playback steps (is_gliss_step), restoring full visual duration to starting notes in exported scores.
---             - Glissando & Portamento Import: Accurately parses <glissando>, <slide>, and <other-notation> into GlissandoMark and PortamentoMark objects, synthesizing chromatic ladder take events (resync_glissando_in_take) and CC hold automation (apply_cc).
---             - Glissando DrawList Bugfix: Replaced invalid ImGui_PushFont on DrawList with ImGui_DrawList_AddTextEx.
---             - MusicXML Modal Controls: Dedicated option toggles in MusicXML Export and Import dialog tabs for Slurs & Ties and Glissandi & Portamento with persistent project settings.
---   + v1.7.0-beta.6: Full MusicXML 3.1 & 4.0 Bidirectional Support for Slurs, Ties, Glissandi & Slides:
---             - Bidirectional Slurs & Ties: Full MusicXML 3.1/4.0 export and import for slurs (<slur>) and ties (<tied> / <tie>). Export maps concurrent phrase marks with Gould placement (above/below) and preserves markings across measure-boundary splits. Import creates ScoreCanvas curves, injects NOTATOR_SLUR / NOTATOR_TIE take events, and triggers Reaticulate legato patches while preserving Note 2 notehead visuals.
---             - MusicXML Multi-Notations & Cross-Staff Import Fix: Accurately parses multi-block <notations> elements and resolves slurs across different channels/voices (grand staff & polyphonic voices). Suppressed redundant literal text ("legato") above exported slurs.
---             - Dynamic MIDI Item Move/Copy Mark Reconciliation: Moving or duplicating MIDI items across tracks or within a track automatically re-keys and re-parents slurs, glissandi, and portamenti without mark loss or ID collision.
---             - Glissando & Slide Export: Exports chromatic glissandi (<glissando line-type="wavy|solid">) and portamento marks (<slide line-type="solid">). Automatically filters out internal chromatic playback steps (is_gliss_step), restoring full visual duration to starting notes in exported scores.
---             - Glissando & Portamento Import: Accurately parses <glissando>, <slide>, and <other-notation> into GlissandoMark and PortamentoMark objects, synthesizing chromatic ladder take events (resync_glissando_in_take) and CC hold automation (apply_cc).
---             - MusicXML Modal Controls: Dedicated option toggles in MusicXML Export and Import dialog tabs for Slurs & Ties and Glissandi & Portamento with persistent project settings.
---   + v1.7.0-beta.5: Legato & Slur Articulation Isolation & Grand Staff Phrasing Hotfix:
---             - Legato & Slur Articulation Isolation: Notes covered by or connected to a slur strictly suppress staccato, staccatissimo, spiccato, and wedge articulation symbols in both ScoreCanvas and SystemEngraver engines per standard music engraving practice (legato phrasing mutually excludes staccato marks).
---             - MIDI Take Staccato Event Purging: Placing or toggling a slur ([S] / Articulations Drawer) now automatically purges any conflicting Type 15 text/sysex staccato events (NOTE pitch chan a staccato/spiccato/wedge) from the MIDI take for all phrase notes, preventing stale staccato flags from lingering in takes.
---             - Grand Staff Cross-Staff & Voice-Independent Slur Resolution: SlurService.is_note_slurred now matches slur endpoints by pitch and chronological time independently of MIDI channel splits (voice 1 vs. voice 3), correctly identifying slurred notes in Piano and Harp dual-staff contexts.
---             - Grand Staff Vertical Articulation Baseline Fix: Corrected treble staff vertical baseline referencing (tdata.treble_bottom_y) for upper-system notes in Grand Staff tracks, eliminating erratic space/line collision clamping.
---   + v1.7.0-beta.4: Slur & Tie Hitbox Arbitration, Notehead Click Priority, and Auto-Advance Phrasing:
---             - Notehead Click Priority: Clicking or right-clicking noteheads now strictly suppresses slur and tie curve hit-testing, clearing active curve selection and ensuring note editing focus is never captured by underlying phrasing curves.
---             - Radial Deadzones & Center-Arc Clamping: Slur and tie Bezier hit-testing is clamped to the central arc (t in [0.15, 0.85]) with a 14px radial exclusion zone around notehead centers, eliminating curve click-theft at phrase endpoints.
---             - Auto-Advancing Phrasing Chaining: Creating a single-note slur or tie [S / T] automatically transfers score selection focus to the destination note, allowing rapid consecutive phrase chaining without deselecting.
---             - Resilient Track Scoping: Slur and tie hotkeys [S, T] and drawer/sidebar buttons reliably resolve active track take data even when active_tracks_data is empty, preventing accidental slur toggling.
---   + v1.7.0-beta.3: Tempo Lane Double-Click Custom BPM Creation & Quick-Access Overhaul:
---             - Tempo Track Double-Click Creation: Double-clicking anywhere on the empty tempo lane now instantly creates a new tempo marking at that measure/beat and immediately opens the edit dialog with auto-focus on the Custom BPM input field.
---             - Custom BPM Sync & Persistence: Allows entering any custom BPM number (e.g. 128, 95) or text term; automatically writes to REAPER project tempo envelope and synchronizes seamlessly.
---             - Empty Tempo Lane Context Menu: Right-clicking empty space on the tempo lane opens an options menu to insert custom BPM markings, choose preset tempi, or jump directly to the Tempo Drawer.
---             - Tempo Drawer Custom BPM Insertion: Added a dedicated Custom BPM input and "Insert BPM" button to the Tempo Drawer for instant manual insertion without presets.
---             - Non-Destructive Dialog Cancel: Canceling the edit popup for a newly double-clicked tempo marking cleans up the marker and removes any ghost tempo envelope points.
---   + v1.7.0-beta.2: Note & Staff Context Menu Priority Hotfix (Top Staff Line / Header Hitbox Fix):
---             - Note Right-Click Priority: Right-clicking any notehead (including top staff lines F5/A3 or high ledger lines) now reliably opens the comprehensive NoteContextMenu (Select to End, Voice, Stem, Quantize, Glissando/Portamento).
---             - Measure Header Hitbox Clamping: Clamped 'Bar Actions' (measure_header_context_popup) strictly to the bar number lane above the staff (mouse_y < staff_top_y - 25*s) and guarded against hovered notes and symbols.
---             - Rehearsal Marks in Staff Menu: Added '🔖 Rehearsal & Navigation Marks' submenu to the empty staff context menu for convenient placement anywhere in the measure.
---   + v1.7.0-beta.1: Slur & Tie Track-Isolation Hotfix, Cross-Instrument Leaking Elimination:
---             - Strict Track Isolation: Slurs and ties are strictly constrained to the same instrument/track, preventing phrase curves from bridging across multiple staves in multi-track/orchestral views.
---             - Robust Candidate Scoping: Toggle slur [S] and tie [T] now validate target selections and restrict intermediate phrase note lookups strictly to the primary note's track.
---             - Legacy Project Auto-Healing: Heals missing track GUIDs upon loading and automatically reconciles project slurs/ties via '⚡ Fix Playback' in the Articulations Drawer.
---             - Segment-Arrival Precision: Ties and slurs landing on segmented or tied notes attach accurately to the initial notehead per Elaine Gould standards.
---   + v1.7.0-beta: Complete Glissando & Portamento System, Cross-Staff Support, and Dual Persistence:
---             - Glissando Engine: Real chromatic pitch steps generated in MIDI takes (NOTATOR_GLISS_STEP / NOTATOR_GLISSANDO) with full acoustic playback.
---             - Dual-Reality Score Rendering: Intermediate chromatic ladder steps are 100% hidden from the score canvas while Note 1 retains its full visual duration.
---             - Cross-Staff Glissando: Full support for cross-staff glissandi (e.g. Harp/Piano connecting Bass Clef to Treble Clef) with automatic clef split detection across staves.
---             - Wavy Line Styles: Configurable visual styles including Sinusoidal wave ('sine'), Sawtooth/Zigzag ('saw'), and Straight line ('straight').
---             - Dynamic "gliss." Text Badge: Italicized badge placed automatically above the wavy line via upward normal vectors, with hit-testing and toggle in context menu.
---             - Portamento Engine: Acoustic blending via CC64 Pedal Hold (50% Note 1 to 50% Note 2) or continuous CC controllers (CC34/CC5/CC65) with straight diagonal canvas line and 'port.' badge.
---             - Settings Modal & Batch Operations: Dedicated Glissando and Portamento sections in Settings Modal with configurable defaults and 1-click project sync.
---             - Dual Persistence & Take Auto-Recovery: Full project persistence via ExtState and MIDI take Type 15 Sysex events ensuring marks survive across sessions.
+--   + v1.7.0: Major Release: Elaine Gould Slurs, Glissandi, Portamento & Bidirectional MusicXML 4.0:
+--             - Elaine Gould Phrasing & Slurs: True acoustic legato playback (+2 PPQ micro-overlap), voice-isolated multi-voice pairing, Reaticulate keyswitch integration, and automatic chase.
+--             - Glissando & Portamento Suite: Full chromatic ladder playback, wavy line engraving, and portamento slide CC automation with dual-reality MIDI take persistence.
+--             - Bidirectional MusicXML 3.1 & 4.0: Lossless import and export for slurs, ties, glissandi, slides, dynamics, and fermatas, with native Save File dialog.
+--             - Canvas Hitbox Arbitration: Strict notehead click priority over phrasing curves, eliminating curve click-theft.
+--             - Tempo Lane Workflow: Instant double-click custom BPM creation and synchronized envelope markers.
 --   + v1.6.5: PreviewPlayback Hotfix: Track isolation, arm settling buffer & audition duration tuning:
 --             - Track Isolation: Temporarily disarms other armed tracks during score note click preview to strictly prevent foreign instruments from sounding via Virtual MIDI Keyboard.
 --             - Initial Arm Settling Buffer: Added a 250ms buffer upon mouse release after initial track arming to let VST audio buffers settle, guaranteeing clean initial note attacks with 0ms latency on consecutive notes.
