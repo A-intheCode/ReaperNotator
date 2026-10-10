@@ -1612,17 +1612,17 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             beam_groups = cached_layout.beam_groups
             is_polyphonic_track = cached_layout.is_polyphonic_track
             
-            -- Register ties in visible range
+            -- Register ties
             for _, bt in ipairs(cached_layout.bar_ties) do
-                if bt.end_qn >= vis_min_qn - 4.0 and bt.start_qn <= vis_max_qn + 4.0 then
-                    table.insert(all_bar_ties, bt)
-                end
+                table.insert(all_bar_ties, bt)
             end
             
             -- Fast screen position update & render registration for notes near/in visible window
             for _, vn in ipairs(visual_notes) do
                 local is_sel = state:is_note_selected(vn.orig)
-                local in_range = (vn.end_qn >= vis_min_qn - 8.0 and vn.start_qn <= vis_max_qn + 8.0)
+                local vn_start = vn.start_qn or 0
+                local vn_end = vn.end_qn or (vn_start + (vn.dur_qn or 1.0))
+                local in_range = not vis_min_qn or not vis_max_qn or (vn_end >= vis_min_qn - 8.0 and vn_start <= vis_max_qn + 8.0)
                 if is_sel or in_range then
                     local staff_bot = staff_bottom_y
                     if is_harp then
@@ -1630,8 +1630,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     elseif is_grand then
                         staff_bot = (vn.in_staff == "treble") and treble_bottom_y or bass_bottom_y
                     end
-                    vn.vis_ny = staff_bot + vn.rel_ny
-                    vn.nominal_nx = Engraver.qn_to_canvas_x(vn.display_qn, margin_left, s, qn_per_measure, measure_map)
+                    vn.vis_ny = staff_bot + (vn.rel_ny or -(vn.dstep * step_y))
+                    vn.nominal_nx = Engraver.qn_to_canvas_x(vn.display_qn or vn.start_qn, margin_left, s, qn_per_measure, measure_map)
                     vn.vis_nx = vn.nominal_nx + (vn.head_x_offset or 0) + (vn.collision_push or 0)
                     
                     local rdata = {
@@ -1649,7 +1649,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     table.insert(all_note_render_data, rdata)
                     all_note_render_by_key[vn.key] = rdata
                     
-                    local note_bar = math.floor((vn.start_qn + 0.001) / bpi)
+                    local note_bar = math.floor(((vn.start_qn or 0) + 0.001) / bpi)
                     if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
                         table.insert(display_notes, vn)
                     end
@@ -1658,9 +1658,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             
             -- Draw beams in visible window
             for _, bgroup in ipairs(beam_groups) do
-                local b_start = bgroup[1].start_qn
-                local b_end = bgroup[#bgroup].end_qn or (b_start + bgroup[#bgroup].dur_qn)
-                if b_end >= vis_min_qn and b_start <= vis_max_qn then
+                local b_start = bgroup[1] and bgroup[1].start_qn
+                local b_last = bgroup[#bgroup]
+                local b_end = b_last and (b_last.end_qn or (b_last.start_qn and b_last.dur_qn and (b_last.start_qn + b_last.dur_qn)))
+                local in_vis_beam = (not vis_min_qn or not vis_max_qn) or (b_start and b_end and b_end >= vis_min_qn and b_start <= vis_max_qn)
+                if in_vis_beam then
                     local all_ghost = true
                     for _, bvn in ipairs(bgroup) do
                         if not bvn.is_ghost_voice then all_ghost = false break end
@@ -1681,7 +1683,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             
             -- Synchronize chord clusters with beamed stem directions
             for _, cluster in ipairs(chord_clusters) do
-                if cluster.start_qn >= vis_min_qn - 4.0 and cluster.start_qn <= vis_max_qn + 4.0 then
+                local in_vis_cluster = (not vis_min_qn or not vis_max_qn) or (cluster.start_qn and cluster.start_qn >= vis_min_qn - 4.0 and cluster.start_qn <= vis_max_qn + 4.0)
+                if in_vis_cluster then
                     for _, cvn in ipairs(cluster.notes) do
                         if cvn.beam_stem_down ~= nil then
                             cluster.stem_down = cvn.beam_stem_down
