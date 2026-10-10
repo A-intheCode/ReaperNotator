@@ -179,8 +179,10 @@ function OctaveService.save_lines(state)
 end
 
 function OctaveService.get_lines_for_track(state, track_guid)
+    local lines = state and state.octave_lines
+    if not lines or #lines == 0 then return {} end
     local res = {}
-    for _, line in ipairs(state.octave_lines or {}) do
+    for _, line in ipairs(lines) do
         if line.track_guid == track_guid then
             table.insert(res, line)
         end
@@ -190,7 +192,9 @@ function OctaveService.get_lines_for_track(state, track_guid)
 end
 
 function OctaveService.get_active_line_at_qn(state, track_guid, qn)
-    for _, line in ipairs(state.octave_lines or {}) do
+    local lines = state and state.octave_lines
+    if not lines or #lines == 0 then return nil end
+    for _, line in ipairs(lines) do
         local s_qn = line.start_qn
         local e_qn = line.end_qn
         -- While dragging/resizing: The REAPER MIDI still corresponds to

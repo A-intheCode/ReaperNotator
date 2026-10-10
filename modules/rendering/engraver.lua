@@ -259,6 +259,7 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
     
     return {
         bpi = bpi,
+        num_m = num_m,
         base_w = base_w,
         pad_left = pad_left,
         pad_lefts = pad_lefts,
@@ -271,6 +272,19 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
         onsets_by_bar = onsets_by_bar,
         key_changes = key_changes
     }
+end
+
+function Engraver.reanchor_measure_map(measure_map, new_margin_left)
+    if not measure_map or not measure_map.starts or not measure_map.margin_left then return end
+    local delta = new_margin_left - measure_map.margin_left
+    if math.abs(delta) < 0.0001 then return end
+    local max_m = (measure_map.num_m and (measure_map.num_m + 1)) or (#measure_map.starts + 1)
+    for m = 0, max_m do
+        if measure_map.starts[m] then
+            measure_map.starts[m] = measure_map.starts[m] + delta
+        end
+    end
+    measure_map.margin_left = new_margin_left
 end
 
 function Engraver.get_measure_layout(s, qn_per_measure)
@@ -298,7 +312,7 @@ function Engraver.qn_to_canvas_x(qn, margin_left, s, qn_per_measure, measure_map
     local m_start_x = measure_map.starts[m_idx]
     local m_w = measure_map.widths[m_idx]
     if not m_start_x then
-        local last_idx = #measure_map.starts - 1
+        local last_idx = measure_map.num_m or (#measure_map.starts - 1)
         m_start_x = (measure_map.starts[last_idx] or margin_left) + (m_idx - last_idx) * measure_map.base_w
         m_w = measure_map.base_w
     end
@@ -330,7 +344,7 @@ function Engraver.cursor_qn_to_canvas_x(qn, margin_left, s, qn_per_measure, meas
     local m_start_x = measure_map.starts[m_idx]
     local m_w = measure_map.widths[m_idx]
     if not m_start_x then
-        local last_idx = #measure_map.starts - 1
+        local last_idx = measure_map.num_m or (#measure_map.starts - 1)
         m_start_x = (measure_map.starts[last_idx] or margin_left) + (m_idx - last_idx) * measure_map.base_w
         m_w = measure_map.base_w
     end
@@ -370,7 +384,7 @@ function Engraver.canvas_x_to_qn(x, margin_left, s, qn_per_measure, grid_qn, mea
     end
     
     local starts = measure_map.starts
-    local num_starts = #starts
+    local num_starts = measure_map.num_m or #starts
     local pad_l = measure_map.pad_left or (30.0 * s)
     local pad_r = measure_map.pad_right or (25.0 * s)
     
@@ -1303,108 +1317,114 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
     local visual_notes = {}
     local bar_ties = {}
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
+    if not notes then return visual_notes, bar_ties end
     
     for _, n in ipairs(notes) do
         local n_sqn = n.start_qn or n.sqn or 0
+        if vis_max_qn and n_sqn > vis_max_qn + 1.0 then
+            break
+        end
         local n_eqn = n.end_qn or n.eqn or (n_sqn + (n.dur_qn or 1.0))
         
-        -- Metric smoothing of unquantized REAPER MIDI notes (1/64 grid = 0.0625 QN)
-        local grid = 0.0625
-        local raw_dur = math.max(grid, n_eqn - n_sqn)
-        
-        -- Check first for common tuplet durations (triplets 3:2, quintuplets 5:4, septuplets 7:4),
-        -- so they are not erroneously snapped or distorted to binary note values:
-        local tuplet_dur_targets = {
-            1.3333, 0.8000, 0.6667, 0.5714, 0.4000, 0.3333, 0.2857, 0.2000, 0.1667, 0.1429, 0.1000, 0.0833, 0.0714
-        }
-        local matched_tuplet_dur = nil
-        for _, td in ipairs(tuplet_dur_targets) do
-            if math.abs(raw_dur - td) <= 0.025 then
-                matched_tuplet_dur = td
-                break
-            end
-        end
-
-        local clean_sqn
-        local snapped_dur
-        if matched_tuplet_dur then
-            snapped_dur = matched_tuplet_dur
-            -- For tuplets, also align start time to tuplet step grid (instead of 1/64 binary)
-            local t_step = matched_tuplet_dur
-            local step_idx = math.floor((n_sqn / t_step) + 0.5)
-            if math.abs(n_sqn - step_idx * t_step) <= 0.04 then
-                clean_sqn = step_idx * t_step
-            else
-                clean_sqn = math.floor((n_sqn / grid) + 0.5) * grid
-            end
-        else
-            clean_sqn = math.floor((n_sqn / grid) + 0.5) * grid
-            -- Legato snap: When raw duration is very close to full quarters/eighths (e.g. 0.88 -> 1.0, 1.88 -> 2.0, 2.88 -> 3.0, 3.85 -> 4.0)
-            snapped_dur = math.floor((raw_dur / grid) + 0.5) * grid
-            if snapped_dur < grid then snapped_dur = grid end
-            local close_targets = { 4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625 }
-            for _, ct in ipairs(close_targets) do
-                local tol = math.min(0.14, math.max(0.025, ct * 0.25))
-                if math.abs(raw_dur - ct) <= tol then
-                    snapped_dur = ct
+        if not vis_min_qn or n_eqn >= vis_min_qn - 2.0 then
+            -- Metric smoothing of unquantized REAPER MIDI notes (1/64 grid = 0.0625 QN)
+            local grid = 0.0625
+            local raw_dur = math.max(grid, n_eqn - n_sqn)
+            
+            -- Check first for common tuplet durations (triplets 3:2, quintuplets 5:4, septuplets 7:4),
+            -- so they are not erroneously snapped or distorted to binary note values:
+            local tuplet_dur_targets = {
+                1.3333, 0.8000, 0.6667, 0.5714, 0.4000, 0.3333, 0.2857, 0.2000, 0.1667, 0.1429, 0.1000, 0.0833, 0.0714
+            }
+            local matched_tuplet_dur = nil
+            for _, td in ipairs(tuplet_dur_targets) do
+                if math.abs(raw_dur - td) <= 0.025 then
+                    matched_tuplet_dur = td
                     break
                 end
             end
-        end
-        local clean_eqn = clean_sqn + snapped_dur
-        
-        if (not vis_min_qn or clean_eqn >= vis_min_qn) and (not vis_max_qn or clean_sqn <= vis_max_qn) then
-            local start_bar = math.floor((clean_sqn + 0.001) / bpi)
-            local end_bar = math.floor(math.max(clean_sqn, clean_eqn - 0.001) / bpi)
+
+            local clean_sqn
+            local snapped_dur
+            if matched_tuplet_dur then
+                snapped_dur = matched_tuplet_dur
+                -- For tuplets, also align start time to tuplet step grid (instead of 1/64 binary)
+                local t_step = matched_tuplet_dur
+                local step_idx = math.floor((n_sqn / t_step) + 0.5)
+                if math.abs(n_sqn - step_idx * t_step) <= 0.04 then
+                    clean_sqn = step_idx * t_step
+                else
+                    clean_sqn = math.floor((n_sqn / grid) + 0.5) * grid
+                end
+            else
+                clean_sqn = math.floor((n_sqn / grid) + 0.5) * grid
+                -- Legato snap: When raw duration is very close to full quarters/eighths (e.g. 0.88 -> 1.0, 1.88 -> 2.0, 2.88 -> 3.0, 3.85 -> 4.0)
+                snapped_dur = math.floor((raw_dur / grid) + 0.5) * grid
+                if snapped_dur < grid then snapped_dur = grid end
+                local close_targets = { 4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625 }
+                for _, ct in ipairs(close_targets) do
+                    local tol = math.min(0.14, math.max(0.025, ct * 0.25))
+                    if math.abs(raw_dur - ct) <= tol then
+                        snapped_dur = ct
+                        break
+                    end
+                end
+            end
+            local clean_eqn = clean_sqn + snapped_dur
             
-            local prev_seg_key = nil
-            local prev_seg_bar = nil
-            for bar = start_bar, end_bar do
-                local bar_sqn = bar * bpi
-                local seg_sqn = math.max(clean_sqn, bar_sqn)
-                local seg_eqn = math.min(clean_eqn, (bar + 1) * bpi)
-                local seg_dur = seg_eqn - seg_sqn
+            if (not vis_min_qn or clean_eqn >= vis_min_qn) and (not vis_max_qn or clean_sqn <= vis_max_qn) then
+                local start_bar = math.floor((clean_sqn + 0.001) / bpi)
+                local end_bar = math.floor(math.max(clean_sqn, clean_eqn - 0.001) / bpi)
                 
-                if seg_dur > 0.01 then
-                    local start_in_bar = seg_sqn - bar_sqn
-                    local sub_segs = Engraver.decompose_bar_segment(start_in_bar, seg_dur, bpi)
+                local prev_seg_key = nil
+                local prev_seg_bar = nil
+                for bar = start_bar, end_bar do
+                    local bar_sqn = bar * bpi
+                    local seg_sqn = math.max(clean_sqn, bar_sqn)
+                    local seg_eqn = math.min(clean_eqn, (bar + 1) * bpi)
+                    local seg_dur = seg_eqn - seg_sqn
                     
-                    local it_str = tostring(n.item or "0")
-                    local tk_str = tostring(n.take or "0")
-                    
-                    for sub_i, sub in ipairs(sub_segs) do
-                        local sub_sqn = bar_sqn + sub.start_in_bar
-                        local sub_eqn = sub_sqn + sub.dur_qn
-                        local seg_key = string.format("%s_%s_%.3f_%d_%d_b%d_s%d", it_str, tk_str, sub_sqn, n.pitch, n.chan or 0, bar, sub_i)
+                    if seg_dur > 0.01 then
+                        local start_in_bar = seg_sqn - bar_sqn
+                        local sub_segs = Engraver.decompose_bar_segment(start_in_bar, seg_dur, bpi)
                         
-                        local is_segmented = (start_bar ~= end_bar) or (#sub_segs > 1)
-                        local seg = {
-                            orig = n,
-                            pitch = n.pitch,
-                            start_qn = sub_sqn,
-                            end_qn = sub_eqn,
-                            dur_qn = sub.dur_qn,
-                            is_segment = is_segmented,
-                            seg_idx = sub_i,
-                            key = seg_key,
-                            bar = bar
-                        }
-                        table.insert(visual_notes, seg)
+                        local it_str = tostring(n.item or "0")
+                        local tk_str = tostring(n.take or "0")
                         
-                        if prev_seg_key then
-                            local is_cross = (prev_seg_bar ~= nil and prev_seg_bar ~= bar)
-                            table.insert(bar_ties, {
-                                from_key = prev_seg_key,
-                                to_key = seg_key,
-                                pitch = n.pitch,
+                        for sub_i, sub in ipairs(sub_segs) do
+                            local sub_sqn = bar_sqn + sub.start_in_bar
+                            local sub_eqn = sub_sqn + sub.dur_qn
+                            local seg_key = string.format("%s_%s_%.3f_%d_%d_b%d_s%d", it_str, tk_str, sub_sqn, n.pitch, n.chan or 0, bar, sub_i)
+                            
+                            local is_segmented = (start_bar ~= end_bar) or (#sub_segs > 1)
+                            local seg = {
                                 orig = n,
-                                is_cross_barline = is_cross,
-                                from_bar = prev_seg_bar,
-                                to_bar = bar
-                            })
+                                pitch = n.pitch,
+                                start_qn = sub_sqn,
+                                end_qn = sub_eqn,
+                                dur_qn = sub.dur_qn,
+                                is_segment = is_segmented,
+                                seg_idx = sub_i,
+                                key = seg_key,
+                                bar = bar
+                            }
+                            table.insert(visual_notes, seg)
+                            
+                            if prev_seg_key then
+                                local is_cross = (prev_seg_bar ~= nil and prev_seg_bar ~= bar)
+                                table.insert(bar_ties, {
+                                    from_key = prev_seg_key,
+                                    to_key = seg_key,
+                                    pitch = n.pitch,
+                                    orig = n,
+                                    is_cross_barline = is_cross,
+                                    from_bar = prev_seg_bar,
+                                    to_bar = bar
+                                })
+                            end
+                            prev_seg_key = seg_key
+                            prev_seg_bar = bar
                         end
-                        prev_seg_key = seg_key
-                        prev_seg_bar = bar
                     end
                 end
             end

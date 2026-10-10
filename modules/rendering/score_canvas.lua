@@ -441,11 +441,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- Dynamic measure width calculation (cached across frames)
     local measure_map = nil
     do
-        local mmap_sig = string.format("%.3f_%d_%.3f_%.2f_%d_%d_%d_%s",
-            s, total_measures, qn_per_measure, margin_left, proj_change_cnt, #active_tracks_data,
+        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%s",
+            s, total_measures, qn_per_measure, proj_change_cnt, #active_tracks_data,
             (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid))
         if state.cached_measure_map and state.cached_measure_map_sig == mmap_sig then
             measure_map = state.cached_measure_map
+            Engraver.reanchor_measure_map(measure_map, margin_left)
         else
             measure_map = Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_measure, margin_left, s, state)
             state.cached_measure_map = measure_map
@@ -501,7 +502,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         if is_playing then
             local play_time = reaper.GetPlayPosition()
             local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, play_time), margin_left, s, qn_per_measure, measure_map)
-            reaper.ImGui_SetScrollX(ctx, math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+            local new_scroll_x = math.max(0, target_x - canvas_p0_x - (avail_w * 0.5))
+            local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
+            if math.abs(new_scroll_x - cur_scroll_x) >= 0.5 then
+                reaper.ImGui_SetScrollX(ctx, new_scroll_x)
+            end
         -- 3. Automatic scrolling in stopped state (e.g. edit cursor follows click)
         else
             local empty_click = reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
@@ -513,7 +518,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
 
             if not empty_click and not reaper.ImGui_IsMouseClicked(ctx, 0) then
                 local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, cur_time), margin_left, s, qn_per_measure, measure_map)
-                reaper.ImGui_SetScrollX(ctx, math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+                local new_scroll_x = math.max(0, target_x - canvas_p0_x - (avail_w * 0.5))
+                local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
+                if math.abs(new_scroll_x - cur_scroll_x) >= 0.5 then
+                    reaper.ImGui_SetScrollX(ctx, new_scroll_x)
+                end
             end
         end
     end
@@ -1055,12 +1064,30 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
         end
 
+        -- Pre-bucket eff_notes by measure bar for O(1) rest collision lookup
+        local eff_notes_by_bar = {}
+        for _, en in ipairs(eff_notes) do
+            local mb_start = math.floor(en.start_qn / bpi)
+            local mb_end = math.floor(math.max(en.start_qn, en.end_qn - 0.001) / bpi)
+            for mb = mb_start, mb_end do
+                local blist = eff_notes_by_bar[mb]
+                if not blist then
+                    blist = {}
+                    eff_notes_by_bar[mb] = blist
+                end
+                table.insert(blist, en)
+            end
+        end
+
         -- Rests in gaps (strict separation of staves in grand staff & harp 3-staff and 100% collision filter)
         local function draw_staff_rests(rests_list, staff_bot, staff_is_treble, staff_id)
             local visible_rests = {}
-            for _, r in ipairs(rests_list) do
+            for _, r in ipairs(rests_list or {}) do
                 local r_start = r.start_qn
-                local r_end = r.start_qn + (r.is_full_measure and qn_per_measure or r.dur_qn)
+                if r_start > vis_max_qn + qn_per_measure then
+                    break
+                end
+                local r_end = r_start + (r.is_full_measure and qn_per_measure or r.dur_qn)
                 
                 -- Check and draw only within the visible area:
                 if r_end >= vis_min_qn and r_start <= vis_max_qn then
@@ -1070,12 +1097,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         collision = true
                     end
                     
+                    local bar_eff_notes = eff_notes_by_bar[r_bar] or {}
                     -- IF ANY NOTE EXISTS IN THIS MEASURE ON THIS STAFF -> NO EMPTY MEASURE REST!
                     if r.is_full_measure then
-                        local m_idx = r.measure_idx or math.floor(r.start_qn / bpi)
+                        local m_idx = r_bar
                         local bar_sqn = m_idx * bpi
                         local bar_eqn = (m_idx + 1) * bpi
-                        for _, en in ipairs(eff_notes) do
+                        for _, en in ipairs(bar_eff_notes) do
                             local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_treble))
                             local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
                             if matches_staff and matches_voice then
@@ -1087,7 +1115,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             end
                         end
                     else
-                        for _, en in ipairs(eff_notes) do
+                        for _, en in ipairs(bar_eff_notes) do
                             local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_treble))
                             local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
                             if matches_staff and matches_voice then
@@ -1146,40 +1174,82 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
         end
 
+        local cached_rests = nil
+        local rest_key = nil
+        if not is_dragging_notes and tdata.rests_cache then
+            rest_key = string.format("staff_rests_%s_%d_%.2f_%s", tostring(track_clef), total_measures, qn_per_measure, tostring(dq))
+            cached_rests = tdata.rests_cache[rest_key]
+        end
+
         if is_harp then
-            local treble_eff, alto_eff, bass_eff = {}, {}, {}
-            for _, en in ipairs(eff_notes) do
-                if en.in_staff == "treble" then
-                    table.insert(treble_eff, en)
-                elseif en.in_staff == "mid" or en.in_staff == "alto" then
-                    table.insert(alto_eff, en)
-                else
-                    table.insert(bass_eff, en)
+            local tr_rests, mid_rests, b_rests
+            if cached_rests then
+                tr_rests, mid_rests, b_rests = cached_rests.treble, cached_rests.mid, cached_rests.bass
+            else
+                local treble_eff, alto_eff, bass_eff = {}, {}, {}
+                for _, en in ipairs(eff_notes) do
+                    if en.in_staff == "treble" then
+                        table.insert(treble_eff, en)
+                    elseif en.in_staff == "mid" or en.in_staff == "alto" then
+                        table.insert(alto_eff, en)
+                    else
+                        table.insert(bass_eff, en)
+                    end
+                end
+                tr_rests  = Engraver.generate_voice_rests(treble_eff, total_measures, qn_per_measure, dq)
+                mid_rests = Engraver.generate_voice_rests(alto_eff, total_measures, qn_per_measure, dq)
+                b_rests   = Engraver.generate_voice_rests(bass_eff, total_measures, qn_per_measure, dq)
+                if not is_dragging_notes and tdata.rests_cache and rest_key then
+                    tdata.rests_cache[rest_key] = { treble = tr_rests, mid = mid_rests, bass = b_rests }
                 end
             end
-            draw_staff_rests(Engraver.generate_voice_rests(treble_eff, total_measures, qn_per_measure, dq, vis_min_measure, vis_max_measure), treble_bottom_y, true, "treble")
-            draw_staff_rests(Engraver.generate_voice_rests(alto_eff, total_measures, qn_per_measure, dq, vis_min_measure, vis_max_measure), mid_bottom_y, false, "mid")
-            draw_staff_rests(Engraver.generate_voice_rests(bass_eff, total_measures, qn_per_measure, dq, vis_min_measure, vis_max_measure), bass_bottom_y, false, "bass")
+            draw_staff_rests(tr_rests, treble_bottom_y, true, "treble")
+            draw_staff_rests(mid_rests, mid_bottom_y, false, "mid")
+            draw_staff_rests(b_rests, bass_bottom_y, false, "bass")
         elseif is_grand then
-            local treble_eff = {}
-            local bass_eff = {}
-            for _, en in ipairs(eff_notes) do
-                if en.in_treble then
-                    table.insert(treble_eff, en)
-                else
-                    table.insert(bass_eff, en)
+            local tr_rests, b_rests
+            if cached_rests then
+                tr_rests, b_rests = cached_rests.treble, cached_rests.bass
+            else
+                local treble_eff = {}
+                local bass_eff = {}
+                for _, en in ipairs(eff_notes) do
+                    if en.in_treble then
+                        table.insert(treble_eff, en)
+                    else
+                        table.insert(bass_eff, en)
+                    end
+                end
+                tr_rests = Engraver.generate_voice_rests(treble_eff, total_measures, qn_per_measure, dq)
+                b_rests  = Engraver.generate_voice_rests(bass_eff, total_measures, qn_per_measure, dq)
+                if not is_dragging_notes and tdata.rests_cache and rest_key then
+                    tdata.rests_cache[rest_key] = { treble = tr_rests, bass = b_rests }
                 end
             end
-            local treble_rests = Engraver.generate_voice_rests(treble_eff, total_measures, qn_per_measure, dq, vis_min_measure, vis_max_measure)
-            local bass_rests   = Engraver.generate_voice_rests(bass_eff, total_measures, qn_per_measure, dq, vis_min_measure, vis_max_measure)
-            draw_staff_rests(treble_rests, treble_bottom_y, true)
-            draw_staff_rests(bass_rests, bass_bottom_y, false)
+            draw_staff_rests(tr_rests, treble_bottom_y, true)
+            draw_staff_rests(b_rests, bass_bottom_y, false)
         elseif track_clef == "bass" then
-            local track_rests = Engraver.generate_voice_rests(eff_notes, total_measures, qn_per_measure, dq, vis_min_measure, vis_max_measure)
-            draw_staff_rests(track_rests, bass_bottom_y, false)
+            local trk_rests
+            if cached_rests then
+                trk_rests = cached_rests.track
+            else
+                trk_rests = Engraver.generate_voice_rests(eff_notes, total_measures, qn_per_measure, dq)
+                if not is_dragging_notes and tdata.rests_cache and rest_key then
+                    tdata.rests_cache[rest_key] = { track = trk_rests }
+                end
+            end
+            draw_staff_rests(trk_rests, bass_bottom_y, false)
         else
-            local track_rests = Engraver.generate_voice_rests(eff_notes, total_measures, qn_per_measure, dq, vis_min_measure, vis_max_measure)
-            draw_staff_rests(track_rests, staff_bottom_y, true)
+            local trk_rests
+            if cached_rests then
+                trk_rests = cached_rests.track
+            else
+                trk_rests = Engraver.generate_voice_rests(eff_notes, total_measures, qn_per_measure, dq)
+                if not is_dragging_notes and tdata.rests_cache and rest_key then
+                    tdata.rests_cache[rest_key] = { track = trk_rests }
+                end
+            end
+            draw_staff_rests(trk_rests, staff_bottom_y, true)
         end
         
         -- Visual notes (culled to visible viewport)
@@ -1518,14 +1588,21 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         
         -- Pre-pass: Find the single closest note to mouse for hover and click arbitration
         local closest_hovered_vn = nil
-        local closest_hovered_dist = 12.5 * s
+        local max_hover_dist = 12.5 * s
+        local closest_hovered_dist_sq = max_hover_dist * max_hover_dist
         if is_hovered then
             for _, vn in ipairs(display_notes) do
                 if not vn.is_ghost_voice then
-                    local d = math.sqrt((mouse_x - vn.vis_nx)^2 + (mouse_y - vn.vis_ny)^2)
-                    if d <= closest_hovered_dist then
-                        closest_hovered_dist = d
-                        closest_hovered_vn = vn
+                    local dx = math.abs(mouse_x - vn.vis_nx)
+                    if dx <= max_hover_dist then
+                        local dy = math.abs(mouse_y - vn.vis_ny)
+                        if dy <= max_hover_dist then
+                            local d_sq = dx * dx + dy * dy
+                            if d_sq <= closest_hovered_dist_sq then
+                                closest_hovered_dist_sq = d_sq
+                                closest_hovered_vn = vn
+                            end
+                        end
                     end
                 end
             end
