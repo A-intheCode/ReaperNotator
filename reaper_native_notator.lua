@@ -1,7 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.4
+-- @version 1.8.0-beta.5
 -- @changelog
+--   + v1.8.0-beta.5: CC Curve Shape Synchronization & Settings MIDI Editor Colors:
+--             - REAPER CC Shape Synchronization: Curves drawn in Notator now default to Shape 1 (Linear Ramp), eliminating square steps ("Stufen") in REAPER's native MIDI editor.
+--             - Toolbar Shape Selector: Choose between Linear, Square, Slow/Fast, and Bézier curves with 1-click batch conversion for the active CC lane.
+--             - Settings: MIDI Editor Colors: Dedicated settings category to customize background, grid, velocity stalks/flags, CC curve lines, fills, and locked states with live theme application.
 --   + v1.8.0-beta.4: MIDI Editor CC Lanes & Dynamic CC Shaping Protection:
 --             - Halved Stems: Vertical velocity stalks refined to 3.0px width (3.5px hover/selected) with crisp 22.5px flag handles.
 --             - 128 CC Controller Lanes: Far-left dropdown allows selecting Velocity or any of the 128 MIDI CC channels (CC 0-127).

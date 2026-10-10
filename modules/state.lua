@@ -291,6 +291,7 @@ function State.new()
         show_midi_editor = (reaper.GetExtState("REAPER_Notator", "ShowMidiEditor") == "true"),
         midi_editor_h = tonumber(reaper.GetExtState("REAPER_Notator", "MidiEditorHeight")) or 180,
         midi_editor_lane = "velocity", -- "velocity" or integer 0..127 (CC Number)
+        midi_editor_cc_shape = tonumber(reaper.GetExtState("REAPER_Notator", "MidiEditorCCShape")) or 1, -- 1 = Linear Ramp (Default, no steps)
         midi_editor_tool = "select", -- "select" | "draw"
         midi_editor_zoom_x = 1.0,
         midi_editor_scroll_x = 0,

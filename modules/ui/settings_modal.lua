@@ -13,7 +13,7 @@ function SettingsModal.apply_theme(state)
     for k, default_v in pairs(Constants.DEFAULT_COLORS) do
         local final_col = default_v
         
-        if state.invert_mode then
+        if state.invert_mode and not k:match("^midi_") then
             final_col = ((~final_col) & 0xFFFFFF00) | (final_col & 0x000000FF)
             -- Handcrafted contrast tweaks for invert mode (Dark Mode)
             if k == "paper_bg" then final_col = 0x1E1E1EFF end
@@ -926,6 +926,85 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             end
             
             reaper.ImGui_Spacing(ctx)
+
+            -- ==============================================================
+            -- 4b. MIDI Editor Colors
+            -- ==============================================================
+            if reaper.ImGui_CollapsingHeader(ctx, "🎹 MIDI Editor Colors###hdr_midi_editor_colors") then
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_TextColored(ctx, 0x8892B0FF, "Customize background, grid, velocity stems, and CC curve colors for the MIDI Editor drawer:")
+                reaper.ImGui_Spacing(ctx)
+
+                if reaper.ImGui_Button(ctx, "Reset MIDI Editor Colors") then
+                    if state.custom_colors then
+                        local midi_keys = {
+                            "midi_bg", "midi_lane_bg", "midi_grid_major", "midi_grid_minor",
+                            "midi_vel_stalk", "midi_vel_flag", "midi_vel_sel", "midi_vel_hov",
+                            "midi_cc_line", "midi_cc_fill", "midi_cc_node", "midi_cc_locked"
+                        }
+                        for _, mk in ipairs(midi_keys) do
+                            state.custom_colors[mk] = nil
+                        end
+                        SettingsModal.apply_theme(state)
+                        require('state').save_settings(state)
+                    end
+                end
+                reaper.ImGui_Spacing(ctx)
+
+                if not state.custom_colors then
+                    state.custom_colors = {}
+                end
+
+                local function midi_color_edit(label, key, default_col)
+                    local current_col = state.custom_colors[key]
+                    if not current_col then
+                        current_col = Constants.COLORS[key] or Constants.DEFAULT_COLORS[key] or default_col
+                    end
+                    local flags = 0
+                    if reaper.APIExists("ImGui_ColorEditFlags_NoInputs") then flags = flags | reaper.ImGui_ColorEditFlags_NoInputs() end
+                    if reaper.APIExists("ImGui_ColorEditFlags_AlphaPreview") then flags = flags | reaper.ImGui_ColorEditFlags_AlphaPreview() end
+                    local changed, new_col_u32 = reaper.ImGui_ColorEdit4(ctx, label, current_col, flags)
+                    if changed then
+                        state.custom_colors[key] = new_col_u32
+                        SettingsModal.apply_theme(state)
+                        require('state').save_settings(state)
+                    end
+                end
+
+                -- Group 1: Canvas & Grid
+                reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "Background & Grid:")
+                midi_color_edit("Drawer BG", "midi_bg", 0x181A20FF)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("Lane BG", "midi_lane_bg", 0x121418FF)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("Measure Grid", "midi_grid_major", 0x4A556866)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("Beat/Guide Grid", "midi_grid_minor", 0x33415525)
+
+                -- Group 2: Velocity Stalks & Flags
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "Velocity Lane:")
+                midi_color_edit("Stalk Stem", "midi_vel_stalk", 0x64748BAA)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("Flag Handle", "midi_vel_flag", 0x94A3B8FF)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("Selected Note", "midi_vel_sel", 0xFF9F1CFF)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("Hovered Note", "midi_vel_hov", 0x38BDF8FF)
+
+                -- Group 3: CC Curves
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "CC Controller Lanes:")
+                midi_color_edit("CC Curve Line", "midi_cc_line", 0x38BDF8FF)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("CC Curve Fill", "midi_cc_fill", 0x38BDF828)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("CC Node Point", "midi_cc_node", 0x7DD3FCFF)
+                reaper.ImGui_SameLine(ctx)
+                midi_color_edit("Locked CC Curve", "midi_cc_locked", 0x64748BCC)
+
+                reaper.ImGui_Spacing(ctx)
+            end
 
             -- ==============================================================
             -- 5. View Navigation and Mouse Settings

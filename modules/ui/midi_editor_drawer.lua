@@ -6,6 +6,9 @@
 -- 2. Full 128 MIDI CC Controller Lanes (CC 0 - 127) with continuous curve rendering & freehand draw
 -- 3. Dynamic CC Shaping Protection: Automatic lock & gray-out for CC A/B (CC 1 & 11 by default)
 --    unless "Bypass Dynamic CC Shaping" is enabled, protecting automated curves from accidental overwrites.
+-- 4. REAPER CC Shape Synchronization: Curves drawn with Shape 1 (Linear Ramp) default,
+--    eliminating square steps ("Stufen") in REAPER's native MIDI editor.
+-- 5. Customizable Themes & Colors: Fully connected to Constants.COLORS and SettingsModal.
 -- ==============================================================================
 
 local Constants = require("constants")
@@ -64,6 +67,15 @@ local CC_NAMES = {
     [123] = "All Notes Off"
 }
 
+local SHAPE_LABELS = {
+    [0] = "⎍ Square (Step)",
+    [1] = "📈 Linear (Ramp)",
+    [2] = "〰 Slow start/end",
+    [3] = "⚡ Fast start",
+    [4] = "⏳ Fast end",
+    [5] = "∿ Bézier"
+}
+
 --- Converts a MIDI pitch (0-127) to a standard pitch name (e.g. 60 -> "C4")
 local function pitch_to_name(pitch)
     if not pitch then return "C4" end
@@ -117,7 +129,21 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
         pane_flags = pane_flags | reaper.ImGui_WindowFlags_NoScrollWithMouse()
     end
 
-    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ChildBg(), 0x181A20FF)
+    -- Theme colors from Constants.COLORS (customizable in Settings -> MIDI Editor Colors)
+    local col_bg          = (Constants.COLORS and Constants.COLORS.midi_bg) or 0x181A20FF
+    local col_lane_bg     = (Constants.COLORS and Constants.COLORS.midi_lane_bg) or 0x121418FF
+    local col_grid_maj    = (Constants.COLORS and Constants.COLORS.midi_grid_major) or 0x4A556866
+    local col_grid_min    = (Constants.COLORS and Constants.COLORS.midi_grid_minor) or 0x33415525
+    local col_vel_stalk   = (Constants.COLORS and Constants.COLORS.midi_vel_stalk) or 0x64748BAA
+    local col_vel_flag    = (Constants.COLORS and Constants.COLORS.midi_vel_flag) or 0x94A3B8FF
+    local col_vel_sel     = (Constants.COLORS and Constants.COLORS.midi_vel_sel) or 0xFF9F1CFF
+    local col_vel_hov     = (Constants.COLORS and Constants.COLORS.midi_vel_hov) or 0x38BDF8FF
+    local col_cc_line     = (Constants.COLORS and Constants.COLORS.midi_cc_line) or 0x38BDF8FF
+    local col_cc_fill     = (Constants.COLORS and Constants.COLORS.midi_cc_fill) or 0x38BDF828
+    local col_cc_node     = (Constants.COLORS and Constants.COLORS.midi_cc_node) or 0x7DD3FCFF
+    local col_cc_locked   = (Constants.COLORS and Constants.COLORS.midi_cc_locked) or 0x64748BCC
+
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ChildBg(), col_bg)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Border(), 0x383D4CFF)
 
     if reaper.ImGui_BeginChild(ctx, "MidiEditorMainPane", width, height, child_border, pane_flags) then
@@ -419,8 +445,43 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     reaper.ImGui_SetTooltip(ctx, "Pencil Draw Tool (Click and sweep across lane to freehand draw CC curves)")
                 end
 
+                -- REAPER CC Shape Selector Combo (Linear Ramp default)
+                reaper.ImGui_SameLine(ctx, 0, 8)
+                reaper.ImGui_SetNextItemWidth(ctx, 130)
+                local cur_shape = state.midi_editor_cc_shape or 1
+                local cur_shape_lbl = SHAPE_LABELS[cur_shape] or "📈 Linear (Ramp)"
+                if reaper.ImGui_BeginCombo(ctx, "##MidiCCShapeCombo", cur_shape_lbl) then
+                    for s_id = 0, 5 do
+                        if SHAPE_LABELS[s_id] then
+                            local is_sh_sel = (cur_shape == s_id)
+                            if reaper.ImGui_Selectable(ctx, SHAPE_LABELS[s_id], is_sh_sel) then
+                                state.midi_editor_cc_shape = s_id
+                                reaper.SetExtState("REAPER_Notator", "MidiEditorCCShape", tostring(s_id), true)
+                            end
+                        end
+                    end
+                    reaper.ImGui_EndCombo(ctx)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "REAPER CC Curve Shape:\n- Linear (Ramp): Continuous smooth slope (default, eliminates square steps)\n- Square (Step): Flat horizontal steps\n- Slow start/end: S-Curve Bézier")
+                end
+
+                -- Batch Convert All to Linear Ramps
+                reaper.ImGui_SameLine(ctx, 0, 4)
+                if reaper.ImGui_Button(ctx, "📈 Convert All to Linear##LinAll", 145, 22) then
+                    if active_take then
+                        reaper.Undo_BeginBlock2(0)
+                        midi_service.set_lane_cc_shapes(active_take, cur_cc_num, 1)
+                        reaper.Undo_EndBlock2(0, string.format("Convert CC %d to Linear Ramps", cur_cc_num), -1)
+                        state.status_msg = string.format("Converted all CC %d events to Linear Ramps in REAPER", cur_cc_num)
+                    end
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Convert all CC events in this lane to Linear Ramps in REAPER, removing any square steps.")
+                end
+
                 -- Quick CC Levels
-                reaper.ImGui_SameLine(ctx, 0, 10)
+                reaper.ImGui_SameLine(ctx, 0, 8)
                 reaper.ImGui_TextColored(ctx, 0x8892B088, "Levels:")
                 local cc_levels = { 0, 32, 64, 96, 127 }
                 for _, lv in ipairs(cc_levels) do
@@ -432,7 +493,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             local sqn = reaper.TimeMap2_timeToQN(0, it_pos)
                             local eqn = reaper.TimeMap2_timeToQN(0, it_pos + it_len)
                             reaper.Undo_BeginBlock2(0)
-                            midi_service.draw_cc_curve(active_take, cur_cc_num, { { qn = sqn, val = lv }, { qn = eqn, val = lv } }, 0)
+                            midi_service.draw_cc_curve(active_take, cur_cc_num, { { qn = sqn, val = lv }, { qn = eqn, val = lv } }, 0, state.midi_editor_cc_shape or 1)
                             reaper.Undo_EndBlock2(0, string.format("Set CC %d to %d", cur_cc_num, lv), -1)
                             state.status_msg = string.format("Set CC %d curve to %d across item", cur_cc_num, lv)
                         end
@@ -524,7 +585,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
         local total_content_w = math.max(avail_w, 50 + (it_len_qn * px_per_qn) + 50)
 
         local lane_flags = reaper.ImGui_WindowFlags_HorizontalScrollbar()
-        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ChildBg(), 0x121418FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ChildBg(), col_lane_bg)
         if reaper.ImGui_BeginChild(ctx, "MidiEditorLaneScroll", avail_w, avail_h, child_none, lane_flags) then
             local dl = reaper.ImGui_GetWindowDrawList(ctx)
             local scroll_x = reaper.ImGui_GetScrollX(ctx)
@@ -577,7 +638,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
             }
             for _, g in ipairs(guides) do
                 local gy = val_to_y(g[1])
-                local line_col = (g[1] == 127 or g[1] == 0) and 0x4A556855 or 0x33415525
+                local line_col = (g[1] == 127 or g[1] == 0) and (col_grid_maj) or (col_grid_min)
                 reaper.ImGui_DrawList_AddLine(dl, win_x0 + left_pad - scroll_x, gy, win_x0 + left_pad - scroll_x + (it_len_qn * px_per_qn), gy, line_col, 1.0)
                 reaper.ImGui_DrawList_AddText(dl, win_x0 + 4, gy - 6, 0x8892B088, g[2])
             end
@@ -589,7 +650,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                 local mx = qn_to_x(cur_m_qn)
                 if mx >= win_x0 - 40 and mx <= win_x0 + win_w + 40 then
                     -- Major measure line
-                    reaper.ImGui_DrawList_AddLine(dl, mx, plot_top_y - 6, mx, plot_bot_y + 4, 0x4A556866, 1.2)
+                    reaper.ImGui_DrawList_AddLine(dl, mx, plot_top_y - 6, mx, plot_bot_y + 4, col_grid_maj, 1.2)
                     local bar_num = math.floor(cur_m_qn / bpi) + 1
                     reaper.ImGui_DrawList_AddText(dl, mx + 4, plot_top_y - 14, 0x8892B0AA, string.format("Bar %d", bar_num))
 
@@ -597,7 +658,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     for b = 1, math.floor(bpi) - 1 do
                         local bx = qn_to_x(cur_m_qn + b)
                         if bx >= win_x0 and bx <= win_x0 + win_w then
-                            reaper.ImGui_DrawList_AddLine(dl, bx, plot_top_y, bx, plot_bot_y, 0x33415522, 1.0)
+                            reaper.ImGui_DrawList_AddLine(dl, bx, plot_top_y, bx, plot_bot_y, col_grid_min, 1.0)
                         end
                     end
                 end
@@ -807,23 +868,23 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                         local ny = val_to_y(n.vel)
                         local is_hov = (hovered_note == n)
 
-                        local stalk_col = 0x64748BAA
-                        local handle_col = 0x94A3B8FF
+                        local stalk_col = col_vel_stalk
+                        local handle_col = col_vel_flag
                         local border_col = 0x1E293BFF
                         local stalk_w = 3.0
                         local flag_h = 1.6
                         local bead_r = 2.5
 
                         if is_sel then
-                            stalk_col = 0xFF9F1CFF
-                            handle_col = 0xFFB703FF
+                            stalk_col = col_vel_sel
+                            handle_col = col_vel_sel
                             border_col = 0x78350FFF
                             stalk_w = 3.5
                             flag_h = 2.0
                             bead_r = 3.0
                         elseif is_hov then
-                            stalk_col = 0x38BDF8FF
-                            handle_col = 0x7DD3FCFF
+                            stalk_col = col_vel_hov
+                            handle_col = col_vel_hov
                             stalk_w = 3.5
                             flag_h = 2.0
                             bead_r = 3.0
@@ -864,15 +925,15 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                 end
 
             -- ==================================================================
-            -- B. CC LANE RENDERING & INTERACTION (WITH DYNAMIC LOCK PROTECTION)
+            -- B. CC LANE RENDERING & INTERACTION (WITH DYNAMIC LOCK & SHAPE SYNC)
             -- ==================================================================
             else
                 local cc_evts = midi_service.get_take_ccs_for_editor(active_take, cur_cc_num)
 
-                -- Visual Styling: Grayed out if locked, Cyan if unlocked
-                local line_col = is_locked and 0x64748BCC or 0x38BDF8FF
-                local fill_col = is_locked and 0x64748B1C or 0x38BDF828
-                local node_col = is_locked and 0x94A3B888 or 0x7DD3FCFF
+                -- Visual Styling: Locked vs Unlocked
+                local eff_line_col = is_locked and col_cc_locked or col_cc_line
+                local eff_fill_col = is_locked and 0x64748B1C or col_cc_fill
+                local eff_node_col = is_locked and 0x94A3B888 or col_cc_node
                 local node_border = is_locked and 0x334155AA or 0x0F172AFF
 
                 -- Empty Lane Notice
@@ -888,34 +949,38 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     -- Build continuous curve polyline
                     local curve_pts = {}
                     if cc_evts[1].qn > it_start_qn then
-                        table.insert(curve_pts, { x = qn_to_x(it_start_qn), y = val_to_y(cc_evts[1].val), qn = it_start_qn, val = cc_evts[1].val, is_edge = true })
+                        table.insert(curve_pts, { x = qn_to_x(it_start_qn), y = val_to_y(cc_evts[1].val), qn = it_start_qn, val = cc_evts[1].val, shape = cc_evts[1].shape, is_edge = true })
                     end
                     for _, ev in ipairs(cc_evts) do
-                        table.insert(curve_pts, { x = qn_to_x(ev.qn), y = val_to_y(ev.val), qn = ev.qn, val = ev.val, ev = ev })
+                        table.insert(curve_pts, { x = qn_to_x(ev.qn), y = val_to_y(ev.val), qn = ev.qn, val = ev.val, shape = ev.shape, ev = ev })
                     end
                     if cc_evts[#cc_evts].qn < it_end_qn then
-                        table.insert(curve_pts, { x = qn_to_x(it_end_qn), y = val_to_y(cc_evts[#cc_evts].val), qn = it_end_qn, val = cc_evts[#cc_evts].val, is_edge = true })
+                        table.insert(curve_pts, { x = qn_to_x(it_end_qn), y = val_to_y(cc_evts[#cc_evts].val), qn = it_end_qn, val = cc_evts[#cc_evts].val, shape = cc_evts[#cc_evts].shape, is_edge = true })
                     end
 
-                    -- 1. Fill Area Under Curve
+                    -- 1. Fill Area & Outline Curve based on REAPER Event Shapes (Linear vs Square)
                     for i = 1, #curve_pts - 1 do
                         local p1 = curve_pts[i]
                         local p2 = curve_pts[i + 1]
-                        reaper.ImGui_DrawList_AddQuadFilled(dl, p1.x, p1.y, p2.x, p2.y, p2.x, plot_bot_y, p1.x, plot_bot_y, fill_col)
+                        local p_shape = p1.shape or 1
+
+                        if p_shape == 0 then
+                            -- Square (Step / Stufe)
+                            reaper.ImGui_DrawList_AddQuadFilled(dl, p1.x, p1.y, p2.x, p1.y, p2.x, plot_bot_y, p1.x, plot_bot_y, eff_fill_col)
+                            reaper.ImGui_DrawList_AddLine(dl, p1.x, p1.y, p2.x, p1.y, eff_line_col, 2.0)
+                            reaper.ImGui_DrawList_AddLine(dl, p2.x, p1.y, p2.x, p2.y, eff_line_col, 2.0)
+                        else
+                            -- Linear Ramp (or Bézier smooth curve)
+                            reaper.ImGui_DrawList_AddQuadFilled(dl, p1.x, p1.y, p2.x, p2.y, p2.x, plot_bot_y, p1.x, plot_bot_y, eff_fill_col)
+                            reaper.ImGui_DrawList_AddLine(dl, p1.x, p1.y, p2.x, p2.y, eff_line_col, 2.0)
+                        end
                     end
 
-                    -- 2. Outline Curve Segments
-                    for i = 1, #curve_pts - 1 do
-                        local p1 = curve_pts[i]
-                        local p2 = curve_pts[i + 1]
-                        reaper.ImGui_DrawList_AddLine(dl, p1.x, p1.y, p2.x, p2.y, line_col, 2.0)
-                    end
-
-                    -- 3. Node Beads at Actual Events
+                    -- 2. Node Beads at Actual Events
                     for _, pt in ipairs(curve_pts) do
                         if pt.ev then
                             local is_hov = (hovered_cc_node and hovered_cc_node.idx == pt.ev.idx)
-                            local b_col = is_hov and 0xFFB703FF or node_col
+                            local b_col = is_hov and 0xFFB703FF or eff_node_col
                             local b_r = is_hov and 4.0 or 2.8
                             reaper.ImGui_DrawList_AddCircleFilled(dl, pt.x, pt.y, b_r, b_col)
                             reaper.ImGui_DrawList_AddCircle(dl, pt.x, pt.y, b_r, node_border, 0, 1.0)
@@ -945,7 +1010,8 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             if math.abs(mouse_x - ex) <= 7 and math.abs(mouse_y - ey) <= 7 then
                                 hovered_cc_node = ev
                                 reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeNS())
-                                reaper.ImGui_SetTooltip(ctx, string.format("CC %d: %d | Time: %s\n(Drag to edit, Right-Click to delete)", cur_cc_num, ev.val, format_qn_time(ev.qn)))
+                                local sh_name = SHAPE_LABELS[ev.shape or 1] or "Linear"
+                                reaper.ImGui_SetTooltip(ctx, string.format("CC %d: %d | Time: %s | Shape: %s\n(Drag to edit, Right-Click to delete)", cur_cc_num, ev.val, format_qn_time(ev.qn), sh_name))
                                 break
                             end
                         end
@@ -966,13 +1032,24 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             drag_cc_event = hovered_cc_node
                             reaper.Undo_BeginBlock2(0)
                         elseif is_hovered and not hovered_cc_node and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
-                            -- Double-click empty space -> Insert CC point
+                            -- Double-click empty space -> Insert CC point with active shape
                             local target_qn = math.max(it_start_qn, math.min(it_end_qn, x_to_qn(mouse_x)))
                             local target_v = y_to_val(mouse_y)
                             local ppq = reaper.MIDI_GetPPQPosFromProjQN(active_take, target_qn)
+                            local cur_sh = state.midi_editor_cc_shape or 1
                             reaper.Undo_BeginBlock2(0)
                             reaper.MIDI_InsertCC(active_take, false, false, ppq, 176, 0, cur_cc_num, target_v)
                             reaper.MIDI_Sort(active_take)
+                            if reaper.APIExists("MIDI_SetCCShape") then
+                                local _, _, total_ccs = reaper.MIDI_CountEvts(active_take)
+                                for j = 0, (total_ccs or 0) - 1 do
+                                    local ok, _, _, c_ppq, chanmsg, _, msg2, _ = reaper.MIDI_GetCC(active_take, j)
+                                    if ok and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == cur_cc_num and math.abs(c_ppq - ppq) < 2 then
+                                        reaper.MIDI_SetCCShape(active_take, j, cur_sh, 0.0)
+                                        break
+                                    end
+                                end
+                            end
                             reaper.UpdateArrange()
                             reaper.Undo_EndBlock2(0, string.format("Insert CC %d Event", cur_cc_num), -1)
                         end
@@ -1021,9 +1098,9 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             else
                                 is_drawing_cc = false
                                 if #cc_draw_stroke >= 2 then
-                                    midi_service.draw_cc_curve(active_take, cur_cc_num, cc_draw_stroke, 0)
+                                    midi_service.draw_cc_curve(active_take, cur_cc_num, cc_draw_stroke, 0, state.midi_editor_cc_shape or 1)
                                     reaper.Undo_EndBlock2(0, string.format("Draw CC %d Curve", cur_cc_num), -1)
-                                    state.status_msg = string.format("Drawn CC %d curve (%d points)", cur_cc_num, #cc_draw_stroke)
+                                    state.status_msg = string.format("Drawn CC %d curve (%d points, %s)", cur_cc_num, #cc_draw_stroke, SHAPE_LABELS[state.midi_editor_cc_shape or 1] or "Linear")
                                 else
                                     reaper.Undo_EndBlock2(0, "Draw CC Curve", -1)
                                 end

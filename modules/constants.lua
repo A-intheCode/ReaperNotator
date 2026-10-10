@@ -245,7 +245,20 @@ Constants.DEFAULT_COLORS = {
     rehearsal_box_bg = 0xFAF8F5FF,
     rehearsal_border = 0x1A1A1AFF,
     rehearsal_text   = 0x111111FF,
-    fermata_col      = 0x111111FF
+    fermata_col      = 0x111111FF,
+    -- MIDI Editor Suite Colors
+    midi_bg          = 0x181A20FF,
+    midi_lane_bg     = 0x121418FF,
+    midi_grid_major  = 0x4A556866,
+    midi_grid_minor  = 0x33415525,
+    midi_vel_stalk   = 0x64748BAA,
+    midi_vel_flag    = 0x94A3B8FF,
+    midi_vel_sel     = 0xFF9F1CFF,
+    midi_vel_hov     = 0x38BDF8FF,
+    midi_cc_line     = 0x38BDF8FF,
+    midi_cc_fill     = 0x38BDF828,
+    midi_cc_node     = 0x7DD3FCFF,
+    midi_cc_locked   = 0x64748BCC
 }
 
 Constants.COLORS = {
@@ -276,7 +289,20 @@ Constants.COLORS = {
     rehearsal_box_bg = 0xFAF8F5FF,
     rehearsal_border = 0x1A1A1AFF,
     rehearsal_text   = 0x111111FF,
-    fermata_col      = 0x111111FF
+    fermata_col      = 0x111111FF,
+    -- MIDI Editor Suite Colors
+    midi_bg          = 0x181A20FF,
+    midi_lane_bg     = 0x121418FF,
+    midi_grid_major  = 0x4A556866,
+    midi_grid_minor  = 0x33415525,
+    midi_vel_stalk   = 0x64748BAA,
+    midi_vel_flag    = 0x94A3B8FF,
+    midi_vel_sel     = 0xFF9F1CFF,
+    midi_vel_hov     = 0x38BDF8FF,
+    midi_cc_line     = 0x38BDF8FF,
+    midi_cc_fill     = 0x38BDF828,
+    midi_cc_node     = 0x7DD3FCFF,
+    midi_cc_locked   = 0x64748BCC
 }
 
 -- 16 Voices color palette (MIDI note channels 1 to 16)

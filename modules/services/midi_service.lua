@@ -5689,13 +5689,19 @@ function MidiService.get_take_ccs_for_editor(take, cc_num)
         local ok, sel, muted, ppq, chanmsg, chan, msg2, msg3 = reaper.MIDI_GetCC(take, i)
         if ok and not muted and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == target_cc then
             local qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+            local shape = 1 -- default linear
+            if reaper.APIExists("MIDI_GetCCShape") then
+                local ok_s, s_val = reaper.MIDI_GetCCShape(take, i)
+                if ok_s and s_val then shape = s_val end
+            end
             table.insert(ccs, {
                 idx = i,
                 ppq = ppq,
                 qn = qn,
                 val = msg3,
                 chan = chan,
-                sel = sel
+                sel = sel,
+                shape = shape
             })
         end
     end
@@ -5718,11 +5724,13 @@ function MidiService.set_cc_value(take, cc_idx, new_val, no_sort)
 end
 
 --- Draws/updates a CC curve across a time range with given points [{qn, val}, ...]
-function MidiService.draw_cc_curve(take, cc_num, points, chan)
+--- Applies target_shape (default: 1 = Linear Ramp) so curves appear smooth in REAPER without square steps
+function MidiService.draw_cc_curve(take, cc_num, points, chan, opt_shape)
     if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) or not cc_num or not points or #points == 0 then
         return false
     end
     local target_cc = math.floor(tonumber(cc_num) or 1)
+    local target_shape = opt_shape or 1 -- 1 = Linear Ramp (eliminates square steps in REAPER)
     table.sort(points, function(a, b) return a.qn < b.qn end)
     local min_qn = points[1].qn
     local max_qn = points[#points].qn
@@ -5750,6 +5758,83 @@ function MidiService.draw_cc_curve(take, cc_num, points, chan)
     end
 
     reaper.MIDI_Sort(take)
+
+    -- 3. Apply shape (Linear ramp) directly via raw chunk flags (bits 4-7)
+    local _, final_str = reaper.MIDI_GetAllEvts(take, "")
+    if final_str and #final_str > 0 then
+        local final_midi_table, f_pos = {}, 1
+        local running_ppq = 0
+        while f_pos <= #final_str do
+            local offset, flag, msg, next_pos = string.unpack("<i4Bs4", final_str, f_pos)
+            running_ppq = running_ppq + offset
+            if #msg == 3 and (msg:byte(1) & 0xF0) == 0xB0 then
+                local cn = msg:byte(2)
+                if cn == target_cc and running_ppq >= (min_ppq - 2) and running_ppq <= (max_ppq + 2) then
+                    flag = (flag & 0x0F) | (target_shape << 4)
+                end
+            end
+            table.insert(final_midi_table, string.pack("<i4Bs4", offset, flag, msg))
+            f_pos = next_pos
+        end
+        reaper.MIDI_SetAllEvts(take, table.concat(final_midi_table))
+        reaper.MIDI_Sort(take)
+    end
+
+    -- 4. Also apply via MIDI_SetCCShape API if available
+    if reaper.APIExists("MIDI_SetCCShape") then
+        local _, _, total_ccs = reaper.MIDI_CountEvts(take)
+        for i = 0, (total_ccs or 0) - 1 do
+            local ok, _, _, ppq, chanmsg, _, msg2, _ = reaper.MIDI_GetCC(take, i)
+            if ok and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == target_cc then
+                if ppq >= (min_ppq - 2) and ppq <= (max_ppq + 2) then
+                    reaper.MIDI_SetCCShape(take, i, target_shape, 0.0)
+                end
+            end
+        end
+    end
+
+    reaper.UpdateArrange()
+    return true
+end
+
+--- Sets the CC shape for all events of a specific CC number across the entire take
+function MidiService.set_lane_cc_shapes(take, cc_num, target_shape)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) or not cc_num then
+        return false
+    end
+    local target_cc = math.floor(tonumber(cc_num) or 1)
+    local shape = target_shape or 1
+
+    local _, final_str = reaper.MIDI_GetAllEvts(take, "")
+    if final_str and #final_str > 0 then
+        local final_midi_table, f_pos = {}, 1
+        local running_ppq = 0
+        while f_pos <= #final_str do
+            local offset, flag, msg, next_pos = string.unpack("<i4Bs4", final_str, f_pos)
+            running_ppq = running_ppq + offset
+            if #msg == 3 and (msg:byte(1) & 0xF0) == 0xB0 then
+                local cn = msg:byte(2)
+                if cn == target_cc then
+                    flag = (flag & 0x0F) | (shape << 4)
+                end
+            end
+            table.insert(final_midi_table, string.pack("<i4Bs4", offset, flag, msg))
+            f_pos = next_pos
+        end
+        reaper.MIDI_SetAllEvts(take, table.concat(final_midi_table))
+        reaper.MIDI_Sort(take)
+    end
+
+    if reaper.APIExists("MIDI_SetCCShape") then
+        local _, _, total_ccs = reaper.MIDI_CountEvts(take)
+        for i = 0, (total_ccs or 0) - 1 do
+            local ok, _, _, _, chanmsg, _, msg2, _ = reaper.MIDI_GetCC(take, i)
+            if ok and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == target_cc then
+                reaper.MIDI_SetCCShape(take, i, shape, 0.0)
+            end
+        end
+    end
+
     reaper.UpdateArrange()
     return true
 end
