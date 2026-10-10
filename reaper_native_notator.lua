@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.19
+-- @version 1.8.0-beta.20
 -- @changelog
+--   + v1.8.0-beta.20: Auto-Scroll Focus Synchronization & Frozen Stems/Barlines Fix:
+--             - Auto-Scroll Immediate Re-anchoring: Implemented apply_scroll_x_offset to immediately re-synchronize canvas_p0_x, margin_left, and measure_map within the same frame on SetScrollX, eliminating frozen barlines and measure boundary ghosting during Auto-Scroll jumps.
+--             - Stopped-State Auto-Scroll Decoupling: Prevented stopped-state auto-scroll from constantly overriding manual canvas navigation; only re-centers when REAPER's edit cursor position is explicitly moved externally.
+--             - Stale Chord Cluster Stem Culling: Added strict musical time window filtering (in_vis_cluster) to chord cluster stem drawing and invalidated off-screen note visual coordinates (-999999), stopping stale stems from previous viewport focus locations from drawing over the current view.
+--             - Beam Group Coordinate Freshness: Ensured all noteheads belonging to visible beam groups have up-to-date screen coordinates before calculating beam geometry.
 --   + v1.8.0-beta.19: Barline Horizontal Scroll Synchronization & Tooltip Fix:
 --             - Barline & Measure Number Scroll Synchronization: Measure boundaries, barlines, and measure numbers are now strictly rendered using Engraver.cursor_qn_to_canvas_x, guaranteeing 100% position parity with notes, playback cursor, and dynamic spacing on horizontal scroll.
 --             - Unclamped Viewport Measure Range: Removed restrictive total_measures clamping from visible measure bounds (vis_max_measure / end_m) so barlines smoothly render into any scrolled region.

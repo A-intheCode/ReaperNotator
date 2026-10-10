@@ -993,6 +993,21 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     reaper.ImGui_InvisibleButton(ctx, "ScoreCanvasHitbox", canvas_total_w, canvas_total_h, btn_flags)
     
+    local function apply_scroll_x_offset(new_scroll_x)
+        local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
+        if math.abs(new_scroll_x - cur_scroll_x) >= 0.5 then
+            reaper.ImGui_SetScrollX(ctx, new_scroll_x)
+            local scroll_delta = new_scroll_x - cur_scroll_x
+            canvas_p0_x = canvas_p0_x - scroll_delta
+            hdr_x0 = hdr_x0 - scroll_delta
+            hdr_x1 = hdr_x1 - scroll_delta
+            system_start_x = system_start_x - scroll_delta
+            margin_left = margin_left - scroll_delta
+            staff_end_x = staff_end_x - scroll_delta
+            Engraver.reanchor_measure_map(measure_map, margin_left)
+        end
+    end
+
     -- Auto-scroll and item jump logic (MUST be placed here after declaring window size via InvisibleButton, otherwise SetScrollX is cleared to 0)
     if state.jump_to_item then
         -- 1. Jump to a newly selected media item (highest priority on click)
@@ -1000,7 +1015,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local item_pos = reaper.GetMediaItemInfo_Value(state.jump_to_item, "D_POSITION")
             local item_qn = reaper.TimeMap2_timeToQN(0, item_pos)
             local target_x = Engraver.cursor_qn_to_canvas_x(item_qn, margin_left, s, qn_per_measure, measure_map)
-            reaper.ImGui_SetScrollX(ctx, math.max(0, target_x - canvas_p0_x - (avail_w * 0.25)))
+            apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.25)))
         end
         state.jump_to_item = nil
     elseif state.auto_scroll then
@@ -1008,26 +1023,27 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         if is_playing then
             local play_time = reaper.GetPlayPosition()
             local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, play_time), margin_left, s, qn_per_measure, measure_map)
-            local new_scroll_x = math.max(0, target_x - canvas_p0_x - (avail_w * 0.5))
-            local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
-            if math.abs(new_scroll_x - cur_scroll_x) >= 0.5 then
-                reaper.ImGui_SetScrollX(ctx, new_scroll_x)
-            end
-        -- 3. Automatic scrolling in stopped state (e.g. edit cursor follows click)
+            apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+        -- 3. Automatic scrolling in stopped state (ONLY when edit cursor position actually changed in REAPER!)
         else
-            local empty_click = reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
-                                and not state.hovered_note and not state.hovered_dynamic 
-                                and not state.hovered_articulation and not state.hovered_item_edge
-                                and not state.hovered_tempo_marker and not state.hovered_octave_line
-                                and not state.hovered_chord_item
-                                and not state.hovered_slur and not state.hovered_tie
+            local cur_edit_time = reaper.GetCursorPosition()
+            if state._last_autoscroll_cur_time == nil then
+                state._last_autoscroll_cur_time = cur_edit_time
+            end
+            local cursor_moved = (math.abs(cur_edit_time - state._last_autoscroll_cur_time) > 0.001)
+            state._last_autoscroll_cur_time = cur_edit_time
 
-            if not empty_click and not reaper.ImGui_IsMouseClicked(ctx, 0) then
-                local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, cur_time), margin_left, s, qn_per_measure, measure_map)
-                local new_scroll_x = math.max(0, target_x - canvas_p0_x - (avail_w * 0.5))
-                local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
-                if math.abs(new_scroll_x - cur_scroll_x) >= 0.5 then
-                    reaper.ImGui_SetScrollX(ctx, new_scroll_x)
+            if cursor_moved then
+                local empty_click = reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
+                                    and not state.hovered_note and not state.hovered_dynamic 
+                                    and not state.hovered_articulation and not state.hovered_item_edge
+                                    and not state.hovered_tempo_marker and not state.hovered_octave_line
+                                    and not state.hovered_chord_item
+                                    and not state.hovered_slur and not state.hovered_tie
+
+                if not empty_click and not reaper.ImGui_IsMouseClicked(ctx, 0) then
+                    local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, cur_edit_time), margin_left, s, qn_per_measure, measure_map)
+                    apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
                 end
             end
         end
@@ -1745,6 +1761,14 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
                         table.insert(display_notes, vn)
                     end
+                else
+                    vn.vis_nx = -999999
+                    vn.nominal_nx = -999999
+                    vn.vis_ny = -999999
+                    vn.nx = -999999
+                    vn.ny = -999999
+                    vn.stem_x = -999999
+                    vn.stem_end_y = -999999
                 end
             end
             
@@ -1755,6 +1779,24 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local b_end = b_last and (b_last.end_qn or (b_last.start_qn and b_last.dur_qn and (b_last.start_qn + b_last.dur_qn)))
                 local in_vis_beam = (not vis_min_qn or not vis_max_qn) or (b_start and b_end and b_end >= vis_min_qn and b_start <= vis_max_qn)
                 if in_vis_beam then
+                    -- Ensure all notes in visible beam have valid, fresh screen coordinates
+                    for _, bvn in ipairs(bgroup) do
+                        if not bvn.vis_nx or bvn.vis_nx < -900000 then
+                            local staff_bot = staff_bottom_y
+                            if is_harp then
+                                staff_bot = (bvn.in_staff == "treble") and treble_bottom_y or ((bvn.in_staff == "mid" or bvn.in_staff == "alto") and mid_bottom_y or bass_bottom_y)
+                            elseif is_grand then
+                                staff_bot = (bvn.in_staff == "treble") and treble_bottom_y or bass_bottom_y
+                            end
+                            bvn.vis_ny = staff_bot + (bvn.rel_ny or -(bvn.dstep * step_y))
+                            bvn.nominal_nx = Engraver.qn_to_canvas_x(bvn.display_qn or bvn.start_qn, margin_left, s, qn_per_measure, measure_map)
+                            bvn.vis_nx = bvn.nominal_nx + (bvn.head_x_offset or 0) + (bvn.collision_push or 0)
+                            bvn.nx = bvn.vis_nx
+                            bvn.ny = bvn.vis_ny
+                            bvn.stem_x = bvn.vis_nx
+                            bvn.stem_end_y = bvn.vis_ny
+                        end
+                    end
                     local all_ghost = true
                     for _, bvn in ipairs(bgroup) do
                         if not bvn.is_ghost_voice then all_ghost = false break end
@@ -2341,9 +2383,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         
         -- Stems & flags (respects beams! Visible clusters only)
         for _, cluster in ipairs(chord_clusters) do
-            local cluster_m = math.floor((cluster.notes[1].start_qn + 0.001) / bpi)
-            if not RepeatService.has_repeat_mark(state, tdata.guid, cluster_m) then
-            local base_nx = (cluster.notes[1].vis_nx or cluster.notes[1].nominal_nx) - (cluster.notes[1].head_x_offset or 0)
+            local c_sqn = cluster.start_qn or (cluster.notes[1] and cluster.notes[1].start_qn)
+            local in_vis_cluster = (not vis_min_qn or not vis_max_qn) or (c_sqn and c_sqn >= vis_min_qn - 4.0 and c_sqn <= vis_max_qn + 4.0)
+            local cluster_m = math.floor(((c_sqn or 0) + 0.001) / bpi)
+            local c_vn1 = cluster.notes[1]
+            if in_vis_cluster and c_vn1 and c_vn1.vis_nx and c_vn1.vis_nx > -900000 and not RepeatService.has_repeat_mark(state, tdata.guid, cluster_m) then
+                local base_nx = c_vn1.vis_nx - (c_vn1.head_x_offset or 0)
             if base_nx >= cull_min_x - 30 * s and base_nx <= cull_max_x + 30 * s then
                 local cnotes = cluster.notes
                 if cluster.is_arpeggio and #cnotes >= 2 then
