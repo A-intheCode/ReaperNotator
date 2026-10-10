@@ -631,26 +631,26 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, width,
                     local stalk_col = 0x64748BAA
                     local handle_col = 0x94A3B8FF
                     local border_col = 0x1E293BFF
-                    local stalk_w = 3.0
+                    local stalk_w = 6.0
                     local flag_h = 1.6
-                    local bead_r = 2.5
+                    local bead_r = 3.2
 
                     if is_sel then
                         stalk_col = 0xFF9F1CFF
                         handle_col = 0xFFB703FF
                         border_col = 0x78350FFF
-                        stalk_w = 3.6
+                        stalk_w = 6.5
                         flag_h = 2.0
-                        bead_r = 3.0
+                        bead_r = 3.6
                     elseif is_hov then
                         stalk_col = 0x38BDF8FF
                         handle_col = 0x7DD3FCFF
-                        stalk_w = 3.4
+                        stalk_w = 6.5
                         flag_h = 2.0
-                        bead_r = 2.8
+                        bead_r = 3.5
                     end
 
-                    -- 1. Vertical Stalk (Stem - 3.0px wide)
+                    -- 1. Vertical Stalk (Stem - 6.0px wide)
                     reaper.ImGui_DrawList_AddLine(dl, nx, plot_bot_y, nx, ny, stalk_col, stalk_w)
 
                     -- 2. REAPER Top Handle Flag ("Fähnchen" - thin horizontal flag tab)

@@ -1,7 +1,10 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.2
+-- @version 1.8.0-beta.3
 -- @changelog
+--   + v1.8.0-beta.3: MIDI Editor Stalk & Flag Proportion Swap:
+--             - Solid 6.0px Stalks: Vertical stems widened to full 6.0px column thickness matching previous flag height.
+--             - Fine 1.6px Flags: Top horizontal flags streamlined to crisp 1.6px thickness.
 --   + v1.8.0-beta.2: MIDI Editor Flag & Stalk Proportions:
 --             - Extended Flag Handles: 3x longer flag handles (22.5px) for authentic REAPER look and easy grabbing.
 --             - Streamlined Flag Thickness: Reduced flag stroke to 1.6-2.0px and widened vertical stems to 3.0px.
