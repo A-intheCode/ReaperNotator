@@ -546,6 +546,18 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 end
             end
             
+            local eff_td = active_tracks_data or state.active_tracks_cache
+            if reaper.ImGui_MenuItem(ctx, "⌒ Toggle Slur [S]") then
+                if midi_service and midi_service.toggle_slur then
+                    midi_service.toggle_slur(state, eff_td)
+                end
+            end
+            if reaper.ImGui_MenuItem(ctx, "‿ Toggle Tie [T]") then
+                if midi_service and midi_service.toggle_tie then
+                    midi_service.toggle_tie(state, eff_td)
+                end
+            end
+            
             if reaper.ImGui_MenuItem(ctx, "〰 Toggle Portamento [P]") then
                 if midi_service and midi_service.toggle_portamento then
                     midi_service.toggle_portamento(state, active_tracks_data)

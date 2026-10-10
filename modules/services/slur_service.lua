@@ -463,7 +463,7 @@ function SlurService.toggle_slur(state, active_tracks_data)
     state.active_tracks_cache = nil
 
     -- Auto-advance selection focus to the arrival note (n_last)
-    if #targets == 1 and n_last then
+    if n_last then
         state:clear_selection()
         state:select_note(n_last)
         if MidiService and MidiService.sync_selection_to_reaper then
@@ -481,29 +481,54 @@ end
 
 function SlurService.toggle_tie(state, active_tracks_data)
     local eff_tracks_data = active_tracks_data or state.active_tracks_cache
+    local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+    state.user_ties = state.user_ties or {}
+    
+    -- Priority 1: Direct tie curve selection -> untie immediately
+    if state.selected_tie then
+        local tie = state.selected_tie
+        SlurService.delete_tie(state, tie, MidiService, eff_tracks_data)
+        state.selected_tie = nil
+        return
+    end
+
     local targets = get_target_notes(state)
     if #targets == 0 then
         state.status_msg = "Select 1 note (to tie to next of same pitch) or 2 notes to tie."
         return
     end
     
-    state.user_ties = state.user_ties or {}
-    local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
-    
-    -- Check if any selected note is already part of an existing tie -> UNTIE
+    -- Check if selected notes should trigger UNTIE:
     local existing_tie_idx = nil
-    for idx, tie in ipairs(state.user_ties) do
-        for _, tn in ipairs(targets) do
-            local tn_k = tn.key or (tn.get_key and tn:get_key())
-            local match_key = (tn_k and (tie.n1_key == tn_k or tie.n2_key == tn_k))
-            local match_pos1 = (tie.pitch == tn.pitch and (tie.chan or 0) == (tn.chan or 0) and math.abs(tie.n1_start_qn - (tn.start_qn or 0)) < 0.10)
-            local match_pos2 = (tie.pitch == tn.pitch and (tie.chan or 0) == (tn.chan or 0) and math.abs(tie.n2_start_qn - (tn.start_qn or 0)) < 0.10)
-            if match_key or match_pos1 or match_pos2 then
+    if #targets >= 2 then
+        -- 2+ notes: ONLY untie if targets[1] and targets[2] are already tied to EACH OTHER!
+        local tn1, tn2 = targets[1], targets[2]
+        local k1 = tn1.key or (tn1.get_key and tn1:get_key())
+        local k2 = tn2.key or (tn2.get_key and tn2:get_key())
+        for idx, tie in ipairs(state.user_ties) do
+            local key_match = (k1 and k2 and tie.n1_key == k1 and tie.n2_key == k2)
+            local pos_match = (tie.pitch == tn1.pitch and tie.pitch == tn2.pitch
+                and (tie.chan or 0) == (tn1.chan or 0) and (tie.chan or 0) == (tn2.chan or 0)
+                and math.abs(tie.n1_start_qn - (tn1.start_qn or 0)) < 0.10
+                and math.abs(tie.n2_start_qn - (tn2.start_qn or 0)) < 0.10)
+            if key_match or pos_match then
                 existing_tie_idx = idx
                 break
             end
         end
-        if existing_tie_idx then break end
+    else
+        -- 1 note: ONLY untie if the selected note is the origin/head (n1) of an existing tie!
+        -- If it is an arrival note (n2), chaining priority: connect forward to n3 without deleting n1->n2!
+        local tn = targets[1]
+        local tn_k = tn.key or (tn.get_key and tn:get_key())
+        for idx, tie in ipairs(state.user_ties) do
+            local match_key = (tn_k and tie.n1_key == tn_k)
+            local match_pos1 = (tie.pitch == tn.pitch and (tie.chan or 0) == (tn.chan or 0) and math.abs(tie.n1_start_qn - (tn.start_qn or 0)) < 0.10)
+            if match_key or match_pos1 then
+                existing_tie_idx = idx
+                break
+            end
+        end
     end
     
     if existing_tie_idx then
@@ -562,6 +587,21 @@ function SlurService.toggle_tie(state, active_tracks_data)
     end
     if not n1_idx then
         n1_idx, n1_data = find_take_note_by_pos(take, n1.pitch, n1.chan or 0, n1.start_qn, 0.35)
+    end
+    -- Coverage fallback: if n1 is a tied slave note (deleted from take), find physical master note covering n1.start_qn
+    if not n1_idx then
+        local target_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
+        local _, notecnt = reaper.MIDI_CountEvts(take)
+        for i = 0, notecnt - 1 do
+            local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, i)
+            if ok and p == n1.pitch and (n1.chan == nil or ch == (n1.chan or 0)) then
+                if sppq <= target_ppq + 50 and eppq >= target_ppq - 50 then
+                    n1_idx = i
+                    n1_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
+                    break
+                end
+            end
+        end
     end
     
     local n2_idx, n2_data
@@ -670,7 +710,7 @@ function SlurService.toggle_tie(state, active_tracks_data)
     state.active_tracks_cache = nil
 
     -- Auto-advance selection focus to tied note (n2)
-    if #targets == 1 and n2 then
+    if n2 then
         state:clear_selection()
         state:select_note(n2)
         if MidiService and MidiService.sync_selection_to_reaper then
@@ -906,6 +946,20 @@ function SlurService.delete_tie(state, tie_or_id, midi_service, active_tracks_da
         local orig_eppq2 = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, tie.n2_start_qn + (tie.n2_dur or 1.0)) + 0.5)
         
         local n1_idx, n1_data = find_take_note_by_pos(take, tie.pitch, tie.chan or 0, tie.n1_start_qn)
+        if not n1_idx then
+            local target_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, tie.n1_start_qn) + 0.5)
+            local _, notecnt = reaper.MIDI_CountEvts(take)
+            for i = 0, notecnt - 1 do
+                local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, i)
+                if ok and p == tie.pitch and (tie.chan == nil or ch == (tie.chan or 0)) then
+                    if sppq <= target_ppq + 50 and eppq >= target_ppq - 50 then
+                        n1_idx = i
+                        n1_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
+                        break
+                    end
+                end
+            end
+        end
         local n2_idx, n2_data = find_take_note_by_pos(take, tie.pitch, tie.chan or 0, tie.n2_start_qn)
         
         if n1_idx and n1_data then

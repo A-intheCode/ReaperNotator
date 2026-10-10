@@ -1648,7 +1648,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     if is_shift or is_ctrl then
                         state:toggle_note_selection(n)
                     else
-                        if not state:is_note_selected(n) then
+                        if state:count_selected_notes() > 1 or not state:is_note_selected(n) then
                             state:clear_selection()
                             state:select_note(n)
                         else
@@ -1692,7 +1692,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         reaper.SetOnlyTrackSelected(n.track)
                     end
                     AudioPreview.play_note(state, n.pitch, n.vel, n.chan, n.track, n.start_qn, n)
-                    if not state:is_note_selected(n) then
+                    if state:count_selected_notes() > 1 or not state:is_note_selected(n) then
                         state:clear_selection()
                         state:select_note(n)
                         midi_service.sync_selection_to_reaper(state, active_tracks_data)

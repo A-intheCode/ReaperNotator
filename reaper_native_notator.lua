@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.14
+-- @version 1.8.0-beta.15
 -- @changelog
+--   + v1.8.0-beta.15: Tie Notes Selection, Focus & Chaining Overhaul:
+--             - Chaining Arbitration: Chaining consecutive ties forward (Note 1 -> Note 2 -> Note 3) via [T] or sidebar/drawer buttons now advances focus cleanly without deleting the preceding tie.
+--             - Precise Untie Arbitration: Pressing [T] on an arrival note now chains forward to the next note of the same pitch instead of deleting the arrival tie. Multi-note selection unties only when both ends of the existing tie are selected together.
+--             - Physical MIDI Note Coverage: Master notes in MIDI takes are accurately discovered and elongated across multiple tied slave segments, preserving continuous audio sustain without re-strikes.
+--             - Multi-Selection Click Isolation: Single-clicking a note without Shift/Ctrl now cleanly isolates selection to that note, preventing stale multi-selection states from hijacking tie actions.
+--             - Note Context Menu: Added '⌒ Toggle Slur [S]' and '‿ Toggle Tie [T]' directly to the right-click note context menu for fast mouse-driven workflow.
 --   + v1.8.0-beta.14: Comprehensive MIDI Editor Suite & Performance Overhaul:
 --             - Integrated MIDI Editor: Dedicated bottom drawer with Velocity stalks & flag handles, 128 MIDI CC lanes, freehand pencil curve drawing, customizable REAPER CC curve shapes (Linear, Square, Bézier), marquee selection, and multi-point drag.
 --             - CC Lane Viewport Culling Hotfix: Resolved plot_x0 arithmetic error when opening CC controller lanes.
