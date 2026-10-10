@@ -169,7 +169,77 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             if reaper.ImGui_CollapsingHeader(ctx, "⚙ General Settings###hdr_general", nil, default_open) then
                 reaper.ImGui_Spacing(ctx)
                 
-                -- --- 1. Canvas Layout & Track Spacing ---
+                -- --- 1. Performance, Framerate & Undo History ---
+                if reaper.APIExists("ImGui_SeparatorText") then
+                    reaper.ImGui_SeparatorText(ctx, "Performance, Framerate & Undo History")
+                else
+                    reaper.ImGui_TextDisabled(ctx, "Performance, Framerate & Undo History")
+                    reaper.ImGui_Separator(ctx)
+                end
+
+                -- Target Framerate (FPS)
+                local cur_fps = state.target_fps or 60
+                local fps_presets = {
+                    { val = 15,  label = "15 FPS (Ultra Power Saver)" },
+                    { val = 30,  label = "30 FPS (Power Saver / Large Scores)" },
+                    { val = 60,  label = "60 FPS (Default / Standard Smooth)" },
+                    { val = 90,  label = "90 FPS (Smooth High-Refresh)" },
+                    { val = 120, label = "120 FPS (High-Refresh Pro)" },
+                    { val = 144, label = "144 FPS (Ultra-High Refresh)" },
+                    { val = 0,   label = "Uncapped / Native Host Rate (VSync)" }
+                }
+                local cur_fps_label = (cur_fps == 0) and "Uncapped / Native Host Rate (VSync)" or string.format("%d FPS", cur_fps)
+                for _, fp in ipairs(fps_presets) do
+                    if fp.val == cur_fps then cur_fps_label = fp.label break end
+                end
+
+                reaper.ImGui_SetNextItemWidth(ctx, 300)
+                if reaper.ImGui_BeginCombo(ctx, "Target Framerate (FPS)##target_fps_combo", cur_fps_label) then
+                    for _, fp in ipairs(fps_presets) do
+                        local is_sel = (cur_fps == fp.val)
+                        if reaper.ImGui_Selectable(ctx, fp.label .. "##fps_opt_" .. tostring(fp.val), is_sel) then
+                            state.target_fps = fp.val
+                            require('state').save_settings(state)
+                        end
+                        if is_sel then reaper.ImGui_SetItemDefaultFocus(ctx) end
+                    end
+                    reaper.ImGui_EndCombo(ctx)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Controls the rendering framerate of REAPER Notator.\nLowering to 30 or 60 FPS drastically reduces CPU and GPU usage during editing and playback on large orchestral scores.\nAudio audition and playback timers remain fully synchronized at sub-millisecond precision.")
+                end
+
+                if state.measured_fps and state.measured_fps > 0 then
+                    reaper.ImGui_SameLine(ctx, 0, 12)
+                    reaper.ImGui_TextColored(ctx, 0x38BDF8FF, string.format("⚡ Live: %.1f FPS", state.measured_fps))
+                end
+
+                -- Max Undo Steps
+                local cur_undo = state.max_undo_steps or 50
+                reaper.ImGui_SetNextItemWidth(ctx, 220)
+                local undo_changed, new_undo = reaper.ImGui_SliderInt(ctx, "Max Undo Steps##max_undo_slider", cur_undo, 0, 200, cur_undo == 0 and "Unlimited" or "%d Steps")
+                if undo_changed then
+                    state.max_undo_steps = new_undo
+                    require('state').save_settings(state)
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Limits the maximum consecutive undo depth in REAPER Notator (Default: 50).\nLower values prevent deep undo stacks from ballooning project memory and slowing down REAPER's state serialization.\nSetting to 0 allows unlimited undo steps.")
+                end
+
+                -- Clear REAPER Project Undo History Button
+                reaper.ImGui_SameLine(ctx, 0, 12)
+                if reaper.ImGui_Button(ctx, "🧹 Clear Project Undo History", 200, 20) then
+                    reaper.Main_OnCommand(40608, 0) -- Edit: Clear undo history
+                    state._consecutive_undo_steps = 0
+                    state.status_msg = "REAPER project undo history cleared"
+                end
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "Instantly purges REAPER's accumulated project undo history and frees RAM.\nRecommended after long editing sessions or dense continuous CC/Velocity drawing.")
+                end
+                
+                reaper.ImGui_Spacing(ctx)
+
+                -- --- 2. Canvas Layout & Track Spacing ---
                 if reaper.APIExists("ImGui_SeparatorText") then
                     reaper.ImGui_SeparatorText(ctx, "Canvas Layout & Track Spacing")
                 else
@@ -188,7 +258,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
                 
                 reaper.ImGui_Spacing(ctx)
 
-                -- --- 2. Note Audio Audition ---
+                -- --- 3. Note Audio Audition ---
                 if reaper.APIExists("ImGui_SeparatorText") then
                     reaper.ImGui_SeparatorText(ctx, "Audio & Note Preview")
                 else
@@ -280,7 +350,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
 
                 reaper.ImGui_Spacing(ctx)
 
-                -- --- 3. Measure & Rehearsal Elements ---
+                -- --- 4. Measure & Rehearsal Elements ---
                 if reaper.APIExists("ImGui_SeparatorText") then
                     reaper.ImGui_SeparatorText(ctx, "Measure & Rehearsal Elements")
                 else
@@ -302,7 +372,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
 
                 reaper.ImGui_Spacing(ctx)
 
-                -- --- 4. Above-Staff Notations ---
+                -- --- 5. Above-Staff Notations ---
                 if reaper.APIExists("ImGui_SeparatorText") then
                     reaper.ImGui_SeparatorText(ctx, "Vertical Offsets (Above Staff)")
                 else
@@ -328,7 +398,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
 
                 reaper.ImGui_Spacing(ctx)
 
-                -- --- 5. Below-Staff Notations ---
+                -- --- 6. Below-Staff Notations ---
                 if reaper.APIExists("ImGui_SeparatorText") then
                     reaper.ImGui_SeparatorText(ctx, "Vertical Offsets (Below Staff)")
                 else

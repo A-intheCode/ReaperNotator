@@ -5526,6 +5526,9 @@ function MidiService.cleanup_orphaned_score_elements(state)
     
     if any_changed and reaper.MarkProjectDirty then
         reaper.MarkProjectDirty(0)
+        if state then
+            state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
+        end
     end
 end
 

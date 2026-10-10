@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.10
+-- @version 1.8.0-beta.11
 -- @changelog
+--   + v1.8.0-beta.11: Configurable Target FPS, Max Undo Steps & Frustum Culling Performance Overhaul:
+--             - Configurable Target Framerate (FPS): New setting in Settings -> General Settings allowing users to set target FPS (15, 30, 60, 90, 120, 144 / Uncapped) with real-time measured FPS meter. Defer cycles skip UI render when under the threshold, dramatically saving CPU while keeping audio preview timers sub-millisecond accurate.
+--             - Maximum Undo Steps Limit: Configurable undo step cap (0-200, default 50) in Settings -> General Settings, preventing excessive undo depth from ballooning project memory and slowing down REAPER's state serialization.
+--             - One-Click Undo History Purge: Added 'Clear Project Undo History' button in Settings to immediately flush accumulated undo states and free memory after dense CC/Velocity drawing.
+--             - Prevention of Cascading MarkProjectDirty Loops: Fixed synchronization in cleanup_orphaned_score_elements to prevent infinite dirty change count loops.
+--             - MIDI Editor Grid & Hover Viewport Culling: The measure grid loop and velocity stalk hover hit-testing are now strictly culled to the visible viewport, eliminating massive iteration overhead on long multi-measure items.
 --   + v1.8.0-beta.10: Playback Editing Query Bypass & Cache-Only Rendering:
 --             - Canvas Hover & Hit-Testing Bypass: Disables all interactive hover detection and distance calculations (noteheads, accidentals, stems, item edges, slurs, portamentos, hairpins, fermatas, context menus) during playback (is_playing).
 --             - Hover State Purge: Automatically clears all state hover pointers during playback, eliminating lingering tooltips or highlighted handles.
@@ -307,10 +313,36 @@ reaper.atexit(function()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end)
 
--- 5. Main Render Loop (ReaImGui 60 FPS)
+-- 5. Main Render Loop (Configurable Target FPS with Adaptive Timing)
+local last_frame_time = 0
+local frame_count = 0
+local fps_timer = 0
+
 local function loop()
     if not state.is_open then return end
     if reaper.APIExists("ImGui_ValidatePtr") and not reaper.ImGui_ValidatePtr(ctx, "ImGui_Context*") then return end
+
+    -- Framerate Throttling & FPS Meter
+    local target_fps = state.target_fps or 60
+    local now = reaper.time_precise()
+    if target_fps > 0 and target_fps < 240 then
+        local min_dt = 1.0 / target_fps
+        if (now - last_frame_time) < (min_dt - 0.0015) then
+            -- Skip expensive UI rendering this tick, but maintain audio preview timing
+            AudioPreview.update(state, ctx)
+            PatternService.update_preview(AudioPreview)
+            reaper.defer(loop)
+            return
+        end
+    end
+
+    frame_count = frame_count + 1
+    if (now - fps_timer) >= 0.5 then
+        state.measured_fps = frame_count / (now - fps_timer)
+        frame_count = 0
+        fps_timer = now
+    end
+    last_frame_time = now
 
     -- Project-specific data (tempo markers, octave lines, hairpins, pedals, text items, repeat marks & chord items):
     -- Check every frame if the active REAPER project changed or was reloaded
@@ -542,6 +574,7 @@ local function loop()
             state._last_proj_change_cleanup = cur_proj_change
             state._last_total_tracks_cleanup = cur_total_tracks
             MidiService.cleanup_orphaned_score_elements(state)
+            state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
         end
 
         local project_tracks = MidiService.get_project_midi_tracks()

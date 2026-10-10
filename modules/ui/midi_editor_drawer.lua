@@ -716,10 +716,12 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                 reaper.ImGui_DrawList_AddText(dl, win_x0 + 4, gy - 6, 0x8892B088, g[2])
             end
 
-            -- Vertical Measure & Beat Grid
+            -- Vertical Measure & Beat Grid (Frustum Culled to Viewport)
             local bpi = 4.0
-            local cur_m_qn = math.floor(it_start_qn / bpi) * bpi
-            while cur_m_qn <= it_end_qn + bpi do
+            local vis_left_qn = math.max(it_start_qn, x_to_qn(win_x0 - 40))
+            local vis_right_qn = math.min(it_end_qn + bpi, x_to_qn(win_x0 + win_w + 40))
+            local cur_m_qn = math.floor(vis_left_qn / bpi) * bpi
+            while cur_m_qn <= vis_right_qn do
                 local mx = qn_to_x(cur_m_qn)
                 if mx >= win_x0 - 40 and mx <= win_x0 + win_w + 40 then
                     -- Major measure line
@@ -746,17 +748,19 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
             -- ==================================================================
             if is_vel_lane then
                 local hovered_note = nil
-                -- Check hover on note handles/stalks
+                -- Check hover on note handles/stalks (Early QN proximity culling)
                 if is_hovered and not is_drawing_vel and not marquee_active then
+                    local mouse_qn = x_to_qn(mouse_x)
                     for i = #notes, 1, -1 do
                         local n = notes[i]
-                        local nx = qn_to_x(n.start_qn)
-                        local ny = val_to_y(n.vel)
+                        if math.abs(n.start_qn - mouse_qn) <= 2.5 then
+                            local nx = qn_to_x(n.start_qn)
+                            local ny = val_to_y(n.vel)
 
-                        -- Top handle hitbox: [nx - 4, ny - 6, nx + 25, ny + 6] (22.5px flag)
-                        local in_handle = (mouse_x >= nx - 4 and mouse_x <= nx + 25 and mouse_y >= ny - 6 and mouse_y <= ny + 6)
-                        -- Stalk hitbox: [nx - 3, ny, nx + 3, plot_bot_y]
-                        local in_stalk = (mouse_x >= nx - 3 and mouse_x <= nx + 3 and mouse_y >= ny and mouse_y <= plot_bot_y + 2)
+                            -- Top handle hitbox: [nx - 4, ny - 6, nx + 25, ny + 6] (22.5px flag)
+                            local in_handle = (mouse_x >= nx - 4 and mouse_x <= nx + 25 and mouse_y >= ny - 6 and mouse_y <= ny + 6)
+                            -- Stalk hitbox: [nx - 3, ny, nx + 3, plot_bot_y]
+                            local in_stalk = (mouse_x >= nx - 3 and mouse_x <= nx + 3 and mouse_y >= ny and mouse_y <= plot_bot_y + 2)
 
                         if in_handle or in_stalk then
                             hovered_note = n

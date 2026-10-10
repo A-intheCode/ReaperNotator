@@ -91,10 +91,19 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
 
     -- Undo/Redo
     if is_action_pressed("undo") then
+        local max_steps = state.max_undo_steps or 50
+        if max_steps > 0 and (state._consecutive_undo_steps or 0) >= max_steps then
+            state.status_msg = string.format("Maximum undo limit (%d steps) reached", max_steps)
+            return
+        end
+        state._consecutive_undo_steps = (state._consecutive_undo_steps or 0) + 1
         reaper.Main_OnCommand(40029, 0) -- Undo
         return
     end
     if is_action_pressed("redo") then
+        if state._consecutive_undo_steps and state._consecutive_undo_steps > 0 then
+            state._consecutive_undo_steps = state._consecutive_undo_steps - 1
+        end
         reaper.Main_OnCommand(40030, 0) -- Redo
         return
     end

@@ -296,7 +296,11 @@ function State.new()
         midi_editor_cc_shape = tonumber(reaper.GetExtState("REAPER_Notator", "MidiEditorCCShape")) or 1, -- 1 = Linear Ramp (Default, no steps)
         midi_editor_tool = "select", -- "select" | "draw"
         midi_editor_zoom_x = 1.0,
-        midi_editor_scroll_x = 0,
+        -- Performance, Framerate & Undo System
+        target_fps = tonumber(reaper.GetExtState("REAPER_Notator", "TargetFPS")) or 60,
+        max_undo_steps = tonumber(reaper.GetExtState("REAPER_Notator", "MaxUndoSteps")) or 50,
+        measured_fps = 60.0,
+        _consecutive_undo_steps = 0,
         
         -- Octave Lines (8va, 15ma, 22ma, 8vb, 15mb, 22mb, loco)
         octave_lines = {},
@@ -797,6 +801,8 @@ function State:load_settings()
     self.hide_inactive_voices = load_bool("hide_inactive_voices", false)
     self.ghost_voice_opacity = load_num("ghost_voice_opacity", 0.25)
     self.custom_resource_path = load_str("reaper_resource_path", "")
+    self.target_fps = load_num("target_fps", 60)
+    self.max_undo_steps = load_num("max_undo_steps", 50)
     local saved_lane = load_str("midi_editor_lane", "velocity")
     if tonumber(saved_lane) then
         self.midi_editor_lane = tonumber(saved_lane)
@@ -977,6 +983,8 @@ function State.save_settings(self)
     save_val("hide_inactive_voices", self.hide_inactive_voices == true)
     save_val("ghost_voice_opacity", self.ghost_voice_opacity or 0.25)
     save_val("reaper_resource_path", self.custom_resource_path or "")
+    save_val("target_fps", math.floor(self.target_fps or 60))
+    save_val("max_undo_steps", math.floor(self.max_undo_steps or 50))
     save_val("midi_editor_lane", tostring(self.midi_editor_lane or "velocity"))
 
     -- Track Clefs
