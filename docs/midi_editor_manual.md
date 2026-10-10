@@ -209,3 +209,4 @@ The MIDI Editor's color scheme is fully configurable to match your monitor and s
 | **Horizontal Zoom** | `+` / `-` Toolbar Buttons | All Lanes |
 | **Reset Zoom (Fit)** | `↔ Fit` Toolbar Button | All Lanes |
 | **Toggle Drawer** | Bottom Utility Bar | Score Canvas |
+
