@@ -22,11 +22,17 @@ end
 -- Helper: Take & Track Resolution
 -- ------------------------------------------------------------------------------
 
+local function normalize_guid(g)
+    if not g or g == "" then return "" end
+    return tostring(g):gsub("[{}]", ""):upper():match("^%s*(.-)%s*$")
+end
+
 local function get_track_from_guid(track_guid, active_tracks_data)
     if not track_guid or track_guid == "" then return nil end
+    local norm_tg = normalize_guid(track_guid)
     if active_tracks_data then
         for _, td in ipairs(active_tracks_data) do
-            if td.guid == track_guid and td.track and reaper.ValidatePtr(td.track, "MediaTrack*") then
+            if normalize_guid(td.guid) == norm_tg and td.track and reaper.ValidatePtr(td.track, "MediaTrack*") then
                 return td.track
             end
         end
@@ -34,7 +40,7 @@ local function get_track_from_guid(track_guid, active_tracks_data)
     local trk_cnt = reaper.CountTracks(0)
     for i = 0, trk_cnt - 1 do
         local t = reaper.GetTrack(0, i)
-        if t and reaper.GetTrackGUID(t) == track_guid then
+        if t and normalize_guid(reaper.GetTrackGUID(t)) == norm_tg then
             return t
         end
     end
@@ -575,9 +581,10 @@ function PortamentoService.load_portamentos(state)
                 local trk_exists = false
                 if pm.track_guid and pm.track_guid ~= "" then
                     local num_tr = reaper.CountTracks(0)
+                    local norm_pm_guid = normalize_guid(pm.track_guid)
                     for ti = 0, num_tr - 1 do
                         local t = reaper.GetTrack(0, ti)
-                        if t and reaper.GetTrackGUID(t) == pm.track_guid then
+                        if t and normalize_guid(reaper.GetTrackGUID(t)) == norm_pm_guid then
                             trk_exists = true
                             break
                         end
