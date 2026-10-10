@@ -10,6 +10,9 @@ local Constants = require("constants")
 local KeySignatureService = require("services.key_signature_service")
 local MidiService = require("services.midi_service")
 local Engraver = require("rendering.engraver")
+local SlurService = require("services.slur_service")
+local GlissandoService = require("services.glissando_service")
+local PortamentoService = require("services.portamento_service")
 
 local MusicXmlExportService = {}
 
@@ -163,6 +166,15 @@ local function split_measure_note_segments(seg_n, m_start_qn, bpi)
             n_sub.tie_stop = true
             n_sub.tie_start = true
         end
+
+        -- Propagate start and stop notations to outer boundary subsegments only
+        n_sub.slur_starts = (i == 1) and seg_n.slur_starts or nil
+        n_sub.slur_stops  = (i == #decomp) and seg_n.slur_stops or nil
+        n_sub.gliss_starts = (i == 1) and seg_n.gliss_starts or nil
+        n_sub.gliss_stops  = (i == #decomp) and seg_n.gliss_stops or nil
+        n_sub.slide_starts = (i == 1) and seg_n.slide_starts or nil
+        n_sub.slide_stops  = (i == #decomp) and seg_n.slide_stops or nil
+
         table.insert(out, n_sub)
     end
     return out
@@ -175,7 +187,9 @@ local function is_standard_musicxml_articulation(art)
         or a == "accent" or a == "marcato" or a == "harmonic" or a == "flageolet"
         or a == "fermata" or a == "up-bow" or a == "down-bow" or a == "snap-pizzicato"
         or a == "trill" or a == "tremolo"
+        or a == "legato" or a == "slur"
         or a:match("^stacc") or a:match("^ten") or a:match("^marc") or a:match("^acc") or a:match("harm")
+        or a:match("^legato") or a:match("^slur")
 end
 
 -- ------------------------------------------------------------------------------
@@ -359,17 +373,22 @@ end
 
 local function emit_note_notations(emit, cn, trk_clef)
     local art = cn.articulation and tostring(cn.articulation):lower()
+    -- Elaine Gould / MusicXML standard: legato/slur is exclusively expressed by <slur>, never as <other-articulation>
+    if art == "legato" or art == "slur" or (art and (art:match("^legato") or art:match("^slur"))) then
+        art = nil
+    end
     local is_arp = cn.arpeggio or (art and (art == "arpeggio" or art:find("arpegg")))
     local has_tied = cn.tie_start or cn.tie_stop
+    local has_slur = (cn.slur_starts and #cn.slur_starts > 0) or (cn.slur_stops and #cn.slur_stops > 0)
+    local has_gliss = (cn.gliss_starts and #cn.gliss_starts > 0) or (cn.gliss_stops and #cn.gliss_stops > 0)
+    local has_slide = (cn.slide_starts and #cn.slide_starts > 0) or (cn.slide_stops and #cn.slide_stops > 0)
     local has_art = art and art ~= "" and art ~= "none"
 
-    if not has_tied and not has_art and not is_arp then return end
+    if not has_tied and not has_slur and not has_gliss and not has_slide and not has_art and not is_arp then return end
 
     emit('        <notations>\n')
-    if is_arp then
-        local arp_dir = (cn.arpeggio == "down" or (art and art:find("down"))) and "down" or "up"
-        emit('          <arpeggiate direction="%s"/>\n', arp_dir)
-    end
+
+    -- 1. Tied notations
     if cn.tie_stop then emit('          <tied type="stop"/>\n') end
     if cn.tie_start then
         local p = cn.pitch or 60
@@ -385,6 +404,50 @@ local function emit_note_notations(emit, cn, trk_clef)
         emit('          <tied type="start" orientation="%s"/>\n', orient)
     end
 
+    -- 2. Slurs
+    if cn.slur_stops then
+        for _, sl in ipairs(cn.slur_stops) do
+            emit('          <slur type="stop" number="%d"/>\n', sl.number or 1)
+        end
+    end
+    if cn.slur_starts then
+        for _, sl in ipairs(cn.slur_starts) do
+            local pl = sl.placement and string.format(' placement="%s"', sl.placement) or ''
+            emit('          <slur type="start" number="%d"%s/>\n', sl.number or 1, pl)
+        end
+    end
+
+    -- 3. Glissandi (<glissando line-type="wavy">)
+    if cn.gliss_stops then
+        for _, gl in ipairs(cn.gliss_stops) do
+            emit('          <glissando type="stop" number="%d"/>\n', gl.number or 1)
+        end
+    end
+    if cn.gliss_starts then
+        for _, gl in ipairs(cn.gliss_starts) do
+            local txt = gl.text or "gliss."
+            emit('          <glissando type="start" number="%d" line-type="wavy">%s</glissando>\n', gl.number or 1, xml_escape(txt))
+        end
+    end
+
+    -- 4. Slides / Portamento (<slide line-type="solid">)
+    if cn.slide_stops then
+        for _, sl in ipairs(cn.slide_stops) do
+            emit('          <slide type="stop" number="%d"/>\n', sl.number or 1)
+        end
+    end
+    if cn.slide_starts then
+        for _, sl in ipairs(cn.slide_starts) do
+            local txt = sl.text and xml_escape(sl.text) or ""
+            if txt ~= "" then
+                emit('          <slide type="start" number="%d" line-type="solid">%s</slide>\n', sl.number or 1, txt)
+            else
+                emit('          <slide type="start" number="%d" line-type="solid"/>\n', sl.number or 1)
+            end
+        end
+    end
+
+    -- 5. Ornaments, Technical, Articulations, Fermata, Arpeggiate
     if has_art then
         if art == "staccato" or art == "stacc" then
             emit('          <articulations>\n            <staccato/>\n          </articulations>\n')
@@ -414,6 +477,11 @@ local function emit_note_notations(emit, cn, trk_clef)
             -- Non-standard / custom articulation exported as other-articulation
             emit('          <articulations>\n            <other-articulation>%s</other-articulation>\n          </articulations>\n', xml_escape(cn.articulation))
         end
+    end
+
+    if is_arp then
+        local arp_dir = (cn.arpeggio == "down" or (art and art:find("down"))) and "down" or "up"
+        emit('          <arpeggiate direction="%s"/>\n', arp_dir)
     end
 
     emit('        </notations>\n')
@@ -588,6 +656,216 @@ local function emit_voice_notes(emit, v_notes, voice_id, staff_id, m_start_qn, m
 end
 
 -- ------------------------------------------------------------------------------
+-- Slur, Tie, Glissando & Slide Allocation Helpers for Export
+-- ------------------------------------------------------------------------------
+local function assign_mark_numbers(items, start_key, end_key)
+    local active = {} -- number -> end_val
+    for _, item in ipairs(items) do
+        local s_val = item[start_key] or 0.0
+        local e_val = item[end_key] or (s_val + 1.0)
+        -- Free numbers whose end_val <= s_val
+        for num, end_qn in pairs(active) do
+            if end_qn <= s_val + 0.005 then
+                active[num] = nil
+            end
+        end
+        -- Find smallest unused number 1..6
+        local assigned = 1
+        for num = 1, 6 do
+            if not active[num] then
+                assigned = num
+                break
+            end
+        end
+        active[assigned] = e_val
+        item._assigned_number = assigned
+    end
+end
+
+local function prepare_track_marks(raw_notes, trk_guid, trk_clef, state, options)
+    local norm_trk_guid = trk_guid and trk_guid:upper():gsub("[^%w]", "") or ""
+    local function guid_matches(g)
+        if not g or g == "" then return true end
+        local ng = g:upper():gsub("[^%w]", "")
+        return (ng == "" or norm_trk_guid == "" or ng == norm_trk_guid)
+    end
+
+    -- 1. Filter out glissando ladder notes and restore Note 1 orig_dur1
+    local filtered_notes = {}
+    local gliss_masters_list = {}
+    if state and state.glissando_marks then
+        for _, gm in ipairs(state.glissando_marks) do
+            if guid_matches(gm.track_guid) then
+                table.insert(gliss_masters_list, gm)
+            end
+        end
+    end
+
+    for _, n in ipairs(raw_notes) do
+        local is_step = (n.is_gliss_step == true)
+        if not is_step and #gliss_masters_list > 0 then
+            for _, gm in ipairs(gliss_masters_list) do
+                if (gm.chan == nil or gm.chan == n.chan) and gm.pitch2 and gm.start_qn2 then
+                    local p_min = math.min(gm.pitch1, gm.pitch2)
+                    local p_max = math.max(gm.pitch1, gm.pitch2)
+                    if n.pitch > p_min and n.pitch < p_max then
+                        local t_start_qn = gm.start_qn1 + ((gm.start_pct1 or 50) / 100.0) * (gm.orig_dur1 or 1.0)
+                        if n.start_qn >= (t_start_qn - 0.05) and n.start_qn < (gm.start_qn2 - 0.005) then
+                            is_step = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+
+        if not is_step then
+            -- Check if this note is Note 1 of a glissando and restore its duration
+            for _, gm in ipairs(gliss_masters_list) do
+                if gm.pitch1 == n.pitch and (gm.chan == nil or gm.chan == n.chan) and math.abs(n.start_qn - gm.start_qn1) <= 0.05 then
+                    if gm.orig_dur1 and gm.orig_dur1 > 0.01 then
+                        n.dur_qn = gm.orig_dur1
+                        n.end_qn = n.start_qn + n.dur_qn
+                    end
+                    break
+                end
+            end
+            table.insert(filtered_notes, n)
+        end
+    end
+
+    local notes = filtered_notes
+
+    -- Helper to match note by pitch and start_qn
+    local function find_matching_note(pitch, target_qn, tol)
+        tol = tol or 0.15
+        local best, best_diff = nil, tol
+        for _, n in ipairs(notes) do
+            if n.pitch == pitch then
+                local diff = math.abs((n.start_qn or 0.0) - target_qn)
+                if diff <= best_diff then
+                    best = n
+                    best_diff = diff
+                end
+            end
+        end
+        return best
+    end
+
+    -- 2. User Ties (options.include_slurs_ties ~= false)
+    if options.include_slurs_ties ~= false and state and state.user_ties then
+        for _, tie in ipairs(state.user_ties) do
+            if guid_matches(tie.track_guid) then
+                local n1 = find_matching_note(tie.pitch, tie.n1_start_qn or 0.0)
+                local n2 = find_matching_note(tie.pitch, tie.n2_start_qn or 1.0)
+                if n1 then n1.is_tied_master = true end
+                if n2 then n2.is_tied_slave = true end
+            end
+        end
+    end
+
+    -- 3. Slurs (options.include_slurs_ties ~= false)
+    if options.include_slurs_ties ~= false and state and state.user_slurs then
+        local track_slurs = {}
+        for _, sl in ipairs(state.user_slurs) do
+            if guid_matches(sl.track_guid) then
+                table.insert(track_slurs, sl)
+            end
+        end
+        table.sort(track_slurs, function(a, b) return (a.start_qn or 0.0) < (b.start_qn or 0.0) end)
+        assign_mark_numbers(track_slurs, "start_qn", "n2_start_qn")
+
+        for _, sl in ipairs(track_slurs) do
+            local n1 = find_matching_note(sl.pitch1, sl.start_qn or 0.0)
+            local n2 = find_matching_note(sl.pitch2, sl.n2_start_qn or 1.0)
+            if not n2 then
+                -- Fallback: closest note near n2_start_qn
+                local tol = 0.20
+                for _, n in ipairs(notes) do
+                    if math.abs((n.start_qn or 0.0) - (sl.n2_start_qn or 1.0)) <= tol then
+                        n2 = n
+                        break
+                    end
+                end
+            end
+
+            if n1 then
+                local mid_p = (trk_clef == "bass") and 50 or ((trk_clef == "alto") and 60 or ((trk_clef == "tenor") and 57 or 71))
+                local placement = "above"
+                if n1.stem_dir == "up" then
+                    placement = "below"
+                elseif n1.stem_dir == "down" then
+                    placement = "above"
+                elseif (n1.pitch or 60) < mid_p then
+                    placement = "below"
+                else
+                    placement = "above"
+                end
+
+                n1.slur_starts = n1.slur_starts or {}
+                table.insert(n1.slur_starts, { number = sl._assigned_number or 1, placement = placement })
+            end
+            if n2 then
+                n2.slur_stops = n2.slur_stops or {}
+                table.insert(n2.slur_stops, { number = sl._assigned_number or 1 })
+            end
+        end
+    end
+
+    -- 4. Glissandi (options.include_gliss_port ~= false)
+    if options.include_gliss_port ~= false and #gliss_masters_list > 0 then
+        table.sort(gliss_masters_list, function(a, b) return (a.start_qn1 or 0.0) < (b.start_qn1 or 0.0) end)
+        assign_mark_numbers(gliss_masters_list, "start_qn1", "start_qn2")
+
+        for _, gm in ipairs(gliss_masters_list) do
+            local n1 = find_matching_note(gm.pitch1, gm.start_qn1 or 0.0)
+            local n2 = find_matching_note(gm.pitch2, gm.start_qn2 or 1.0)
+            if n1 then
+                n1.gliss_starts = n1.gliss_starts or {}
+                table.insert(n1.gliss_starts, {
+                    number = gm._assigned_number or 1,
+                    text = (gm.show_text ~= false) and "gliss." or nil
+                })
+            end
+            if n2 then
+                n2.gliss_stops = n2.gliss_stops or {}
+                table.insert(n2.gliss_stops, { number = gm._assigned_number or 1 })
+            end
+        end
+    end
+
+    -- 5. Portamento / Slides (options.include_gliss_port ~= false)
+    if options.include_gliss_port ~= false and state and state.portamento_marks then
+        local track_ports = {}
+        for _, pm in ipairs(state.portamento_marks) do
+            if guid_matches(pm.track_guid) then
+                table.insert(track_ports, pm)
+            end
+        end
+        table.sort(track_ports, function(a, b) return (a.start_qn1 or 0.0) < (b.start_qn1 or 0.0) end)
+        assign_mark_numbers(track_ports, "start_qn1", "start_qn2")
+
+        for _, pm in ipairs(track_ports) do
+            local n1 = find_matching_note(pm.pitch1, pm.start_qn1 or 0.0)
+            local n2 = find_matching_note(pm.pitch2, pm.start_qn2 or 1.0)
+            if n1 then
+                n1.slide_starts = n1.slide_starts or {}
+                table.insert(n1.slide_starts, {
+                    number = pm._assigned_number or 1,
+                    text = (pm.show_text) and "port." or nil
+                })
+            end
+            if n2 then
+                n2.slide_stops = n2.slide_stops or {}
+                table.insert(n2.slide_stops, { number = pm._assigned_number or 1 })
+            end
+        end
+    end
+
+    return notes
+end
+
+-- ------------------------------------------------------------------------------
 -- Main Export Function
 -- ------------------------------------------------------------------------------
 function MusicXmlExportService.export_project(state, options)
@@ -595,6 +873,18 @@ function MusicXmlExportService.export_project(state, options)
     local out_path = options.file_path
     if not out_path or out_path == "" then
         return false, "No output file path specified."
+    end
+
+    if state then
+        if not state.user_slurs or not state.user_ties then
+            SlurService.load_slurs(state)
+        end
+        if not state.glissando_marks then
+            GlissandoService.load_glissandos(state)
+        end
+        if not state.portamento_marks then
+            PortamentoService.load_portamentos(state)
+        end
     end
 
     local proj_tracks = options.tracks
@@ -784,8 +1074,8 @@ function MusicXmlExportService.export_project(state, options)
     for pi, trk_entry in ipairs(proj_tracks) do
         local tr = (type(trk_entry) == "table" and trk_entry.track) or trk_entry
         local trk_guid = (type(trk_entry) == "table" and trk_entry.guid) or (tr and reaper.GetTrackGUID(tr))
-        local notes = tracks_notes[pi] or {}
         local trk_clef = tracks_clefs[pi] or "treble"
+        local notes = prepare_track_marks(tracks_notes[pi] or {}, trk_guid, trk_clef, state, options)
 
         emit('  <part id="P%d">\n', pi)
 
@@ -984,14 +1274,18 @@ function MusicXmlExportService.export_project(state, options)
                 for _, ti in ipairs(state.text_items) do
                     local matches_trk = (not ti.track_guid) or (ti.track_guid == trk_guid) or (pi == 1 and not ti.track_guid)
                     if matches_trk and ti.qn >= m_start_qn - 0.001 and ti.qn < m_end_qn - 0.001 then
-                        emit('      <direction placement="above">\n')
-                        emit('        <direction-type>\n')
-                        local font_size = ti.font_size or 14
-                        local font_style = (ti.style == "italic" or ti.style == "bold_italic") and ' font-style="italic"' or ''
-                        local font_weight = (ti.style == "bold" or ti.style == "bold_italic") and ' font-weight="bold"' or ''
-                        emit('          <words font-size="%.1f"%s%s>%s</words>\n', font_size, font_style, font_weight, xml_escape(ti.text))
-                        emit('        </direction-type>\n')
-                        emit('      </direction>\n')
+                        local ti_clean = ti.text and tostring(ti.text):lower():gsub("^%s+", ""):gsub("%s+$", "") or ""
+                        local is_redundant_legato = (ti_clean == "legato" or ti_clean == "slur" or ti_clean:match("^legato$") or ti_clean:match("^slur$"))
+                        if not is_redundant_legato then
+                            emit('      <direction placement="above">\n')
+                            emit('        <direction-type>\n')
+                            local font_size = ti.font_size or 14
+                            local font_style = (ti.style == "italic" or ti.style == "bold_italic") and ' font-style="italic"' or ''
+                            local font_weight = (ti.style == "bold" or ti.style == "bold_italic") and ' font-weight="bold"' or ''
+                            emit('          <words font-size="%.1f"%s%s>%s</words>\n', font_size, font_style, font_weight, xml_escape(ti.text))
+                            emit('        </direction-type>\n')
+                            emit('      </direction>\n')
+                        end
                     end
                 end
             end
@@ -1195,6 +1489,12 @@ function MusicXmlExportService.export_project(state, options)
                         if not pref_acc and state and Engraver and Engraver.get_note_preferred_accidental then
                             pref_acc = Engraver.get_note_preferred_accidental({ orig = orig_n }, state)
                         end
+                        local is_first_slice = (math.abs(seg_start - n_start) < 0.01)
+                        local is_last_slice = (math.abs(seg_end - n_end) < 0.01)
+
+                        local is_user_tie_start = (n.is_tied_master == true)
+                        local is_user_tie_stop  = (n.is_tied_slave == true)
+
                         local seg_n = {
                             pitch = n.pitch or 60,
                             start_qn = seg_start,
@@ -1205,8 +1505,14 @@ function MusicXmlExportService.export_project(state, options)
                             accidental = pref_acc,
                             articulation = n.articulation,
                             is_auto_return = n.is_auto_return or (orig_n and orig_n.is_auto_return),
-                            tie_stop = (n_start < m_start_qn - 0.01),
-                            tie_start = (n_end > m_end_qn + 0.01),
+                            tie_stop = (n_start < m_start_qn - 0.01) or (is_first_slice and is_user_tie_stop),
+                            tie_start = (n_end > m_end_qn + 0.01) or (is_last_slice and is_user_tie_start),
+                            slur_starts = is_first_slice and n.slur_starts or nil,
+                            slur_stops  = is_last_slice and n.slur_stops or nil,
+                            gliss_starts = is_first_slice and n.gliss_starts or nil,
+                            gliss_stops  = is_last_slice and n.gliss_stops or nil,
+                            slide_starts = is_first_slice and n.slide_starts or nil,
+                            slide_stops  = is_last_slice and n.slide_stops or nil,
                             orig = n
                         }
                         local sub_segs = split_measure_note_segments(seg_n, m_start_qn, bpi)
@@ -1231,17 +1537,23 @@ function MusicXmlExportService.export_project(state, options)
             local text_arts_by_qn = {}
             for _, n in ipairs(m_notes) do
                 if n.articulation and not n.is_auto_return and not is_standard_musicxml_articulation(n.articulation) then
-                    local q = math.floor(n.start_qn * 1000 + 0.5) / 1000
-                    if not text_arts_by_qn[q] then text_arts_by_qn[q] = n.articulation end
+                    local a_clean = tostring(n.articulation):lower():gsub("^%s+", ""):gsub("%s+$", "")
+                    if a_clean ~= "legato" and not a_clean:match("^legato") and a_clean ~= "slur" and not a_clean:match("^slur") and not a_clean:match("^tie") then
+                        local q = math.floor(n.start_qn * 1000 + 0.5) / 1000
+                        if not text_arts_by_qn[q] then text_arts_by_qn[q] = n.articulation end
+                    end
                 end
             end
             if tracks_articulations[pi] then
                 for _, a in ipairs(tracks_articulations[pi]) do
-                    if not a.is_auto_return and (a.qn and a.qn >= m_start_qn - 0.001 and a.qn < m_end_qn - 0.001) then
+                    if not a.is_auto_return and not a.is_slur and not a.is_slur_pc and (a.qn and a.qn >= m_start_qn - 0.001 and a.qn < m_end_qn - 0.001) then
                         local lbl = a.label or a.name or a.art
                         if lbl and not is_standard_musicxml_articulation(lbl) then
-                            local q = math.floor(a.qn * 1000 + 0.5) / 1000
-                            if not text_arts_by_qn[q] then text_arts_by_qn[q] = lbl end
+                            local l_clean = tostring(lbl):lower():gsub("^%s+", ""):gsub("%s+$", "")
+                            if l_clean ~= "legato" and not l_clean:match("^legato") and l_clean ~= "slur" and not l_clean:match("^slur") and not l_clean:match("^tie") then
+                                local q = math.floor(a.qn * 1000 + 0.5) / 1000
+                                if not text_arts_by_qn[q] then text_arts_by_qn[q] = lbl end
+                            end
                         end
                     end
                 end

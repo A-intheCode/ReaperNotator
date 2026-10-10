@@ -315,4 +315,111 @@ function PathService.detect_status(state)
     }
 end
 
+--- Opens a native Save File dialog
+--- @param default_path string Default full file path or directory
+--- @param title string Dialog title
+--- @param default_ext string e.g. "musicxml"
+--- @return string|nil picked_file
+function PathService.browse_for_save_file(default_path, title, default_ext)
+    default_ext = default_ext or "musicxml"
+    title = title or "Save File"
+    default_path = PathService.normalize(default_path or "")
+
+    local initial_dir = default_path:match("^(.*)/") or ""
+    local initial_fn = default_path:match("[^/]+$") or ("export_score." .. default_ext)
+    if initial_dir == "" and reaper.GetProjectPath then
+        local p = reaper.GetProjectPath("")
+        if p and p ~= "" then initial_dir = PathService.normalize(p) end
+    end
+
+    -- 1. First priority: native JS_Dialog_BrowseForSaveFile from js_ReaScriptAPI
+    if reaper.APIExists("JS_Dialog_BrowseForSaveFile") then
+        local ext_list = string.format("%s Files (*.%s)\0*.%s\0All Files (*.*)\0*.*\0\0", default_ext:upper(), default_ext, default_ext)
+        local ok, picked = reaper.JS_Dialog_BrowseForSaveFile(title, initial_dir:gsub("/", "\\"), initial_fn, ext_list)
+        if ok == 1 and picked and picked ~= "" then
+            return PathService.normalize(picked)
+        elseif ok == 0 then
+            return nil
+        end
+    end
+
+    local os_type = PathService.get_os()
+
+    -- 2. Windows fallback: PowerShell SaveFileDialog
+    if os_type == "windows" then
+        local res_dir = PathService.normalize(reaper.GetResourcePath())
+        local script_path = res_dir .. "/_notator_save_dlg.ps1"
+        local out_path = res_dir .. "/_notator_save_out.txt"
+
+        local ps_lines = {
+            "$ProgressPreference = 'SilentlyContinue'",
+            "Add-Type -AssemblyName System.Windows.Forms",
+            "$d = New-Object System.Windows.Forms.SaveFileDialog",
+            string.format("$d.Title = '%s'", title:gsub("'", "''")),
+            string.format("$d.InitialDirectory = '%s'", initial_dir:gsub("/", "\\"):gsub("'", "''")),
+            string.format("$d.FileName = '%s'", initial_fn:gsub("'", "''")),
+            string.format("$d.Filter = '%s Files (*.%s)|*.%s|All Files (*.*)|*.*'", default_ext:upper(), default_ext, default_ext),
+            string.format("$d.DefaultExt = '%s'", default_ext),
+            "$d.OverwritePrompt = $true",
+            "if ($d.ShowDialog() -eq [System.Windows.Forms.DialogResult]::OK) {",
+            string.format("    Set-Content -Path '%s' -Value $d.FileName -Encoding UTF8", out_path:gsub("/", "\\"):gsub("'", "''")),
+            "}"
+        }
+
+        local f = io.open(script_path, "w")
+        if f then
+            f:write(table.concat(ps_lines, "\r\n"))
+            f:close()
+
+            os.remove(out_path)
+            local cmd = string.format('powershell -WindowStyle Hidden -NoProfile -ExecutionPolicy Bypass -File "%s"', script_path:gsub("/", "\\"))
+            os.execute(cmd)
+            os.remove(script_path)
+
+            local out_f = io.open(out_path, "r")
+            if out_f then
+                local res = out_f:read("*l")
+                out_f:close()
+                os.remove(out_path)
+                if res and res ~= "" then
+                    return PathService.normalize(res)
+                end
+            end
+            return nil
+        end
+    end
+
+    -- 3. macOS fallback: osascript choose file name
+    if os_type == "macos" then
+        local cmd = string.format([[osascript -e 'set f to choose file name with prompt "%s" default name "%s"' 2>/dev/null]],
+            title:gsub('"', '\\"'), initial_fn:gsub('"', '\\"'))
+        local pipe = io.popen(cmd)
+        if pipe then
+            local res = pipe:read("*l")
+            pipe:close()
+            if res and res:match("^alias ") then
+                res = res:gsub("^alias ", "")
+            end
+            if res and res ~= "" then
+                local pcmd = string.format([[osascript -e 'POSIX path of "%s"' 2>/dev/null]], res:gsub('"', '\\"'))
+                local ppipe = io.popen(pcmd)
+                if ppipe then
+                    local posix = ppipe:read("*l")
+                    ppipe:close()
+                    if posix and posix ~= "" then res = posix end
+                end
+                return PathService.normalize(res)
+            end
+        end
+    end
+
+    -- 4. Universal fallback: GetUserInputs
+    local ok, user_in = reaper.GetUserInputs(title, 1, string.format("Save path (*.%s):,extrawidth=350", default_ext), default_path)
+    if ok and user_in and user_in ~= "" then
+        return PathService.normalize(user_in)
+    end
+
+    return nil
+end
+
 return PathService

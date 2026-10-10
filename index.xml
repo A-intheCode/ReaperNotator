@@ -1,93 +1,94 @@
 <?xml version="1.0" encoding="utf-8"?>
-<index version="1" name="REAPER-Notator" commit="testing">
+<index version="1" name="REAPER-Notator" commit="main">
   <category name="Notation">
     <reapack name="reaper_native_notator.lua" type="script" desc="REAPER-Notator: Native Musical Notation &amp; Engraving Suite">
       <metadata>
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.7.0-beta.9" author="A-intheCode" time="2026-10-10T02:05:00Z">
+      <version name="1.7.0" author="A-intheCode" time="2026-10-10T02:30:00Z">
         <changelog><![CDATA[
-+ v1.7.0-beta.9: Acoustic Legato Playback & Cross-Voice Slur Import Overhaul:
-          - True Acoustic Legato Playback: MusicXML import now extends all consecutive notes under slurs with micro-legato overlap (+2 PPQ ticks) in REAPER MIDI takes, ensuring samplers (Kontakt, Spitfire, Cinematic Studio Strings, Orchestral Tools, VSL) trigger seamless legato transition intervals instead of detaché attacks. Same-pitch notes are protected from note-merging.
-          - Channel-Isolated Multi-Voice Slur & Tie Pairing: Keyed open slurs, ties, glissandi, and portamentos by channel and voice, preventing cross-voice and grand-staff slur clobbering while preserving cross-staff slur matching fallbacks.
-          - Full Phrase Articulation & Keyswitch Mapping: Tags all notes under slurs with NOTE <pitch> <chan> a legato sysex events, clears conflicting staccato events, injects Reaticulate legato/long/sustain keyswitches, writes full 10-token NOTATOR_SLUR sysex events, and invokes auto-chase restoration at the end of each phrase.
-          - Cross-Track MIDI Copy Persistence: Scoped take scan dual-persistence by track GUID, preserving slurs, glissandi, and portamentos without collision or loss when copying MIDI items between instruments.
++ v1.7.0: Major Release: Elaine Gould Slurs, Glissandi, Portamento & Bidirectional MusicXML 4.0:
+          - Elaine Gould Phrasing & Slurs: True acoustic legato playback (+2 PPQ micro-overlap), voice-isolated multi-voice pairing, Reaticulate keyswitch integration, and automatic chase.
+          - Glissando & Portamento Suite: Full chromatic ladder playback, wavy line engraving, and portamento slide CC automation with dual-reality MIDI take persistence.
+          - Bidirectional MusicXML 3.1 & 4.0: Lossless import and export for slurs, ties, glissandi, slides, dynamics, and fermatas, with native Save File dialog.
+          - Canvas Hitbox Arbitration: Strict notehead click priority over phrasing curves, eliminating curve click-theft.
+          - Tempo Lane Workflow: Instant double-click custom BPM creation and synchronized envelope markers.
         ]]></changelog>
-        <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/reaper_native_notator.lua</source>
-        <source file="LICENSE">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/LICENSE</source>
-        <source file="README.md">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/README.md</source>
-        <source file="modules/constants.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/constants.lua</source>
-        <source file="modules/state.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/state.lua</source>
-        <source file="modules/version.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/version.lua</source>
-        <source file="modules/classes/chord_item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/chord_item.lua</source>
-        <source file="modules/classes/dynamic.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/dynamic.lua</source>
-        <source file="modules/classes/dynamic_text.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/dynamic_text.lua</source>
-        <source file="modules/classes/fermata.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/fermata.lua</source>
-        <source file="modules/classes/glissando_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/glissando_mark.lua</source>
-        <source file="modules/classes/hairpin.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/hairpin.lua</source>
-        <source file="modules/classes/item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/item.lua</source>
-        <source file="modules/classes/note.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/note.lua</source>
-        <source file="modules/classes/octave_line.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/octave_line.lua</source>
-        <source file="modules/classes/pedal_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/pedal_mark.lua</source>
-        <source file="modules/classes/portamento_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/portamento_mark.lua</source>
-        <source file="modules/classes/rehearsal_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/rehearsal_mark.lua</source>
-        <source file="modules/classes/tempo_marker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/tempo_marker.lua</source>
-        <source file="modules/classes/text_item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/text_item.lua</source>
-        <source file="modules/classes/track.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/classes/track.lua</source>
-        <source file="modules/input/keyboard_handler.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/input/keyboard_handler.lua</source>
-        <source file="modules/input/mouse_handler.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/input/mouse_handler.lua</source>
-        <source file="modules/rendering/canvas_context_menus.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/rendering/canvas_context_menus.lua</source>
-        <source file="modules/rendering/canvas_decorations.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/rendering/canvas_decorations.lua</source>
-        <source file="modules/rendering/canvas_pedal_renderer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/rendering/canvas_pedal_renderer.lua</source>
-        <source file="modules/rendering/engraver.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/rendering/engraver.lua</source>
-        <source file="modules/rendering/font_manager.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/rendering/font_manager.lua</source>
-        <source file="modules/rendering/score_canvas.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/rendering/score_canvas.lua</source>
-        <source file="modules/rendering/system_engraver.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/rendering/system_engraver.lua</source>
-        <source file="modules/services/audio_preview.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/audio_preview.lua</source>
-        <source file="modules/services/clipboard_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/clipboard_service.lua</source>
-        <source file="modules/services/dynamic_text_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/dynamic_text_service.lua</source>
-        <source file="modules/services/dynamics_engine.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/dynamics_engine.lua</source>
-        <source file="modules/services/fermata_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/fermata_service.lua</source>
-        <source file="modules/services/glissando_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/glissando_service.lua</source>
-        <source file="modules/services/hairpin_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/hairpin_service.lua</source>
-        <source file="modules/services/json_helper.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/json_helper.lua</source>
-        <source file="modules/services/key_signature_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/key_signature_service.lua</source>
-        <source file="modules/services/midi_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/midi_service.lua</source>
-        <source file="modules/services/musicxml_export_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/musicxml_export_service.lua</source>
-        <source file="modules/services/musicxml_import_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/musicxml_import_service.lua</source>
-        <source file="modules/services/octave_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/octave_service.lua</source>
-        <source file="modules/services/path_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/path_service.lua</source>
-        <source file="modules/services/pattern_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/pattern_service.lua</source>
-        <source file="modules/services/pedal_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/pedal_service.lua</source>
-        <source file="modules/services/portamento_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/portamento_service.lua</source>
-        <source file="modules/services/reaticulate_parser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/reaticulate_parser.lua</source>
-        <source file="modules/services/rehearsal_mark_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/rehearsal_mark_service.lua</source>
-        <source file="modules/services/repeat_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/repeat_service.lua</source>
-        <source file="modules/services/scale_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/scale_service.lua</source>
-        <source file="modules/services/selection_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/selection_service.lua</source>
-        <source file="modules/services/shortcut_manager.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/shortcut_manager.lua</source>
-        <source file="modules/services/slur_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/slur_service.lua</source>
-        <source file="modules/services/tempo_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/tempo_service.lua</source>
-        <source file="modules/services/text_item_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/text_item_service.lua</source>
-        <source file="modules/ui/articulations_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/articulations_drawer.lua</source>
-        <source file="modules/ui/bank_picker_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/bank_picker_modal.lua</source>
-        <source file="modules/ui/bottom_bar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/bottom_bar.lua</source>
-        <source file="modules/ui/clef_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/clef_drawer.lua</source>
-        <source file="modules/ui/dynamics_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/dynamics_drawer.lua</source>
-        <source file="modules/ui/help_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/help_modal.lua</source>
-        <source file="modules/ui/key_signature_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/key_signature_drawer.lua</source>
-        <source file="modules/ui/musicxml_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/musicxml_modal.lua</source>
-        <source file="modules/ui/pattern_browser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/pattern_browser.lua</source>
-        <source file="modules/ui/quantize_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/quantize_modal.lua</source>
-        <source file="modules/ui/scale_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/scale_modal.lua</source>
-        <source file="modules/ui/settings_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/settings_modal.lua</source>
-        <source file="modules/ui/sidebar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/sidebar.lua</source>
-        <source file="modules/ui/tempo_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/tempo_drawer.lua</source>
-        <source file="modules/ui/tools_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/tools_drawer.lua</source>
-        <source file="modules/ui/top_bar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/top_bar.lua</source>
-        <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/track_picker.lua</source>
-        <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/Bravura.otf</source>
+        <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
+        <source file="LICENSE">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/LICENSE</source>
+        <source file="README.md">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/README.md</source>
+        <source file="modules/constants.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/constants.lua</source>
+        <source file="modules/state.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/state.lua</source>
+        <source file="modules/version.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/version.lua</source>
+        <source file="modules/classes/chord_item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/chord_item.lua</source>
+        <source file="modules/classes/dynamic.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/dynamic.lua</source>
+        <source file="modules/classes/dynamic_text.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/dynamic_text.lua</source>
+        <source file="modules/classes/fermata.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/fermata.lua</source>
+        <source file="modules/classes/glissando_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/glissando_mark.lua</source>
+        <source file="modules/classes/hairpin.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/hairpin.lua</source>
+        <source file="modules/classes/item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/item.lua</source>
+        <source file="modules/classes/note.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/note.lua</source>
+        <source file="modules/classes/octave_line.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/octave_line.lua</source>
+        <source file="modules/classes/pedal_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/pedal_mark.lua</source>
+        <source file="modules/classes/portamento_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/portamento_mark.lua</source>
+        <source file="modules/classes/rehearsal_mark.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/rehearsal_mark.lua</source>
+        <source file="modules/classes/tempo_marker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/tempo_marker.lua</source>
+        <source file="modules/classes/text_item.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/text_item.lua</source>
+        <source file="modules/classes/track.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/classes/track.lua</source>
+        <source file="modules/input/keyboard_handler.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/input/keyboard_handler.lua</source>
+        <source file="modules/input/mouse_handler.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/input/mouse_handler.lua</source>
+        <source file="modules/rendering/canvas_context_menus.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/canvas_context_menus.lua</source>
+        <source file="modules/rendering/canvas_decorations.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/canvas_decorations.lua</source>
+        <source file="modules/rendering/canvas_pedal_renderer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/canvas_pedal_renderer.lua</source>
+        <source file="modules/rendering/engraver.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/engraver.lua</source>
+        <source file="modules/rendering/font_manager.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/font_manager.lua</source>
+        <source file="modules/rendering/score_canvas.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/score_canvas.lua</source>
+        <source file="modules/rendering/system_engraver.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/system_engraver.lua</source>
+        <source file="modules/services/audio_preview.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/audio_preview.lua</source>
+        <source file="modules/services/clipboard_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/clipboard_service.lua</source>
+        <source file="modules/services/dynamic_text_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/dynamic_text_service.lua</source>
+        <source file="modules/services/dynamics_engine.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/dynamics_engine.lua</source>
+        <source file="modules/services/fermata_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/fermata_service.lua</source>
+        <source file="modules/services/glissando_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/glissando_service.lua</source>
+        <source file="modules/services/hairpin_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/hairpin_service.lua</source>
+        <source file="modules/services/json_helper.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/json_helper.lua</source>
+        <source file="modules/services/key_signature_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/key_signature_service.lua</source>
+        <source file="modules/services/midi_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/midi_service.lua</source>
+        <source file="modules/services/musicxml_export_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/musicxml_export_service.lua</source>
+        <source file="modules/services/musicxml_import_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/musicxml_import_service.lua</source>
+        <source file="modules/services/octave_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/octave_service.lua</source>
+        <source file="modules/services/path_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/path_service.lua</source>
+        <source file="modules/services/pattern_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/pattern_service.lua</source>
+        <source file="modules/services/pedal_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/pedal_service.lua</source>
+        <source file="modules/services/portamento_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/portamento_service.lua</source>
+        <source file="modules/services/reaticulate_parser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/reaticulate_parser.lua</source>
+        <source file="modules/services/rehearsal_mark_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/rehearsal_mark_service.lua</source>
+        <source file="modules/services/repeat_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/repeat_service.lua</source>
+        <source file="modules/services/scale_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/scale_service.lua</source>
+        <source file="modules/services/selection_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/selection_service.lua</source>
+        <source file="modules/services/shortcut_manager.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/shortcut_manager.lua</source>
+        <source file="modules/services/slur_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/slur_service.lua</source>
+        <source file="modules/services/tempo_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/tempo_service.lua</source>
+        <source file="modules/services/text_item_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/text_item_service.lua</source>
+        <source file="modules/ui/articulations_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/articulations_drawer.lua</source>
+        <source file="modules/ui/bank_picker_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/bank_picker_modal.lua</source>
+        <source file="modules/ui/bottom_bar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/bottom_bar.lua</source>
+        <source file="modules/ui/clef_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/clef_drawer.lua</source>
+        <source file="modules/ui/dynamics_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/dynamics_drawer.lua</source>
+        <source file="modules/ui/help_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/help_modal.lua</source>
+        <source file="modules/ui/key_signature_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/key_signature_drawer.lua</source>
+        <source file="modules/ui/musicxml_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/musicxml_modal.lua</source>
+        <source file="modules/ui/pattern_browser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/pattern_browser.lua</source>
+        <source file="modules/ui/quantize_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/quantize_modal.lua</source>
+        <source file="modules/ui/scale_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/scale_modal.lua</source>
+        <source file="modules/ui/settings_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/settings_modal.lua</source>
+        <source file="modules/ui/sidebar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/sidebar.lua</source>
+        <source file="modules/ui/tempo_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/tempo_drawer.lua</source>
+        <source file="modules/ui/tools_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/tools_drawer.lua</source>
+        <source file="modules/ui/top_bar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/top_bar.lua</source>
+        <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
+        <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
       <version name="1.6.5" author="A-intheCode" time="2026-10-07T23:14:34Z">
         <changelog><![CDATA[

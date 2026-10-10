@@ -379,25 +379,47 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
     local avail_w_slur = reaper.ImGui_GetContentRegionAvail(ctx)
     local half_w_slur = math.floor((avail_w_slur - 4) / 2)
     
+    local eff_tracks_data = active_tracks_data or state.active_tracks_cache
     if reaper.ImGui_Button(ctx, "⌒ Slur [S]##Side", half_w_slur, 26) then
-        midi_service.toggle_slur(state, active_tracks_data)
+        midi_service.toggle_slur(state, eff_tracks_data)
     end
     if reaper.ImGui_IsItemHovered(ctx) then
         reaper.ImGui_SetTooltip(ctx, "Slur (Legato phrase mark) [Hotkey: S]:\nConnects 2 selected notes (or 1 note to next) with a Legato slur.\nPlays true Legato articulation and triggers sampler transitions.")
     end
     reaper.ImGui_SameLine(ctx)
     if reaper.ImGui_Button(ctx, "‿ Tie [T]##Side", half_w_slur, 26) then
-        midi_service.toggle_tie(state, active_tracks_data)
+        midi_service.toggle_tie(state, eff_tracks_data)
     end
     if reaper.ImGui_IsItemHovered(ctx) then
         reaper.ImGui_SetTooltip(ctx, "Tie (Held note) [Hotkey: T]:\nConnects 2 notes of the same pitch to combine their duration without re-striking.")
     end
     
-    if reaper.ImGui_Button(ctx, "✕ Clear Slur / Tie##Side", -1, 22) then
-        midi_service.remove_slurs_and_ties(state)
+    if reaper.ImGui_Button(ctx, "〰 Portamento [P]##Side", half_w_slur, 26) then
+        midi_service.toggle_portamento(state, active_tracks_data)
     end
     if reaper.ImGui_IsItemHovered(ctx) then
-        reaper.ImGui_SetTooltip(ctx, "Clear Slur / Tie:\nRemoves slurs, unties notes, clears legato keyswitches and restores durations.")
+        reaper.ImGui_SetTooltip(ctx, "Portamento (Note Blending) [Hotkey: P]:\nConnects 2 selected notes with a straight portamento line.\nBlends notes via CC64 Sustain Hold (50% Note 1 to 50% Note 2) or alternative CC (CC34, CC5, CC65).\nRight-click portamento line to switch CC mode or toggle 'port.' label.")
+    end
+    reaper.ImGui_SameLine(ctx)
+    if reaper.ImGui_Button(ctx, "〰 Glissando [G]##Side", half_w_slur, 26) then
+        midi_service.toggle_glissando(state, active_tracks_data)
+    end
+    if reaper.ImGui_IsItemHovered(ctx) then
+        reaper.ImGui_SetTooltip(ctx, "Glissando (Chromatic Pitch Steps) [Hotkey: G]:\nConnects 2 selected notes with a wavy glissando line.\nGenerates chromatic pitch steps during playback (filtered out from score canvas).\nSupports Cross-Staff connections (e.g. Harp/Piano Bass to Treble/Alto Clef).")
+    end
+    
+    if reaper.ImGui_Button(ctx, "✕ Clear Slur / Tie / Port. / Gliss.##Side", -1, 22) then
+        midi_service.remove_slurs_and_ties(state)
+        local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+        local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+        local targets = {}
+        if state.selected_notes then for _, sn in pairs(state.selected_notes) do table.insert(targets, sn) end end
+        if #targets == 0 and state.selected_note then table.insert(targets, state.selected_note) end
+        PortamentoService.remove_portamentos_for_notes(state, targets, active_tracks_data)
+        GlissandoService.remove_glissandos_for_notes(state, targets, active_tracks_data)
+    end
+    if reaper.ImGui_IsItemHovered(ctx) then
+        reaper.ImGui_SetTooltip(ctx, "Clear Slur / Tie / Portamento / Glissando:\nRemoves slurs, ties, portamentos, glissandi and restores durations.")
     end
     
     -- F. TRANSPOSE & OCTAVE

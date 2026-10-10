@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.6.5
+-- @version 1.7.0
 -- @changelog
+--   + v1.7.0: Major Release: Elaine Gould Slurs, Glissandi, Portamento & Bidirectional MusicXML 4.0:
+--             - Elaine Gould Phrasing & Slurs: True acoustic legato playback (+2 PPQ micro-overlap), voice-isolated multi-voice pairing, Reaticulate keyswitch integration, and automatic chase.
+--             - Glissando & Portamento Suite: Full chromatic ladder playback, wavy line engraving, and portamento slide CC automation with dual-reality MIDI take persistence.
+--             - Bidirectional MusicXML 3.1 & 4.0: Lossless import and export for slurs, ties, glissandi, slides, dynamics, and fermatas, with native Save File dialog.
+--             - Canvas Hitbox Arbitration: Strict notehead click priority over phrasing curves, eliminating curve click-theft.
+--             - Tempo Lane Workflow: Instant double-click custom BPM creation and synchronized envelope markers.
 --   + v1.6.5: PreviewPlayback Hotfix: Track isolation, arm settling buffer & audition duration tuning:
 --             - Track Isolation: Temporarily disarms other armed tracks during score note click preview to strictly prevent foreign instruments from sounding via Virtual MIDI Keyboard.
 --             - Initial Arm Settling Buffer: Added a 250ms buffer upon mouse release after initial track arming to let VST audio buffers settle, guaranteeing clean initial note attacks with 0ms latency on consecutive notes.
@@ -203,6 +209,8 @@ local KeySignatureService  = require("services.key_signature_service")
 local KeySignatureDrawer   = require("ui.key_signature_drawer")
 local MusicXmlModal        = require("ui.musicxml_modal")
 local SlurService          = require("services.slur_service")
+local PortamentoService    = require("services.portamento_service")
+local GlissandoService     = require("services.glissando_service")
 
 -- 4. Initialization of State & Fonts
 local state = State.new()
@@ -219,6 +227,8 @@ RehearsalMarkService.load_marks(state)
 ScaleService.load_chord_items(state)
 KeySignatureService.load(state)
 SlurService.load_slurs(state)
+PortamentoService.load_portamentos(state)
+GlissandoService.load_glissandos(state)
 MidiService.cleanup_orphaned_score_elements(state)
 PatternService.init()
 local fonts = FontManager.init(ctx, state)
@@ -238,6 +248,8 @@ reaper.atexit(function()
     ScaleService.save_chord_items(state)
     KeySignatureService.save(state)
     SlurService.save_slurs(state)
+    PortamentoService.save_portamentos(state)
+    GlissandoService.save_glissandos(state)
     state:save_settings()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end)
@@ -267,6 +279,8 @@ local function loop()
         RehearsalMarkService.load_marks(state)
         ScaleService.load_chord_items(state)
         SlurService.load_slurs(state)
+        PortamentoService.load_portamentos(state)
+        GlissandoService.load_glissandos(state)
         MidiService.cleanup_orphaned_score_elements(state)
         state:clear_selection()
     end

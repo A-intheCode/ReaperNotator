@@ -42,6 +42,8 @@ local TextItemService = require("services.text_item_service")
 local PatternService = require("services.pattern_service")
 local SelectionService = require("services.selection_service")
 local SlurService = require("services.slur_service")
+local PortamentoService = require("services.portamento_service")
+local GlissandoService  = require("services.glissando_service")
 local StateModule = require("state")
 
 local function resolve_effective_key(state, track, item, qn)
@@ -346,7 +348,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     local is_ctrl = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftCtrl()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightCtrl())
     local is_shift = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftShift()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightShift())
-    local is_shift_or_ctrl = is_ctrl or is_shift
     
     -- Synchronize with REAPER arrange selection (immediate switching on clicks in arrange view)
     sync_arrange_selection(state, project_tracks)
@@ -354,11 +355,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local active_tracks_data = {}
     local max_proj_qn = 16 * 4.0
     local cur_time = reaper.GetCursorPosition()
-    local play_time = reaper.GetPlayPosition()
     local is_playing = (reaper.GetPlayState() == 1)
-    local time_pos = is_playing and play_time or cur_time
+    local time_pos = is_playing and reaper.GetPlayPosition() or cur_time
     
-    local timesig_num, timesig_denom, bpm = reaper.TimeMap_GetTimeSigAtTime(0, time_pos)
+    local timesig_num, timesig_denom = reaper.TimeMap_GetTimeSigAtTime(0, time_pos)
     timesig_num = (timesig_num and timesig_num > 0) and timesig_num or 4
     timesig_denom = (timesig_denom and timesig_denom > 0) and timesig_denom or 4
     local qn_per_measure = timesig_num * (4 / timesig_denom)
@@ -396,39 +396,41 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     
     local total_measures = math.max(16, math.ceil(max_proj_qn / qn_per_measure) + 2)
-    local measure_w, pad_left, pad_right, usable_w = Engraver.get_measure_layout(s, qn_per_measure)
+    local measure_w = Engraver.get_measure_layout(s, qn_per_measure)
     
     -- Dynamically calculate optimal track header width and key signature width based on track names (cached)
-    local hdr_cache_key = string.format("%d_%.3f_%d", #active_tracks_data, s, proj_change_cnt)
-    local max_hdr_text_w = 85 * s
-    local max_key_sig_w = 0
-    if state._cached_hdr_metrics and state._cached_hdr_metrics.key == hdr_cache_key then
-        max_hdr_text_w = state._cached_hdr_metrics.max_hdr_text_w
-        max_key_sig_w = state._cached_hdr_metrics.max_key_sig_w
-    else
-        for _, tdata in ipairs(active_tracks_data) do
-            local trk_lbl = string.format("[%d] %s", tdata.idx, tdata.name or "Track")
-            local tw = FontManager.calc_text_size(ctx, trk_lbl)
-            if tw > max_hdr_text_w then max_hdr_text_w = tw end
+    local hdr_w, max_key_sig_w
+    do
+        local hdr_cache_key = string.format("%d_%.3f_%d", #active_tracks_data, s, proj_change_cnt)
+        local max_hdr_text_w = 85 * s
+        max_key_sig_w = 0
+        if state._cached_hdr_metrics and state._cached_hdr_metrics.key == hdr_cache_key then
+            max_hdr_text_w = state._cached_hdr_metrics.max_hdr_text_w
+            max_key_sig_w = state._cached_hdr_metrics.max_key_sig_w
+        else
+            for _, tdata in ipairs(active_tracks_data) do
+                local trk_lbl = string.format("[%d] %s", tdata.idx, tdata.name or "Track")
+                local tw = FontManager.calc_text_size(ctx, trk_lbl)
+                if tw > max_hdr_text_w then max_hdr_text_w = tw end
+                
+                local trk_first_item = (tdata.items and tdata.items[1])
+                local item_at_start = (trk_first_item and (trk_first_item.start_qn or 0) <= 0.1) and trk_first_item or nil
+                local k_idx = resolve_effective_key(state, tdata.track, item_at_start, 0)
+                local kw = Engraver.get_key_signature_width(k_idx, s)
+                if kw > max_key_sig_w then max_key_sig_w = kw end
+            end
+            local proj_k = (state and state.key_signature) or 0
+            local proj_kw = Engraver.get_key_signature_width(proj_k, s)
+            if proj_kw > max_key_sig_w then max_key_sig_w = proj_kw end
             
-            local trk_first_item = (tdata.items and tdata.items[1])
-            local item_at_start = (trk_first_item and (trk_first_item.start_qn or 0) <= 0.1) and trk_first_item or nil
-            local k_idx = resolve_effective_key(state, tdata.track, item_at_start, 0)
-            local kw = Engraver.get_key_signature_width(k_idx, s)
-            if kw > max_key_sig_w then max_key_sig_w = kw end
+            state._cached_hdr_metrics = {
+                key = hdr_cache_key,
+                max_hdr_text_w = max_hdr_text_w,
+                max_key_sig_w = max_key_sig_w
+            }
         end
-        local proj_k = (state and state.key_signature) or 0
-        local proj_kw = Engraver.get_key_signature_width(proj_k, s)
-        if proj_kw > max_key_sig_w then max_key_sig_w = proj_kw end
-        
-        state._cached_hdr_metrics = {
-            key = hdr_cache_key,
-            max_hdr_text_w = max_hdr_text_w,
-            max_key_sig_w = max_key_sig_w
-        }
+        hdr_w = math.max(130 * s, math.min(190 * s, max_hdr_text_w + 24 * s))
     end
-    -- At least 130 * s, at most 190 * s, so that "Double Bass" and long names fit completely
-    local hdr_w = math.max(130 * s, math.min(190 * s, max_hdr_text_w + 24 * s))
     local hdr_x0 = canvas_p0_x + 6 * s
     local hdr_x1 = hdr_x0 + hdr_w
     local system_start_x = hdr_x1 + 14 * s
@@ -436,16 +438,18 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local margin_left = system_start_x + 68 * s + max_key_sig_w
     
     -- Dynamic measure width calculation (cached across frames)
-    local mmap_sig = string.format("%.3f_%d_%.3f_%.2f_%d_%d_%d_%s",
-        s, total_measures, qn_per_measure, margin_left, proj_change_cnt, #active_tracks_data,
-        (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid))
     local measure_map = nil
-    if state.cached_measure_map and state.cached_measure_map_sig == mmap_sig then
-        measure_map = state.cached_measure_map
-    else
-        measure_map = Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_measure, margin_left, s, state)
-        state.cached_measure_map = measure_map
-        state.cached_measure_map_sig = mmap_sig
+    do
+        local mmap_sig = string.format("%.3f_%d_%.3f_%.2f_%d_%d_%d_%s",
+            s, total_measures, qn_per_measure, margin_left, proj_change_cnt, #active_tracks_data,
+            (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid))
+        if state.cached_measure_map and state.cached_measure_map_sig == mmap_sig then
+            measure_map = state.cached_measure_map
+        else
+            measure_map = Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_measure, margin_left, s, state)
+            state.cached_measure_map = measure_map
+            state.cached_measure_map_sig = mmap_sig
+        end
     end
     state.measure_map = measure_map
     local staff_end_x = (measure_map.starts[total_measures] or (margin_left + total_measures * measure_w)) + 40 * s
@@ -494,6 +498,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     elseif state.auto_scroll then
         -- 2. Automatic scrolling during playback
         if is_playing then
+            local play_time = reaper.GetPlayPosition()
             local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, play_time), margin_left, s, qn_per_measure, measure_map)
             reaper.ImGui_SetScrollX(ctx, math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
         -- 3. Automatic scrolling in stopped state (e.g. edit cursor follows click)
@@ -518,12 +523,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- ======================================================================
     local win_x0, win_y0 = reaper.ImGui_GetWindowPos(ctx)
     local win_w, win_h = reaper.ImGui_GetWindowSize(ctx)
-    local buf_x = 180.0 * s
-    local buf_y = 60.0 * s
-    local cull_min_x = win_x0 - buf_x
-    local cull_max_x = win_x0 + win_w + buf_x
-    local cull_min_y = win_y0 - buf_y
-    local cull_max_y = win_y0 + win_h + buf_y
+    local cull_min_x = win_x0 - 180.0 * s
+    local cull_max_x = win_x0 + win_w + 180.0 * s
+    local cull_min_y = win_y0 - 60.0 * s
+    local cull_max_y = win_y0 + win_h + 60.0 * s
     
     local vis_min_qn = math.max(0, Engraver.canvas_x_to_qn(cull_min_x, margin_left, s, qn_per_measure, 0.001, measure_map) - 2.0)
     local vis_max_qn = Engraver.canvas_x_to_qn(cull_max_x, margin_left, s, qn_per_measure, 0.001, measure_map) + 2.0
@@ -553,12 +556,14 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     
     -- Canvas background (clamped to visible viewport)
-    local bg_x0 = math.max(canvas_p0_x, cull_min_x)
-    local bg_y0 = math.max(canvas_p0_y, cull_min_y)
-    local bg_x1 = math.min(canvas_p0_x + canvas_total_w, cull_max_x)
-    local bg_y1 = math.min(canvas_p0_y + canvas_total_h, cull_max_y)
-    if bg_x0 < bg_x1 and bg_y0 < bg_y1 then
-        reaper.ImGui_DrawList_AddRectFilled(draw_list, bg_x0, bg_y0, bg_x1, bg_y1, Constants.COLORS.paper_bg)
+    do
+        local bg_x0 = math.max(canvas_p0_x, cull_min_x)
+        local bg_y0 = math.max(canvas_p0_y, cull_min_y)
+        local bg_x1 = math.min(canvas_p0_x + canvas_total_w, cull_max_x)
+        local bg_y1 = math.min(canvas_p0_y + canvas_total_h, cull_max_y)
+        if bg_x0 < bg_x1 and bg_y0 < bg_y1 then
+            reaper.ImGui_DrawList_AddRectFilled(draw_list, bg_x0, bg_y0, bg_x1, bg_y1, Constants.COLORS.paper_bg)
+        end
     end
     
     local mrx0, mry0, mrx1, mry1 = 0, 0, 0, 0
@@ -570,6 +575,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     
     local note_hovered_this_frame = nil
+    local note_right_clicked_this_frame = false
     local dyn_hovered_this_frame = nil
     local art_hovered_this_frame = nil
     local item_edge_hovered_this_frame = nil
@@ -585,9 +591,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local hov = {}
     state.hovered_slur = nil
     state.hovered_tie = nil
+    state.hovered_portamento = nil
     
-    local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
-    local rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
+    chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
+    rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
     local cur_band_top = canvas_p0_y + 40 * s + chord_lane_h + rehearsal_lane_h
     local score_top_y = cur_band_top
     local score_bottom_y = cur_band_top
@@ -1456,8 +1463,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 in_treble = vn.in_treble, in_staff = vn.in_staff, dstep = vn.dstep, stem_down = false,
                 stem_x = vn.vis_nx, stem_end_y = vn.vis_ny, flag_count = Engraver.get_flag_count(vn.dur_qn),
                 key = vn.key, note = vn.orig, orig = vn.orig, track = tdata.track,
+                track_guid = tdata.guid,
                 item = vn.orig and vn.orig.item, take = vn.orig and vn.orig.take,
                 idx = vn.orig and vn.orig.idx, is_segment = vn.is_segment,
+                chan = (vn.orig and vn.orig.chan) or (vn.chan or 0),
                 is_ghost_voice = vn.is_ghost_voice
             }
             table.insert(all_note_render_data, rdata)
@@ -1544,13 +1553,19 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.selected_dynamic = nil
                     state.selected_tempo_marker = nil
                     state.selected_octave_line = nil
+                    state.selected_portamento = nil
+                    state.context_portamento = nil
+                    state.selected_slur = nil
+                    state.selected_tie = nil
+                    state.context_slur = nil
+                    state.context_tie = nil
                     state.focused_track = n.track
                     if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
                         reaper.SetOnlyTrackSelected(n.track)
                     end
                     AudioPreview.prepare_for_note_click(state, n.pitch, n.vel, n.chan, n.track, n.start_qn, n)
                     state.last_drag_audition_pitch = n.pitch
-                    if is_shift_or_ctrl then
+                    if is_shift or is_ctrl then
                         state:toggle_note_selection(n)
                     else
                         if not state:is_note_selected(n) then
@@ -1584,9 +1599,14 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 
                 -- Note right-click: open context menu (quantize, legato, delete)
                 if is_the_closest and reaper.ImGui_IsMouseClicked(ctx, 1) and state.input_mode_type ~= "draw" then
+                    note_right_clicked_this_frame = true
                     state.selected_dynamic = nil
                     state.selected_tempo_marker = nil
                     state.selected_octave_line = nil
+                    state.selected_slur = nil
+                    state.selected_tie = nil
+                    state.context_slur = nil
+                    state.context_tie = nil
                     state.focused_track = n.track
                     if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
                         reaper.SetOnlyTrackSelected(n.track)
@@ -1688,42 +1708,49 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                     if is_extreme then
-                        local is_above = (eff_stem_down == true)
-                        local art_y = is_above and (ny - 12*s) or (ny + 14*s)
-                        
-                        if n.articulation == "marcato" or n.articulation == "marc" then
-                            art_y = is_above and (ny - 19*s) or (ny + 20*s)
-                        elseif n.articulation == "staccatissimo" or n.articulation == "staccatiss" or n.articulation == "wedge" then
-                            art_y = is_above and (ny - 14*s) or (ny + 15*s)
-                        elseif n.articulation == "harmonic" or n.articulation == "harm" or n.articulation == "flageolet" then
-                            is_above = true
-                            art_y = ny - 15*s
-                        elseif n.articulation == "tenuto" or n.articulation == "ten" then
-                            art_y = is_above and (ny - 11*s) or (ny + 13*s)
-                        end
-                        
-                        -- Gould ("Behind Bars" p. 115) / Gardner Read: Staccato dot must always sit in a space, never on a staff line
-                        if n.articulation == "staccato" or n.articulation == "stacc" then
-                            local cur_staff_bot = (tdata.is_grand and not vn.in_treble) and tdata.bass_bottom_y or staff_bottom_y
-                            local l_spacing = tdata.line_spacing or (8.0 * s)
-                            local cur_staff_top = cur_staff_bot - 4 * l_spacing
-                            if art_y >= cur_staff_top - 1.0 * s and art_y <= cur_staff_bot + 1.0 * s then
-                                local rel_y = (cur_staff_bot - art_y) / l_spacing
-                                local line_idx = math.floor(rel_y + 0.5)
-                                if line_idx >= 0 and line_idx <= 4 then
-                                    local dist_to_line = math.abs(art_y - (cur_staff_bot - line_idx * l_spacing))
-                                    if dist_to_line < 2.0 * s then
-                                        art_y = is_above and (art_y - 4.0 * s) or (art_y + 4.0 * s)
+                        local note_is_slurred = SlurService and SlurService.is_note_slurred(n, state, tdata.guid)
+                        local is_stacc = (n.articulation == "staccato" or n.articulation == "stacc" or n.articulation == "staccatissimo" or n.articulation == "staccatiss" or n.articulation == "wedge" or n.articulation == "spiccato")
+                        if not (note_is_slurred and is_stacc) then
+                            local is_above = (eff_stem_down == true)
+                            local art_y = is_above and (ny - 12*s) or (ny + 14*s)
+                            
+                            if n.articulation == "marcato" or n.articulation == "marc" then
+                                art_y = is_above and (ny - 19*s) or (ny + 20*s)
+                            elseif n.articulation == "staccatissimo" or n.articulation == "staccatiss" or n.articulation == "wedge" then
+                                art_y = is_above and (ny - 14*s) or (ny + 15*s)
+                            elseif n.articulation == "harmonic" or n.articulation == "harm" or n.articulation == "flageolet" then
+                                is_above = true
+                                art_y = ny - 15*s
+                            elseif n.articulation == "tenuto" or n.articulation == "ten" then
+                                art_y = is_above and (ny - 11*s) or (ny + 13*s)
+                            end
+                            
+                            -- Gould ("Behind Bars" p. 115) / Gardner Read: Staccato dot must always sit in a space, never on a staff line
+                            if n.articulation == "staccato" or n.articulation == "stacc" then
+                                local cur_staff_bot = staff_bottom_y
+                                if tdata.is_grand then
+                                    cur_staff_bot = vn.in_treble and (tdata.treble_bottom_y or (tdata.staff_top_y + 32 * s)) or (tdata.bass_bottom_y or staff_bottom_y)
+                                end
+                                local l_spacing = tdata.line_spacing or (8.0 * s)
+                                local cur_staff_top = cur_staff_bot - 4 * l_spacing
+                                if art_y >= cur_staff_top - 1.0 * s and art_y <= cur_staff_bot + 1.0 * s then
+                                    local rel_y = (cur_staff_bot - art_y) / l_spacing
+                                    local line_idx = math.floor(rel_y + 0.5)
+                                    if line_idx >= 0 and line_idx <= 4 then
+                                        local dist_to_line = math.abs(art_y - (cur_staff_bot - line_idx * l_spacing))
+                                        if dist_to_line < 2.0 * s then
+                                            art_y = is_above and (art_y - 4.0 * s) or (art_y + 4.0 * s)
+                                        end
                                     end
                                 end
                             end
+                            
+                            local art_col = head_col
+                            if state.invert_mode and (art_col == 0x111111FF or art_col == 0x000000FF) then
+                                art_col = 0xEEEEEEFF
+                            end
+                            Engraver.draw_articulation(draw_list, n.articulation, nx, art_y, s, art_col, font_music, is_above)
                         end
-                        
-                        local art_col = head_col
-                        if state.invert_mode and (art_col == 0x111111FF or art_col == 0x000000FF) then
-                            art_col = 0xEEEEEEFF
-                        end
-                        Engraver.draw_articulation(draw_list, n.articulation, nx, art_y, s, art_col, font_music, is_above)
                     end
                 end
             end
@@ -2852,9 +2879,25 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                     
-                    -- Context menu for measure (right-click in measure header area)
+                    -- Context menu for measure (right-click in measure header area strictly above the staff)
                     local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 47.5)) * s
-                    local is_bar_hdr_hov = is_hovered and (mouse_x >= mx and mouse_x <= mx_next and mouse_y >= (tdata.staff_top_y - bar_num_off_y - 8 * s) and mouse_y <= (tdata.staff_top_y + 4 * s))
+                    local bar_num_sz = (state.bar_num_size or 20.0) * s
+                    local by = tdata.staff_top_y - bar_num_off_y
+                    local is_bar_hdr_hov = is_hovered
+                        and not note_right_clicked_this_frame
+                        and not closest_hovered_vn
+                        and not note_hovered_this_frame
+                        and not dyn_hovered_this_frame
+                        and not hairpin_hovered_this_frame
+                        and not art_hovered_this_frame
+                        and not text_item_hovered_this_frame
+                        and not state.hovered_fermata
+                        and not state.hovered_rehearsal_mark
+                        and not state.hovered_portamento
+                        and not state.hovered_glissando
+                        and (mouse_x >= mx and mouse_x <= mx_next)
+                        and (mouse_y >= (by - 8 * s) and mouse_y <= (by + bar_num_sz + 8 * s))
+                        and (mouse_y < (tdata.staff_top_y - 25 * s))
                     if is_bar_hdr_hov and reaper.ImGui_IsMouseClicked(ctx, 1) then
                         state.context_measure = m
                         state.context_measure_track = tdata.track
@@ -2920,18 +2963,32 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- ======================================================================
     if SlurService then
         if SlurService.draw_slurs then
-            SlurService.draw_slurs(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y)
+            SlurService.draw_slurs(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered_this_frame)
         end
         if SlurService.draw_user_ties then
-            SlurService.draw_user_ties(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y)
+            SlurService.draw_user_ties(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered_this_frame)
         end
+    end
+
+    -- ======================================================================
+    -- PORTAMENTO (Notehead-to-Notehead Blending via PortamentoService)
+    -- ======================================================================
+    if PortamentoService and PortamentoService.draw_portamentos then
+        state.hovered_portamento = PortamentoService.draw_portamentos(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, fonts, note_hovered_this_frame)
+    end
+
+    -- ======================================================================
+    -- GLISSANDO (Chromatic Pitch Staircase & Wavy Line via GlissandoService)
+    -- ======================================================================
+    if GlissandoService and GlissandoService.draw_glissandos then
+        state.hovered_glissando = GlissandoService.draw_glissandos(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, fonts, note_hovered_this_frame)
     end
     
     -- ======================================================================
     -- TEMPO, OCTAVE & CHORD LANE (Delegated to CanvasDecorations)
     -- ======================================================================
     if CanvasDecorations then
-        CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, first_staff_top_y, s, margin_left, system_start_x, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, hov)
+        CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, first_staff_top_y, s, margin_left, system_start_x, staff_end_x, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, hov)
         CanvasDecorations.draw_octave_lines(ctx, draw_list, state, fonts, active_tracks_data, s, margin_left, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, is_ctrl, hov)
         CanvasDecorations.draw_chord_scale_lane(ctx, draw_list, state, fonts, s, canvas_p0_x, canvas_p0_y, staff_end_x, margin_left, system_start_x, hdr_x0, hdr_x1, qn_per_measure, measure_map, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, is_shift, hov)
         CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, canvas_p0_x, canvas_p0_y, staff_end_x, margin_left, system_start_x, hdr_x0, hdr_x1, qn_per_measure, measure_map, cull_min_x, cull_max_x, is_hovered, mouse_x, mouse_y, hov)
@@ -3385,6 +3442,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     reaper.ImGui_DrawList_AddLine(draw_list, cur_cx, top_cap_y + tri_h - 1*s, cur_cx, bar_btm_y + 10 * s, cursor_col, 2.0 * s)
     
     if is_playing then
+        local play_time = reaper.GetPlayPosition()
         local play_qn = reaper.TimeMap2_timeToQN(0, play_time)
         local play_cx = Engraver.cursor_qn_to_canvas_x(play_qn, margin_left, s, qn_per_measure, measure_map)
         local play_col = 0x2ECC71FF
@@ -3505,10 +3563,27 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
 
     -- Right-click on score canvas / empty background reliably opens context menu
     if is_hovered and reaper.ImGui_IsMouseClicked(ctx, 1) then
-        if not note_hovered_this_frame and not dyn_hovered_this_frame and not hairpin_hovered_this_frame
+        local target_port = state.hovered_portamento or state.selected_portamento
+        local target_gliss = state.hovered_glissando or state.selected_glissando
+        if target_port and not note_hovered_this_frame and not dyn_hovered_this_frame and not hairpin_hovered_this_frame
+           and not dynamic_text_hovered_this_frame and not pedal_hovered_this_frame and not text_item_hovered_this_frame
+           and not octave_hovered_this_frame and not art_hovered_this_frame and not tempo_hovered_this_frame
+           and not chord_hovered_this_frame and not state.hovered_fermata and not state.hovered_rehearsal_mark then
+            state.context_portamento = target_port
+            state.selected_portamento = target_port
+            reaper.ImGui_OpenPopup(ctx, "portamento_context_popup")
+        elseif target_gliss and not note_hovered_this_frame and not dyn_hovered_this_frame and not hairpin_hovered_this_frame
+           and not dynamic_text_hovered_this_frame and not pedal_hovered_this_frame and not text_item_hovered_this_frame
+           and not octave_hovered_this_frame and not art_hovered_this_frame and not tempo_hovered_this_frame
+           and not chord_hovered_this_frame and not state.hovered_fermata and not state.hovered_rehearsal_mark then
+            state.context_glissando = target_gliss
+            state.selected_glissando = target_gliss
+            reaper.ImGui_OpenPopup(ctx, "glissando_context_popup")
+        elseif not note_hovered_this_frame and not dyn_hovered_this_frame and not hairpin_hovered_this_frame
            and not dynamic_text_hovered_this_frame and not pedal_hovered_this_frame and not text_item_hovered_this_frame
            and not octave_hovered_this_frame and not art_hovered_this_frame and not tempo_hovered_this_frame
            and not chord_hovered_this_frame and not state.hovered_fermata and not state.hovered_rehearsal_mark
+           and not state.hovered_portamento and not state.hovered_glissando
            and not (state.show_chord_lane ~= false and mouse_y >= canvas_p0_y and mouse_y <= (canvas_p0_y + 42 * s))
            and not (state.show_rehearsal_lane ~= false and mouse_y >= (canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + (state.rehearsal_mark_offset_y or -44.0) * s) and mouse_y <= (canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + (state.rehearsal_mark_offset_y or -44.0) * s + 28 * s)) then
             
@@ -3603,6 +3678,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         measure_map = measure_map,
         qn_per_measure = qn_per_measure,
         canvas_p0_y = canvas_p0_y,
+        first_staff_top_y = first_staff_top_y,
         all_note_render_data = all_note_render_data,
         all_articulation_render_data = all_articulation_render_data,
         active_tracks_data = active_tracks_data

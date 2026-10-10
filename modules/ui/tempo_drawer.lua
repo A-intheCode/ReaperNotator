@@ -120,6 +120,29 @@ function TempoDrawer.render(ctx, state, width, height, child_border, sidebar_fla
                     reaper.ImGui_Spacing(ctx)
                 end
                 
+                -- Custom BPM direct insertion
+                reaper.ImGui_TextColored(ctx, 0xF39C12FF, "Custom BPM (♩):")
+                state.drawer_custom_bpm = state.drawer_custom_bpm or 120
+                reaper.ImGui_PushItemWidth(ctx, 65)
+                local b_changed, new_b = reaper.ImGui_InputInt(ctx, "##drawer_custom_bpm", state.drawer_custom_bpm, 1, 10)
+                if b_changed then
+                    state.drawer_custom_bpm = math.max(20, math.min(999, new_b))
+                end
+                reaper.ImGui_PopItemWidth(ctx)
+                reaper.ImGui_SameLine(ctx)
+                if reaper.ImGui_Button(ctx, "Insert BPM", width - 95, 22) then
+                    TempoService.add_tempo_marker(state, {
+                        type            = "absolute",
+                        bpm             = state.drawer_custom_bpm or 120,
+                        label           = "",
+                        custom_bpm_only = true,
+                        force_new       = true
+                    })
+                end
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_Separator(ctx)
+                reaper.ImGui_Spacing(ctx)
+                
                 -- Search filter
                 reaper.ImGui_PushItemWidth(ctx, width - 18)
                 local f_changed, new_f = reaper.ImGui_InputTextWithHint(ctx, "##TempoFilter", "🔍 Search...", search_filter)

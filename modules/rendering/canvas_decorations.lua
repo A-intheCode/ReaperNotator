@@ -17,11 +17,25 @@ local CanvasDecorations = {}
 -- ==============================================================================
 -- 1. TEMPO MARKINGS
 -- ==============================================================================
-function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, first_staff_top_y, s, margin_left, system_start_x, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, hov)
+function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, first_staff_top_y, s, margin_left, system_start_x, staff_end_x, qn_per_measure, measure_map, vis_min_qn, vis_max_qn, is_hovered, mouse_x, mouse_y, hov)
+    -- Backward compatibility if staff_end_x was omitted (old 16-parameter call)
+    if type(measure_map) ~= "table" and type(qn_per_measure) == "table" then
+        hov = mouse_y
+        mouse_y = mouse_x
+        mouse_x = is_hovered
+        is_hovered = vis_max_qn
+        vis_max_qn = vis_min_qn
+        vis_min_qn = measure_map
+        measure_map = qn_per_measure
+        qn_per_measure = staff_end_x
+        staff_end_x = nil
+    end
+
     local tempo_hovered_this_frame = nil
     local tempo_handle_hovered_this_frame = nil
     
-    if (state.show_tempo_layer ~= false) and state.tempo_markers and #state.tempo_markers > 0 and first_staff_top_y then
+    if (state.show_tempo_layer ~= false) and first_staff_top_y then
+        state.tempo_markers = state.tempo_markers or {}
         local tempo_offset_y = state.tempo_offset_y or 62.0
         local tempo_y = first_staff_top_y - tempo_offset_y * s
         local tempo_text_col = state.invert_mode and 0xFFFFFFFF or 0x111111FF
@@ -82,11 +96,16 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                         tempo_hovered_this_frame = tm
                         tempo_handle_hovered_this_frame = "start"
                         if reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
+                            state.selected_tempo_marker = tm
                             state.editing_tempo_marker = tm
                             state.editing_tempo_val = tostring(math.floor(tm.bpm or 120))
+                            state._edit_tempo_label = tm.label or ""
+                            state._edit_tempo_bpm = math.floor(tm.bpm or 120)
+                            state._edit_tempo_is_new = nil
+                            state._edit_tempo_marker_id = nil
+                            state._edit_tempo_focus_done = false
                             state.is_dragging_tempo = false
                             state.drag_tempo_marker = nil
-                            state._edit_tempo_marker_id = nil
                             reaper.ImGui_OpenPopup(ctx, "edit_tempo_popup")
                         end
                     end
@@ -153,11 +172,18 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                         end
                         
                         if in_line and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
+                            state.selected_tempo_marker = tm
                             state.editing_tempo_marker = tm
                             state.editing_tempo_val = tostring(math.floor(tm.bpm or 120))
+                            state._edit_tempo_label = tm.label or "accel."
+                            state._edit_tempo_modifier = tm.modifier or ""
+                            state._edit_tempo_bpm = math.floor(tm.bpm or 120)
+                            state._edit_tempo_target_bpm = math.floor(tm.target_bpm or 140)
+                            state._edit_tempo_is_new = nil
+                            state._edit_tempo_marker_id = nil
+                            state._edit_tempo_focus_done = false
                             state.is_dragging_tempo = false
                             state.drag_tempo_marker = nil
-                            state._edit_tempo_marker_id = nil
                             reaper.ImGui_OpenPopup(ctx, "edit_tempo_popup")
                         end
                     end
@@ -228,6 +254,78 @@ function CanvasDecorations.draw_tempo_markers(ctx, draw_list, state, fonts, firs
                         reaper.ImGui_OpenPopup(ctx, "tempo_context_popup")
                     end
                 end
+            end
+        end
+
+        -- ==================================================================
+        -- EMPTY TEMPO LANE HIT-TESTING & DOUBLE-CLICK TO INSERT CUSTOM BPM
+        -- ==================================================================
+        local lane_x0 = system_start_x or margin_left or 0
+        local lane_x1 = staff_end_x or (lane_x0 + 2000 * s)
+        local lane_y0 = tempo_y - 14.0 * s
+        local lane_y1 = tempo_y + 14.0 * s
+        
+        local in_empty_tempo_lane = is_hovered
+            and not tempo_hovered_this_frame
+            and not state.is_dragging
+            and not state.is_dragging_dynamic
+            and not state.is_dragging_tempo
+            and not state.is_resizing_item
+            and (mouse_x >= lane_x0 and mouse_x <= lane_x1 and mouse_y >= lane_y0 and mouse_y <= lane_y1)
+            
+        if in_empty_tempo_lane then
+            local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
+            local click_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, 1.0, measure_map)
+            if state.grid_qn and state.grid_qn > 0.001 then
+                click_qn = math.floor((click_qn / state.grid_qn) + 0.5) * state.grid_qn
+            end
+            click_qn = math.max(0.0, click_qn)
+            
+            local click_time = reaper.TimeMap2_QNToTime(0, click_qn)
+            local _, click_m = reaper.TimeMap2_timeToBeats(0, click_time)
+            click_m = math.max(0, click_m or 0)
+            
+            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+            reaper.ImGui_SetTooltip(ctx, string.format("Tempo Track (Bar %d)\nDouble-click to create Tempo Marking (Custom BPM)\nRight-click for options", click_m + 1))
+            
+            -- Subtle hover indicator at snapped QN
+            local snap_x = Engraver.cursor_qn_to_canvas_x(click_qn, margin_left, s, qn_per_measure, measure_map)
+            reaper.ImGui_DrawList_AddRectFilled(draw_list, snap_x - 12 * s, lane_y0 + 2 * s, snap_x + 12 * s, lane_y1 - 2 * s, 0xF39C1222, 3.0)
+            reaper.ImGui_DrawList_AddLine(draw_list, snap_x, lane_y0 + 2 * s, snap_x, lane_y1 - 2 * s, 0xF39C1288, 1.2 * s)
+            
+            -- DOUBLE-CLICK: Create new tempo marking and immediately open edit dialog focused on custom BPM
+            if reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
+                local cur_bpm = TempoService.get_tempo_at_qn(state, click_qn) or 120
+                local new_tm = TempoService.add_tempo_marker(state, {
+                    type            = "absolute",
+                    bpm             = math.floor(cur_bpm),
+                    label           = "",
+                    start_qn        = click_qn,
+                    force_new       = true,
+                    custom_bpm_only = true
+                })
+                state.selected_tempo_marker = new_tm
+                state.editing_tempo_marker = new_tm
+                state.editing_tempo_val = tostring(math.floor(cur_bpm))
+                state._edit_tempo_label = ""
+                state._edit_tempo_bpm = math.floor(cur_bpm)
+                state._edit_tempo_is_new = true
+                state._edit_tempo_marker_id = new_tm.id
+                state._edit_tempo_focus_done = false
+                state.is_dragging_tempo = false
+                state.drag_tempo_marker = nil
+                reaper.ImGui_OpenPopup(ctx, "edit_tempo_popup")
+            elseif reaper.ImGui_IsMouseClicked(ctx, 1) then
+                -- RIGHT-CLICK on empty lane: Open context menu with insert options
+                state.selected_tempo_marker = nil
+                state.context_tempo_marker = nil
+                state.context_tempo_qn = click_qn
+                reaper.ImGui_OpenPopup(ctx, "tempo_context_popup")
+            elseif reaper.ImGui_IsMouseClicked(ctx, 0) then
+                -- Single-click: position edit cursor and clear selection
+                state:clear_selection()
+                state.selected_tempo_marker = nil
+                reaper.SetEditCurPos(click_time, true, false)
             end
         end
     end

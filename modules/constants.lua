@@ -203,6 +203,19 @@ Constants.PITCH_MAP = {
     [11] = { step = 6, acc = 0,  name = "B" }
 }
 
+Constants.PITCH_NAMES = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }
+
+--- Returns a standardized pitch name with octave (e.g. 60 -> "C4")
+--- @param pitch number
+--- @return string
+function Constants.get_pitch_name(pitch)
+    if not pitch then return "" end
+    local names = Constants.PITCH_NAMES
+    local oct = math.floor(pitch / 12) - 1
+    local name = names[(pitch % 12) + 1] or "C"
+    return string.format("%s%d", name, oct)
+end
+
 -- Color palette
 Constants.DEFAULT_COLORS = {
     paper_bg         = 0xFAF8F5FF,

@@ -181,6 +181,28 @@ function State.new()
         -- Manual Slurs & Ties
         user_slurs = {},
         user_ties = {},
+
+        -- Portamento System (Notehead-to-Notehead, CC64 Hold / CC34 / CC5 / CC65)
+        portamento_marks = {},
+        selected_portamento = nil,
+        hovered_portamento = nil,
+        portamento_default_mode = "cc64",
+        portamento_default_start_pct = 50,
+        portamento_default_end_pct = 50,
+        portamento_default_show_text = false,
+        portamento_default_gap = 16.0,
+        portamento_default_thickness = 1.6,
+
+        -- Glissando System (Chromatic Pitch Staircase & Wavy Line)
+        glissando_marks = {},
+        selected_glissando = nil,
+        hovered_glissando = nil,
+        glissando_default_start_pct = 50,
+        glissando_default_vel_mode = "interpolate",
+        glissando_default_wave_style = "sine",
+        glissando_default_show_text = true,
+        glissando_default_gap = 14.0,
+        glissando_default_thickness = 1.6,
         
         -- Panel widths (resizable via splitter drag)
         sidebar_w = 210,          -- Width of left sidebar (resizable 140-500px)
@@ -423,6 +445,8 @@ function State.new()
         self.selected_chord_item = nil
         self.selected_slur = nil
         self.selected_tie = nil
+        self.selected_portamento = nil
+        self.context_portamento = nil
         
         -- Multi-selection maps & bounds
         self.selected_dynamics = {}
@@ -742,6 +766,18 @@ function State:load_settings()
     self.dyn_marker_blending = load_bool("dyn_marker_blending", false)
     self.dyn_bypass_cc = load_bool("dyn_bypass_cc", false)
     self.pedal_default_style = load_str("pedal_default_style", "classic")
+    self.portamento_default_mode = load_str("portamento_default_mode", "cc64")
+    self.portamento_default_start_pct = load_num("portamento_default_start_pct", 50)
+    self.portamento_default_end_pct = load_num("portamento_default_end_pct", 50)
+    self.portamento_default_show_text = load_bool("portamento_default_show_text", false)
+    self.portamento_default_gap = load_num("portamento_default_gap", 16.0)
+    self.portamento_default_thickness = load_num("portamento_default_thickness", 1.6)
+    self.glissando_default_start_pct = load_num("glissando_default_start_pct", 50)
+    self.glissando_default_vel_mode = load_str("glissando_default_vel_mode", "interpolate")
+    self.glissando_default_wave_style = load_str("glissando_default_wave_style", "sine")
+    self.glissando_default_show_text = load_bool("glissando_default_show_text", true)
+    self.glissando_default_gap = load_num("glissando_default_gap", 14.0)
+    self.glissando_default_thickness = load_num("glissando_default_thickness", 1.6)
     self.dyn_text_template_idx = load_num("dyn_text_template_idx", 1)
     self.dyn_text_line_pattern = load_str("dyn_text_line_pattern", "none")
     self.dyn_text_curve_pattern = load_str("dyn_text_curve_pattern", "linear")
@@ -904,6 +940,18 @@ function State.save_settings(self)
     save_val("dyn_marker_blending", self.dyn_marker_blending == true)
     save_val("dyn_bypass_cc", self.dyn_bypass_cc == true)
     save_val("pedal_default_style", self.pedal_default_style or "classic")
+    save_val("portamento_default_mode", self.portamento_default_mode or "cc64")
+    save_val("portamento_default_start_pct", self.portamento_default_start_pct or 50)
+    save_val("portamento_default_end_pct", self.portamento_default_end_pct or 50)
+    save_val("portamento_default_show_text", self.portamento_default_show_text == true)
+    save_val("portamento_default_gap", self.portamento_default_gap or 16.0)
+    save_val("portamento_default_thickness", self.portamento_default_thickness or 1.6)
+    save_val("glissando_default_start_pct", self.glissando_default_start_pct or 50)
+    save_val("glissando_default_vel_mode", self.glissando_default_vel_mode or "interpolate")
+    save_val("glissando_default_wave_style", self.glissando_default_wave_style or "sine")
+    save_val("glissando_default_show_text", self.glissando_default_show_text == true)
+    save_val("glissando_default_gap", self.glissando_default_gap or 16.0)
+    save_val("glissando_default_thickness", self.glissando_default_thickness or 1.6)
     save_val("dyn_text_template_idx", self.dyn_text_template_idx or 1)
     save_val("dyn_text_line_pattern", self.dyn_text_line_pattern or "none")
     save_val("dyn_text_curve_pattern", self.dyn_text_curve_pattern or "linear")

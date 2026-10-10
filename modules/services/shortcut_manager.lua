@@ -241,6 +241,22 @@ ShortcutManager.DEFAULT_SHORTCUTS = {
         shift = false,
         alt  = false
     },
+    toggle_portamento = {
+        name = "Toggle Portamento (CC64 Hold / CC34 / CC5 / CC65)",
+        cat  = "Edit & Selection",
+        key  = "P",
+        ctrl = false,
+        shift = false,
+        alt  = false
+    },
+    toggle_glissando = {
+        name = "Toggle Glissando (Chromatic Pitch Steps)",
+        cat  = "Edit & Selection",
+        key  = "G",
+        ctrl = false,
+        shift = false,
+        alt  = false
+    },
     select_next_note = {
         name = "Select next note on timeline",
         cat  = "Edit & Selection",

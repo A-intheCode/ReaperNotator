@@ -22,12 +22,16 @@ local opt_include_chords = true
 local opt_include_texts = true
 local opt_include_dynamics = true
 local opt_include_octaves_pedals = true
+local opt_include_slurs_ties = true
+local opt_include_gliss_port = true
 
 local opt_create_new_tracks = true
 local opt_import_chords = true
 local opt_import_texts = true
 local opt_import_dynamics = true
 local opt_import_keys = true
+local opt_import_slurs_ties = true
+local opt_import_gliss_port = true
 local opt_compact_tracks = true
 
 local status_msg = ""
@@ -100,6 +104,10 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                 opt_include_dynamics = c3
                 local _, c4 = reaper.ImGui_Checkbox(ctx, "Octave Lines & Pedals (<octave-shift>, <pedal>)", opt_include_octaves_pedals)
                 opt_include_octaves_pedals = c4
+                local _, c5 = reaper.ImGui_Checkbox(ctx, "Slurs & Ties (<slur>, <tie>, <tied>)", opt_include_slurs_ties)
+                opt_include_slurs_ties = c5
+                local _, c6 = reaper.ImGui_Checkbox(ctx, "Glissandi & Portamento (<glissando>, <slide>)", opt_include_gliss_port)
+                opt_include_gliss_port = c6
 
                 reaper.ImGui_Spacing(ctx)
                 reaper.ImGui_Separator(ctx)
@@ -112,8 +120,8 @@ function MusicXmlModal.render(ctx, state, project_tracks)
 
                 reaper.ImGui_SameLine(ctx)
                 if reaper.ImGui_Button(ctx, "Browse...##BrowseExport") then
-                    local ok, file_picked = reaper.GetUserFileNameForRead(export_file_path, "Save MusicXML File", "musicxml")
-                    if ok and file_picked and file_picked ~= "" then
+                    local file_picked = PathService.browse_for_save_file(export_file_path, "Save MusicXML File", "musicxml")
+                    if file_picked and file_picked ~= "" then
                         export_file_path = file_picked
                     end
                 end
@@ -168,7 +176,9 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                         include_dynamics = opt_include_dynamics,
                         include_hairpins = opt_include_dynamics,
                         include_octaves = opt_include_octaves_pedals,
-                        include_pedals = opt_include_octaves_pedals
+                        include_pedals = opt_include_octaves_pedals,
+                        include_slurs_ties = opt_include_slurs_ties,
+                        include_gliss_port = opt_include_gliss_port
                     })
 
                     if not p_ok then
@@ -228,6 +238,10 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                 opt_import_keys = i5
                 local _, i6 = reaper.ImGui_Checkbox(ctx, "Compact Track Heights in REAPER TCP##ImpCompact", opt_compact_tracks)
                 opt_compact_tracks = i6
+                local _, i7 = reaper.ImGui_Checkbox(ctx, "Import Slurs & Ties (<slur>, <tie>, <tied>)##ImpSlurs", opt_import_slurs_ties)
+                opt_import_slurs_ties = i7
+                local _, i8 = reaper.ImGui_Checkbox(ctx, "Import Glissandi & Portamento Slides##ImpGliss", opt_import_gliss_port)
+                opt_import_gliss_port = i8
 
                 reaper.ImGui_Spacing(ctx)
                 reaper.ImGui_Spacing(ctx)
@@ -250,7 +264,9 @@ function MusicXmlModal.render(ctx, state, project_tracks)
                         import_dynamics = opt_import_dynamics,
                         import_octaves = opt_import_dynamics,
                         import_pedals = opt_import_dynamics,
-                        import_keys = opt_import_keys
+                        import_keys = opt_import_keys,
+                        import_slurs_ties = opt_import_slurs_ties,
+                        import_gliss_port = opt_import_gliss_port
                     })
 
                     if not p_ok then

@@ -546,6 +546,251 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 end
             end
             
+            if reaper.ImGui_MenuItem(ctx, "〰 Toggle Portamento [P]") then
+                if midi_service and midi_service.toggle_portamento then
+                    midi_service.toggle_portamento(state, active_tracks_data)
+                end
+            end
+            if reaper.ImGui_MenuItem(ctx, "〰 Toggle Glissando [G]") then
+                if midi_service and midi_service.toggle_glissando then
+                    midi_service.toggle_glissando(state, active_tracks_data)
+                end
+            end
+            
+            local note_keys = {}
+            if state.selected_notes then
+                for _, sn in pairs(state.selected_notes) do
+                    local k = (sn.get_key and sn:get_key()) or sn.key or string.format("%d_%.4f_%d", sn.pitch, sn.start_qn, sn.chan or 0)
+                    if k then note_keys[k] = sn end
+                end
+            end
+            if state.selected_note then
+                local sn = state.selected_note
+                local k = (sn.get_key and sn:get_key()) or sn.key or string.format("%d_%.4f_%d", sn.pitch, sn.start_qn, sn.chan or 0)
+                if k then note_keys[k] = sn end
+            end
+
+            -- Check if any selected note is part of an existing Portamento
+            local attached_pms = {}
+            local seen_pms = {}
+            if state.portamento_marks and #state.portamento_marks > 0 then
+
+                for _, pm in ipairs(state.portamento_marks) do
+                    local trk_match = true
+                    if pm.track_guid and pm.track_guid ~= "" then
+                        for _, sn in pairs(note_keys) do
+                            local sn_guid = sn.track_guid
+                            if not sn_guid and sn.track and reaper.ValidatePtr(sn.track, "MediaTrack*") then
+                                sn_guid = reaper.GetTrackGUID(sn.track)
+                            end
+                            if not sn_guid and sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") then
+                                local it = reaper.GetMediaItemTake_Item(sn.take)
+                                local trk = it and reaper.GetMediaItem_Track(it)
+                                if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+                                    sn_guid = reaper.GetTrackGUID(trk)
+                                end
+                            end
+                            if sn_guid and sn_guid ~= pm.track_guid then
+                                trk_match = false
+                                break
+                            end
+                        end
+                    end
+
+                    if trk_match then
+                        local is_match = false
+                        if note_keys[pm.n1_key] or note_keys[pm.n2_key] then
+                            is_match = true
+                        end
+                        if not is_match then
+                            for _, sn in pairs(note_keys) do
+                                if (pm.pitch1 == sn.pitch and math.abs(pm.start_qn1 - sn.start_qn) < 0.02) or
+                                   (pm.pitch2 == sn.pitch and math.abs(pm.start_qn2 - sn.start_qn) < 0.02) then
+                                    is_match = true
+                                    break
+                                end
+                                -- Also match if sn is part of a tied pair for pm (departure or arrival)
+                                if state.user_ties then
+                                    if pm.pitch1 == sn.pitch then
+                                        for _, tie in ipairs(state.user_ties) do
+                                            if tie.pitch == pm.pitch1 and math.abs((tie.n1_start_qn or 0) - pm.start_qn1) < 0.05 and math.abs((tie.n2_start_qn or 0) - sn.start_qn) < 0.05 then
+                                                is_match = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                    if not is_match and pm.pitch2 == sn.pitch then
+                                        for _, tie in ipairs(state.user_ties) do
+                                            if tie.pitch == pm.pitch2 and (
+                                                (math.abs((tie.n1_start_qn or 0) - pm.start_qn2) < 0.05 and math.abs((tie.n2_start_qn or 0) - sn.start_qn) < 0.05) or
+                                                (math.abs((tie.n2_start_qn or 0) - pm.start_qn2) < 0.05 and math.abs((tie.n1_start_qn or 0) - sn.start_qn) < 0.05)
+                                            ) then
+                                                is_match = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                end
+                                if is_match then break end
+                            end
+                        end
+                        if is_match and not seen_pms[pm.id] then
+                            seen_pms[pm.id] = true
+                            table.insert(attached_pms, pm)
+                        end
+                    end
+                end
+            end
+
+            if #attached_pms > 0 then
+                local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+                local Constants = package.loaded["constants"] or require("constants")
+                for _, attached_pm in ipairs(attached_pms) do
+                    local p1_name = Constants.get_pitch_name(attached_pm.pitch1)
+                    local p2_name = Constants.get_pitch_name(attached_pm.pitch2)
+                    if reaper.ImGui_BeginMenu(ctx, string.format("〰 Portamento Settings (%s -> %s)...##pm_%s", p1_name, p2_name, attached_pm.id)) then
+                        reaper.ImGui_TextDisabled(ctx, "Playback Blend & Control Mode:")
+                        local modes = {
+                            { id = "cc64", label = "CC 64 (Pedal Hold Blend) [Standard]" },
+                            { id = "cc34", label = "CC 34 (Portamento Control)" },
+                            { id = "cc5",  label = "CC 5 (Portamento Time)" },
+                            { id = "cc65", label = "CC 65 (Portamento Switch On/Off)" },
+                        }
+                        for _, m in ipairs(modes) do
+                            local is_active = (attached_pm.mode == m.id)
+                            local prefix = is_active and "● " or "○ "
+                            if reaper.ImGui_MenuItem(ctx, prefix .. m.label) then
+                                PortamentoService.set_mode(state, attached_pm, m.id, active_tracks_data)
+                            end
+                        end
+
+                        reaper.ImGui_Separator(ctx)
+
+                        -- Timing (% of Note Length in 25% steps)
+                        reaper.ImGui_TextDisabled(ctx, "Timing (% of Note Length):")
+                        local cur_s_pct = attached_pm.start_pct1 or 50
+                        if reaper.ImGui_BeginMenu(ctx, string.format("Start at Note 1: %d%%##s_%s", cur_s_pct, attached_pm.id)) then
+                            for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                                local is_sel = (cur_s_pct == pct)
+                                local pfx = is_sel and "● " or "○ "
+                                local tag = (pct == 50) and " [Standard]" or ""
+                                if reaper.ImGui_MenuItem(ctx, string.format("%s%d%%%s", pfx, pct, tag)) then
+                                    PortamentoService.set_timing_pct(state, attached_pm, pct, nil, active_tracks_data)
+                                end
+                            end
+                            reaper.ImGui_EndMenu(ctx)
+                        end
+
+                        local cur_e_pct = attached_pm.end_pct2 or 50
+                        if reaper.ImGui_BeginMenu(ctx, string.format("End at Note 2: %d%%##e_%s", cur_e_pct, attached_pm.id)) then
+                            for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                                local is_sel = (cur_e_pct == pct)
+                                local pfx = is_sel and "● " or "○ "
+                                local tag = (pct == 50) and " [Standard]" or ""
+                                if reaper.ImGui_MenuItem(ctx, string.format("%s%d%%%s", pfx, pct, tag)) then
+                                    PortamentoService.set_timing_pct(state, attached_pm, nil, pct, active_tracks_data)
+                                end
+                            end
+                            reaper.ImGui_EndMenu(ctx)
+                        end
+
+                        reaper.ImGui_Separator(ctx)
+
+                        local is_checked, new_checked = reaper.ImGui_Checkbox(ctx, string.format('Show "port." text##note_menu_port_text_%s', attached_pm.id), attached_pm.show_text == true)
+                        if is_checked then
+                            PortamentoService.set_show_text(state, attached_pm, new_checked)
+                        end
+
+                        reaper.ImGui_Separator(ctx)
+
+                        if reaper.ImGui_MenuItem(ctx, "🗑 Delete Portamento##del_" .. attached_pm.id) then
+                            PortamentoService.delete_portamento(state, attached_pm.id, active_tracks_data)
+                            state.selected_portamento = nil
+                            state.context_portamento = nil
+                        end
+
+                        reaper.ImGui_EndMenu(ctx)
+                    end
+                end
+            end
+
+            -- Check if any selected note is part of an existing Glissando
+            local attached_gms = {}
+            local seen_gms = {}
+            if state.glissando_marks and #state.glissando_marks > 0 then
+                for _, gm in ipairs(state.glissando_marks) do
+                    for _, sn in pairs(note_keys or {}) do
+                        if (gm.chan or 0) == (sn.chan or 0) then
+                            if (math.abs(gm.start_qn1 - sn.start_qn) < 0.05 and gm.pitch1 == sn.pitch) or
+                               (math.abs(gm.start_qn2 - sn.start_qn) < 0.05 and gm.pitch2 == sn.pitch) then
+                                if not seen_gms[gm.id] then
+                                    seen_gms[gm.id] = true
+                                    table.insert(attached_gms, gm)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+            if #attached_gms > 0 then
+                local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+                local Constants = package.loaded["constants"] or require("constants")
+                for _, attached_gm in ipairs(attached_gms) do
+                    local p1_name = Constants.get_pitch_name(attached_gm.pitch1)
+                    local p2_name = Constants.get_pitch_name(attached_gm.pitch2)
+                    local cross_str = attached_gm.cross_staff and " [Cross-Staff]" or ""
+                    local label = string.format("〰 Glissando (%s -> %s%s)###gm_%s", p1_name, p2_name, cross_str, attached_gm.id)
+                    if reaper.ImGui_BeginMenu(ctx, label) then
+                        -- Timing
+                        local cur_s_pct = attached_gm.start_pct1 or 50
+                        if reaper.ImGui_BeginMenu(ctx, string.format("Start at Note 1: %d%%###gm_s_%s", cur_s_pct, attached_gm.id)) then
+                            for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                                local is_sel = (cur_s_pct == pct)
+                                local pfx = is_sel and "● " or "○ "
+                                local tag = (pct == 50) and " [Standard]" or ""
+                                if reaper.ImGui_MenuItem(ctx, string.format("%s%d%%%s###gm_s_opt_%s_%d", pfx, pct, tag, attached_gm.id, pct)) then
+                                    GlissandoService.set_timing_pct(state, attached_gm, pct, active_tracks_data)
+                                end
+                            end
+                            reaper.ImGui_EndMenu(ctx)
+                        end
+                        -- Velocity mode
+                        if reaper.ImGui_BeginMenu(ctx, "Velocity Mode###gm_vel_" .. attached_gm.id) then
+                            if reaper.ImGui_MenuItem(ctx, (attached_gm.vel_mode == "interpolate" and "● " or "○ ") .. "Linear Ramp (Note 1 -> Note 2)###gm_ramp_" .. attached_gm.id) then
+                                GlissandoService.set_vel_mode(state, attached_gm, "interpolate", active_tracks_data)
+                            end
+                            if reaper.ImGui_MenuItem(ctx, (attached_gm.vel_mode == "flat" and "● " or "○ ") .. "Flat (Note 1 Velocity)###gm_flat_" .. attached_gm.id) then
+                                GlissandoService.set_vel_mode(state, attached_gm, "flat", active_tracks_data)
+                            end
+                            reaper.ImGui_EndMenu(ctx)
+                        end
+                        -- Wave style
+                        if reaper.ImGui_BeginMenu(ctx, "Wavy Line Style###gm_wstyle_" .. attached_gm.id) then
+                            local c_wave = attached_gm.wave_style or "sine"
+                            if reaper.ImGui_MenuItem(ctx, (c_wave == "sine" and "● " or "○ ") .. "Sinusoidal Wave###gm_sine_" .. attached_gm.id) then
+                                GlissandoService.set_wave_style(state, attached_gm, "sine")
+                            end
+                            if reaper.ImGui_MenuItem(ctx, (c_wave == "saw" and "● " or "○ ") .. "Sawtooth / Zigzag Wave###gm_saw_" .. attached_gm.id) then
+                                GlissandoService.set_wave_style(state, attached_gm, "saw")
+                            end
+                            reaper.ImGui_EndMenu(ctx)
+                        end
+                        -- Show text
+                        local is_checked, new_checked = reaper.ImGui_Checkbox(ctx, 'Show "gliss." text###gm_txt_' .. attached_gm.id, attached_gm.show_text == true)
+                        if is_checked then
+                            GlissandoService.set_show_text(state, attached_gm, new_checked)
+                        end
+                        reaper.ImGui_Separator(ctx)
+                        if reaper.ImGui_MenuItem(ctx, "🗑 Delete Glissando###gm_del_" .. attached_gm.id) then
+                            GlissandoService.delete_glissando(state, attached_gm.id, active_tracks_data)
+                            state.selected_glissando = nil
+                            state.context_glissando = nil
+                        end
+                        reaper.ImGui_EndMenu(ctx)
+                    end
+                end
+            end
+            
             if reaper.ImGui_BeginMenu(ctx, "↕ Stem Direction") then
                 local cur_stem_dir = nil
                 local sn = state.selected_note
@@ -832,6 +1077,42 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 local rep_label = has_rep and string.format("❌ Remove Repeat Mark (%%) from Bar %d", click_bar) or string.format("🔁 Set Bar %d as Repeat (%%)", click_bar)
                 if reaper.ImGui_MenuItem(ctx, rep_label) then
                     RepeatService.toggle_repeat_mark(state, cur_trk, state.context_measure, active_tracks_data)
+                end
+            end
+            
+            -- Rehearsal & Navigation Marks for this measure
+            if click_bar and state.context_measure ~= nil then
+                local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+                if reaper.ImGui_BeginMenu(ctx, "🔖 Rehearsal & Navigation Marks") then
+                    if reaper.ImGui_MenuItem(ctx, "🔤 Add Letter Mark [A], [B]... (Auto)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "letter")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "🔢 Add Number Mark [1], [2]... (Auto)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "number")
+                    end
+                    reaper.ImGui_Separator(ctx)
+                    if reaper.ImGui_MenuItem(ctx, "Da Capo (D.C.)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "dc")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "D.C. al Fine") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "dc_al_fine")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "Dal Segno (D.S.)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "ds")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "D.S. al Coda") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "ds_al_coda")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "Segno (𝄋)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "segno")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "Coda (𝄌)") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "coda")
+                    end
+                    if reaper.ImGui_MenuItem(ctx, "Fine") then
+                        RehearsalMarkService.add_mark(state, state.context_measure, "fine")
+                    end
+                    reaper.ImGui_EndMenu(ctx)
                 end
             end
             
@@ -1384,9 +1665,10 @@ end
 function CanvasContextMenus.render_tempo_popup(ctx, state, midi_service, active_tracks_data, qn_per_measure)
     if reaper.ImGui_BeginPopup(ctx, "tempo_context_popup") then
         local tm = state.context_tempo_marker or state.selected_tempo_marker
+        local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
+        local bpi = get_qn_per_measure(state, qn_per_measure)
+        
         if tm then
-            local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
-            local bpi = get_qn_per_measure(state, qn_per_measure)
             local disp_txt = (type(tm.get_display_text) == "function" and tm:get_display_text()) or tostring(tm.bpm or "120")
             reaper.ImGui_TextColored(ctx, 0xF39C12FF, string.format("⏱ Tempo: %s", disp_txt))
             reaper.ImGui_TextDisabled(ctx, string.format("Measure %.2f (QN %.2f)", (tm.start_qn / bpi) + 1, tm.start_qn))
@@ -1416,6 +1698,68 @@ function CanvasContextMenus.render_tempo_popup(ctx, state, midi_service, active_
                 state.selected_tempo_marker = nil
                 state.context_tempo_marker = nil
             end
+        else
+            -- Empty tempo lane context menu
+            local click_qn = state.context_tempo_qn or 0.0
+            reaper.ImGui_TextColored(ctx, 0xF39C12FF, "⏱ Tempo Track")
+            reaper.ImGui_TextDisabled(ctx, string.format("Measure %.2f (QN %.2f)", (click_qn / bpi) + 1, click_qn))
+            reaper.ImGui_Separator(ctx)
+            
+            if reaper.ImGui_MenuItem(ctx, "➕ Insert Custom Tempo Marking Here...") then
+                local cur_bpm = TempoService.get_tempo_at_qn(state, click_qn) or 120
+                local new_tm = TempoService.add_tempo_marker(state, {
+                    type            = "absolute",
+                    bpm             = math.floor(cur_bpm),
+                    label           = "",
+                    start_qn        = click_qn,
+                    force_new       = true,
+                    custom_bpm_only = true
+                })
+                state.selected_tempo_marker = new_tm
+                state.editing_tempo_marker = new_tm
+                state.editing_tempo_val = tostring(math.floor(cur_bpm))
+                state._edit_tempo_label = ""
+                state._edit_tempo_bpm = math.floor(cur_bpm)
+                state._edit_tempo_is_new = true
+                state._edit_tempo_marker_id = new_tm.id
+                state._edit_tempo_focus_done = false
+                reaper.ImGui_OpenPopup(ctx, "edit_tempo_popup")
+            end
+            
+            if reaper.ImGui_BeginMenu(ctx, "⚡ Insert Preset Tempo") then
+                local presets = {
+                    { "Largo", 50 },
+                    { "Adagio", 70 },
+                    { "Andante", 90 },
+                    { "Moderato", 110 },
+                    { "Allegro", 130 },
+                    { "Presto", 170 }
+                }
+                for _, p in ipairs(presets) do
+                    if reaper.ImGui_MenuItem(ctx, string.format("%s (♩ = %d)", p[1], p[2])) then
+                        TempoService.add_tempo_marker(state, {
+                            type            = "absolute",
+                            bpm             = p[2],
+                            label           = p[1],
+                            start_qn        = click_qn,
+                            force_new       = true,
+                            custom_bpm_only = false
+                        })
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+            
+            if reaper.ImGui_MenuItem(ctx, "📖 Open Tempo Drawer (T)") then
+                state.show_tempo = true
+                state.show_dynamics = false
+                state.show_articulations_drawer = false
+                state.show_clefs = false
+            end
+            
+            reaper.ImGui_Separator(ctx)
+            local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
+            SelectionService.render_menu_items(ctx, state, active_tracks_data, midi_service)
         end
         reaper.ImGui_EndPopup(ctx)
     end
@@ -1480,8 +1824,13 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                 end
                 reaper.ImGui_SameLine(ctx)
                 if reaper.ImGui_Button(ctx, "Cancel", 75, 24) then
+                    if state._edit_tempo_is_new and tm then
+                        TempoService.delete_tempo_marker(state, tm)
+                        state.selected_tempo_marker = nil
+                    end
                     state.editing_tempo_marker = nil
                     state._edit_tempo_marker_id = nil
+                    state._edit_tempo_is_new = nil
                     reaper.ImGui_CloseCurrentPopup(ctx)
                 end
                 
@@ -1491,6 +1840,7 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                     tm.bpm = final_bpm
                     tm.label = final_lbl
                     tm.custom_bpm_only = (final_lbl == "")
+                    state._edit_tempo_is_new = nil
                     
                     TempoService.save_markers(state)
                     TempoService.sync_all_to_reaper(state)
@@ -1556,8 +1906,13 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                 end
                 reaper.ImGui_SameLine(ctx)
                 if reaper.ImGui_Button(ctx, "Cancel", 75, 24) then
+                    if state._edit_tempo_is_new and tm then
+                        TempoService.delete_tempo_marker(state, tm)
+                        state.selected_tempo_marker = nil
+                    end
                     state.editing_tempo_marker = nil
                     state._edit_tempo_marker_id = nil
+                    state._edit_tempo_is_new = nil
                     reaper.ImGui_CloseCurrentPopup(ctx)
                 end
                 
@@ -1567,6 +1922,7 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                     tm.modifier = state._edit_tempo_modifier or tm.modifier
                     tm.label = state._edit_tempo_label or tm.label
                     tm.custom_target_bpm = true
+                    state._edit_tempo_is_new = nil
                     
                     TempoService.save_markers(state)
                     TempoService.sync_all_to_reaper(state)
@@ -1645,6 +2001,160 @@ function CanvasContextMenus.render_octave_popup(ctx, state, midi_service, active
     end
 end
 
+function CanvasContextMenus.render_portamento_popup(ctx, state, midi_service, active_tracks_data)
+    if reaper.ImGui_BeginPopup(ctx, "portamento_context_popup") then
+        local pm = state.context_portamento or state.selected_portamento or state.hovered_portamento
+        if pm then
+            local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+            local Constants = package.loaded["constants"] or require("constants")
+            local p1_name = Constants.get_pitch_name(pm.pitch1)
+            local p2_name = Constants.get_pitch_name(pm.pitch2)
+            reaper.ImGui_TextColored(ctx, 0x3498DBFF, string.format("〰 Portamento (%s -> %s)", p1_name, p2_name))
+            reaper.ImGui_Separator(ctx)
+
+            -- 1. CC Mode Selection (CC64 Hold [default], CC34, CC5, CC65)
+            reaper.ImGui_TextDisabled(ctx, "Playback Blend & Control Mode:")
+            local modes = {
+                { id = "cc64", label = "CC 64 (Pedal Hold Blend) [Standard]" },
+                { id = "cc34", label = "CC 34 (Portamento Control)" },
+                { id = "cc5",  label = "CC 5 (Portamento Time)" },
+                { id = "cc65", label = "CC 65 (Portamento Switch On/Off)" },
+            }
+            for _, m in ipairs(modes) do
+                local is_active = (pm.mode == m.id)
+                local prefix = is_active and "● " or "○ "
+                if reaper.ImGui_MenuItem(ctx, prefix .. m.label) then
+                    PortamentoService.set_mode(state, pm, m.id, active_tracks_data)
+                end
+            end
+
+            reaper.ImGui_Separator(ctx)
+
+            -- 2. Timing (% of Note Length in 25% steps)
+            reaper.ImGui_TextDisabled(ctx, "Timing (% of Note Length):")
+            local cur_s_pct = pm.start_pct1 or 50
+            if reaper.ImGui_BeginMenu(ctx, string.format("Start at Note 1: %d%%", cur_s_pct)) then
+                for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                    local is_sel = (cur_s_pct == pct)
+                    local pfx = is_sel and "● " or "○ "
+                    local tag = (pct == 50) and " [Standard]" or ""
+                    if reaper.ImGui_MenuItem(ctx, string.format("%s%d%%%s", pfx, pct, tag)) then
+                        PortamentoService.set_timing_pct(state, pm, pct, nil, active_tracks_data)
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
+            local cur_e_pct = pm.end_pct2 or 50
+            if reaper.ImGui_BeginMenu(ctx, string.format("End at Note 2: %d%%", cur_e_pct)) then
+                for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                    local is_sel = (cur_e_pct == pct)
+                    local pfx = is_sel and "● " or "○ "
+                    local tag = (pct == 50) and " [Standard]" or ""
+                    if reaper.ImGui_MenuItem(ctx, string.format("%s%d%%%s", pfx, pct, tag)) then
+                        PortamentoService.set_timing_pct(state, pm, nil, pct, active_tracks_data)
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
+            reaper.ImGui_Separator(ctx)
+
+            -- 3. "port." text toggle (Default: ALWAYS OFF)
+            local is_checked, new_checked = reaper.ImGui_Checkbox(ctx, 'Show "port." text##port_show_text', pm.show_text == true)
+            if is_checked then
+                PortamentoService.set_show_text(state, pm, new_checked)
+            end
+
+            reaper.ImGui_Separator(ctx)
+
+            -- 4. Delete Portamento
+            if reaper.ImGui_MenuItem(ctx, "🗑 Delete Portamento") then
+                PortamentoService.delete_portamento(state, pm.id, active_tracks_data)
+                state.selected_portamento = nil
+                state.context_portamento = nil
+            end
+        end
+        reaper.ImGui_EndPopup(ctx)
+    end
+end
+
+function CanvasContextMenus.render_glissando_popup(ctx, state, midi_service, active_tracks_data)
+    if reaper.ImGui_BeginPopup(ctx, "glissando_context_popup") then
+        local gm = state.context_glissando or state.selected_glissando or state.hovered_glissando
+        if gm then
+            local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+            local Constants = package.loaded["constants"] or require("constants")
+            local p1_name = Constants.get_pitch_name(gm.pitch1)
+            local p2_name = Constants.get_pitch_name(gm.pitch2)
+            local semitones = math.abs(gm.pitch2 - gm.pitch1)
+            local cross_tag = gm.cross_staff and " [Cross-Staff]" or ""
+            reaper.ImGui_TextColored(ctx, 0xE67E22FF, string.format("〰 Glissando (%s -> %s, %d semitones%s)", p1_name, p2_name, semitones, cross_tag))
+            reaper.ImGui_Separator(ctx)
+
+            -- 1. Timing (% of Note 1 in 25% steps)
+            reaper.ImGui_TextDisabled(ctx, "Timing (% of Note 1):")
+            local cur_s_pct = gm.start_pct1 or 50
+            if reaper.ImGui_BeginMenu(ctx, string.format("Start at Note 1: %d%%", cur_s_pct)) then
+                for _, pct in ipairs({ 0, 25, 50, 75, 100 }) do
+                    local is_sel = (cur_s_pct == pct)
+                    local pfx = is_sel and "● " or "○ "
+                    local tag = (pct == 50) and " [Standard]" or ""
+                    if reaper.ImGui_MenuItem(ctx, string.format("%s%d%%%s##gm_pct_%d", pfx, pct, tag, pct)) then
+                        GlissandoService.set_timing_pct(state, gm, pct, active_tracks_data)
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+
+            reaper.ImGui_Separator(ctx)
+
+            -- 2. Velocity Mode
+            reaper.ImGui_TextDisabled(ctx, "Velocity Mode:")
+            local is_interp = (gm.vel_mode == "interpolate")
+            if reaper.ImGui_MenuItem(ctx, (is_interp and "● " or "○ ") .. "Linear Ramp (Note 1 -> Note 2)##gm_ramp") then
+                GlissandoService.set_vel_mode(state, gm, "interpolate", active_tracks_data)
+            end
+            if reaper.ImGui_MenuItem(ctx, (not is_interp and "● " or "○ ") .. "Flat (Note 1 Velocity)##gm_flat") then
+                GlissandoService.set_vel_mode(state, gm, "flat", active_tracks_data)
+            end
+
+            reaper.ImGui_Separator(ctx)
+
+            -- 3. Wave Style
+            reaper.ImGui_TextDisabled(ctx, "Wavy Line Style:")
+            local cur_wave = gm.wave_style or "sine"
+            if reaper.ImGui_MenuItem(ctx, (cur_wave == "sine" and "● " or "○ ") .. "Sinusoidal Wave##gm_sine") then
+                GlissandoService.set_wave_style(state, gm, "sine")
+            end
+            if reaper.ImGui_MenuItem(ctx, (cur_wave == "saw" and "● " or "○ ") .. "Sawtooth / Zigzag Wave##gm_saw") then
+                GlissandoService.set_wave_style(state, gm, "saw")
+            end
+            if reaper.ImGui_MenuItem(ctx, ((cur_wave == "straight" or cur_wave == "line") and "● " or "○ ") .. "Straight Line##gm_straight") then
+                GlissandoService.set_wave_style(state, gm, "straight")
+            end
+
+            reaper.ImGui_Separator(ctx)
+
+            -- 4. "gliss." text toggle
+            local is_checked, new_checked = reaper.ImGui_Checkbox(ctx, 'Show "gliss." text badge##gliss_show_text', gm.show_text == true)
+            if is_checked then
+                GlissandoService.set_show_text(state, gm, new_checked)
+            end
+
+            reaper.ImGui_Separator(ctx)
+
+            -- 5. Delete Glissando
+            if reaper.ImGui_MenuItem(ctx, "🗑 Delete Glissando##gm_del") then
+                GlissandoService.delete_glissando(state, gm.id, active_tracks_data)
+                state.selected_glissando = nil
+                state.context_glissando = nil
+            end
+        end
+        reaper.ImGui_EndPopup(ctx)
+    end
+end
+
 -- ==============================================================================
 -- RENDER ALL CONTEXT POPUPS
 -- ==============================================================================
@@ -1653,6 +2163,8 @@ function CanvasContextMenus.render_all(ctx, state, midi_service, active_tracks_d
     CanvasContextMenus.render_chord_lane_popup(ctx, state, qn_per_measure)
     CanvasContextMenus.render_dynamic_text_popup(ctx, state, midi_service, active_tracks_data)
     CanvasContextMenus.render_pedal_popup(ctx, state, midi_service, active_tracks_data)
+    CanvasContextMenus.render_portamento_popup(ctx, state, midi_service, active_tracks_data)
+    CanvasContextMenus.render_glissando_popup(ctx, state, midi_service, active_tracks_data)
     CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, active_tracks_data, qn_per_measure)
     CanvasContextMenus.render_item_header_popup(ctx, state)
     CanvasContextMenus.render_text_item_popup(ctx, state, midi_service, active_tracks_data)
