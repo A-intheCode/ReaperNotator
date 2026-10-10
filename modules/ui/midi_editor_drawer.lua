@@ -762,13 +762,14 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             -- Stalk hitbox: [nx - 3, ny, nx + 3, plot_bot_y]
                             local in_stalk = (mouse_x >= nx - 3 and mouse_x <= nx + 3 and mouse_y >= ny and mouse_y <= plot_bot_y + 2)
 
-                        if in_handle or in_stalk then
-                            hovered_note = n
-                            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeNS())
-                            local p_name = pitch_to_name(n.pitch)
-                            local t_str = format_qn_time(n.start_qn)
-                            reaper.ImGui_SetTooltip(ctx, string.format("%s (MIDI %d) | Vel: %d | Time: %s", p_name, n.pitch, n.vel, t_str))
-                            break
+                            if in_handle or in_stalk then
+                                hovered_note = n
+                                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeNS())
+                                local p_name = pitch_to_name(n.pitch)
+                                local t_str = format_qn_time(n.start_qn)
+                                reaper.ImGui_SetTooltip(ctx, string.format("%s (MIDI %d) | Vel: %d | Time: %s", p_name, n.pitch, n.vel, t_str))
+                                break
+                            end
                         end
                     end
                 end

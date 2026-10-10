@@ -1,7 +1,9 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.11
+-- @version 1.8.0-beta.12
 -- @changelog
+--   + v1.8.0-beta.12: Hotfix for Lua Syntax Error in MIDI Editor:
+--             - Fix missing end statement in midi_editor_drawer.lua velocity stalk hover proximity culling.
 --   + v1.8.0-beta.11: Configurable Target FPS, Max Undo Steps & Frustum Culling Performance Overhaul:
 --             - Configurable Target Framerate (FPS): New setting in Settings -> General Settings allowing users to set target FPS (15, 30, 60, 90, 120, 144 / Uncapped) with real-time measured FPS meter. Defer cycles skip UI render when under the threshold, dramatically saving CPU while keeping audio preview timers sub-millisecond accurate.
 --             - Maximum Undo Steps Limit: Configurable undo step cap (0-200, default 50) in Settings -> General Settings, preventing excessive undo depth from ballooning project memory and slowing down REAPER's state serialization.

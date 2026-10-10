@@ -6,3 +6,4 @@
 local QuantizeService = {}
 
 return QuantizeService
+
