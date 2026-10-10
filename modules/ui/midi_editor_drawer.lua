@@ -1038,8 +1038,8 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     end
 
                     -- 1. Fill Area & Outline Curve based on REAPER Event Shapes (Linear vs Square)
-                    local cull_left = plot_x0 - 20
-                    local cull_right = plot_x0 + plot_w + 20
+                    local cull_left = win_x0 - 20
+                    local cull_right = win_x0 + win_w + 20
                     for i = 1, #curve_pts - 1 do
                         local p1 = curve_pts[i]
                         local p2 = curve_pts[i + 1]
