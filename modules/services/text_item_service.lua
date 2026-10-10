@@ -237,15 +237,27 @@ function TextItemService.save_text_items(state)
 end
 
 function TextItemService.get_text_items_for_track(state, track_guid)
-    local result = {}
-    if not state.text_items or not track_guid then return result end
-    for _, ti in ipairs(state.text_items) do
-        if type(ti) == "table" and ti.track_guid == track_guid then
-            table.insert(result, ti)
+    if not state or not track_guid or not state.text_items then return {} end
+    local ti_ver = state._text_items_version or (#state.text_items)
+    local b_cache = state._text_items_by_track_cache
+    if not b_cache or b_cache.ver ~= ti_ver or b_cache.count ~= #state.text_items then
+        b_cache = { ver = ti_ver, count = #state.text_items, by_guid = {} }
+        for _, ti in ipairs(state.text_items) do
+            if type(ti) == "table" and ti.track_guid then
+                local list = b_cache.by_guid[ti.track_guid]
+                if not list then
+                    list = {}
+                    b_cache.by_guid[ti.track_guid] = list
+                end
+                table.insert(list, ti)
+            end
         end
+        for _, list in pairs(b_cache.by_guid) do
+            table.sort(list, function(a, b) return (a.qn or 0.0) < (b.qn or 0.0) end)
+        end
+        state._text_items_by_track_cache = b_cache
     end
-    table.sort(result, function(a, b) return (a.qn or 0.0) < (b.qn or 0.0) end)
-    return result
+    return b_cache.by_guid[track_guid] or {}
 end
 
 function TextItemService.create_text_item(state, track_guid, qn, arg4, arg5, style, font_size)

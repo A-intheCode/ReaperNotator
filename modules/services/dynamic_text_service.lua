@@ -236,14 +236,28 @@ function DynamicTextService.save_dynamic_texts(state)
 end
 
 function DynamicTextService.get_dynamic_texts_for_track(state, track_guid)
-    local res = {}
-    for _, dt in ipairs(state.dynamic_texts or {}) do
-        if dt.track_guid == track_guid then
-            table.insert(res, dt)
+    if not state or not track_guid then return {} end
+    local dt_ver = state._dynamic_texts_version or (#(state.dynamic_texts or {}))
+    local b_cache = state._dynamic_texts_by_track_cache
+    if not b_cache or b_cache.ver ~= dt_ver or b_cache.count ~= #(state.dynamic_texts or {}) then
+        b_cache = { ver = dt_ver, count = #(state.dynamic_texts or {}), by_guid = {} }
+        for _, dt in ipairs(state.dynamic_texts or {}) do
+            local g = dt.track_guid
+            if g then
+                local list = b_cache.by_guid[g]
+                if not list then
+                    list = {}
+                    b_cache.by_guid[g] = list
+                end
+                table.insert(list, dt)
+            end
         end
+        for _, list in pairs(b_cache.by_guid) do
+            table.sort(list, function(a, b) return (a.start_qn or 0) < (b.start_qn or 0) end)
+        end
+        state._dynamic_texts_by_track_cache = b_cache
     end
-    table.sort(res, function(a, b) return a.start_qn < b.start_qn end)
-    return res
+    return b_cache.by_guid[track_guid] or {}
 end
 
 function DynamicTextService.find_take_for_track(track_guid, active_tracks_data, opt_qn)

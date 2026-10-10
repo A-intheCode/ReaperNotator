@@ -46,6 +46,11 @@ local PortamentoService = require("services.portamento_service")
 local GlissandoService  = require("services.glissando_service")
 local StateModule = require("state")
 
+local BAR_NUM_STRINGS = {}
+for i = 1, 2048 do
+    BAR_NUM_STRINGS[i] = tostring(i)
+end
+
 local function resolve_effective_key(state, track, item, qn)
     if has_kss and KeySignatureService and KeySignatureService.resolve_effective_key then
         local res = KeySignatureService.resolve_effective_key(state, track, item, qn)
@@ -346,7 +351,7 @@ local function sync_arrange_selection(state, project_tracks)
     end
 end
 
-local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left)
+local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
     local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil)
     
     -- Voice filtering and ghosting (MIDI channels 0-15)
@@ -412,6 +417,20 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         vn.nominal_nx = Engraver.qn_to_canvas_x(display_qn, margin_left, s, qn_per_measure, measure_map)
         vn.vis_nx = vn.nominal_nx
         vn.vis_ny = vn.nominal_ny
+        vn.nx = vn.vis_nx
+        vn.ny = vn.vis_ny
+        vn.stem_x = vn.vis_nx
+        vn.stem_end_y = vn.vis_ny
+        vn.stem_down = false
+        vn.orig = vn.orig or vn
+        vn.note = vn.orig
+        vn.track = tdata.track
+        vn.track_guid = tdata.guid
+        vn.item = vn.orig and vn.orig.item
+        vn.take = vn.orig and vn.orig.take
+        vn.idx = vn.orig and vn.orig.idx
+        vn.chan = (vn.orig and vn.orig.chan) or (vn.chan or 0)
+        vn.flag_count = Engraver.get_flag_count(vn.dur_qn)
     end
     
     -- Sort notes by staff (in_staff), then onset time, then pitch
@@ -632,12 +651,167 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
     end
     local beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping)
     
+    -- ======================================================================
+    -- PRECOMPUTED RESTS WITH O(1) COLLISION ELIMINATION (Cached per track)
+    -- ======================================================================
+    local dq = (state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001) and state.display_quantize_grid or nil
+    local eff_notes = {}
+    for _, vn in ipairs(visual_notes) do
+        local n_sqn = vn.display_qn or vn.start_qn
+        local n_dur = vn.dur_qn or 1.0
+        table.insert(eff_notes, {
+            pitch = vn.pitch,
+            start_qn = n_sqn,
+            end_qn = n_sqn + n_dur,
+            dur_qn = n_dur,
+            in_treble = vn.in_treble,
+            in_staff = vn.in_staff,
+            chan = vn.chan or 0
+        })
+    end
+    
+    -- With display quantize: close small gaps between consecutive notes on the same staff (runs ONCE during layout build!)
+    if dq then
+        table.sort(eff_notes, function(a, b) return a.start_qn < b.start_qn end)
+        for idx = 1, #eff_notes do
+            local en = eff_notes[idx]
+            for next_idx = idx + 1, #eff_notes do
+                local next_en = eff_notes[next_idx]
+                if (not is_grand and not is_harp) or (is_harp and en.in_staff == next_en.in_staff) or (is_grand and en.in_treble == next_en.in_treble) then
+                    if next_en.start_qn > en.start_qn then
+                        if next_en.start_qn <= en.end_qn + (dq * 0.75) then
+                            en.end_qn = math.max(en.end_qn, next_en.start_qn)
+                            en.dur_qn = en.end_qn - en.start_qn
+                        end
+                        break
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Pre-bucket eff_notes by measure bar for O(1) rest collision lookup
+    local eff_notes_by_bar = {}
+    for _, en in ipairs(eff_notes) do
+        local mb_start = math.floor(en.start_qn / bpi)
+        local mb_end = math.floor(math.max(en.start_qn, en.end_qn - 0.001) / bpi)
+        for mb = mb_start, mb_end do
+            local blist = eff_notes_by_bar[mb]
+            if not blist then
+                blist = {}
+                eff_notes_by_bar[mb] = blist
+            end
+            table.insert(blist, en)
+        end
+    end
+    
+    local staff_rests_jobs = {}
+    local num_measures = total_measures or math.max(16, math.ceil((visual_notes[#visual_notes] and visual_notes[#visual_notes].end_qn or 64) / bpi) + 2)
+    if is_harp then
+        local treble_eff, alto_eff, bass_eff = {}, {}, {}
+        for _, en in ipairs(eff_notes) do
+            if en.in_staff == "treble" then
+                table.insert(treble_eff, en)
+            elseif en.in_staff == "mid" or en.in_staff == "alto" then
+                table.insert(alto_eff, en)
+            else
+                table.insert(bass_eff, en)
+            end
+        end
+        local tr_rests  = Engraver.generate_voice_rests(treble_eff, num_measures, qn_per_measure, dq)
+        local mid_rests = Engraver.generate_voice_rests(alto_eff, num_measures, qn_per_measure, dq)
+        local b_rests   = Engraver.generate_voice_rests(bass_eff, num_measures, qn_per_measure, dq)
+        table.insert(staff_rests_jobs, { rests = tr_rests, staff_id = "treble", staff_is_treble = true, staff_bot_type = "treble" })
+        table.insert(staff_rests_jobs, { rests = mid_rests, staff_id = "mid", staff_is_treble = false, staff_bot_type = "mid" })
+        table.insert(staff_rests_jobs, { rests = b_rests, staff_id = "bass", staff_is_treble = false, staff_bot_type = "bass" })
+    elseif is_grand then
+        local treble_eff, bass_eff = {}, {}
+        for _, en in ipairs(eff_notes) do
+            if en.in_treble then
+                table.insert(treble_eff, en)
+            else
+                table.insert(bass_eff, en)
+            end
+        end
+        local tr_rests = Engraver.generate_voice_rests(treble_eff, num_measures, qn_per_measure, dq)
+        local b_rests  = Engraver.generate_voice_rests(bass_eff, num_measures, qn_per_measure, dq)
+        table.insert(staff_rests_jobs, { rests = tr_rests, staff_id = "treble", staff_is_treble = true, staff_bot_type = "treble" })
+        table.insert(staff_rests_jobs, { rests = b_rests, staff_id = "bass", staff_is_treble = false, staff_bot_type = "bass" })
+    elseif track_clef == "bass" then
+        local trk_rests = Engraver.generate_voice_rests(eff_notes, num_measures, qn_per_measure, dq)
+        table.insert(staff_rests_jobs, { rests = trk_rests, staff_id = "bass", staff_is_treble = false, staff_bot_type = "bass" })
+    else
+        local trk_rests = Engraver.generate_voice_rests(eff_notes, num_measures, qn_per_measure, dq)
+        table.insert(staff_rests_jobs, { rests = trk_rests, staff_id = "treble", staff_is_treble = true, staff_bot_type = "staff" })
+    end
+    
+    local precomputed_rests = {}
+    for _, job in ipairs(staff_rests_jobs) do
+        local r_list = job.rests or {}
+        local staff_is_tr = job.staff_is_treble
+        local staff_id = job.staff_id
+        local staff_bot_type = job.staff_bot_type
+        
+        for _, r in ipairs(r_list) do
+            local collision = false
+            local r_bar = r.measure_idx or math.floor(r.start_qn / bpi)
+            if RepeatService.has_repeat_mark(state, tdata.guid, r_bar) then
+                collision = true
+            end
+            
+            local bar_eff_notes = eff_notes_by_bar[r_bar] or {}
+            local r_start = r.start_qn
+            local r_end = r_start + (r.is_full_measure and qn_per_measure or r.dur_qn)
+            
+            if not collision then
+                if r.is_full_measure then
+                    local m_idx = r_bar
+                    local bar_sqn = m_idx * bpi
+                    local bar_eqn = (m_idx + 1) * bpi
+                    for _, en in ipairs(bar_eff_notes) do
+                        local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_tr))
+                        local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
+                        if matches_staff and matches_voice then
+                            local en_bar = math.floor((en.start_qn + 0.001) / bpi)
+                            if en_bar == m_idx or (en.start_qn < bar_eqn - 0.001 and en.end_qn > bar_sqn + 0.001) then
+                                collision = true
+                                break
+                            end
+                        end
+                    end
+                else
+                    for _, en in ipairs(bar_eff_notes) do
+                        local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_tr))
+                        local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
+                        if matches_staff and matches_voice then
+                            local n_start = en.start_qn
+                            local n_end = en.end_qn
+                            local tol = dq and (dq * 0.3) or 0.05
+                            if not (r_end <= n_start + tol or r_start >= n_end - tol) or math.abs(n_start - r_start) < (dq and (dq * 0.7) or 0.22) then
+                                collision = true
+                                break
+                            end
+                        end
+                    end
+                end
+            end
+            
+            if not collision then
+                r.staff_bot_type = staff_bot_type
+                r.r_end = r_end
+                table.insert(precomputed_rests, r)
+            end
+        end
+    end
+    table.sort(precomputed_rests, function(a, b) return a.start_qn < b.start_qn end)
+    
     return {
         visual_notes = visual_notes,
         chord_clusters = chord_clusters,
         beam_groups = beam_groups,
         bar_ties = bar_ties,
-        is_polyphonic_track = is_polyphonic_track
+        is_polyphonic_track = is_polyphonic_track,
+        rests = precomputed_rests
     }
 end
 
@@ -1298,311 +1472,237 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
         end
         
-        -- Effective notes for rest calculation and collision avoidance (including live drag)
-        local eff_notes = {}
-        local is_dragging_notes = state.is_dragging and state.drag_note and state.drag_selected_snapshot and (#state.drag_selected_snapshot > 0)
-        local drag_keys = {}
-        if is_dragging_notes then
-            for _, sn in ipairs(state.drag_selected_snapshot) do
-                drag_keys[string.format("%s_%d_%d", tostring(sn.take or "0"), sn.idx or 0, sn.pitch or 0)] = true
-            end
-        end
-        
-        local dq = (state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001) and state.display_quantize_grid or nil
         local trk_v = (state.track_voices and tdata.guid and state.track_voices[tdata.guid]) or 0
         local filter_chan = (trk_v > 0) and (trk_v - 1) or nil
+        local is_dragging_notes = state.is_dragging and state.drag_note and state.drag_selected_snapshot and (#state.drag_selected_snapshot > 0)
         
-        for _, n in ipairs(tdata.notes) do
-            if filter_chan == nil or (not state.hide_inactive_voices) or ((n.chan or 0) == filter_chan) then
-            local is_sel = state:is_note_selected(n) or (state.drag_note == n)
-            local n_start = n.start_qn
-            local n_end = n.end_qn or (n.start_qn + (n.dur_qn or 1.0))
-            if is_sel or (n_end >= vis_min_qn and n_start <= vis_max_qn) then
-                local k = string.format("%s_%d_%d", tostring(n.take or "0"), n.idx or 0, n.pitch or 0)
-                local base_sqn = n.start_qn
-                local base_dur = n.dur_qn
-                local base_pitch = n.pitch
-                if is_dragging_notes and drag_keys[k] then
-                    local delta_qn = state.drag_delta_qn or 0
-                    local delta_p = state.drag_delta_pitch or 0
-                    base_sqn = math.max(0, n.start_qn + delta_qn)
-                    base_pitch = math.max(0, math.min(127, n.pitch + delta_p))
-                end
-                
-                local eff_sqn = dq and (math.max(0, math.floor((base_sqn / dq) + 0.5) * dq)) or base_sqn
-                local eff_dur = dq and (math.max(dq, math.floor((base_dur / dq) + 0.5) * dq)) or base_dur
-                local eff_eqn = eff_sqn + eff_dur
-                
-                local active_oct = OctaveService.get_active_line_at_qn(state, tdata.guid, eff_sqn)
-                local oct_shift = active_oct and (Constants.OCTAVE_LINE_DEFS[active_oct.type] and Constants.OCTAVE_LINE_DEFS[active_oct.type].shift_semitones or 0) or 0
-                local written_pitch = math.max(0, math.min(127, base_pitch - oct_shift))
-
-                local is_tr = true
-                local st_target = "treble"
-                if is_harp then
-                    if written_pitch >= 65 then
-                        is_tr = true
-                        st_target = "treble"
-                    elseif written_pitch >= 53 then
-                        is_tr = false
-                        st_target = "mid"
-                    else
-                        is_tr = false
-                        st_target = "bass"
-                    end
-                elseif is_grand then
-                    local manual_st = Engraver.get_note_staff(n, state)
-                    if manual_st == "treble" then
-                        is_tr = true
-                        st_target = "treble"
-                    elseif manual_st == "bass" then
-                        is_tr = false
-                        st_target = "bass"
-                    else
-                        is_tr = (written_pitch >= 60)
-                        st_target = is_tr and "treble" or "bass"
-                    end
-                elseif track_clef == "bass" then
-                    is_tr = false
-                    st_target = "bass"
-                end
-                table.insert(eff_notes, {
-                    pitch = written_pitch,
-                    start_qn = eff_sqn,
-                    end_qn = eff_eqn,
-                    dur_qn = eff_dur,
-                    in_treble = is_tr,
-                    in_staff = st_target
-                })
-                end
-            end
-        end
-        
-        -- With display quantize: close small gaps between consecutive notes on the same staff
-        if dq then
-            table.sort(eff_notes, function(a, b) return a.start_qn < b.start_qn end)
-            for idx = 1, #eff_notes do
-                local en = eff_notes[idx]
-                for next_idx = idx + 1, #eff_notes do
-                    local next_en = eff_notes[next_idx]
-                    if (not is_grand and not is_harp) or (is_harp and en.in_staff == next_en.in_staff) or (is_grand and en.in_treble == next_en.in_treble) then
-                        if next_en.start_qn > en.start_qn then
-                            if next_en.start_qn <= en.end_qn + (dq * 0.75) then
-                                en.end_qn = math.max(en.end_qn, next_en.start_qn)
-                                en.dur_qn = en.end_qn - en.start_qn
-                            end
-                            break
-                        end
-                    end
-                end
-            end
-        end
-
-        -- Pre-bucket eff_notes by measure bar for O(1) rest collision lookup
-        local eff_notes_by_bar = {}
-        for _, en in ipairs(eff_notes) do
-            local mb_start = math.floor(en.start_qn / bpi)
-            local mb_end = math.floor(math.max(en.start_qn, en.end_qn - 0.001) / bpi)
-            for mb = mb_start, mb_end do
-                local blist = eff_notes_by_bar[mb]
-                if not blist then
-                    blist = {}
-                    eff_notes_by_bar[mb] = blist
-                end
-                table.insert(blist, en)
-            end
-        end
-
-        -- Rests in gaps (strict separation of staves in grand staff & harp 3-staff and 100% collision filter)
-        local function draw_staff_rests(rests_list, staff_bot, staff_is_treble, staff_id)
-            local visible_rests = {}
-            for _, r in ipairs(rests_list or {}) do
-                local r_start = r.start_qn
-                if r_start > vis_max_qn + qn_per_measure then
-                    break
-                end
-                local r_end = r_start + (r.is_full_measure and qn_per_measure or r.dur_qn)
-                
-                -- Check and draw only within the visible area:
-                if r_end >= vis_min_qn and r_start <= vis_max_qn then
-                    local collision = false
-                    local r_bar = r.measure_idx or math.floor(r.start_qn / bpi)
-                    if RepeatService.has_repeat_mark(state, tdata.guid, r_bar) then
-                        collision = true
-                    end
-                    
-                    local bar_eff_notes = eff_notes_by_bar[r_bar] or {}
-                    -- IF ANY NOTE EXISTS IN THIS MEASURE ON THIS STAFF -> NO EMPTY MEASURE REST!
-                    if r.is_full_measure then
-                        local m_idx = r_bar
-                        local bar_sqn = m_idx * bpi
-                        local bar_eqn = (m_idx + 1) * bpi
-                        for _, en in ipairs(bar_eff_notes) do
-                            local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_treble))
-                            local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
-                            if matches_staff and matches_voice then
-                                local en_bar = math.floor((en.start_qn + 0.001) / bpi)
-                                if en_bar == m_idx or (en.start_qn < bar_eqn - 0.001 and en.end_qn > bar_sqn + 0.001) then
-                                    collision = true
-                                    break
-                                end
-                            end
-                        end
-                    else
-                        for _, en in ipairs(bar_eff_notes) do
-                            local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_treble))
-                            local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
-                            if matches_staff and matches_voice then
-                                local n_start = en.start_qn
-                                local n_end = en.end_qn
-                                local tol = dq and (dq * 0.3) or 0.05
-                                if not (r_end <= n_start + tol or r_start >= n_end - tol) or math.abs(n_start - r_start) < (dq and (dq * 0.7) or 0.22) then
-                                    collision = true
-                                    break
-                                end
-                            end
-                        end
-                    end
-                    
-                    if not collision then
-                        table.insert(visible_rests, r)
-                    end
-                end
-            end
-            
-            table.sort(visible_rests, function(a, b) return a.start_qn < b.start_qn end)
-            
-            local min_rest_gap = 22.0 * s
-            local prev_rx = nil
-            local prev_m = nil
-            for _, r in ipairs(visible_rests) do
-                local rx
-                if r.is_full_measure then
-                    if measure_map and measure_map.starts then
-                        local m_idx = r.measure_idx or 0
-                        local m_start = measure_map.starts[m_idx] or (margin_left + m_idx * measure_map.base_w)
-                        local m_w = measure_map.widths[m_idx] or measure_map.base_w
-                        rx = m_start + (m_w / 2)
-                    else
-                        local measure_w, pad_left, pad_right, usable_w = Engraver.get_measure_layout(s, qn_per_measure)
-                        local m_x = margin_left + (r.measure_idx * measure_w)
-                        rx = m_x + pad_left + (usable_w / 2)
-                    end
-                else
-                    rx = Engraver.qn_to_canvas_x(r.start_qn, margin_left, s, qn_per_measure, measure_map)
-                end
-                
-                local cur_m = r.measure_idx or math.floor(r.start_qn / bpi)
-                if prev_rx and prev_m == cur_m and not r.is_full_measure then
-                    if rx < prev_rx + min_rest_gap then
-                        rx = prev_rx + min_rest_gap
-                    end
-                end
-                prev_rx = rx
-                prev_m = cur_m
-                
-                if rx >= cull_min_x - 30 * s and rx <= cull_max_x + 30 * s then
-                    local rest_col = Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
-                    Engraver.draw_rest(draw_list, r, staff_bot, line_spacing, margin_left, s, qn_per_measure, rest_col, font_music, measure_map, rx)
-                end
-            end
-        end
-
-        local cached_rests = nil
-        local rest_key = nil
-        if not is_dragging_notes and tdata.rests_cache then
-            rest_key = string.format("staff_rests_%s_%d_%.2f_%s", tostring(track_clef), total_measures, qn_per_measure, tostring(dq))
-            cached_rests = tdata.rests_cache[rest_key]
-        end
-
-        if is_harp then
-            local tr_rests, mid_rests, b_rests
-            if cached_rests then
-                tr_rests, mid_rests, b_rests = cached_rests.treble, cached_rests.mid, cached_rests.bass
-            else
-                local treble_eff, alto_eff, bass_eff = {}, {}, {}
-                for _, en in ipairs(eff_notes) do
-                    if en.in_staff == "treble" then
-                        table.insert(treble_eff, en)
-                    elseif en.in_staff == "mid" or en.in_staff == "alto" then
-                        table.insert(alto_eff, en)
-                    else
-                        table.insert(bass_eff, en)
-                    end
-                end
-                tr_rests  = Engraver.generate_voice_rests(treble_eff, total_measures, qn_per_measure, dq)
-                mid_rests = Engraver.generate_voice_rests(alto_eff, total_measures, qn_per_measure, dq)
-                b_rests   = Engraver.generate_voice_rests(bass_eff, total_measures, qn_per_measure, dq)
-                if not is_dragging_notes and tdata.rests_cache and rest_key then
-                    tdata.rests_cache[rest_key] = { treble = tr_rests, mid = mid_rests, bass = b_rests }
-                end
-            end
-            draw_staff_rests(tr_rests, treble_bottom_y, true, "treble")
-            draw_staff_rests(mid_rests, mid_bottom_y, false, "mid")
-            draw_staff_rests(b_rests, bass_bottom_y, false, "bass")
-        elseif is_grand then
-            local tr_rests, b_rests
-            if cached_rests then
-                tr_rests, b_rests = cached_rests.treble, cached_rests.bass
-            else
-                local treble_eff = {}
-                local bass_eff = {}
-                for _, en in ipairs(eff_notes) do
-                    if en.in_treble then
-                        table.insert(treble_eff, en)
-                    else
-                        table.insert(bass_eff, en)
-                    end
-                end
-                tr_rests = Engraver.generate_voice_rests(treble_eff, total_measures, qn_per_measure, dq)
-                b_rests  = Engraver.generate_voice_rests(bass_eff, total_measures, qn_per_measure, dq)
-                if not is_dragging_notes and tdata.rests_cache and rest_key then
-                    tdata.rests_cache[rest_key] = { treble = tr_rests, bass = b_rests }
-                end
-            end
-            draw_staff_rests(tr_rests, treble_bottom_y, true)
-            draw_staff_rests(b_rests, bass_bottom_y, false)
-        elseif track_clef == "bass" then
-            local trk_rests
-            if cached_rests then
-                trk_rests = cached_rests.track
-            else
-                trk_rests = Engraver.generate_voice_rests(eff_notes, total_measures, qn_per_measure, dq)
-                if not is_dragging_notes and tdata.rests_cache and rest_key then
-                    tdata.rests_cache[rest_key] = { track = trk_rests }
-                end
-            end
-            draw_staff_rests(trk_rests, bass_bottom_y, false)
-        else
-            local trk_rests
-            if cached_rests then
-                trk_rests = cached_rests.track
-            else
-                trk_rests = Engraver.generate_voice_rests(eff_notes, total_measures, qn_per_measure, dq)
-                if not is_dragging_notes and tdata.rests_cache and rest_key then
-                    tdata.rests_cache[rest_key] = { track = trk_rests }
-                end
-            end
-            draw_staff_rests(trk_rests, staff_bottom_y, true)
-        end
-        
-        -- Visual notes, chord clusters, beams & ties (retrieved from layout_cache or built once)
+        -- Visual notes, chord clusters, beams, ties & rests (retrieved from layout_cache or built once)
         local visual_notes, chord_clusters, beam_groups, is_polyphonic_track
         local cached_layout = nil
+        local layout_key = nil
         if not is_dragging_notes and tdata.layout_cache then
             local dq_sig = string.format("%s_%.3f", tostring(state.display_quantize), tonumber(state.display_quantize_grid) or 0)
             local rep_cnt = state.repeat_marks and #state.repeat_marks or 0
-            local layout_key = string.format("%.3f_%s_%s_%s_%.3f_%s_%s_%d_%d",
+            layout_key = string.format("%.3f_%s_%s_%s_%.3f_%s_%s_%d_%d_%d",
                 s, tostring(track_clef), tostring(filter_chan),
                 tostring(state.hide_inactive_voices), qn_per_measure,
-                tostring(state.beam_grouping), dq_sig, rep_cnt, (state.accidental_change_cnt or 0))
+                tostring(state.beam_grouping), dq_sig, rep_cnt, (state.accidental_change_cnt or 0), total_measures)
             cached_layout = tdata.layout_cache[layout_key]
             if not cached_layout then
-                cached_layout = build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left)
+                cached_layout = build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
                 tdata.layout_cache[layout_key] = cached_layout
             end
         end
         
+        -- Render rests: Ultra-fast O(1) path from cached_layout (ZERO note scans, ZERO table sorts)
+        if cached_layout and cached_layout.rests then
+            local min_rest_gap = 22.0 * s
+            local prev_rx = nil
+            local prev_m = nil
+            for _, r in ipairs(cached_layout.rests) do
+                if r.start_qn > vis_max_qn + qn_per_measure then
+                    break
+                end
+                local r_end = r.r_end or (r.start_qn + (r.is_full_measure and qn_per_measure or r.dur_qn))
+                if r_end >= vis_min_qn and r.start_qn <= vis_max_qn then
+                    local staff_bot = staff_bottom_y
+                    if r.staff_bot_type == "treble" then
+                        staff_bot = treble_bottom_y
+                    elseif r.staff_bot_type == "mid" then
+                        staff_bot = mid_bottom_y
+                    elseif r.staff_bot_type == "bass" then
+                        staff_bot = bass_bottom_y
+                    end
+                    
+                    local rx
+                    if r.is_full_measure then
+                        if measure_map and measure_map.starts then
+                            local m_idx = r.measure_idx or 0
+                            local m_start = measure_map.starts[m_idx] or (margin_left + m_idx * measure_map.base_w)
+                            local m_w = measure_map.widths[m_idx] or measure_map.base_w
+                            rx = m_start + (m_w / 2)
+                        else
+                            local measure_w, pad_left, pad_right, usable_w = Engraver.get_measure_layout(s, qn_per_measure)
+                            local m_x = margin_left + (r.measure_idx * measure_w)
+                            rx = m_x + pad_left + (usable_w / 2)
+                        end
+                    else
+                        rx = Engraver.qn_to_canvas_x(r.start_qn, margin_left, s, qn_per_measure, measure_map)
+                    end
+                    
+                    local cur_m = r.measure_idx or math.floor(r.start_qn / bpi)
+                    if prev_rx and prev_m == cur_m and not r.is_full_measure then
+                        if rx < prev_rx + min_rest_gap then
+                            rx = prev_rx + min_rest_gap
+                        end
+                    end
+                    prev_rx = rx
+                    prev_m = cur_m
+                    
+                    if rx >= cull_min_x - 30 * s and rx <= cull_max_x + 30 * s then
+                        local rest_col = Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
+                        Engraver.draw_rest(draw_list, r, staff_bot, line_spacing, margin_left, s, qn_per_measure, rest_col, font_music, measure_map, rx)
+                    end
+                end
+            end
+        else
+            -- Live Drag dynamic fallback path
+            local eff_notes = {}
+            local drag_keys = {}
+            if is_dragging_notes then
+                for _, sn in ipairs(state.drag_selected_snapshot) do
+                    drag_keys[string.format("%s_%d_%d", tostring(sn.take or "0"), sn.idx or 0, sn.pitch or 0)] = true
+                end
+            end
+            local dq = (state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001) and state.display_quantize_grid or nil
+            for _, n in ipairs(tdata.notes) do
+                if filter_chan == nil or (not state.hide_inactive_voices) or ((n.chan or 0) == filter_chan) then
+                    local is_sel = state:is_note_selected(n) or (state.drag_note == n)
+                    local n_start = n.start_qn
+                    local n_end = n.end_qn or (n.start_qn + (n.dur_qn or 1.0))
+                    if is_sel or (n_end >= vis_min_qn and n_start <= vis_max_qn) then
+                        local k = string.format("%s_%d_%d", tostring(n.take or "0"), n.idx or 0, n.pitch or 0)
+                        local base_sqn = n.start_qn
+                        local base_dur = n.dur_qn
+                        local base_pitch = n.pitch
+                        if is_dragging_notes and drag_keys[k] then
+                            local delta_qn = state.drag_delta_qn or 0
+                            local delta_p = state.drag_delta_pitch or 0
+                            base_sqn = math.max(0, n.start_qn + delta_qn)
+                            base_pitch = math.max(0, math.min(127, n.pitch + delta_p))
+                        end
+                        local eff_sqn = dq and (math.max(0, math.floor((base_sqn / dq) + 0.5) * dq)) or base_sqn
+                        local eff_dur = dq and (math.max(dq, math.floor((base_dur / dq) + 0.5) * dq)) or base_dur
+                        local eff_eqn = eff_sqn + eff_dur
+                        local active_oct = OctaveService.get_active_line_at_qn(state, tdata.guid, eff_sqn)
+                        local oct_shift = active_oct and (Constants.OCTAVE_LINE_DEFS[active_oct.type] and Constants.OCTAVE_LINE_DEFS[active_oct.type].shift_semitones or 0) or 0
+                        local written_pitch = math.max(0, math.min(127, base_pitch - oct_shift))
+                        local is_tr = true
+                        local st_target = "treble"
+                        if is_harp then
+                            if written_pitch >= 65 then is_tr = true st_target = "treble"
+                            elseif written_pitch >= 53 then is_tr = false st_target = "mid"
+                            else is_tr = false st_target = "bass" end
+                        elseif is_grand then
+                            local manual_st = Engraver.get_note_staff(n, state)
+                            if manual_st == "treble" then is_tr = true st_target = "treble"
+                            elseif manual_st == "bass" then is_tr = false st_target = "bass"
+                            else is_tr = (written_pitch >= 60) st_target = is_tr and "treble" or "bass" end
+                        elseif track_clef == "bass" then
+                            is_tr = false st_target = "bass"
+                        end
+                        table.insert(eff_notes, { pitch = written_pitch, start_qn = eff_sqn, end_qn = eff_eqn, dur_qn = eff_dur, in_treble = is_tr, in_staff = st_target })
+                    end
+                end
+            end
+            local eff_notes_by_bar = {}
+            for _, en in ipairs(eff_notes) do
+                local mb_start = math.floor(en.start_qn / bpi)
+                local mb_end = math.floor(math.max(en.start_qn, en.end_qn - 0.001) / bpi)
+                for mb = mb_start, mb_end do
+                    local blist = eff_notes_by_bar[mb]
+                    if not blist then blist = {} eff_notes_by_bar[mb] = blist end
+                    table.insert(blist, en)
+                end
+            end
+            local function draw_staff_rests(rests_list, staff_bot, staff_is_treble, staff_id)
+                local visible_rests = {}
+                for _, r in ipairs(rests_list or {}) do
+                    local r_start = r.start_qn
+                    if r_start > vis_max_qn + qn_per_measure then break end
+                    local r_end = r_start + (r.is_full_measure and qn_per_measure or r.dur_qn)
+                    if r_end >= vis_min_qn and r_start <= vis_max_qn then
+                        local collision = false
+                        local r_bar = r.measure_idx or math.floor(r.start_qn / bpi)
+                        if RepeatService.has_repeat_mark(state, tdata.guid, r_bar) then collision = true end
+                        local bar_eff_notes = eff_notes_by_bar[r_bar] or {}
+                        if r.is_full_measure then
+                            local m_idx = r_bar
+                            local bar_sqn = m_idx * bpi
+                            local bar_eqn = (m_idx + 1) * bpi
+                            for _, en in ipairs(bar_eff_notes) do
+                                local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_treble))
+                                local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
+                                if matches_staff and matches_voice then
+                                    local en_bar = math.floor((en.start_qn + 0.001) / bpi)
+                                    if en_bar == m_idx or (en.start_qn < bar_eqn - 0.001 and en.end_qn > bar_sqn + 0.001) then
+                                        collision = true break
+                                    end
+                                end
+                            end
+                        else
+                            for _, en in ipairs(bar_eff_notes) do
+                                local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_treble))
+                                local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
+                                if matches_staff and matches_voice then
+                                    local n_start = en.start_qn
+                                    local n_end = en.end_qn
+                                    local tol = dq and (dq * 0.3) or 0.05
+                                    if not (r_end <= n_start + tol or r_start >= n_end - tol) or math.abs(n_start - r_start) < (dq and (dq * 0.7) or 0.22) then
+                                        collision = true break
+                                    end
+                                end
+                            end
+                        end
+                        if not collision then table.insert(visible_rests, r) end
+                    end
+                end
+                table.sort(visible_rests, function(a, b) return a.start_qn < b.start_qn end)
+                local min_rest_gap = 22.0 * s
+                local prev_rx = nil
+                local prev_m = nil
+                for _, r in ipairs(visible_rests) do
+                    local rx
+                    if r.is_full_measure then
+                        if measure_map and measure_map.starts then
+                            local m_idx = r.measure_idx or 0
+                            local m_start = measure_map.starts[m_idx] or (margin_left + m_idx * measure_map.base_w)
+                            local m_w = measure_map.widths[m_idx] or measure_map.base_w
+                            rx = m_start + (m_w / 2)
+                        else
+                            local measure_w, pad_left, pad_right, usable_w = Engraver.get_measure_layout(s, qn_per_measure)
+                            local m_x = margin_left + (r.measure_idx * measure_w)
+                            rx = m_x + pad_left + (usable_w / 2)
+                        end
+                    else
+                        rx = Engraver.qn_to_canvas_x(r.start_qn, margin_left, s, qn_per_measure, measure_map)
+                    end
+                    local cur_m = r.measure_idx or math.floor(r.start_qn / bpi)
+                    if prev_rx and prev_m == cur_m and not r.is_full_measure then
+                        if rx < prev_rx + min_rest_gap then rx = prev_rx + min_rest_gap end
+                    end
+                    prev_rx = rx
+                    prev_m = cur_m
+                    if rx >= cull_min_x - 30 * s and rx <= cull_max_x + 30 * s then
+                        local rest_col = Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
+                        Engraver.draw_rest(draw_list, r, staff_bot, line_spacing, margin_left, s, qn_per_measure, rest_col, font_music, measure_map, rx)
+                    end
+                end
+            end
+            if is_harp then
+                local treble_eff, alto_eff, bass_eff = {}, {}, {}
+                for _, en in ipairs(eff_notes) do
+                    if en.in_staff == "treble" then table.insert(treble_eff, en)
+                    elseif en.in_staff == "mid" or en.in_staff == "alto" then table.insert(alto_eff, en)
+                    else table.insert(bass_eff, en) end
+                end
+                draw_staff_rests(Engraver.generate_voice_rests(treble_eff, total_measures, qn_per_measure, dq), treble_bottom_y, true, "treble")
+                draw_staff_rests(Engraver.generate_voice_rests(alto_eff, total_measures, qn_per_measure, dq), mid_bottom_y, false, "mid")
+                draw_staff_rests(Engraver.generate_voice_rests(bass_eff, total_measures, qn_per_measure, dq), bass_bottom_y, false, "bass")
+            elseif is_grand then
+                local treble_eff, bass_eff = {}, {}
+                for _, en in ipairs(eff_notes) do
+                    if en.in_treble then table.insert(treble_eff, en) else table.insert(bass_eff, en) end
+                end
+                draw_staff_rests(Engraver.generate_voice_rests(treble_eff, total_measures, qn_per_measure, dq), treble_bottom_y, true)
+                draw_staff_rests(Engraver.generate_voice_rests(bass_eff, total_measures, qn_per_measure, dq), bass_bottom_y, false)
+            elseif track_clef == "bass" then
+                draw_staff_rests(Engraver.generate_voice_rests(eff_notes, total_measures, qn_per_measure, dq), bass_bottom_y, false)
+            else
+                draw_staff_rests(Engraver.generate_voice_rests(eff_notes, total_measures, qn_per_measure, dq), staff_bottom_y, true)
+            end
+        end
+
         local display_notes = {}
         local beamed_notes_map = {}
         
@@ -1617,7 +1717,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 table.insert(all_bar_ties, bt)
             end
             
-            -- Fast screen position update & render registration for notes near/in visible window
+            -- Fast screen position update & render registration for notes near/in visible window (Zero table allocation)
             for _, vn in ipairs(visual_notes) do
                 local is_sel = state:is_note_selected(vn.orig)
                 local vn_start = vn.start_qn or 0
@@ -1633,21 +1733,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     vn.vis_ny = staff_bot + (vn.rel_ny or -(vn.dstep * step_y))
                     vn.nominal_nx = Engraver.qn_to_canvas_x(vn.display_qn or vn.start_qn, margin_left, s, qn_per_measure, measure_map)
                     vn.vis_nx = vn.nominal_nx + (vn.head_x_offset or 0) + (vn.collision_push or 0)
+                    vn.nx = vn.vis_nx
+                    vn.ny = vn.vis_ny
+                    vn.stem_x = vn.vis_nx
+                    vn.stem_end_y = vn.vis_ny
                     
-                    local rdata = {
-                        pitch = vn.pitch, start_qn = vn.start_qn, end_qn = vn.end_qn,
-                        dur_qn = vn.dur_qn, nx = vn.vis_nx, ny = vn.vis_ny,
-                        in_treble = vn.in_treble, in_staff = vn.in_staff, dstep = vn.dstep, stem_down = false,
-                        stem_x = vn.vis_nx, stem_end_y = vn.vis_ny, flag_count = Engraver.get_flag_count(vn.dur_qn),
-                        key = vn.key, note = vn.orig, orig = vn.orig, track = tdata.track,
-                        track_guid = tdata.guid,
-                        item = vn.orig and vn.orig.item, take = vn.orig and vn.orig.take,
-                        idx = vn.orig and vn.orig.idx, is_segment = vn.is_segment,
-                        chan = (vn.orig and vn.orig.chan) or (vn.chan or 0),
-                        is_ghost_voice = vn.is_ghost_voice
-                    }
-                    table.insert(all_note_render_data, rdata)
-                    all_note_render_by_key[vn.key] = rdata
+                    table.insert(all_note_render_data, vn)
+                    all_note_render_by_key[vn.key] = vn
                     
                     local note_bar = math.floor(((vn.start_qn or 0) + 0.001) / bpi)
                     if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
@@ -2487,18 +2579,27 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
 
                 -- Calculate lowest note/stem in this time range so hairpin is ALWAYS placed below notes
-                local max_note_y = staff_bot
-                for _, vn in ipairs(visual_notes) do
-                    if vn.start_qn < (cur_e + 0.15) and vn.end_qn > (cur_s - 0.15) then
-                        local ny = vn.vis_ny or staff_bot
-                        local note_bottom = ny + 5.0 * s
-                        if vn.stem_down and vn.stem_end_y then
-                            note_bottom = math.max(note_bottom, vn.stem_end_y + 3.0 * s)
-                        end
-                        if note_bottom > max_note_y then
-                            max_note_y = note_bottom
+                local max_note_y = hp._cached_max_note_y
+                local span_key = cur_s .. "_" .. cur_e .. "_" .. tostring(staff_bot)
+                if not max_note_y or hp._cached_span ~= span_key or hp._cached_lkey ~= layout_key then
+                    max_note_y = staff_bot
+                    if visual_notes then
+                        for _, vn in ipairs(visual_notes) do
+                            if vn.start_qn < (cur_e + 0.15) and vn.end_qn > (cur_s - 0.15) then
+                                local ny = vn.vis_ny or staff_bot
+                                local note_bottom = ny + 5.0 * s
+                                if vn.stem_down and vn.stem_end_y then
+                                    note_bottom = math.max(note_bottom, vn.stem_end_y + 3.0 * s)
+                                end
+                                if note_bottom > max_note_y then
+                                    max_note_y = note_bottom
+                                end
+                            end
                         end
                     end
+                    hp._cached_max_note_y = max_note_y
+                    hp._cached_span = span_key
+                    hp._cached_lkey = layout_key
                 end
 
                 local user_doy = state.dynamics_offset_y or 79.0
@@ -2901,137 +3002,158 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local art_key = state:get_articulation_key(art)
                 local is_art_sel = (state.selected_articulation == art) or state:is_articulation_selected(art) or is_art_dragged
                 
-                local trk_override = state.track_articulation_banks and tdata.guid and state.track_articulation_banks[tdata.guid]
-                local bank = ReaticulateParser.get_bank_for_track(tdata.track, all_reaticulate_banks, trk_override, art.msb, art.lsb)
-                local label = ReaticulateParser.get_art_display_name(bank, art.pc, all_reaticulate_banks)
-                if (not label or label:find("^PC %d+")) and art.label and not art.label:find("^PC %d+") then
-                    label = art.label
-                end
-                art.label = label
-                
-                -- Standard note articulations (staccato, tenuto, marcato, etc.) are rendered directly as symbols on the note
-                -- and should not appear duplicated as text in the articulation lane.
-                local is_standard_symbol = false
-                if bank and bank.articulations and midi_service and midi_service.art_id_from_reaticulate_art then
-                    for _, ba in ipairs(bank.articulations) do
-                        if ba.pc == art.pc then
-                            local mapped = midi_service.art_id_from_reaticulate_art(ba)
-                            if mapped and mapped ~= "legato" then
-                                is_standard_symbol = true
-                            end
-                            break
-                        end
+                -- Cull offscreen articulations early before expensive bank lookups, note loops, and font queries
+                if is_art_sel or (dx >= cull_min_x - 30 * s and dx <= cull_max_x + 30 * s) then
+                    local trk_override = state.track_articulation_banks and tdata.guid and state.track_articulation_banks[tdata.guid]
+                    local bank = ReaticulateParser.get_bank_for_track(tdata.track, all_reaticulate_banks, trk_override, art.msb, art.lsb)
+                    local label = ReaticulateParser.get_art_display_name(bank, art.pc, all_reaticulate_banks)
+                    if (not label or label:find("^PC %d+")) and art.label and not art.label:find("^PC %d+") then
+                        label = art.label
                     end
-                end
-                if not is_standard_symbol and label then
-                    local l_low = label:lower()
-                    if l_low:find("^stacc") or l_low:find("staccatiss") or l_low:find("spicc") or l_low:find("^marc") or l_low:find("^tenuto") or l_low:find("^accent") or l_low:find("harmonic") or l_low:find("flageolet") then
-                        is_standard_symbol = true
-                    end
-                end
-                
-                -- Slurs and Ties (Legato / Long placed as slurs) and Auto-Chase Return events must NEVER show text badges (Long, Legato, Tremolo chase, etc.) above staff
-                if not is_standard_symbol then
-                    if art.is_slur or art.is_slur_pc or art.is_auto_return then
-                        is_standard_symbol = true
-                    elseif label then
-                        local l_low = label:lower()
-                        if l_low:find("^slur") then
-                            is_standard_symbol = true
-                        end
-                    end
-                end
-                if not is_standard_symbol and state.user_slurs then
-                    for _, sl in ipairs(state.user_slurs) do
-                        local s_sqn = sl.start_qn or 0.0
-                        local s_eqn = sl.end_qn or sl.n2_start_qn or (s_sqn + 1.0)
-                        if (sl.chan or 0) == (art.chan or 0) and (cur_qn >= s_sqn - 0.10 and cur_qn <= s_eqn + 0.10) then
-                            is_standard_symbol = true
-                            break
-                        end
-                    end
-                end
-                if not is_standard_symbol and state.user_ties then
-                    for _, tie in ipairs(state.user_ties) do
-                        local t_sqn1 = tie.n1_start_qn or 0.0
-                        local t_sqn2 = tie.n2_start_qn or (t_sqn1 + 1.0)
-                        if (tie.chan or 0) == (art.chan or 0) and (math.abs(t_sqn1 - cur_qn) < 0.15 or math.abs(t_sqn2 - cur_qn) < 0.15) then
-                            is_standard_symbol = true
-                            break
-                        end
-                    end
-                end
-                if not is_standard_symbol and tdata.notes then
-                    for _, n in ipairs(tdata.notes) do
-                        local n_sqn = n.start_qn or 0.0
-                        if math.abs(n_sqn - cur_qn) < 0.15 then
-                            if n.articulation and n.articulation:lower():find("slur") then
-                                is_standard_symbol = true
-                                break
-                            end
-                            if n.slur_id or n.slur_to or n.is_tied_master or n.is_tied_slave then
-                                is_standard_symbol = true
-                                break
-                            end
-                        end
-                    end
-                end
-                if not is_standard_symbol and tdata.notes then
-                    for _, n in ipairs(tdata.notes) do
-                        if math.abs(n.start_qn - cur_qn) < 0.05 and n.articulation and n.articulation ~= "" and n.articulation ~= "none" then
-                            local a_id = n.articulation:lower()
-                            if a_id:find("stacc") or a_id:find("ten") or a_id:find("marc") or a_id:find("acc") or a_id:find("harm") then
-                                is_standard_symbol = true
-                                break
-                            end
-                        end
-                    end
-                end
-                
-                if not is_standard_symbol and (is_art_sel or (dx >= cull_min_x - 30 * s and dx <= cull_max_x + 30 * s)) then
-                    local art_staff_top_y = staff_top_y
-                    if is_grand and (art.staff == 2 or art.staff == "bass") and bass_bottom_y then
-                        art_staff_top_y = bass_bottom_y - 4 * line_spacing
-                    end
-                    local dy = art_staff_top_y - art_offset
-
-                    -- Gould engraving standard: collision avoidance with high notes / stems around position
-                    if visual_notes then
-                        for _, vn in ipairs(visual_notes) do
-                            if math.abs(vn.start_qn - cur_qn) < 1.0 then
-                                local note_top = vn.vis_ny - 6 * s
-                                if (not vn.stem_down) and vn.stem_end_y then
-                                    note_top = math.min(note_top, vn.stem_end_y - 4 * s)
-                                end
-                                if note_top <= dy + 6 * s then
-                                    dy = math.min(dy, note_top - 12 * s)
+                    art.label = label
+                    
+                    -- Standard note articulations (staccato, tenuto, marcato, etc.) are rendered directly as symbols on the note
+                    -- and should not appear duplicated as text in the articulation lane.
+                    local is_standard_symbol = false
+                    local art_sig = (state._slurs_version or #(state.user_slurs or {})) * 100000 + #(state.user_ties or {}) * 1000 + #(tdata.notes or {})
+                    if art._is_std_sym_sig == art_sig then
+                        is_standard_symbol = art._is_std_sym
+                    else
+                        if bank and bank.articulations and midi_service and midi_service.art_id_from_reaticulate_art then
+                            for _, ba in ipairs(bank.articulations) do
+                                if ba.pc == art.pc then
+                                    local mapped = midi_service.art_id_from_reaticulate_art(ba)
+                                    if mapped and mapped ~= "legato" then
+                                        is_standard_symbol = true
+                                    end
+                                    break
                                 end
                             end
                         end
+                        if not is_standard_symbol and label then
+                            local l_low = label:lower()
+                            if l_low:find("^stacc") or l_low:find("staccatiss") or l_low:find("spicc") or l_low:find("^marc") or l_low:find("^tenuto") or l_low:find("^accent") or l_low:find("harmonic") or l_low:find("flageolet") then
+                                is_standard_symbol = true
+                            end
+                        end
+                        
+                        -- Slurs and Ties (Legato / Long placed as slurs) and Auto-Chase Return events must NEVER show text badges (Long, Legato, Tremolo chase, etc.) above staff
+                        if not is_standard_symbol then
+                            if art.is_slur or art.is_slur_pc or art.is_auto_return then
+                                is_standard_symbol = true
+                            elseif label then
+                                local l_low = label:lower()
+                                if l_low:find("^slur") then
+                                    is_standard_symbol = true
+                                end
+                            end
+                        end
+                        if not is_standard_symbol and state.user_slurs then
+                            for _, sl in ipairs(state.user_slurs) do
+                                local s_sqn = sl.start_qn or 0.0
+                                local s_eqn = sl.end_qn or sl.n2_start_qn or (s_sqn + 1.0)
+                                if (sl.chan or 0) == (art.chan or 0) and (cur_qn >= s_sqn - 0.10 and cur_qn <= s_eqn + 0.10) then
+                                    is_standard_symbol = true
+                                    break
+                                end
+                            end
+                        end
+                        if not is_standard_symbol and state.user_ties then
+                            for _, tie in ipairs(state.user_ties) do
+                                local t_sqn1 = tie.n1_start_qn or 0.0
+                                local t_sqn2 = tie.n2_start_qn or (t_sqn1 + 1.0)
+                                if (tie.chan or 0) == (art.chan or 0) and (math.abs(t_sqn1 - cur_qn) < 0.15 or math.abs(t_sqn2 - cur_qn) < 0.15) then
+                                    is_standard_symbol = true
+                                    break
+                                end
+                            end
+                        end
+                        if not is_standard_symbol and tdata.notes then
+                            for _, n in ipairs(tdata.notes) do
+                                local n_sqn = n.start_qn or 0.0
+                                if math.abs(n_sqn - cur_qn) < 0.15 then
+                                    if n.articulation and n.articulation:lower():find("slur") then
+                                        is_standard_symbol = true
+                                        break
+                                    end
+                                    if n.slur_id or n.slur_to or n.is_tied_master or n.is_tied_slave then
+                                        is_standard_symbol = true
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        if not is_standard_symbol and tdata.notes then
+                            for _, n in ipairs(tdata.notes) do
+                                if math.abs(n.start_qn - cur_qn) < 0.05 and n.articulation and n.articulation ~= "" and n.articulation ~= "none" then
+                                    local a_id = n.articulation:lower()
+                                    if a_id:find("stacc") or a_id:find("ten") or a_id:find("marc") or a_id:find("acc") or a_id:find("harm") then
+                                        is_standard_symbol = true
+                                        break
+                                    end
+                                end
+                            end
+                        end
+                        art._is_std_sym = is_standard_symbol
+                        art._is_std_sym_sig = art_sig
                     end
+                    
+                    if not is_standard_symbol then
+                        local art_staff_top_y = staff_top_y
+                        if is_grand and (art.staff == 2 or art.staff == "bass") and bass_bottom_y then
+                            art_staff_top_y = bass_bottom_y - 4 * line_spacing
+                        end
+                        local dy = art_staff_top_y - art_offset
 
-                    art.track = tdata.track
-                    art.base_y = dy
-                    if not art.take and #tdata.items > 0 then art.take = tdata.items[1].take end
-                    -- Publisher typography per Gould: bold & legible font size for performance directions/articulations (e.g., "Long", "pizz.")
-                    local use_bold = (state.articulations_bold ~= false)
-                    local font_to_use = (use_bold and font_bold) or font_main
-                    local base_pt = state.articulations_font_size or 17.0
-                    local font_sz = math.max(12.0, math.floor(base_pt * s + 0.5))
-                    
-                    local txt_w = #label * (font_sz * 0.60)
-                    local cur_fs = reaper.APIExists("ImGui_GetFontSize") and reaper.ImGui_GetFontSize(ctx) or 14.0
-                    if not cur_fs or cur_fs <= 0 then cur_fs = 14.0 end
-                    local cw, ch = FontManager.calc_text_size(ctx, label)
-                    if cw and cw > 0 then txt_w = cw * (font_sz / cur_fs) * (use_bold and 1.08 or 1.0) end
-                    if ch and ch > 0 then txt_h = ch * (font_sz / cur_fs) end
-                    
-                    local tx = dx
-                    local ty = dy - (txt_h / 2)
-                    local bx0 = tx - 3 * s
-                    local bx1 = tx + txt_w + 3 * s
-                    local by0 = ty - 2 * s
-                    local by1 = ty + txt_h + 2 * s
+                        -- Gould engraving standard: collision avoidance with high notes / stems around position
+                        if visual_notes then
+                            for _, vn in ipairs(visual_notes) do
+                                if math.abs(vn.start_qn - cur_qn) < 1.0 then
+                                    local note_top = vn.vis_ny - 6 * s
+                                    if (not vn.stem_down) and vn.stem_end_y then
+                                        note_top = math.min(note_top, vn.stem_end_y - 4 * s)
+                                    end
+                                    if note_top <= dy + 6 * s then
+                                        dy = math.min(dy, note_top - 12 * s)
+                                    end
+                                end
+                            end
+                        end
+
+                        art.track = tdata.track
+                        art.base_y = dy
+                        if not art.take and #tdata.items > 0 then art.take = tdata.items[1].take end
+                        -- Publisher typography per Gould: bold & legible font size for performance directions/articulations (e.g., "Long", "pizz.")
+                        local use_bold = (state.articulations_bold ~= false)
+                        local font_to_use = (use_bold and font_bold) or font_main
+                        local base_pt = state.articulations_font_size or 17.0
+                        local font_sz = math.max(12.0, math.floor(base_pt * s + 0.5))
+                        
+                        local txt_w = #label * (font_sz * 0.60)
+                        local txt_h = font_sz
+                        local cur_fs = reaper.APIExists("ImGui_GetFontSize") and reaper.ImGui_GetFontSize(ctx) or 14.0
+                        if not cur_fs or cur_fs <= 0 then cur_fs = 14.0 end
+                        local cw, ch
+                        if art._cached_lbl == label and art._cached_fs == font_sz and art._cached_bold == use_bold then
+                            cw = art._cached_cw
+                            ch = art._cached_ch
+                        else
+                            cw, ch = FontManager.calc_text_size(ctx, label)
+                            art._cached_lbl = label
+                            art._cached_fs = font_sz
+                            art._cached_bold = use_bold
+                            art._cached_cw = cw
+                            art._cached_ch = ch
+                        end
+                        if cw and cw > 0 then txt_w = cw * (font_sz / cur_fs) * (use_bold and 1.08 or 1.0) end
+                        if ch and ch > 0 then txt_h = ch * (font_sz / cur_fs) end
+                        
+                        local tx = dx
+                        local ty = dy - (txt_h / 2)
+                        local bx0 = tx - 3 * s
+                        local bx1 = tx + txt_w + 3 * s
+                        local by0 = ty - 2 * s
+                        local by1 = ty + txt_h + 2 * s
 
                     -- Register for marquee selection rectangle
                     table.insert(all_articulation_render_data, {
@@ -3100,6 +3222,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
                 end
+                end
             end
         end
 
@@ -3117,122 +3240,136 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
                 
                 local tx = Engraver.qn_to_canvas_x(cur_qn, margin_left, s, qn_per_measure, measure_map)
-                local is_above = (ti.placement == "above")
-                local ty
-                if is_above and tdata.staff_top_y then
-                    local off = math.abs(cur_offset_y)
-                    if off > 50 then off = 18.0 end
-                    ty = tdata.staff_top_y - (off * s)
-                else
-                    ty = staff_bottom_y + (cur_offset_y * s)
-                end
-                
-                local font_to_use = font_italic or font_main
-                local st = tostring(ti.style or "italic"):lower()
-                if st == "bold" then
-                    font_to_use = font_bold or font_big or font_main
-                elseif st == "bold_italic" or st == "bold italic" then
-                    font_to_use = font_bold_italic or font_bold or font_italic or font_main
-                elseif st == "regular" then
-                    font_to_use = font_main
-                elseif st == "italic" then
-                    font_to_use = font_italic or font_main
-                end
-                
-                local font_sz = math.max(10.0, math.floor((ti.font_size or 16.0) * s + 0.5))
-                local text_str = tostring(ti.text or "")
-                local txt_w = #text_str * (font_sz * 0.55)
-                local txt_h = font_sz
-                local cur_fs = reaper.APIExists("ImGui_GetFontSize") and reaper.ImGui_GetFontSize(ctx) or 14.0
-                if not cur_fs or cur_fs <= 0 then cur_fs = 14.0 end
-                local cw, ch = FontManager.calc_text_size(ctx, text_str)
-                if cw and cw > 0 then
-                    txt_w = cw * (font_sz / cur_fs)
-                end
-                if ch and ch > 0 then
-                    txt_h = ch * (font_sz / cur_fs)
-                end
-                
-                local bx0 = tx - 4 * s
-                local by0 = ty - 2 * s
-                local bx1 = tx + txt_w + 4 * s
-                local by1 = ty + txt_h + 2 * s
-                
                 local is_selected = (state.selected_text_item and state.selected_text_item.id == ti.id) or (state.selected_text_items and state.selected_text_items[ti.id] ~= nil)
                 local is_editing  = (state.editing_text_item and state.editing_text_item.id == ti.id)
                 local is_dragged  = (state.is_dragging_text_item and state.drag_text_item and state.drag_text_item.id == ti.id)
                 
-                local in_box = (mouse_x >= bx0 and mouse_x <= bx1 and mouse_y >= by0 and mouse_y <= by1)
-                local can_hover = is_hovered and not is_editing and not state.is_dragging and not state.is_dragging_dynamic and not state.is_dragging_hairpin and not state.is_dragging_pedal and not state.is_dragging_articulation and not state.is_resizing_item
-                
-                if can_hover and in_box then
-                    text_item_hovered_this_frame = ti
-                    reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
-                end
-                local is_hov = (text_item_hovered_this_frame and text_item_hovered_this_frame.id == ti.id)
-                
-                -- Double-click: opens inline text editor
-                if is_hov and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
-                    state:clear_selection()
-                    state.selected_text_item = ti
-                    state.editing_text_item = ti
-                    state.editing_text_str = text_str
-                    state.editing_text_just_opened = true
-                    state.is_dragging_text_item = false
-                    state.drag_text_item = nil
-                end
-                
-                -- Right-click: opens context menu
-                if is_hov and reaper.ImGui_IsMouseClicked(ctx, 1) then
-                    state:clear_selection()
-                    state.selected_text_item = ti
-                    state.context_text_item = ti
-                    reaper.ImGui_OpenPopup(ctx, "text_item_context_popup")
-                end
-                
-                -- Background / border on selection, hover, or drag
-                if is_selected or is_hov or is_dragged then
-                    local bg_col = is_dragged and 0x3498DB44 or (is_selected and 0x3498DB22 or 0x3498DB11)
-                    local bdr_col = is_selected and 0x3498DBFF or (is_dragged and 0x2980B9FF or 0x3498DB88)
-                    reaper.ImGui_DrawList_AddRectFilled(draw_list, bx0, by0, bx1, by1, bg_col, 3.0)
-                    reaper.ImGui_DrawList_AddRect(draw_list, bx0, by0, bx1, by1, bdr_col, 3.0, 0, 1.2 * s)
-                end
-                
-                -- Inline text input when in edit mode
-                if is_editing then
-                    reaper.ImGui_SetCursorScreenPos(ctx, bx0, by0)
-                    reaper.ImGui_SetNextItemWidth(ctx, math.max(100 * s, txt_w + 30 * s))
-                    if state.editing_text_just_opened then
-                        reaper.ImGui_SetKeyboardFocusHere(ctx)
-                        state.editing_text_just_opened = false
-                    end
-                    local enter_pressed, new_txt = reaper.ImGui_InputText(ctx, "##inline_ti_" .. ti.id, state.editing_text_str or text_str, reaper.ImGui_InputTextFlags_EnterReturnsTrue() | reaper.ImGui_InputTextFlags_AutoSelectAll())
-                    if new_txt ~= nil then
-                        state.editing_text_str = new_txt
+                -- Cull offscreen text items early
+                if is_selected or is_editing or is_dragged or (tx >= cull_min_x - 300 * s and tx <= cull_max_x + 50 * s) then
+                    local is_above = (ti.placement == "above")
+                    local ty
+                    if is_above and tdata.staff_top_y then
+                        local off = math.abs(cur_offset_y)
+                        if off > 50 then off = 18.0 end
+                        ty = tdata.staff_top_y - (off * s)
+                    else
+                        ty = staff_bottom_y + (cur_offset_y * s)
                     end
                     
-                    -- Confirm with Enter or cancel with Escape
-                    if enter_pressed then
-                        TextItemService.update_text(state, ti.id, state.editing_text_str)
-                        state.editing_text_item = nil
-                        state.editing_text_str = nil
-                    elseif reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape()) then
-                        state.editing_text_item = nil
-                        state.editing_text_str = nil
-                    elseif reaper.ImGui_IsMouseClicked(ctx, 0) and not in_box and not reaper.ImGui_IsItemActive(ctx) then
-                        TextItemService.update_text(state, ti.id, state.editing_text_str)
-                        state.editing_text_item = nil
-                        state.editing_text_str = nil
+                    local font_to_use = font_italic or font_main
+                    local st = tostring(ti.style or "italic"):lower()
+                    if st == "bold" then
+                        font_to_use = font_bold or font_big or font_main
+                    elseif st == "bold_italic" or st == "bold italic" then
+                        font_to_use = font_bold_italic or font_bold or font_italic or font_main
+                    elseif st == "regular" then
+                        font_to_use = font_main
+                    elseif st == "italic" then
+                        font_to_use = font_italic or font_main
                     end
-                else
-                    -- Draw text
-                    local text_col = is_selected and 0x2980B9FF or (is_hov and 0x3498DBFF or (Constants.COLORS.lyrics_text or (state.invert_mode and 0xEEEEEEFF or 0x1A1A1AFF)))
-                    local drew_txt = false
-                    if reaper.APIExists("ImGui_DrawList_AddTextEx") and font_to_use then
-                        drew_txt = pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_to_use, font_sz, tx, ty, text_col, text_str)
+                    
+                    local font_sz = math.max(10.0, math.floor((ti.font_size or 16.0) * s + 0.5))
+                    local text_str = tostring(ti.text or "")
+                    local txt_w = #text_str * (font_sz * 0.55)
+                    local txt_h = font_sz
+                    local cur_fs = reaper.APIExists("ImGui_GetFontSize") and reaper.ImGui_GetFontSize(ctx) or 14.0
+                    if not cur_fs or cur_fs <= 0 then cur_fs = 14.0 end
+                    local cw, ch
+                    if ti._cached_text == text_str and ti._cached_fs == font_sz and ti._cached_style == st then
+                        cw = ti._cached_cw
+                        ch = ti._cached_ch
+                    else
+                        cw, ch = FontManager.calc_text_size(ctx, text_str)
+                        ti._cached_text = text_str
+                        ti._cached_fs = font_sz
+                        ti._cached_style = st
+                        ti._cached_cw = cw
+                        ti._cached_ch = ch
                     end
-                    if not drew_txt then
-                        reaper.ImGui_DrawList_AddText(draw_list, tx, ty, text_col, text_str)
+                    if cw and cw > 0 then
+                        txt_w = cw * (font_sz / cur_fs)
+                    end
+                    if ch and ch > 0 then
+                        txt_h = ch * (font_sz / cur_fs)
+                    end
+                    
+                    local bx0 = tx - 4 * s
+                    local by0 = ty - 2 * s
+                    local bx1 = tx + txt_w + 4 * s
+                    local by1 = ty + txt_h + 2 * s
+                    
+                    local in_box = (mouse_x >= bx0 and mouse_x <= bx1 and mouse_y >= by0 and mouse_y <= by1)
+                    local can_hover = is_hovered and not is_editing and not state.is_dragging and not state.is_dragging_dynamic and not state.is_dragging_hairpin and not state.is_dragging_pedal and not state.is_dragging_articulation and not state.is_resizing_item
+                    
+                    if can_hover and in_box then
+                        text_item_hovered_this_frame = ti
+                        reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+                    end
+                    local is_hov = (text_item_hovered_this_frame and text_item_hovered_this_frame.id == ti.id)
+                    
+                    -- Double-click: opens inline text editor
+                    if is_hov and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
+                        state:clear_selection()
+                        state.selected_text_item = ti
+                        state.editing_text_item = ti
+                        state.editing_text_str = text_str
+                        state.editing_text_just_opened = true
+                        state.is_dragging_text_item = false
+                        state.drag_text_item = nil
+                    end
+                    
+                    -- Right-click: opens context menu
+                    if is_hov and reaper.ImGui_IsMouseClicked(ctx, 1) then
+                        state:clear_selection()
+                        state.selected_text_item = ti
+                        state.context_text_item = ti
+                        reaper.ImGui_OpenPopup(ctx, "text_item_context_popup")
+                    end
+                    
+                    -- Background / border on selection, hover, or drag
+                    if is_selected or is_hov or is_dragged then
+                        local bg_col = is_dragged and 0x3498DB44 or (is_selected and 0x3498DB22 or 0x3498DB11)
+                        local bdr_col = is_selected and 0x3498DBFF or (is_dragged and 0x2980B9FF or 0x3498DB88)
+                        reaper.ImGui_DrawList_AddRectFilled(draw_list, bx0, by0, bx1, by1, bg_col, 3.0)
+                        reaper.ImGui_DrawList_AddRect(draw_list, bx0, by0, bx1, by1, bdr_col, 3.0, 0, 1.2 * s)
+                    end
+                    
+                    -- Inline text input when in edit mode
+                    if is_editing then
+                        reaper.ImGui_SetCursorScreenPos(ctx, bx0, by0)
+                        reaper.ImGui_SetNextItemWidth(ctx, math.max(100 * s, txt_w + 30 * s))
+                        if state.editing_text_just_opened then
+                            reaper.ImGui_SetKeyboardFocusHere(ctx)
+                            state.editing_text_just_opened = false
+                        end
+                        local enter_pressed, new_txt = reaper.ImGui_InputText(ctx, "##inline_ti_" .. ti.id, state.editing_text_str or text_str, reaper.ImGui_InputTextFlags_EnterReturnsTrue() | reaper.ImGui_InputTextFlags_AutoSelectAll())
+                        if new_txt ~= nil then
+                            state.editing_text_str = new_txt
+                        end
+                        
+                        -- Confirm with Enter or cancel with Escape
+                        if enter_pressed then
+                            TextItemService.update_text(state, ti.id, state.editing_text_str)
+                            state.editing_text_item = nil
+                            state.editing_text_str = nil
+                        elseif reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape()) then
+                            state.editing_text_item = nil
+                            state.editing_text_str = nil
+                        elseif reaper.ImGui_IsMouseClicked(ctx, 0) and not in_box and not reaper.ImGui_IsItemActive(ctx) then
+                            TextItemService.update_text(state, ti.id, state.editing_text_str)
+                            state.editing_text_item = nil
+                            state.editing_text_str = nil
+                        end
+                    else
+                        -- Draw text
+                        local text_col = is_selected and 0x2980B9FF or (is_hov and 0x3498DBFF or (Constants.COLORS.lyrics_text or (state.invert_mode and 0xEEEEEEFF or 0x1A1A1AFF)))
+                        local drew_txt = false
+                        if reaper.APIExists("ImGui_DrawList_AddTextEx") and font_to_use then
+                            drew_txt = pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_to_use, font_sz, tx, ty, text_col, text_str)
+                        end
+                        if not drew_txt then
+                            reaper.ImGui_DrawList_AddText(draw_list, tx, ty, text_col, text_str)
+                        end
                     end
                 end
             end
@@ -3250,7 +3387,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local visible_tracks_data = {}
     for t_idx, td in ipairs(active_tracks_data) do
         if td.is_visible_vertically and td.staff_top_y and td.staff_bottom_y then
-            table.insert(visible_tracks_data, { tdata = td, t_idx = t_idx })
+            td.t_idx = t_idx
+            table.insert(visible_tracks_data, td)
         end
     end
     
@@ -3268,10 +3406,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local is_key_change = (measure_map and measure_map.key_changes and measure_map.key_changes[m])
             local mx_next = (measure_map and measure_map.starts and measure_map.starts[m + 1]) or (margin_left + ((m + 1) * measure_w))
             local rep_cx = (mx + mx_next) / 2
+            local num_val = m + 1
+            local bar_str = BAR_NUM_STRINGS[num_val] or tostring(num_val)
             
-            for _, vtr in ipairs(visible_tracks_data) do
-                local tdata = vtr.tdata
-                local t_idx = vtr.t_idx
+            for _, tdata in ipairs(visible_tracks_data) do
+                local t_idx = tdata.t_idx
                 
                 -- 1. Barline per instrument (only within respective staff and visible track)
                 local trk_info = is_key_change and is_key_change.tracks and (is_key_change.tracks[tdata] or is_key_change.tracks[tdata.track] or (tdata.guid and is_key_change.tracks[tdata.guid]) or is_key_change.tracks[t_idx])
@@ -3313,9 +3452,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 if (state.show_bar_numbers ~= false) then
                     local bx = mx + 4*s + bar_num_off_x
                     if has_add_text_ex then
-                        reaper.ImGui_DrawList_AddTextEx(draw_list, font_main, bar_num_sz, bx, by, bar_num_col, tostring(m + 1))
+                        reaper.ImGui_DrawList_AddTextEx(draw_list, font_main, bar_num_sz, bx, by, bar_num_col, bar_str)
                     else
-                        reaper.ImGui_DrawList_AddText(draw_list, bx, by, bar_num_col, tostring(m + 1))
+                        reaper.ImGui_DrawList_AddText(draw_list, bx, by, bar_num_col, bar_str)
                     end
                 end
                 

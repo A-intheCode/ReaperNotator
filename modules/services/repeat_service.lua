@@ -125,13 +125,19 @@ function RepeatService.has_repeat_mark(state, track_guid, measure)
         local map = {}
         for _, rm in ipairs(state.repeat_marks) do
             if rm.track_guid and rm.measure ~= nil then
-                map[string.format("%s_%d", rm.track_guid, rm.measure)] = rm
+                local tm = map[rm.track_guid]
+                if not tm then
+                    tm = {}
+                    map[rm.track_guid] = tm
+                end
+                tm[rm.measure] = rm
             end
         end
         state._repeat_marks_map = map
         state._repeat_marks_map_cnt = #state.repeat_marks
     end
-    local rm = state._repeat_marks_map[string.format("%s_%d", track_guid, measure)]
+    local trk_map = state._repeat_marks_map[track_guid]
+    local rm = trk_map and trk_map[measure]
     if rm then return true, rm end
     return false, nil
 end

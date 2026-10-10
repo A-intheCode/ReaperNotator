@@ -214,14 +214,28 @@ function HairpinService.save_hairpins(state)
 end
 
 function HairpinService.get_hairpins_for_track(state, track_guid)
-    local res = {}
-    for _, hp in ipairs(state.hairpins or {}) do
-        if hp.track_guid == track_guid then
-            table.insert(res, hp)
+    if not state or not track_guid then return {} end
+    local h_ver = state._hairpins_version or (#(state.hairpins or {}))
+    local b_cache = state._hairpins_by_track_cache
+    if not b_cache or b_cache.ver ~= h_ver or b_cache.count ~= #(state.hairpins or {}) then
+        b_cache = { ver = h_ver, count = #(state.hairpins or {}), by_guid = {} }
+        for _, hp in ipairs(state.hairpins or {}) do
+            local g = hp.track_guid
+            if g then
+                local list = b_cache.by_guid[g]
+                if not list then
+                    list = {}
+                    b_cache.by_guid[g] = list
+                end
+                table.insert(list, hp)
+            end
         end
+        for _, list in pairs(b_cache.by_guid) do
+            table.sort(list, function(a, b) return (a.start_qn or 0) < (b.start_qn or 0) end)
+        end
+        state._hairpins_by_track_cache = b_cache
     end
-    table.sort(res, function(a, b) return a.start_qn < b.start_qn end)
-    return res
+    return b_cache.by_guid[track_guid] or {}
 end
 
 function HairpinService.find_take_for_track(track_guid, active_tracks_data, opt_qn)

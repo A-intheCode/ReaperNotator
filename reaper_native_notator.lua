@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.17
+-- @version 1.8.0-beta.18
 -- @changelog
+--   + v1.8.0-beta.18: ScoreCanvas Render Engine Overhaul (60+ FPS on 30+ Tracks):
+--             - Rest Layout Memoization: Rest generation, display quantize gap calculations, and collision avoidance are now precomputed once during layout building, completely eliminating per-frame rest calculations and table sorting.
+--             - Zero-Allocation Visible Note Rendering: Reused layout visual note structures directly, eliminating ~36,000 table allocations per second during playback across 30 tracks.
+--             - Track-Bucket Fast Annotations: Memoized Hairpins, Dynamic Texts, and Text Items with versioned track buckets, avoiding linear array filtering and sorting on every frame.
+--             - Early Articulation Culling & Symbol Memoization: Off-screen articulations are culled immediately before bank and symbol parsing; is_standard_symbol and FontManager text sizes are memoized.
+--             - Static Bar Number Strings & Zero-Allocation Track Passes: Precomputed measure number string lookups and flattened visible track iteration structures.
 --   + v1.8.0-beta.17: Rendering Pipeline & Anti-Aliasing Optimization (60-70 FPS on 30+ Tracks):
 --             - Anti-Aliasing Control: Line and fill edge anti-aliasing can now be toggled in Settings -> General Settings (disabled by default & during playback) to eliminate expensive CPU edge fringe tessellation on stems, beams, and staff lines.
 --             - Note Layout Caching: Precomputed visual note segmentation, chord clustering, stem directions, collision spacing, and beam groups across frames; bypassed O(N_notes) per-frame recalculation during playback.
