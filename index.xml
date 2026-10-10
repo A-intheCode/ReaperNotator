@@ -62,6 +62,7 @@
         <source file="modules/services/pattern_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/pattern_service.lua</source>
         <source file="modules/services/pedal_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/pedal_service.lua</source>
         <source file="modules/services/portamento_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/portamento_service.lua</source>
+        <source file="modules/services/quantize_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/quantize_service.lua</source>
         <source file="modules/services/reaticulate_parser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/reaticulate_parser.lua</source>
         <source file="modules/services/rehearsal_mark_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/rehearsal_mark_service.lua</source>
         <source file="modules/services/repeat_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/services/repeat_service.lua</source>
