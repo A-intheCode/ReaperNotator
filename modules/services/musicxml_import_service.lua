@@ -2074,6 +2074,12 @@ function MusicXmlImportService.import_file(file_path, state, options)
         end
     end
 
+    -- Automatically run Fix Playback Global once across all imported tracks and items
+    if MidiService and MidiService.fix_playback and state then
+        pcall(MidiService.fix_playback, state, {}, false, false)
+        state.show_fix_last_resort_modal = false
+    end
+
     -- Automatically select all newly imported tracks in state and focus first track
     if state and target_tracks and #target_tracks > 0 then
         state.selected_tracks = {}

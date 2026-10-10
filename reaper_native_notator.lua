@@ -1,7 +1,10 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.9
+-- @version 1.7.0-beta.10
 -- @changelog
+--   + v1.7.0-beta.10: Automatic Global Playback Reconciliation on MusicXML Import:
+--             - Automatic Global Playback Fix: Immediately runs Fix Playback Global across all imported tracks and MIDI items upon MusicXML import completion, aligning sound bank articulations, healing micro-overlaps and momentary return points, re-synchronizing slurs/ties, and ensuring flawless acoustic playback right out of the box without requiring manual user intervention.
+--             - Non-Intrusive Modal Suppression: Automatically suppresses the "Fix Playback (Last Resort)" diagnostic modal during automated import reconciliation so the import finishes cleanly and unobtrusively.
 --   + v1.7.0-beta.9: Acoustic Legato Playback & Cross-Voice Slur Import Overhaul:
 --             - True Acoustic Legato Playback: MusicXML import now extends all consecutive notes under slurs with micro-legato overlap (+2 PPQ ticks) in REAPER MIDI takes, ensuring samplers (Kontakt, Spitfire, Cinematic Studio Strings, Orchestral Tools, VSL) trigger seamless legato transition intervals instead of detaché attacks. Same-pitch notes are protected from note-merging.
 --             - Channel-Isolated Multi-Voice Slur & Tie Pairing: Keyed open slurs, ties, glissandi, and portamentos by channel and voice, preventing cross-voice and grand-staff slur clobbering while preserving cross-staff slur matching fallbacks.
