@@ -1,7 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.1
+-- @version 1.8.0-beta.2
 -- @changelog
+--   + v1.8.0-beta.2: MIDI Editor Flag & Stalk Proportions:
+--             - Extended Flag Handles: 3x longer flag handles (22.5px) for authentic REAPER look and easy grabbing.
+--             - Streamlined Flag Thickness: Reduced flag stroke to 1.6-2.0px and widened vertical stems to 3.0px.
+--             - On-Top Selection Rendering: Selected velocity stalks and handles now render prioritarily on top of unselected events.
 --   + v1.8.0-beta.1: Beta Release: MIDI Editor (Velocity Lane & Graph View):
 --             - Dedicated Bottom Drawer: Toggleable via '🎹 MIDI Editor' in the bottom bar, docked above the bottom bar with persistent height and interactive horizontal splitter.
 --             - REAPER-style Velocity Stalks & Flag Handles ('Fähnchen'): Authentic vertical stems with top flag handles for intuitive grab-and-drag manipulation.
