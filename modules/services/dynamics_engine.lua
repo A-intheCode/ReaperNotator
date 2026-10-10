@@ -331,6 +331,7 @@ function DynamicsEngine.save_item_modulators(item, state)
         is_bypass and 1 or 0
     )
     reaper.GetSetMediaItemInfo_String(item, "P_EXT:notator_dyn_mod", str, true)
+    state._dyn_mod_dirty = true
 end
 
 function DynamicsEngine.load_track_modulators(track, state)

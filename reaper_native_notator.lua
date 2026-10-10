@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.7
+-- @version 1.8.0-beta.8
 -- @changelog
+--   + v1.8.0-beta.8: Comprehensive Performance Optimization (Slur Caching, MIDI Editor Take Event Caching & Viewport Culling):
+--             - Slur Service Runtime Caching: Replaced linear O(N*M) lookup scans with instant frame-level note cache and reusable track-isolated endpoint index, eliminating frame drops on scores with dozens of slurs.
+--             - MIDI Editor Take CC & Note Caching: Caches parsed take events across frames keyed by take, event count, and project change count; eliminated up to 240,000 redundant REAPER C-API calls and GC allocations per second in idle state.
+--             - Selective Note Extraction: Bypasses heavy MidiNote table parsing in CC lanes, fetching note count directly via MIDI_CountEvts.
+--             - Viewport Culling & Early-Break Hover Check: Added horizontal clipping bounds to CC polylines and node beads, skipping off-screen drawing and terminating hover searches immediately once past the cursor.
+--             - Dynamic Modulator ExtState Caching: Eliminated per-frame P_EXT string parsing via dirty flag and item comparison.
 --   + v1.8.0-beta.7: Fix Duplicate Portamento/Glissando/Slur Persistence & Jagged Rendering:
 --             - Dual Persistence De-Duplication: Fixed an issue where loading from MIDI takes generated clone copies (_cp_) on the same track, causing portamento/glissando/slur marks to duplicate repeatedly on project load/save.
 --             - Canvas Rendering De-Duplication: Added strict runtime guards preventing duplicate overlapping curves or text badges between identical note pairs, eliminating jagged antialiasing artifacts ('gezackte Linien') and duplicated 'port.' badges.

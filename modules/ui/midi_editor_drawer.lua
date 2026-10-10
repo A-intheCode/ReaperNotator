@@ -207,9 +207,13 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
         -- Find active MIDI Item and Take
         local active_item, active_take, active_track = midi_service.get_active_midi_item_and_take(state)
 
-        -- Load dynamic shaping settings for current item/track
+        -- Load dynamic shaping settings for current item/track (cached)
         if active_item and dynamics_engine and dynamics_engine.load_item_modulators then
-            dynamics_engine.load_item_modulators(active_item, state)
+            if state._last_loaded_dyn_mod_item ~= active_item or state._dyn_mod_dirty then
+                dynamics_engine.load_item_modulators(active_item, state)
+                state._last_loaded_dyn_mod_item = active_item
+                state._dyn_mod_dirty = nil
+            end
         end
 
         local is_bypassed = false
@@ -257,7 +261,9 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
         local notes = {}
         local take_name = "Take 1"
         if active_take and reaper.ValidatePtr(active_take, "MediaItem_Take*") then
-            notes = midi_service.get_take_notes_for_editor(active_take, active_item, active_track)
+            if is_vel_lane then
+                notes = midi_service.get_take_notes_for_editor(active_take, active_item, active_track)
+            end
             local track_name = "Track"
             local track_col = 0x3498DBFF
             if active_track and reaper.ValidatePtr(active_track, "MediaTrack*") then
@@ -278,7 +284,8 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
             reaper.ImGui_Button(ctx, string.format(" %s [%s] ", track_name, take_name))
             reaper.ImGui_PopStyleColor(ctx, 2)
             if reaper.ImGui_IsItemHovered(ctx) then
-                reaper.ImGui_SetTooltip(ctx, string.format("Active MIDI Item & Take currently loaded (%d Notes)", #notes))
+                local note_cnt = is_vel_lane and #notes or (select(2, reaper.MIDI_CountEvts(active_take)) or 0)
+                reaper.ImGui_SetTooltip(ctx, string.format("Active MIDI Item & Take currently loaded (%d Notes)", note_cnt))
             end
         else
             reaper.ImGui_TextColored(ctx, 0xE74C3CAA, "⚠ No MIDI Item")
@@ -1025,26 +1032,30 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     end
 
                     -- 1. Fill Area & Outline Curve based on REAPER Event Shapes (Linear vs Square)
+                    local cull_left = plot_x0 - 20
+                    local cull_right = plot_x0 + plot_w + 20
                     for i = 1, #curve_pts - 1 do
                         local p1 = curve_pts[i]
                         local p2 = curve_pts[i + 1]
-                        local p_shape = p1.shape or 1
+                        if not (p1.x < cull_left and p2.x < cull_left) and not (p1.x > cull_right and p2.x > cull_right) then
+                            local p_shape = p1.shape or 1
 
-                        if p_shape == 0 then
-                            -- Square (Step / Stufe)
-                            reaper.ImGui_DrawList_AddQuadFilled(dl, p1.x, p1.y, p2.x, p1.y, p2.x, plot_bot_y, p1.x, plot_bot_y, eff_fill_col)
-                            reaper.ImGui_DrawList_AddLine(dl, p1.x, p1.y, p2.x, p1.y, eff_line_col, 2.0)
-                            reaper.ImGui_DrawList_AddLine(dl, p2.x, p1.y, p2.x, p2.y, eff_line_col, 2.0)
-                        else
-                            -- Linear Ramp (or Bézier smooth curve)
-                            reaper.ImGui_DrawList_AddQuadFilled(dl, p1.x, p1.y, p2.x, p2.y, p2.x, plot_bot_y, p1.x, plot_bot_y, eff_fill_col)
-                            reaper.ImGui_DrawList_AddLine(dl, p1.x, p1.y, p2.x, p2.y, eff_line_col, 2.0)
+                            if p_shape == 0 then
+                                -- Square (Step / Stufe)
+                                reaper.ImGui_DrawList_AddQuadFilled(dl, p1.x, p1.y, p2.x, p1.y, p2.x, plot_bot_y, p1.x, plot_bot_y, eff_fill_col)
+                                reaper.ImGui_DrawList_AddLine(dl, p1.x, p1.y, p2.x, p1.y, eff_line_col, 2.0)
+                                reaper.ImGui_DrawList_AddLine(dl, p2.x, p1.y, p2.x, p2.y, eff_line_col, 2.0)
+                            else
+                                -- Linear Ramp (or Bézier smooth curve)
+                                reaper.ImGui_DrawList_AddQuadFilled(dl, p1.x, p1.y, p2.x, p2.y, p2.x, plot_bot_y, p1.x, plot_bot_y, eff_fill_col)
+                                reaper.ImGui_DrawList_AddLine(dl, p1.x, p1.y, p2.x, p2.y, eff_line_col, 2.0)
+                            end
                         end
                     end
 
-                    -- 2. Node Beads at Actual Events
+                    -- 2. Node Beads at Actual Events (viewport culled)
                     for _, pt in ipairs(curve_pts) do
-                        if pt.ev then
+                        if pt.ev and pt.x >= cull_left and pt.x <= cull_right then
                             local is_hov = (hovered_cc_node and hovered_cc_node.idx == pt.ev.idx)
                             local in_marquee = false
                             if cc_marquee_active then
@@ -1095,15 +1106,20 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     if is_hovered and not is_drawing_cc and not is_dragging_cc_nodes and not cc_marquee_active then
                         for _, ev in ipairs(cc_evts) do
                             local ex = qn_to_x(ev.qn)
-                            local ey = val_to_y(ev.val)
-                            if math.abs(mouse_x - ex) <= 8 and math.abs(mouse_y - ey) <= 8 then
-                                hovered_cc_node = ev
-                                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeAll and reaper.ImGui_MouseCursor_ResizeAll() or reaper.ImGui_MouseCursor_ResizeNS())
-                                local sh_name = SHAPE_LABELS[ev.shape or 1] or "Linear"
-                                local is_sel = ev.sel or (state.selected_cc_indices and state.selected_cc_indices[ev.idx])
-                                local sel_txt = is_sel and " [Selected]" or ""
-                                reaper.ImGui_SetTooltip(ctx, string.format("CC %d: %d%s | Time: %s | Shape: %s\n(Drag to move point(s), Shift+Drag to lock axis, Right-Click to delete)", cur_cc_num, ev.val, sel_txt, format_qn_time(ev.qn), sh_name))
+                            if ex > mouse_x + 8 then
                                 break
+                            end
+                            if ex >= mouse_x - 8 then
+                                local ey = val_to_y(ev.val)
+                                if math.abs(mouse_y - ey) <= 8 then
+                                    hovered_cc_node = ev
+                                    reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeAll and reaper.ImGui_MouseCursor_ResizeAll() or reaper.ImGui_MouseCursor_ResizeNS())
+                                    local sh_name = SHAPE_LABELS[ev.shape or 1] or "Linear"
+                                    local is_sel = ev.sel or (state.selected_cc_indices and state.selected_cc_indices[ev.idx])
+                                    local sel_txt = is_sel and " [Selected]" or ""
+                                    reaper.ImGui_SetTooltip(ctx, string.format("CC %d: %d%s | Time: %s | Shape: %s\n(Drag to move point(s), Shift+Drag to lock axis, Right-Click to delete)", cur_cc_num, ev.val, sel_txt, format_qn_time(ev.qn), sh_name))
+                                    break
+                                end
                             end
                         end
                     end
@@ -1126,6 +1142,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             end
                             if del_cnt > 0 then
                                 reaper.MIDI_Sort(active_take)
+                                midi_service.invalidate_editor_cache()
                                 reaper.UpdateArrange()
                                 state.selected_cc_indices = {}
                                 hovered_cc_node = nil
@@ -1158,6 +1175,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                                 end
                             end
                             reaper.MIDI_Sort(active_take)
+                            midi_service.invalidate_editor_cache()
                             reaper.UpdateArrange()
                             state.selected_cc_indices = {}
                             hovered_cc_node = nil
@@ -1224,6 +1242,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             reaper.Undo_BeginBlock2(0)
                             reaper.MIDI_InsertCC(active_take, true, false, ppq, 176, 0, cur_cc_num, target_v)
                             reaper.MIDI_Sort(active_take)
+                            midi_service.invalidate_editor_cache()
                             if reaper.APIExists("MIDI_SetCCShape") then
                                 local _, _, total_ccs = reaper.MIDI_CountEvts(active_take)
                                 for j = 0, (total_ccs or 0) - 1 do
@@ -1299,6 +1318,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                                 end
 
                                 reaper.MIDI_Sort(active_take)
+                                midi_service.invalidate_editor_cache()
                                 reaper.UpdateArrange()
                                 reaper.Undo_EndBlock2(0, string.format("Move %d CC %d Point(s)", #cc_drag_snapshots, cur_cc_num), -1)
                                 state.status_msg = string.format("Moved %d CC %d point(s)", #cc_drag_snapshots, cur_cc_num)
@@ -1336,6 +1356,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                                     end
                                 end
                                 reaper.MIDI_Sort(active_take)
+                                midi_service.invalidate_editor_cache()
                                 reaper.UpdateArrange()
                                 if newly_selected > 0 then
                                     state.status_msg = string.format("Selected %d CC %d point(s)", newly_selected, cur_cc_num)

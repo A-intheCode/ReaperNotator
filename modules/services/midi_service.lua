@@ -5617,16 +5617,35 @@ function MidiService.get_active_midi_item_and_take(state)
     return nil, nil, nil
 end
 
---- Retrieves all notes from a take formatted as MidiNote objects with note indices
+MidiService._editor_cc_cache = {}
+MidiService._cc_cache_version = 0
+
+MidiService._editor_notes_cache = {}
+MidiService._notes_cache_version = 0
+
+--- Invalidates the cached take CCs and notes for the MIDI editor
+function MidiService.invalidate_editor_cache()
+    MidiService._cc_cache_version = (MidiService._cc_cache_version or 0) + 1
+    MidiService._notes_cache_version = (MidiService._notes_cache_version or 0) + 1
+end
+
+--- Retrieves all notes from a take formatted as MidiNote objects with note indices (cached)
 function MidiService.get_take_notes_for_editor(take, opt_item, opt_track)
     if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) then
         return {}
     end
+    local _, notecnt = reaper.MIDI_CountEvts(take)
+    local proj_change_cnt = reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0) or 0
+    MidiService._editor_notes_cache = MidiService._editor_notes_cache or {}
+    local nc = MidiService._editor_notes_cache[take]
+    if nc and nc.notecnt == notecnt and nc.proj_change_cnt == proj_change_cnt and nc.version == MidiService._notes_cache_version then
+        return nc.notes
+    end
+
     local item = opt_item or reaper.GetMediaItemTake_Item(take)
     local track = opt_track or (item and (reaper.GetMediaItem_Track(item) or reaper.GetMediaItemTrack(item)))
-    local _, notecnt = reaper.MIDI_CountEvts(take)
     local notes = {}
-    for i = 0, notecnt - 1 do
+    for i = 0, (notecnt or 0) - 1 do
         local ok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
         if ok and not muted then
             local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
@@ -5647,6 +5666,12 @@ function MidiService.get_take_notes_for_editor(take, opt_item, opt_track)
             table.insert(notes, n_obj)
         end
     end
+    MidiService._editor_notes_cache[take] = {
+        notecnt = notecnt,
+        proj_change_cnt = proj_change_cnt,
+        version = MidiService._notes_cache_version,
+        notes = notes
+    }
     return notes
 end
 
@@ -5659,6 +5684,7 @@ function MidiService.set_note_velocity(take, note_idx, new_vel, no_sort)
     if ok then
         local clamped_vel = math.max(1, math.min(127, math.floor(new_vel + 0.5)))
         reaper.MIDI_SetNote(take, note_idx, sel, muted, sppq, eppq, chan, pitch, clamped_vel, no_sort or false)
+        MidiService._notes_cache_version = (MidiService._notes_cache_version or 0) + 1
         return true
     end
     return false
@@ -5672,19 +5698,38 @@ function MidiService.sync_take_note_selection(take, note_idx, is_sel, no_sort)
     local ok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, note_idx)
     if ok then
         reaper.MIDI_SetNote(take, note_idx, is_sel and true or false, muted, sppq, eppq, chan, pitch, vel, no_sort or false)
+        MidiService._notes_cache_version = (MidiService._notes_cache_version or 0) + 1
         return true
     end
     return false
 end
 
---- Retrieves all CC events from a take matching a specific CC number (0-127)
+--- Retrieves all CC events from a take matching a specific CC number (0-127) (cached)
 function MidiService.get_take_ccs_for_editor(take, cc_num)
     if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) or not cc_num then
         return {}
     end
-    local _, _, cccnt = reaper.MIDI_CountEvts(take)
-    local ccs = {}
     local target_cc = math.floor(tonumber(cc_num) or 1)
+    local _, _, cccnt = reaper.MIDI_CountEvts(take)
+    local proj_change_cnt = reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0) or 0
+
+    MidiService._editor_cc_cache = MidiService._editor_cc_cache or {}
+    local take_cache = MidiService._editor_cc_cache[take]
+    if not take_cache or take_cache.cccnt ~= cccnt or take_cache.proj_change_cnt ~= proj_change_cnt or take_cache.version ~= MidiService._cc_cache_version then
+        take_cache = {
+            cccnt = cccnt,
+            proj_change_cnt = proj_change_cnt,
+            version = MidiService._cc_cache_version,
+            lanes = {}
+        }
+        MidiService._editor_cc_cache[take] = take_cache
+    end
+
+    if take_cache.lanes[target_cc] then
+        return take_cache.lanes[target_cc]
+    end
+
+    local ccs = {}
     for i = 0, cccnt - 1 do
         local ok, sel, muted, ppq, chanmsg, chan, msg2, msg3 = reaper.MIDI_GetCC(take, i)
         if ok and not muted and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == target_cc then
@@ -5706,6 +5751,7 @@ function MidiService.get_take_ccs_for_editor(take, cc_num)
         end
     end
     table.sort(ccs, function(a, b) return a.ppq < b.ppq end)
+    take_cache.lanes[target_cc] = ccs
     return ccs
 end
 
@@ -5718,6 +5764,7 @@ function MidiService.set_cc_value(take, cc_idx, new_val, no_sort)
     if ok then
         local clamped_val = math.max(0, math.min(127, math.floor(new_val + 0.5)))
         reaper.MIDI_SetCC(take, cc_idx, sel, muted, ppq, chanmsg, chan, msg2, clamped_val, no_sort or false)
+        MidiService._cc_cache_version = (MidiService._cc_cache_version or 0) + 1
         return true
     end
     return false
@@ -5731,6 +5778,7 @@ function MidiService.set_cc_selected(take, cc_idx, is_selected, no_sort)
     local ok, _, muted, ppq, chanmsg, chan, msg2, msg3 = reaper.MIDI_GetCC(take, cc_idx)
     if ok then
         reaper.MIDI_SetCC(take, cc_idx, is_selected and true or false, muted, ppq, chanmsg, chan, msg2, msg3, no_sort or false)
+        MidiService._cc_cache_version = (MidiService._cc_cache_version or 0) + 1
         return true
     end
     return false
@@ -5752,6 +5800,7 @@ function MidiService.clear_cc_selection(take, cc_num)
     end
     if any_changed then
         reaper.MIDI_Sort(take)
+        MidiService._cc_cache_version = (MidiService._cc_cache_version or 0) + 1
     end
 end
 
@@ -5772,6 +5821,7 @@ function MidiService.set_cc_event(take, cc_idx, new_qn, new_val, is_selected, no
         end
         local target_sel = (is_selected ~= nil) and (is_selected and true or false) or sel
         reaper.MIDI_SetCC(take, cc_idx, target_sel, muted, target_ppq, chanmsg, chan, msg2, target_val, no_sort or false)
+        MidiService._cc_cache_version = (MidiService._cc_cache_version or 0) + 1
         return true
     end
     return false
@@ -5848,6 +5898,7 @@ function MidiService.draw_cc_curve(take, cc_num, points, chan, opt_shape)
         end
     end
 
+    MidiService._cc_cache_version = (MidiService._cc_cache_version or 0) + 1
     reaper.UpdateArrange()
     return true
 end
@@ -5890,6 +5941,7 @@ function MidiService.set_lane_cc_shapes(take, cc_num, target_shape)
         end
     end
 
+    MidiService._cc_cache_version = (MidiService._cc_cache_version or 0) + 1
     reaper.UpdateArrange()
     return true
 end
@@ -5911,6 +5963,7 @@ function MidiService.clear_take_ccs(take, cc_num)
     end
     if count > 0 then
         reaper.MIDI_Sort(take)
+        MidiService._cc_cache_version = (MidiService._cc_cache_version or 0) + 1
         reaper.UpdateArrange()
     end
     return true, count

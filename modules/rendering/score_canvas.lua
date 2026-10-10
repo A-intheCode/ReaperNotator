@@ -351,6 +351,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     -- Synchronize with REAPER arrange selection (immediate switching on clicks in arrange view)
     sync_arrange_selection(state, project_tracks)
+    state._is_note_slurred_cache = nil
     
     local active_tracks_data = {}
     local max_proj_qn = 16 * 4.0
