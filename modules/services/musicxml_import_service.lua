@@ -1245,9 +1245,9 @@ function MusicXmlImportService.import_file(file_path, state, options)
 
                             -- Ties handling (dual-reality preservation)
                             if do_import_slurs_ties then
-                                local tie_key = pitch
-                                if has_tie_stop and open_ties[tie_key] then
-                                    local prev_info = open_ties[tie_key]
+                                local tie_key = string.format("%d_%d", chan, pitch)
+                                local prev_info = open_ties[tie_key] or open_ties[pitch]
+                                if has_tie_stop and prev_info then
                                     local prev_note = prev_info.note_entry
                                     local t_id = prev_info.tie_id
 
@@ -1270,6 +1270,7 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                         open_ties[tie_key] = { note_entry = note_entry, tie_id = next_tie_id }
                                     else
                                         open_ties[tie_key] = nil
+                                        open_ties[pitch] = nil
                                     end
                                 elseif has_tie_start then
                                     local new_tie_id = "tie_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
@@ -1280,18 +1281,42 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             -- Slurs handling (robust MusicXML part-level numbering across staves & voices)
                             if do_import_slurs_ties then
                                 for _, s_num in ipairs(note_slur_stops) do
-                                    local prev_sl = open_slurs[s_num]
-                                    local matched_num = s_num
+                                    local ch_key = string.format("%d_%d", chan, s_num)
+                                    local prev_sl = open_slurs[ch_key]
+                                    local matched_key = ch_key
                                     if not prev_sl then
-                                        if open_slurs[1] then
-                                            prev_sl = open_slurs[1]
-                                            matched_num = 1
-                                        else
-                                            for k, sl_cand in pairs(open_slurs) do
+                                        local fallback_ch1 = string.format("%d_1", chan)
+                                        if open_slurs[fallback_ch1] then
+                                            prev_sl = open_slurs[fallback_ch1]
+                                            matched_key = fallback_ch1
+                                        end
+                                    end
+                                    if not prev_sl then
+                                        -- Look for open slur on same channel
+                                        local ch_prefix = string.format("%d_", chan)
+                                        for k, sl_cand in pairs(open_slurs) do
+                                            if type(k) == "string" and k:sub(1, #ch_prefix) == ch_prefix then
                                                 prev_sl = sl_cand
-                                                matched_num = k
+                                                matched_key = k
                                                 break
                                             end
+                                        end
+                                    end
+                                    if not prev_sl then
+                                        -- Look for cross-channel match by s_num
+                                        for k, sl_cand in pairs(open_slurs) do
+                                            if (type(k) == "number" and k == s_num) or (type(k) == "string" and k:match("_" .. tostring(s_num) .. "$")) then
+                                                prev_sl = sl_cand
+                                                matched_key = k
+                                                break
+                                            end
+                                        end
+                                    end
+                                    if not prev_sl then
+                                        for k, sl_cand in pairs(open_slurs) do
+                                            prev_sl = sl_cand
+                                            matched_key = k
+                                            break
                                         end
                                     end
                                     if prev_sl then
@@ -1301,28 +1326,36 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                             n2 = note_entry,
                                             chan = prev_sl.note_entry.chan or chan
                                         })
-                                        open_slurs[matched_num] = nil
+                                        open_slurs[matched_key] = nil
                                     end
                                 end
                                 for _, s_num in ipairs(note_slur_starts) do
-                                    local new_slur_id = "slur_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
-                                    open_slurs[s_num] = { note_entry = note_entry, slur_id = new_slur_id }
+                                    local ch_key = string.format("%d_%d", chan, s_num)
+                                    if not (is_chord and open_slurs[ch_key] and math.abs(open_slurs[ch_key].note_entry.start_qn - note_start_qn) < 0.001) then
+                                        local new_slur_id = "slur_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
+                                        open_slurs[ch_key] = { note_entry = note_entry, slur_id = new_slur_id }
+                                    end
                                 end
                             end
 
                             -- Glissandi handling
                             if do_import_gliss_port then
                                 for _, g_num in ipairs(note_gliss_stops) do
-                                    local prev_gl = open_glissandi[g_num]
-                                    local matched_num = g_num
+                                    local ch_key = string.format("%d_%d", chan, g_num)
+                                    local prev_gl = open_glissandi[ch_key] or open_glissandi[g_num]
+                                    local matched_key = ch_key
                                     if not prev_gl then
-                                        if open_glissandi[1] then
+                                        local fallback_ch1 = string.format("%d_1", chan)
+                                        if open_glissandi[fallback_ch1] then
+                                            prev_gl = open_glissandi[fallback_ch1]
+                                            matched_key = fallback_ch1
+                                        elseif open_glissandi[1] then
                                             prev_gl = open_glissandi[1]
-                                            matched_num = 1
+                                            matched_key = 1
                                         else
                                             for k, gl_cand in pairs(open_glissandi) do
                                                 prev_gl = gl_cand
-                                                matched_num = k
+                                                matched_key = k
                                                 break
                                             end
                                         end
@@ -1334,28 +1367,34 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                             n2 = note_entry,
                                             chan = prev_gl.note_entry.chan or chan
                                         })
-                                        open_glissandi[matched_num] = nil
+                                        open_glissandi[matched_key] = nil
                                     end
                                 end
                                 for _, g_num in ipairs(note_gliss_starts) do
+                                    local ch_key = string.format("%d_%d", chan, g_num)
                                     local new_gliss_id = "gliss_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
-                                    open_glissandi[g_num] = { note_entry = note_entry, gliss_id = new_gliss_id }
+                                    open_glissandi[ch_key] = { note_entry = note_entry, gliss_id = new_gliss_id }
                                 end
                             end
 
                             -- Slides / Portamento handling
                             if do_import_gliss_port then
                                 for _, s_num in ipairs(note_slide_stops) do
-                                    local prev_sl = open_slides[s_num]
-                                    local matched_num = s_num
+                                    local ch_key = string.format("%d_%d", chan, s_num)
+                                    local prev_sl = open_slides[ch_key] or open_slides[s_num]
+                                    local matched_key = ch_key
                                     if not prev_sl then
-                                        if open_slides[1] then
+                                        local fallback_ch1 = string.format("%d_1", chan)
+                                        if open_slides[fallback_ch1] then
+                                            prev_sl = open_slides[fallback_ch1]
+                                            matched_key = fallback_ch1
+                                        elseif open_slides[1] then
                                             prev_sl = open_slides[1]
-                                            matched_num = 1
+                                            matched_key = 1
                                         else
                                             for k, sl_cand in pairs(open_slides) do
                                                 prev_sl = sl_cand
-                                                matched_num = k
+                                                matched_key = k
                                                 break
                                             end
                                         end
@@ -1367,12 +1406,13 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                             n2 = note_entry,
                                             chan = prev_sl.note_entry.chan or chan
                                         })
-                                        open_slides[matched_num] = nil
+                                        open_slides[matched_key] = nil
                                     end
                                 end
                                 for _, s_num in ipairs(note_slide_starts) do
+                                    local ch_key = string.format("%d_%d", chan, s_num)
                                     local new_port_id = "port_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
-                                    open_slides[s_num] = { note_entry = note_entry, port_id = new_port_id }
+                                    open_slides[ch_key] = { note_entry = note_entry, port_id = new_port_id }
                                 end
                             end
                         end
@@ -1590,23 +1630,94 @@ function MusicXmlImportService.import_file(file_path, state, options)
                         local n_last = sl.n2
                         local slur_id = sl.id
                         local n1_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
+                        local s_chan = n1.chan or sl.chan or 0
 
-                        -- Tag all notes in phrase with NOTE <pitch> <chan> a legato (using note's channel)
+                        -- Collect all chronological phrase notes strictly within this slur phrase and channel
+                        local phrase_notes = {}
                         for _, pn in ipairs(track_notes) do
-                            if pn.start_qn >= n1.start_qn - 0.01 and pn.start_qn <= n_last.start_qn + 0.01 then
-                                local pn_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, pn.start_qn) + 0.5)
-                                reaper.MIDI_InsertTextSysexEvt(take, false, false, pn_sppq, 15, string.format("NOTE %d %d a legato", pn.pitch, pn.chan or sl.chan or 0))
-                                pn.articulation = "legato"
+                            if (pn.chan == s_chan) and (pn.start_qn >= n1.start_qn - 0.005) and (pn.start_qn <= n_last.start_qn + 0.005) then
+                                table.insert(phrase_notes, pn)
+                            end
+                        end
+                        table.sort(phrase_notes, function(a, b)
+                            if math.abs(a.start_qn - b.start_qn) > 0.001 then
+                                return a.start_qn < b.start_qn
+                            end
+                            return a.pitch < b.pitch
+                        end)
+
+                        if #phrase_notes < 2 then
+                            phrase_notes = { n1, n_last }
+                        end
+
+                        -- True Acoustic Legato Playback in REAPER:
+                        -- Extend intermediate notes to touch the next note (+2 micro-legato overlap ticks)
+                        -- so samplers like Kontakt, Spitfire, Cinematic Studio Strings, Orchestral Tools, VSL trigger legato interval transitions!
+                        local find_fn = (SlurService and SlurService.find_take_note_by_pos)
+                        for i = 1, #phrase_notes - 1 do
+                            local curr = phrase_notes[i]
+                            local next_n = phrase_notes[i + 1]
+                            if (next_n.start_qn - curr.start_qn) > 0.005 then
+                                local next_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, next_n.start_qn) + 0.5)
+                                local curr_idx, curr_data = nil, nil
+                                if find_fn then
+                                    curr_idx, curr_data = find_fn(take, curr.pitch, curr.chan or s_chan, curr.start_qn)
+                                else
+                                    local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, curr.start_qn)
+                                    local _, notecnt = reaper.MIDI_CountEvts(take)
+                                    for ni = 0, notecnt - 1 do
+                                        local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, ni)
+                                        if ok and p == curr.pitch and ch == (curr.chan or s_chan) and math.abs(sppq - target_ppq) <= 40 then
+                                            curr_idx = ni
+                                            curr_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
+                                            break
+                                        end
+                                    end
+                                end
+                                if curr_idx and curr_data then
+                                    local leg_end_ppq
+                                    if curr.pitch == next_n.pitch then
+                                        -- Same pitch: never overlap to avoid REAPER note merging
+                                        leg_end_ppq = math.min(curr_data.eppq, math.max(curr_data.sppq + 20, next_sppq - 1))
+                                    else
+                                        -- Different pitch: apply +2 tick micro-legato overlap for sampler interval triggering!
+                                        leg_end_ppq = math.max(curr_data.sppq + 20, next_sppq + 2)
+                                    end
+                                    reaper.MIDI_SetNote(take, curr_idx, curr_data.sel, curr_data.muted, curr_data.sppq, leg_end_ppq, curr_data.chan, curr_data.pitch, curr_data.vel, false)
+                                end
                             end
                         end
 
-                        local s_chan = n1.chan or sl.chan or 0
-                        reaper.MIDI_InsertTextSysexEvt(take, false, false, n1_sppq, 15, string.format("NOTATOR_SLUR %s %d %d %d %.4f %.4f %.4f",
-                            slur_id, s_chan, n1.pitch, n_last.pitch, n1.start_qn, n_last.start_qn, n1.dur_qn))
+                        -- Tag all notes in phrase with NOTE <pitch> <chan> a legato and purge conflicting staccato tags
+                        for _, pn in ipairs(phrase_notes) do
+                            local pn_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, pn.start_qn) + 0.5)
+                            local _, _, _, textcnt = reaper.MIDI_CountEvts(take)
+                            for ti = (textcnt or 0) - 1, 0, -1 do
+                                local ok_t, _, _, t_ppq, etype, msg_t = reaper.MIDI_GetTextSysexEvt(take, ti)
+                                if ok_t and etype == 15 and math.abs(t_ppq - pn_sppq) <= 25 then
+                                    local low_msg = msg_t:lower()
+                                    if low_msg:find("stacc") or low_msg:find("spicc") or low_msg:find("wedge") then
+                                        reaper.MIDI_DeleteTextSysexEvt(take, ti)
+                                    end
+                                end
+                            end
+                            reaper.MIDI_InsertTextSysexEvt(take, false, false, pn_sppq, 15, string.format("NOTE %d %d a legato", pn.pitch, pn.chan or s_chan))
+                            pn.articulation = "legato"
+                        end
+
+                        -- Insert 10-token NOTATOR_SLUR tag matching SlurService persistence format
+                        reaper.MIDI_InsertTextSysexEvt(take, false, false, n1_sppq, 15, string.format("NOTATOR_SLUR %s %d %d %d %.4f %.4f %.4f %s %s %s",
+                            slur_id, s_chan, n1.pitch, n_last.pitch, n1.start_qn, n_last.start_qn, n1.dur_qn, "", -1, -1))
 
                         local track_bank = target_banks[pi]
+                        if not track_bank and tr and ReaticulateParser then
+                            local all_banks = ReaticulateParser.get_all_banks()
+                            track_bank = ReaticulateParser.get_bank_for_track(tr, all_banks)
+                        end
                         if track_bank then
-                            local art_match = MidiService.find_reaticulate_art_for_id(track_bank, "legato") or MidiService.find_reaticulate_art_for_id(track_bank, "long")
+                            local art_match = MidiService.find_reaticulate_art_for_id(track_bank, "legato")
+                                or MidiService.find_reaticulate_art_for_id(track_bank, "long")
+                                or MidiService.find_reaticulate_art_for_id(track_bank, "sustain")
                             if art_match then
                                 local eff_msb = (track_bank.msb and track_bank.msb >= 0) and track_bank.msb or -1
                                 local eff_lsb = (track_bank.lsb and track_bank.lsb >= 0) and track_bank.lsb or -1
@@ -1628,6 +1739,9 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             n2_start_qn = n_last.start_qn,
                             end_qn = n_last.start_qn + n_last.dur_qn,
                             orig_dur1 = n1.dur_qn,
+                            pre_slur_pc = nil,
+                            pre_slur_msb = -1,
+                            pre_slur_lsb = -1,
                             n1_key = string.format("%d_%.4f_%d", n1.pitch, n1.start_qn, n1.chan or s_chan),
                             n2_key = string.format("%d_%.4f_%d", n_last.pitch, n_last.start_qn, n_last.chan or s_chan)
                         }
@@ -1697,6 +1811,10 @@ function MusicXmlImportService.import_file(file_path, state, options)
                     end
 
                     local track_bank = target_banks[pi]
+                    if not track_bank and tr and ReaticulateParser then
+                        local all_banks = ReaticulateParser.get_all_banks()
+                        track_bank = ReaticulateParser.get_bank_for_track(tr, all_banks)
+                    end
                     if track_bank then
                         MidiService.auto_chase_momentary_articulations(take, track_bank)
                     end

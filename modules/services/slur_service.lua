@@ -123,6 +123,7 @@ local function find_take_note_by_pos(take, pitch, chan, target_qn, opt_tolerance
     end
     return best_idx, best_note_data
 end
+SlurService.find_take_note_by_pos = find_take_note_by_pos
 
 
 -- ------------------------------------------------------------------------------
@@ -1071,14 +1072,14 @@ local function resolve_effective_slur_notes(state, sl, all_note_render_by_key)
                 local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
                 if not nd1 and nd.pitch == sl.pitch1 and (eff_chan1 == nil or nd_ch == eff_chan1) then
                     local d = math.abs(sqn - sl.start_qn)
-                    if d < 0.05 and d < best_d1 then
+                    if d <= 0.12 and d < best_d1 then
                         best_d1 = d
                         nd1 = nd
                     end
                 end
                 if not nd2 and nd.pitch == sl.pitch2 and (eff_chan2 == nil or nd_ch == eff_chan2) then
                     local d = math.abs(sqn - target_n2_qn)
-                    if d < 0.05 and d < best_d2 then
+                    if d <= 0.12 and d < best_d2 then
                         best_d2 = d
                         nd2 = nd
                     end
@@ -1093,14 +1094,14 @@ local function resolve_effective_slur_notes(state, sl, all_note_render_by_key)
                     local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
                     if not nd1 and nd.pitch == sl.pitch1 then
                         local d = math.abs(sqn - sl.start_qn)
-                        if d < 0.05 and d < best_d1 then
+                        if d <= 0.12 and d < best_d1 then
                             best_d1 = d
                             nd1 = nd
                         end
                     end
                     if not nd2 and nd.pitch == sl.pitch2 then
                         local d = math.abs(sqn - target_n2_qn)
-                        if d < 0.05 and d < best_d2 then
+                        if d <= 0.12 and d < best_d2 then
                             best_d2 = d
                             nd2 = nd
                         end
@@ -1185,14 +1186,14 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
                 local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
                 if not nd1 and nd.pitch == tie.pitch and (tie.chan == nil or nd_ch == tie.chan) then
                     local d = math.abs(sqn - (tie.n1_start_qn or 0.0))
-                    if d < 0.05 and d < best_d1 then
+                    if d <= 0.12 and d < best_d1 then
                         best_d1 = d
                         nd1 = nd
                     end
                 end
                 if not nd2 and nd.pitch == tie.pitch and (tie.chan == nil or nd_ch == tie.chan) then
                     local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
-                    if d < 0.05 and d < best_d2 then
+                    if d <= 0.12 and d < best_d2 then
                         best_d2 = d
                         nd2 = nd
                     end
@@ -1206,14 +1207,14 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
                     local sqn = nd.start_qn or (nd.orig and nd.orig.start_qn) or 0
                     if not nd1 and nd.pitch == tie.pitch then
                         local d = math.abs(sqn - (tie.n1_start_qn or 0.0))
-                        if d < 0.05 and d < best_d1 then
+                        if d <= 0.12 and d < best_d1 then
                             best_d1 = d
                             nd1 = nd
                         end
                     end
                     if not nd2 and nd.pitch == tie.pitch then
                         local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
-                        if d < 0.05 and d < best_d2 then
+                        if d <= 0.12 and d < best_d2 then
                             best_d2 = d
                             nd2 = nd
                         end
@@ -1596,55 +1597,73 @@ function SlurService.load_slurs(state)
                         local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
                         if ok and ev_type == 15 then
                             local s_id, s_chan, p1, p2, sqn, n2sqn, odur, pre_pc, pre_msb, pre_lsb = msg:match("^NOTATOR_SLUR%s+([%w_]+)%s+(%d+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%-?%d*)%s*(%-?%d*)%s*(%-?%d*)")
-                            if s_id and not known_slurs[s_id] then
-                                known_slurs[s_id] = true
-                                table.insert(state.user_slurs, {
-                                    id          = s_id,
-                                    track_guid  = trk_guid,
-                                    chan        = tonumber(s_chan) or 0,
-                                    pitch1      = tonumber(p1) or 60,
-                                    pitch2      = tonumber(p2) or 62,
-                                    start_qn    = tonumber(sqn) or 0.0,
-                                    n2_start_qn = tonumber(n2sqn) or 1.0,
-                                    end_qn      = (tonumber(n2sqn) or 1.0) + 1.0,
-                                    orig_dur1   = tonumber(odur) or 1.0,
-                                    pre_slur_pc = (pre_pc and pre_pc ~= "") and tonumber(pre_pc) or nil,
-                                    pre_slur_msb = tonumber(pre_msb) or -1,
-                                    pre_slur_lsb = tonumber(pre_lsb) or -1,
-                                    n1_key      = string.format("%d_%.4f_%d", tonumber(p1) or 60, tonumber(sqn) or 0.0, tonumber(s_chan) or 0),
-                                    n2_key      = string.format("%d_%.4f_%d", tonumber(p2) or 62, tonumber(n2sqn) or 1.0, tonumber(s_chan) or 0)
-                                })
-                            elseif s_id and known_slurs[s_id] then
-                                -- Restore missing track_guid from take's track if missing
-                                for _, es in ipairs(state.user_slurs) do
-                                    if es.id == s_id and (not es.track_guid or es.track_guid == "") then
-                                        es.track_guid = trk_guid
-                                        break
+                            if s_id then
+                                local track_key = s_id .. "_" .. normalize_guid(trk_guid)
+                                if not known_slurs[track_key] then
+                                    known_slurs[track_key] = true
+                                    local eff_id = s_id
+                                    if known_slurs[s_id] then
+                                        eff_id = s_id .. "_cp_" .. normalize_guid(trk_guid):sub(1, 6)
+                                    else
+                                        known_slurs[s_id] = true
+                                    end
+                                    table.insert(state.user_slurs, {
+                                        id          = eff_id,
+                                        track_guid  = trk_guid,
+                                        chan        = tonumber(s_chan) or 0,
+                                        pitch1      = tonumber(p1) or 60,
+                                        pitch2      = tonumber(p2) or 62,
+                                        start_qn    = tonumber(sqn) or 0.0,
+                                        n2_start_qn = tonumber(n2sqn) or 1.0,
+                                        end_qn      = (tonumber(n2sqn) or 1.0) + 1.0,
+                                        orig_dur1   = tonumber(odur) or 1.0,
+                                        pre_slur_pc = (pre_pc and pre_pc ~= "") and tonumber(pre_pc) or nil,
+                                        pre_slur_msb = tonumber(pre_msb) or -1,
+                                        pre_slur_lsb = tonumber(pre_lsb) or -1,
+                                        n1_key      = string.format("%d_%.4f_%d", tonumber(p1) or 60, tonumber(sqn) or 0.0, tonumber(s_chan) or 0),
+                                        n2_key      = string.format("%d_%.4f_%d", tonumber(p2) or 62, tonumber(n2sqn) or 1.0, tonumber(s_chan) or 0)
+                                    })
+                                else
+                                    -- Restore missing track_guid from take's track if missing
+                                    for _, es in ipairs(state.user_slurs) do
+                                        if es.id == s_id and (not es.track_guid or es.track_guid == "") then
+                                            es.track_guid = trk_guid
+                                            break
+                                        end
                                     end
                                 end
                             end
                             local t_id, t_chan, tp, t_s1, t_d1, t_s2, t_d2, t_vel = msg:match("^NOTATOR_TIE%s+([%w_]+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%d*)")
-                            if t_id and not known_ties[t_id] then
-                                known_ties[t_id] = true
-                                table.insert(state.user_ties, {
-                                    id          = t_id,
-                                    track_guid  = trk_guid,
-                                    chan        = tonumber(t_chan) or 0,
-                                    pitch       = tonumber(tp) or 60,
-                                    n1_start_qn = tonumber(t_s1) or 0.0,
-                                    n1_dur      = tonumber(t_d1) or 1.0,
-                                    n2_start_qn = tonumber(t_s2) or 1.0,
-                                    n2_dur      = tonumber(t_d2) or 1.0,
-                                    n2_vel      = (t_vel and t_vel ~= "") and tonumber(t_vel) or 96,
-                                    n1_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s1) or 0.0, tonumber(t_chan) or 0),
-                                    n2_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s2) or 1.0, tonumber(t_chan) or 0)
-                                })
-                            elseif t_id and known_ties[t_id] then
-                                -- Restore missing track_guid from take's track if missing
-                                for _, et in ipairs(state.user_ties) do
-                                    if et.id == t_id and (not et.track_guid or et.track_guid == "") then
-                                        et.track_guid = trk_guid
-                                        break
+                            if t_id then
+                                local tie_track_key = t_id .. "_" .. normalize_guid(trk_guid)
+                                if not known_ties[tie_track_key] then
+                                    known_ties[tie_track_key] = true
+                                    local eff_id = t_id
+                                    if known_ties[t_id] then
+                                        eff_id = t_id .. "_cp_" .. normalize_guid(trk_guid):sub(1, 6)
+                                    else
+                                        known_ties[t_id] = true
+                                    end
+                                    table.insert(state.user_ties, {
+                                        id          = eff_id,
+                                        track_guid  = trk_guid,
+                                        chan        = tonumber(t_chan) or 0,
+                                        pitch       = tonumber(tp) or 60,
+                                        n1_start_qn = tonumber(t_s1) or 0.0,
+                                        n1_dur      = tonumber(t_d1) or 1.0,
+                                        n2_start_qn = tonumber(t_s2) or 1.0,
+                                        n2_dur      = tonumber(t_d2) or 1.0,
+                                        n2_vel      = (t_vel and t_vel ~= "") and tonumber(t_vel) or 96,
+                                        n1_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s1) or 0.0, tonumber(t_chan) or 0),
+                                        n2_key      = string.format("%d_%.4f_%d", tonumber(tp) or 60, tonumber(t_s2) or 1.0, tonumber(t_chan) or 0)
+                                    })
+                                else
+                                    -- Restore missing track_guid from take's track if missing
+                                    for _, et in ipairs(state.user_ties) do
+                                        if et.id == t_id and (not et.track_guid or et.track_guid == "") then
+                                            et.track_guid = trk_guid
+                                            break
+                                        end
                                     end
                                 end
                             end

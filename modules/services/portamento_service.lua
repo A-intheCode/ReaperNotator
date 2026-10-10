@@ -608,29 +608,38 @@ function PortamentoService.load_portamentos(state)
                             local parts = {}
                             for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
                             local id = parts[2]
-                            if id and id ~= "" and not known[id] then
-                                known[id] = true
-                                local pm = PortamentoMark.new({
-                                    id            = id,
-                                    track_guid    = (parts[3] and parts[3] ~= "") and parts[3] or trk_guid,
-                                    chan          = tonumber(parts[4]) or 0,
-                                    n1_key        = parts[5],
-                                    pitch1        = tonumber(parts[6]) or 60,
-                                    start_qn1     = tonumber(parts[7]) or 0.0,
-                                    dur_qn1       = tonumber(parts[8]) or 1.0,
-                                    n2_key        = parts[9],
-                                    pitch2        = tonumber(parts[10]) or 62,
-                                    start_qn2     = tonumber(parts[11]) or 1.0,
-                                    dur_qn2       = tonumber(parts[12]) or 1.0,
-                                    hold_start_qn = tonumber(parts[13]),
-                                    hold_end_qn   = tonumber(parts[14]),
-                                    mode          = (parts[15] and parts[15] ~= "") and parts[15] or "cc64",
-                                    show_text     = (parts[16] == "1" or parts[16] == "true"),
-                                    start_pct1    = tonumber(parts[17]) or 50,
-                                    end_pct2      = tonumber(parts[18]) or 50
-                                })
-                                pm:recalculate_timing()
-                                table.insert(state.portamento_marks, pm)
+                            if id and id ~= "" then
+                                local port_track_key = id .. "_" .. normalize_guid(trk_guid)
+                                if not known[port_track_key] then
+                                    known[port_track_key] = true
+                                    local eff_id = id
+                                    if known[id] then
+                                        eff_id = id .. "_cp_" .. normalize_guid(trk_guid):sub(1, 6)
+                                    else
+                                        known[id] = true
+                                    end
+                                    local pm = PortamentoMark.new({
+                                        id            = eff_id,
+                                        track_guid    = trk_guid,
+                                        chan          = tonumber(parts[4]) or 0,
+                                        n1_key        = parts[5],
+                                        pitch1        = tonumber(parts[6]) or 60,
+                                        start_qn1     = tonumber(parts[7]) or 0.0,
+                                        dur_qn1       = tonumber(parts[8]) or 1.0,
+                                        n2_key        = parts[9],
+                                        pitch2        = tonumber(parts[10]) or 62,
+                                        start_qn2     = tonumber(parts[11]) or 1.0,
+                                        dur_qn2       = tonumber(parts[12]) or 1.0,
+                                        hold_start_qn = tonumber(parts[13]),
+                                        hold_end_qn   = tonumber(parts[14]),
+                                        mode          = (parts[15] and parts[15] ~= "") and parts[15] or "cc64",
+                                        show_text     = (parts[16] == "1" or parts[16] == "true"),
+                                        start_pct1    = tonumber(parts[17]) or 50,
+                                        end_pct2      = tonumber(parts[18]) or 50
+                                    })
+                                    pm:recalculate_timing()
+                                    table.insert(state.portamento_marks, pm)
+                                end
                             end
                         end
                     end

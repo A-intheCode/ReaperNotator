@@ -1466,6 +1466,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 track_guid = tdata.guid,
                 item = vn.orig and vn.orig.item, take = vn.orig and vn.orig.take,
                 idx = vn.orig and vn.orig.idx, is_segment = vn.is_segment,
+                chan = (vn.orig and vn.orig.chan) or (vn.chan or 0),
                 is_ghost_voice = vn.is_ghost_voice
             }
             table.insert(all_note_render_data, rdata)

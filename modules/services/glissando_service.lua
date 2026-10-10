@@ -323,38 +323,47 @@ function GlissandoService.load_glissandos(state)
                             local g_parts = {}
                             for field in (msg .. "|"):gmatch("([^|]*)|") do table.insert(g_parts, field) end
                             local gid = g_parts[2]
-                            if gid and gid ~= "" and not known[gid] then
-                                known[gid] = true
-                                local p1 = tonumber(g_parts[5]) or 60
-                                local p2 = tonumber(g_parts[8]) or 62
-                                local is_cross = (g_parts[13] == "1" or g_parts[13] == "true")
-                                if not is_cross and p1 and p2 then
-                                    if (p1 < 60 and p2 >= 60) or (p1 >= 60 and p2 < 60) then
-                                        is_cross = true
+                            if gid and gid ~= "" then
+                                local gliss_track_key = gid .. "_" .. normalize_guid(trk_guid)
+                                if not known[gliss_track_key] then
+                                    known[gliss_track_key] = true
+                                    local eff_id = gid
+                                    if known[gid] then
+                                        eff_id = gid .. "_cp_" .. normalize_guid(trk_guid):sub(1, 6)
+                                    else
+                                        known[gid] = true
                                     end
+                                    local p1 = tonumber(g_parts[5]) or 60
+                                    local p2 = tonumber(g_parts[8]) or 62
+                                    local is_cross = (g_parts[13] == "1" or g_parts[13] == "true")
+                                    if not is_cross and p1 and p2 then
+                                        if (p1 < 60 and p2 >= 60) or (p1 >= 60 and p2 < 60) then
+                                            is_cross = true
+                                        end
+                                    end
+                                    local show_txt = (g_parts[12] == "1" or g_parts[12] == "true")
+                                    if g_parts[12] == nil or g_parts[12] == "" then
+                                        show_txt = (state and state.glissando_default_show_text ~= false)
+                                    end
+                                    local gm = GlissandoMark.new({
+                                        id          = eff_id,
+                                        track_guid  = trk_guid,
+                                        chan        = tonumber(g_parts[4]) or 0,
+                                        pitch1      = p1,
+                                        start_qn1   = tonumber(g_parts[6]) or 0.0,
+                                        orig_dur1   = tonumber(g_parts[7]) or 1.0,
+                                        dur_qn1     = tonumber(g_parts[7]) or 1.0,
+                                        pitch2      = p2,
+                                        start_qn2   = tonumber(g_parts[9]) or 1.0,
+                                        dur_qn2     = tonumber(g_parts[10]) or 1.0,
+                                        start_pct1  = tonumber(g_parts[11]) or 50,
+                                        show_text   = show_txt,
+                                        cross_staff = is_cross,
+                                        vel_mode    = (g_parts[14] and g_parts[14] ~= "") and g_parts[14] or "interpolate",
+                                        wave_style  = (g_parts[15] and g_parts[15] ~= "") and g_parts[15] or "sine"
+                                    })
+                                    table.insert(state.glissando_marks, gm)
                                 end
-                                local show_txt = (g_parts[12] == "1" or g_parts[12] == "true")
-                                if g_parts[12] == nil or g_parts[12] == "" then
-                                    show_txt = (state and state.glissando_default_show_text ~= false)
-                                end
-                                local gm = GlissandoMark.new({
-                                    id          = gid,
-                                    track_guid  = (g_parts[3] and g_parts[3] ~= "") and g_parts[3] or trk_guid,
-                                    chan        = tonumber(g_parts[4]) or 0,
-                                    pitch1      = p1,
-                                    start_qn1   = tonumber(g_parts[6]) or 0.0,
-                                    orig_dur1   = tonumber(g_parts[7]) or 1.0,
-                                    dur_qn1     = tonumber(g_parts[7]) or 1.0,
-                                    pitch2      = p2,
-                                    start_qn2   = tonumber(g_parts[9]) or 1.0,
-                                    dur_qn2     = tonumber(g_parts[10]) or 1.0,
-                                    start_pct1  = tonumber(g_parts[11]) or 50,
-                                    show_text   = show_txt,
-                                    cross_staff = is_cross,
-                                    vel_mode    = (g_parts[14] and g_parts[14] ~= "") and g_parts[14] or "interpolate",
-                                    wave_style  = (g_parts[15] and g_parts[15] ~= "") and g_parts[15] or "sine"
-                                })
-                                table.insert(state.glissando_marks, gm)
                             end
                         end
                     end

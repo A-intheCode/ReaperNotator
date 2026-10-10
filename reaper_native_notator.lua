@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0-beta.8
+-- @version 1.7.0-beta.9
 -- @changelog
+--   + v1.7.0-beta.9: Acoustic Legato Playback & Cross-Voice Slur Import Overhaul:
+--             - True Acoustic Legato Playback: MusicXML import now extends all consecutive notes under slurs with micro-legato overlap (+2 PPQ ticks) in REAPER MIDI takes, ensuring samplers (Kontakt, Spitfire, Cinematic Studio Strings, Orchestral Tools, VSL) trigger seamless legato transition intervals instead of detaché attacks. Same-pitch notes are protected from note-merging.
+--             - Channel-Isolated Multi-Voice Slur & Tie Pairing: Keyed open slurs, ties, glissandi, and portamentos by channel and voice, preventing cross-voice and grand-staff slur clobbering while preserving cross-staff slur matching fallbacks.
+--             - Full Phrase Articulation & Keyswitch Mapping: Tags all notes under slurs with NOTE <pitch> <chan> a legato sysex events, clears conflicting staccato events, injects Reaticulate legato/long/sustain keyswitches, writes full 10-token NOTATOR_SLUR sysex events, and invokes auto-chase restoration at the end of each phrase.
+--             - Cross-Track MIDI Copy Persistence: Scoped take scan dual-persistence by track GUID, preserving slurs, glissandi, and portamentos without collision or loss when copying MIDI items between instruments.
 --   + v1.7.0-beta.8: MusicXML Save File Dialog & Portamento Syntax Hotfix:
 --             - Native Save File Dialog: Fixed MusicXML Export Browse button requiring an existing file by implementing a dedicated Save File dialog (JS_Dialog_BrowseForSaveFile with native Windows SaveFileDialog fallback).
 --             - Portamento Syntax Hotfix: Resolved missing 'end' statement in PortamentoService.draw_portamentos.
