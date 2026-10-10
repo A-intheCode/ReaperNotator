@@ -5,6 +5,7 @@
 
 local Constants = require("constants")
 local SMUFL = Constants.SMUFL
+local OctaveService = require("services.octave_service")
 
 local Engraver = {}
 
@@ -654,7 +655,6 @@ function Engraver.get_note_effective_pitch(raw_pitch, start_qn, track_guid, stat
     if not (state and track_guid and track_guid ~= "") then
         return pitch, nil, 0
     end
-    local OctaveService = require("services.octave_service")
     local active_oct = (OctaveService and OctaveService.get_active_line_at_qn) and OctaveService.get_active_line_at_qn(state, track_guid, start_qn or 0) or nil
     local oct_shift = active_oct and (Constants.OCTAVE_LINE_DEFS[active_oct.type] and Constants.OCTAVE_LINE_DEFS[active_oct.type].shift_semitones or 0) or 0
     local eff_pitch = math.max(0, math.min(127, pitch - oct_shift))
@@ -1406,7 +1406,11 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 is_segment = is_segmented,
                                 seg_idx = sub_i,
                                 key = seg_key,
-                                bar = bar
+                                bar = bar,
+                                item = n.item,
+                                item_obj = n.item_obj,
+                                take = n.take,
+                                track = n.track
                             }
                             table.insert(visual_notes, seg)
                             

@@ -78,6 +78,8 @@ MidiService._last_sel_sig = ""
 
 function MidiService.invalidate_cache(track_or_guid)
     MidiService._last_proj_change_cnt = -1
+    local KeySig = package.loaded["services.key_signature_service"]
+    if KeySig and KeySig.invalidate_cache then KeySig.invalidate_cache() end
     if not track_or_guid then
         MidiService._track_cache = {}
         MidiService._take_cache = {}
@@ -726,6 +728,7 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                             chan = chan,
                             take = take,
                             item = item,
+                            item_obj = item_obj,
                             track = track,
                             articulation = art,
                             stem_dir = stem_dir,
@@ -775,6 +778,7 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                         chan = tm.chan,
                         take = take,
                         item = item,
+                        item_obj = item_obj,
                         track = track,
                         staff = master_staff,
                         is_tied_master = false,

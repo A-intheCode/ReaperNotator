@@ -56,14 +56,15 @@ local function resolve_effective_key(state, track, item, qn)
         end
     end
     if item then
-        if item.key_sig ~= nil then
-            if type(item.key_sig) == "table" then
-                return item.key_sig.key_idx or item.key_sig.idx or 0, item.key_sig.mode or item.key_sig_mode or "major"
+        local it_obj = (type(item) == "table" and (item.item_obj or item)) or nil
+        if it_obj and it_obj.key_sig ~= nil then
+            if type(it_obj.key_sig) == "table" then
+                return it_obj.key_sig.key_idx or it_obj.key_sig.idx or 0, it_obj.key_sig.mode or it_obj.key_sig_mode or "major"
             else
-                return item.key_sig, item.key_sig_mode or "major"
+                return it_obj.key_sig, it_obj.key_sig_mode or "major"
             end
         end
-        local real_it = (item.item and reaper.ValidatePtr(item.item, "MediaItem*") and item.item)
+        local real_it = (type(item) == "table" and item.item and reaper.ValidatePtr(item.item, "MediaItem*") and item.item)
             or (type(item) == "userdata" and reaper.ValidatePtr(item, "MediaItem*") and item)
         if real_it then
             local ok, str = reaper.GetSetMediaItemInfo_String(real_it, "P_EXT:notator_key_sig", "", false)
@@ -74,7 +75,9 @@ local function resolve_effective_key(state, track, item, qn)
         end
     end
     if track and state and state.track_key_signatures then
-        local guid = type(track) == "userdata" and reaper.ValidatePtr(track, "MediaTrack*") and reaper.GetTrackGUID(track) or nil
+        local guid = (type(track) == "table" and (track.guid or (track.track and reaper.ValidatePtr(track.track, "MediaTrack*") and reaper.GetTrackGUID(track.track))))
+            or (type(track) == "userdata" and reaper.ValidatePtr(track, "MediaTrack*") and reaper.GetTrackGUID(track))
+            or nil
         if guid and state.track_key_signatures[guid] then
             local entry = state.track_key_signatures[guid]
             if type(entry) == "table" then
@@ -97,11 +100,14 @@ local function resolve_effective_time_sig(state, track, item, qn)
         end
     end
     if item then
-        if item.time_sig and item.time_sig.num and item.time_sig.denom then
-            return item.time_sig.num, item.time_sig.denom
+        local it_obj = (type(item) == "table" and (item.item_obj or item)) or nil
+        if it_obj and it_obj.time_sig and it_obj.time_sig.num and it_obj.time_sig.denom then
+            return it_obj.time_sig.num, it_obj.time_sig.denom
         end
-        if item.item and reaper.ValidatePtr(item.item, "MediaItem*") then
-            local ok, str = reaper.GetSetMediaItemInfo_String(item.item, "P_EXT:notator_time_sig", "", false)
+        local real_it = (type(item) == "table" and item.item and reaper.ValidatePtr(item.item, "MediaItem*") and item.item)
+            or (type(item) == "userdata" and reaper.ValidatePtr(item, "MediaItem*") and item)
+        if real_it then
+            local ok, str = reaper.GetSetMediaItemInfo_String(real_it, "P_EXT:notator_time_sig", "", false)
             if ok and str and str ~= "" then
                 local num, den = str:match("([^|]+)|([^|]+)")
                 if num and den then return tonumber(num) or 4, tonumber(den) or 4 end
@@ -236,6 +242,25 @@ local function draw_bass_clef(draw_list, x, f3_y, s, col, font_music)
 end
 
 local function get_track_clef(guid, track_notes, track_name, state)
+    local saved = state and state.track_clefs and (state.track_clefs[guid] or (guid.upper and state.track_clefs[guid:upper()]))
+    if saved and saved ~= "auto" then
+        return saved
+    end
+    if state then
+        state._clef_cache = state._clef_cache or {}
+        local proj_change = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
+        local c_entry = state._clef_cache[guid]
+        if c_entry and c_entry.proj_cnt == proj_change and c_entry.notes_count == (track_notes and #track_notes or 0) then
+            return c_entry.clef
+        end
+        local detected = Engraver.get_track_clef(guid, track_name, track_notes, state)
+        state._clef_cache[guid] = {
+            proj_cnt = proj_change,
+            notes_count = track_notes and #track_notes or 0,
+            clef = detected
+        }
+        return detected
+    end
     return Engraver.get_track_clef(guid, track_name, track_notes, state)
 end
 
@@ -416,7 +441,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 
                 local trk_first_item = (tdata.items and tdata.items[1])
                 local item_at_start = (trk_first_item and (trk_first_item.start_qn or 0) <= 0.1) and trk_first_item or nil
-                local k_idx = resolve_effective_key(state, tdata.track, item_at_start, 0)
+                local k_idx = resolve_effective_key(state, tdata, item_at_start, 0)
                 local kw = Engraver.get_key_signature_width(k_idx, s)
                 if kw > max_key_sig_w then max_key_sig_w = kw end
             end
@@ -925,8 +950,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             -- 2. Key signature between clef and time signature
             local trk_first_item = (tdata.items and tdata.items[1])
             local item_at_start = (trk_first_item and (trk_first_item.start_qn or 0) <= 0.1) and trk_first_item or nil
-            local eff_key_idx, eff_key_mode = resolve_effective_key(state, tdata.track, item_at_start, 0)
-            local eff_ts_num, eff_ts_den = resolve_effective_time_sig(state, tdata.track, trk_first_item, 0)
+            local eff_key_idx, eff_key_mode = resolve_effective_key(state, tdata, item_at_start, 0)
+            local eff_ts_num, eff_ts_den = resolve_effective_time_sig(state, tdata, trk_first_item, 0)
             if type(eff_ts_num) == "table" then
                 eff_ts_den = eff_ts_num.denom or eff_ts_den
                 eff_ts_num = eff_ts_num.num
@@ -1281,11 +1306,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local pref_acc = Engraver.get_note_preferred_accidental(vn, state)
             local eff_pitch, active_oct, oct_shift = Engraver.get_note_effective_pitch(vn.pitch, vn.start_qn, tdata.guid, state)
             
-            local note_item = vn.item or (vn.orig and vn.orig.item)
+            local note_item = vn.item_obj or (vn.orig and vn.orig.item_obj) or vn.item or (vn.orig and vn.orig.item)
             local note_clef = track_clef
             local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[note_clef]
             local is_unpitched = cdef and cdef.unpitched
-            local note_key_idx = resolve_effective_key(state, tdata.track, note_item, vn.start_qn)
+            local note_key_idx = resolve_effective_key(state, tdata, note_item, vn.start_qn)
             
             local force_staff = nil
             if is_grand then
@@ -2847,13 +2872,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             for t_idx, tdata in ipairs(active_tracks_data) do
                 if tdata.is_visible_vertically and tdata.staff_top_y and tdata.staff_bottom_y then
                     local trk_info = is_key_change and is_key_change.tracks and (is_key_change.tracks[tdata] or is_key_change.tracks[tdata.track] or (tdata.guid and is_key_change.tracks[tdata.guid]) or is_key_change.tracks[t_idx])
-                    if not trk_info and is_key_change then
-                        local eff_c = resolve_effective_key(state, tdata.track, nil, (m + 0.5) * qn_per_measure)
-                        local eff_p = resolve_effective_key(state, tdata.track, nil, (m - 0.5) * qn_per_measure)
-                        trk_info = { curr_idx = eff_c, prev_idx = eff_p }
-                    end
                     local has_this_trk_change = trk_info and (trk_info.curr_idx ~= trk_info.prev_idx)
-                    if (is_key_change and m > 0) and (has_this_trk_change or trk_info == nil) then
+                    if (is_key_change and m > 0) and has_this_trk_change then
                         -- Thin double barline before key change per Gould/Read
                         reaper.ImGui_DrawList_AddLine(draw_list, mx - 4.0 * s, tdata.staff_top_y, mx - 4.0 * s, tdata.staff_bottom_y, bar_col, 1.8 * s)
                         reaper.ImGui_DrawList_AddLine(draw_list, mx, tdata.staff_top_y, mx, tdata.staff_bottom_y, bar_col, 1.8 * s)
@@ -2869,11 +2889,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 for t_idx, tdata in ipairs(active_tracks_data) do
                     if tdata.is_visible_vertically and tdata.staff_bottom_y then
                         local trk_info = is_key_change.tracks and (is_key_change.tracks[tdata] or is_key_change.tracks[tdata.track] or (tdata.guid and is_key_change.tracks[tdata.guid]) or is_key_change.tracks[t_idx])
-                        if not trk_info then
-                            local eff_c = resolve_effective_key(state, tdata.track, nil, (m + 0.5) * qn_per_measure)
-                            local eff_p = resolve_effective_key(state, tdata.track, nil, (m - 0.5) * qn_per_measure)
-                            trk_info = { curr_idx = eff_c, prev_idx = eff_p }
-                        end
                         local new_k = trk_info and trk_info.curr_idx
                         local prev_k = trk_info and trk_info.prev_idx or 0
                         local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[tdata.clef]

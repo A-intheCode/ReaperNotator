@@ -17,6 +17,7 @@ function MidiNote.new(data)
     self.chan         = data.chan or 0
     self.take         = data.take
     self.item         = data.item
+    self.item_obj     = data.item_obj
     self.track        = data.track
     self.articulation = data.articulation
     self.stem_dir     = data.stem_dir

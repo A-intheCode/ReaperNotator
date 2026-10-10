@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.15
+-- @version 1.8.0-beta.16
 -- @changelog
+--   + v1.8.0-beta.16: Playback Performance Overhaul (Orchestral 30+ Tracks 60-70 FPS):
+--             - Zero-C-API Key Signature Resolution: Eliminated linear Take text/sysex event scanning (MIDI_GetTextSysexEvt) per note per frame via take event memoization and item_obj in-memory resolution.
+--             - Barline & Measure Key Signature Fast-Path: Bypassed redundant track item scans and C-API polling across unaffected tracks at barlines.
+--             - Track Clef Caching: Cached auto-detected instrument clefs to eliminate redundant full-track note pitch scans every frame.
+--             - Hoisted Service Modules: Hoisted inner-loop service requires in Engraver to eliminate package.loaded lookup overhead.
 --   + v1.8.0-beta.15: Tie Notes Selection, Focus & Chaining Overhaul:
 --             - Chaining Arbitration: Chaining consecutive ties forward (Note 1 -> Note 2 -> Note 3) via [T] or sidebar/drawer buttons now advances focus cleanly without deleting the preceding tie.
 --             - Precise Untie Arbitration: Pressing [T] on an arrival note now chains forward to the next note of the same pitch instead of deleting the arrival tie. Multi-note selection unties only when both ends of the existing tie are selected together.

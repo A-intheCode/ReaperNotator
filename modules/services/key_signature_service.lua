@@ -48,6 +48,81 @@ end
 -- ITEM KEY SIGNATURE (GET / SET)
 -- ==============================================================================
 
+KeySignatureService._take_events_cache = {}
+KeySignatureService._item_pext_cache = {}
+KeySignatureService._cache_proj_cnt = -1
+
+function KeySignatureService.invalidate_cache()
+    KeySignatureService._take_events_cache = {}
+    KeySignatureService._item_pext_cache = {}
+    KeySignatureService._cache_proj_cnt = -1
+end
+
+local function get_cached_take_key_events(take)
+    local proj_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
+    if KeySignatureService._cache_proj_cnt ~= proj_cnt then
+        KeySignatureService._take_events_cache = {}
+        KeySignatureService._item_pext_cache = {}
+        KeySignatureService._cache_proj_cnt = proj_cnt
+    end
+    local cached = KeySignatureService._take_events_cache[take]
+    if cached then return cached end
+
+    local events = {}
+    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+    for ti = 0, text_cnt - 1 do
+        local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
+        if ok and etype == 15 then
+            local idx_s, mode_s = msg:match("^NOTATOR_KEY_SIG%s+(%-?%d+)%s*([%a%d_]*)")
+            local kidx, kmode = nil, nil
+            if idx_s then
+                kidx = tonumber(idx_s)
+                kmode = (mode_s and mode_s ~= "") and mode_s or "major"
+            else
+                local nat_idx = msg:match("^key%s+(%-?%d+)")
+                if nat_idx then
+                    kidx = tonumber(nat_idx)
+                    kmode = "major"
+                end
+            end
+            if kidx ~= nil then
+                table.insert(events, { ppq = ppq, idx = kidx, key_idx = kidx, mode = kmode })
+            end
+        end
+    end
+    table.sort(events, function(a, b) return a.ppq < b.ppq end)
+    KeySignatureService._take_events_cache[take] = events
+    return events
+end
+
+local function get_cached_item_pext_key(real_item)
+    local proj_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
+    if KeySignatureService._cache_proj_cnt ~= proj_cnt then
+        KeySignatureService._take_events_cache = {}
+        KeySignatureService._item_pext_cache = {}
+        KeySignatureService._cache_proj_cnt = proj_cnt
+    end
+    local cached = KeySignatureService._item_pext_cache[real_item]
+    if cached ~= nil then
+        if cached == false then return nil end
+        return cached, cached.mode
+    end
+
+    local ok, ext_val = reaper.GetSetMediaItemInfo_String(real_item, "P_EXT:notator_key_sig", "", false)
+    if ok and ext_val and ext_val ~= "" then
+        local idx_s, mode_s = ext_val:match("^(%-?%d+)|?([%a%d_]*)")
+        if idx_s then
+            local kidx = tonumber(idx_s)
+            local kmode = (mode_s and mode_s ~= "") and mode_s or "major"
+            local res = { idx = kidx, key_idx = kidx, mode = kmode }
+            KeySignatureService._item_pext_cache[real_item] = res
+            return res, kmode
+        end
+    end
+    KeySignatureService._item_pext_cache[real_item] = false
+    return nil
+end
+
 --- Reads the key signature of a MIDI item from P_EXT or type 15 take events.
 -- If qn is provided and take is valid, resolves the active key signature at or before position qn.
 -- @param item MediaItem* or MidiItem wrapper
@@ -55,84 +130,72 @@ end
 -- @param qn number (optional quarter-note position)
 -- @return table { idx = number, key_idx = number, mode = string } or nil
 function KeySignatureService.get_item_key_sig(item, take, qn)
+    -- Fast Path: In-memory table item (MidiItem or MidiNote wrapper)
+    if type(item) == "table" then
+        local real_it_obj = item.item_obj or item
+        if real_it_obj.key_sig_events and #real_it_obj.key_sig_events > 0 then
+            if qn then
+                local real_take = real_it_obj.take or (real_it_obj.item and reaper.ValidatePtr(real_it_obj.item, "MediaItem*") and reaper.GetActiveTake(real_it_obj.item))
+                local target_ppq = 0
+                if real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
+                    target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
+                end
+                local best_evt = nil
+                for _, evt in ipairs(real_it_obj.key_sig_events) do
+                    if evt.ppq <= target_ppq + 5 then
+                        best_evt = evt
+                    else
+                        break
+                    end
+                end
+                if best_evt then
+                    return best_evt, best_evt.mode
+                else
+                    local first = real_it_obj.key_sig_events[1]
+                    return first, first.mode
+                end
+            elseif real_it_obj.key_sig then
+                return real_it_obj.key_sig, real_it_obj.key_sig.mode or "major"
+            end
+        elseif real_it_obj.key_sig then
+            return real_it_obj.key_sig, real_it_obj.key_sig.mode or "major"
+        end
+    end
+
     local real_item, real_take = resolve_item_and_take(item, take)
 
-    -- If qn is provided and real_take is valid MIDI take, look for the active Type 15 notation event at or before qn
+    -- If qn is provided and real_take is valid MIDI take, look up active event in cached events
     if qn and real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
-        local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
-        local _, _, _, text_cnt = reaper.MIDI_CountEvts(real_take)
-        local best_evt = nil
-        local best_ppq = -1
-        local first_evt = nil
-        local first_ppq = math.huge
-
-        for ti = 0, text_cnt - 1 do
-            local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(real_take, ti)
-            if ok and etype == 15 then
-                local idx_s, mode_s = msg:match("^NOTATOR_KEY_SIG%s+(%-?%d+)%s*([%a%d_]*)")
-                local kidx, kmode = nil, nil
-                if idx_s then
-                    kidx = tonumber(idx_s)
-                    kmode = (mode_s and mode_s ~= "") and mode_s or "major"
+        local events = get_cached_take_key_events(real_take)
+        if #events > 0 then
+            local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
+            local best_evt = nil
+            for _, evt in ipairs(events) do
+                if evt.ppq <= target_ppq + 5 then
+                    best_evt = evt
                 else
-                    local nat_idx = msg:match("^key%s+(%-?%d+)")
-                    if nat_idx then
-                        kidx = tonumber(nat_idx)
-                        kmode = "major"
-                    end
-                end
-
-                if kidx ~= nil then
-                    if ppq < first_ppq then
-                        first_ppq = ppq
-                        first_evt = { idx = kidx, key_idx = kidx, mode = kmode }
-                    end
-                    if ppq <= target_ppq + 5 and ppq >= best_ppq then
-                        best_ppq = ppq
-                        best_evt = { idx = kidx, key_idx = kidx, mode = kmode }
-                    end
+                    break
                 end
             end
-        end
-
-        if best_evt then
-            return best_evt, best_evt.mode
-        elseif first_evt then
-            return first_evt, first_evt.mode
+            if best_evt then
+                return best_evt, best_evt.mode
+            else
+                return events[1], events[1].mode
+            end
         end
     end
 
-    -- 1st attempt: MediaItem P_EXT:notator_key_sig ("<key_idx>|<mode>")
+    -- 1st attempt: MediaItem P_EXT:notator_key_sig ("<key_idx>|<mode>") cached
     if real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
-        local ok, ext_val = reaper.GetSetMediaItemInfo_String(real_item, "P_EXT:notator_key_sig", "", false)
-        if ok and ext_val and ext_val ~= "" then
-            local idx_s, mode_s = ext_val:match("^(%-?%d+)|?([%a%d_]*)")
-            if idx_s then
-                local kidx = tonumber(idx_s)
-                local kmode = (mode_s and mode_s ~= "") and mode_s or "major"
-                return { idx = kidx, key_idx = kidx, mode = kmode }, kmode
-            end
-        end
+        local res, mode = get_cached_item_pext_key(real_item)
+        if res then return res, mode end
     end
 
-    -- 2nd attempt: Type 15 notation events in take ("NOTATOR_KEY_SIG <key_idx> <mode>" or "key <val>")
+    -- 2nd attempt: Type 15 notation events in take from cache
     if real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
-        local _, _, _, text_cnt = reaper.MIDI_CountEvts(real_take)
-        for ti = 0, text_cnt - 1 do
-            local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(real_take, ti)
-            if ok and etype == 15 then
-                local idx_s, mode_s = msg:match("^NOTATOR_KEY_SIG%s+(%-?%d+)%s*([%a%d_]*)")
-                if idx_s then
-                    local kidx = tonumber(idx_s)
-                    local kmode = (mode_s and mode_s ~= "") and mode_s or "major"
-                    return { idx = kidx, key_idx = kidx, mode = kmode }, kmode
-                end
-                local nat_idx = msg:match("^key%s+(%-?%d+)")
-                if nat_idx then
-                    local kidx = tonumber(nat_idx)
-                    return { idx = kidx, key_idx = kidx, mode = "major" }, "major"
-                end
-            end
+        local events = get_cached_take_key_events(real_take)
+        if #events > 0 then
+            return events[1], events[1].mode
         end
     end
 
@@ -434,8 +497,9 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
     -- 1st Priority: Item key
     if item then
         if type(item) == "table" then
-            if not qn or not item.key_sig_events or #item.key_sig_events == 0 then
-                local isig = item.key_sig
+            local it_obj = item.item_obj or item
+            if not qn or not it_obj.key_sig_events or #it_obj.key_sig_events == 0 then
+                local isig = it_obj.key_sig
                 if isig and isig.key_idx ~= nil then
                     return { idx = isig.key_idx, key_idx = isig.key_idx, mode = isig.mode or "major" }
                 elseif isig and isig.idx ~= nil then
@@ -444,20 +508,23 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
             else
                 -- Resolve from item.key_sig_events in memory without C-API calls
                 local target_ppq = 0
-                if item.take and reaper.ValidatePtr(item.take, "MediaItem_Take*") and reaper.TakeIsMIDI(item.take) then
-                    target_ppq = reaper.MIDI_GetPPQPosFromProjQN(item.take, qn)
+                local r_take = it_obj.take or (it_obj.item and reaper.ValidatePtr(it_obj.item, "MediaItem*") and reaper.GetActiveTake(it_obj.item))
+                if r_take and reaper.ValidatePtr(r_take, "MediaItem_Take*") and reaper.TakeIsMIDI(r_take) then
+                    target_ppq = reaper.MIDI_GetPPQPosFromProjQN(r_take, qn)
                 end
                 local best_evt = nil
-                for _, evt in ipairs(item.key_sig_events) do
+                for _, evt in ipairs(it_obj.key_sig_events) do
                     if evt.ppq <= target_ppq + 5 then
                         best_evt = evt
+                    else
+                        break
                     end
                 end
                 if best_evt then
                     return { idx = best_evt.key_idx, key_idx = best_evt.key_idx, mode = best_evt.mode or "major" }
-                elseif item.key_sig then
-                    local kidx = item.key_sig.key_idx or item.key_sig.idx or 0
-                    return { idx = kidx, key_idx = kidx, mode = item.key_sig.mode or "major" }
+                elseif it_obj.key_sig then
+                    local kidx = it_obj.key_sig.key_idx or it_obj.key_sig.idx or 0
+                    return { idx = kidx, key_idx = kidx, mode = it_obj.key_sig.mode or "major" }
                 end
             end
         end
@@ -501,16 +568,31 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
             local real_trk = (type(track) == "userdata" and reaper.ValidatePtr(track, "MediaTrack*") and track)
                 or (type(track) == "table" and track.track and reaper.ValidatePtr(track.track, "MediaTrack*") and track.track)
             if real_trk then
-                local t_pos = (reaper.TimeMap2_QNToTime and reaper.TimeMap2_QNToTime(0, qn)) or 0
-                local item_cnt = reaper.CountTrackMediaItems(real_trk)
-                for ii = 0, item_cnt - 1 do
-                    local it = reaper.GetTrackMediaItem(real_trk, ii)
-                    if it then
-                        local pos = reaper.GetMediaItemInfo_Value(it, "D_POSITION")
-                        local len = reaper.GetMediaItemInfo_Value(it, "D_LENGTH")
-                        if t_pos >= (pos - 0.005) and t_pos < (pos + len - 0.005) then
+                local trk_guid = reaper.GetTrackGUID(real_trk)
+                local MidiService = package.loaded["services.midi_service"]
+                local cached_trk = MidiService and MidiService._track_cache and MidiService._track_cache[trk_guid]
+                if cached_trk and cached_trk.items_info then
+                    for _, it in ipairs(cached_trk.items_info) do
+                        local s_qn = it.start_qn or 0
+                        local e_qn = it.end_qn or s_qn
+                        if qn >= (s_qn - 0.005) and qn < (e_qn - 0.005) then
                             found_item = it
                             break
+                        end
+                    end
+                end
+                if not found_item and not cached_trk then
+                    local t_pos = (reaper.TimeMap2_QNToTime and reaper.TimeMap2_QNToTime(0, qn)) or 0
+                    local item_cnt = reaper.CountTrackMediaItems(real_trk)
+                    for ii = 0, item_cnt - 1 do
+                        local it = reaper.GetTrackMediaItem(real_trk, ii)
+                        if it then
+                            local pos = reaper.GetMediaItemInfo_Value(it, "D_POSITION")
+                            local len = reaper.GetMediaItemInfo_Value(it, "D_LENGTH")
+                            if t_pos >= (pos - 0.005) and t_pos < (pos + len - 0.005) then
+                                found_item = it
+                                break
+                            end
                         end
                     end
                 end
