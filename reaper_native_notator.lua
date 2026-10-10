@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.0
+-- @version 1.7.1
 -- @changelog
+--   + v1.7.1: Hotfix: Resolved nil global normalize_guid in PortamentoService.
 --   + v1.7.0: Major Release: Elaine Gould Slurs, Glissandi, Portamento & Bidirectional MusicXML 4.0:
 --             - Elaine Gould Phrasing & Slurs: True acoustic legato playback (+2 PPQ micro-overlap), voice-isolated multi-voice pairing, Reaticulate keyswitch integration, and automatic chase.
 --             - Glissando & Portamento Suite: Full chromatic ladder playback, wavy line engraving, and portamento slide CC automation with dual-reality MIDI take persistence.
