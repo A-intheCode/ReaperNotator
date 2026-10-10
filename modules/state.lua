@@ -79,6 +79,8 @@ function State.new()
         selected_notes = {},      -- Map: note_key(n) -> note
         selected_note = nil,      -- Primary lead note
         hovered_note = nil,
+        selected_cc_indices = {}, -- Map: cc_idx -> true
+
         
         -- Marquee selection box
         marquee_active = false,
@@ -466,6 +468,7 @@ function State.new()
         self.selected_octave_lines = {}
         self.selected_articulation = nil
         self.selected_articulations = {}
+        self.selected_cc_indices = {}
         self.selection_bounds = nil
         self.selection_is_to_end = false
     end

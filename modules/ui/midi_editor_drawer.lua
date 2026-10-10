@@ -32,11 +32,20 @@ local last_audition_time = 0
 local last_audition_vel = -1
 
 -- Local interaction state for CC Lanes
-local is_dragging_cc_node = false
-local drag_cc_event = nil
+local is_dragging_cc_nodes = false
+local cc_drag_lead_event = nil
+local cc_drag_start_x = 0
+local cc_drag_start_y = 0
+local cc_drag_start_qn = 0
+local cc_drag_start_val = 0
+local cc_drag_snapshots = {} -- list of { idx, orig_qn, orig_val, orig_ppq, chan, shape, ev }
+local cc_marquee_active = false
+local cc_marquee_start_x = 0
+local cc_marquee_start_y = 0
 local is_drawing_cc = false
 local cc_draw_stroke = {}
 local hovered_cc_node = nil
+
 
 --- Standard MIDI CC Descriptions
 local CC_NAMES = {
@@ -101,7 +110,55 @@ local function format_qn_time(qn)
     return string.format("%d.%d.%02d", m, beat, frac)
 end
 
+--- Renders an authentic, crisp vector pen/pencil cursor for the MIDI Editor draw tool
+--- Hotspot is precisely at (mx, my) pointing diagonally down-left at 45 degrees
+local function draw_pen_cursor(drawlist, mx, my, is_active)
+    if not drawlist or not mx or not my then return end
+
+    -- 1. Sharp Graphite Tip (Triangle pointing at mx, my)
+    reaper.ImGui_DrawList_AddTriangleFilled(drawlist, mx, my, mx + 2.5, my - 4.5, mx + 4.5, my - 2.5, 0x2D3748FF)
+
+    -- 2. Wood Sharpening Cone (Natural warm cedar quad)
+    reaper.ImGui_DrawList_AddQuadFilled(drawlist, mx + 2.5, my - 4.5, mx + 5.5, my - 8.5, mx + 8.5, my - 5.5, mx + 4.5, my - 2.5, 0xD4A373FF)
+    reaper.ImGui_DrawList_AddLine(drawlist, mx + 3.5, my - 3.5, mx + 7.0, my - 7.0, 0xB0896888, 1.0)
+
+    -- 3. Hexagonal Pencil Barrel (Two-tone facet shading for 3D body)
+    -- Lit top facet
+    local col_facet1 = is_active and 0x00F5D4FF or 0xFBBF24FF
+    reaper.ImGui_DrawList_AddQuadFilled(drawlist, mx + 5.5, my - 8.5, mx + 13.5, my - 16.5, mx + 15.0, my - 15.0, mx + 7.0, my - 7.0, col_facet1)
+    -- Shaded lower facet
+    local col_facet2 = is_active and 0x00BDA3FF or 0xD97706FF
+    reaper.ImGui_DrawList_AddQuadFilled(drawlist, mx + 7.0, my - 7.0, mx + 15.0, my - 15.0, mx + 16.5, my - 13.5, mx + 8.5, my - 5.5, col_facet2)
+
+    -- 4. Metal Ferrule (Brushed silver collar)
+    reaper.ImGui_DrawList_AddQuadFilled(drawlist, mx + 13.5, my - 16.5, mx + 16.5, my - 19.5, mx + 19.5, my - 16.5, mx + 16.5, my - 13.5, 0x94A3B8FF)
+    reaper.ImGui_DrawList_AddLine(drawlist, mx + 15.0, my - 18.0, mx + 18.0, my - 15.0, 0xE2E8F0FF, 1.0)
+
+    -- 5. Pink Rubber Eraser Cap
+    reaper.ImGui_DrawList_AddQuadFilled(drawlist, mx + 16.5, my - 19.5, mx + 19.0, my - 22.0, mx + 22.0, my - 19.0, mx + 19.5, my - 16.5, 0xFB7185FF)
+    reaper.ImGui_DrawList_AddCircleFilled(drawlist, mx + 20.5, my - 20.5, 2.2, 0xFB7185FF)
+
+    -- 6. Crisp Dark Outline (Ensures high contrast on any background/grid)
+    local out_col = 0x0F172AFF
+    reaper.ImGui_DrawList_AddLine(drawlist, mx, my, mx + 5.5, my - 8.5, out_col, 1.2)
+    reaper.ImGui_DrawList_AddLine(drawlist, mx + 5.5, my - 8.5, mx + 16.5, my - 19.5, out_col, 1.2)
+    reaper.ImGui_DrawList_AddLine(drawlist, mx + 16.5, my - 19.5, mx + 20.5, my - 22.5, out_col, 1.2)
+    reaper.ImGui_DrawList_AddLine(drawlist, mx + 20.5, my - 22.5, mx + 22.5, my - 20.5, out_col, 1.2)
+    reaper.ImGui_DrawList_AddLine(drawlist, mx + 22.5, my - 20.5, mx + 19.5, my - 16.5, out_col, 1.2)
+    reaper.ImGui_DrawList_AddLine(drawlist, mx + 19.5, my - 16.5, mx + 8.5, my - 5.5, out_col, 1.2)
+    reaper.ImGui_DrawList_AddLine(drawlist, mx + 8.5, my - 5.5, mx, my, out_col, 1.2)
+
+    -- 7. Active Drawing Ink Indicator / Precision Hotspot
+    if is_active then
+        reaper.ImGui_DrawList_AddCircleFilled(drawlist, mx, my, 2.5, 0x00F5D4FF)
+        reaper.ImGui_DrawList_AddCircle(drawlist, mx, my, 4.0, 0x00F5D466, 0, 1.0)
+    else
+        reaper.ImGui_DrawList_AddCircleFilled(drawlist, mx, my, 1.2, 0xFFFFFFFF)
+    end
+end
+
 --- Main render function for the MIDI Editor bottom drawer
+
 --- Accepts flexible signature allowing dynamics_engine injection
 function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, arg6, arg7, arg8, arg9)
     if not state.show_midi_editor then return end
@@ -171,6 +228,14 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
         local cur_cc_num = tonumber(cur_lane) or 1
         local is_dyn_cc = (not is_vel_lane) and (cur_cc_num == dyn_a or cur_cc_num == dyn_b)
         local is_locked = (not is_vel_lane) and (not is_bypassed) and is_dyn_cc
+
+        -- Reset CC selection if lane or take changed
+        if state.midi_editor_last_cc_lane ~= cur_cc_num or state.midi_editor_last_take ~= active_take then
+            state.midi_editor_last_cc_lane = cur_cc_num
+            state.midi_editor_last_take = active_take
+            state.selected_cc_indices = {}
+        end
+
 
         -- ======================================================================
         -- 1. HEADER / TOOLBAR
@@ -799,8 +864,9 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                 -- Pencil Draw Tool
                 if cur_tool == "draw" then
                     if is_hovered then
-                        reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_TextInput())
+                        reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_None())
                     end
+
 
                     if is_hovered and reaper.ImGui_IsMouseClicked(ctx, 0) then
                         is_drawing_vel = true
@@ -980,10 +1046,33 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     for _, pt in ipairs(curve_pts) do
                         if pt.ev then
                             local is_hov = (hovered_cc_node and hovered_cc_node.idx == pt.ev.idx)
-                            local b_col = is_hov and 0xFFB703FF or eff_node_col
-                            local b_r = is_hov and 4.0 or 2.8
-                            reaper.ImGui_DrawList_AddCircleFilled(dl, pt.x, pt.y, b_r, b_col)
-                            reaper.ImGui_DrawList_AddCircle(dl, pt.x, pt.y, b_r, node_border, 0, 1.0)
+                            local in_marquee = false
+                            if cc_marquee_active then
+                                local mx0 = math.min(cc_marquee_start_x, mouse_x)
+                                local my0 = math.min(cc_marquee_start_y, mouse_y)
+                                local mx1 = math.max(cc_marquee_start_x, mouse_x)
+                                local my1 = math.max(cc_marquee_start_y, mouse_y)
+                                if pt.x >= mx0 - 6 and pt.x <= mx1 + 6 and pt.y >= my0 - 6 and pt.y <= my1 + 6 then
+                                    in_marquee = true
+                                end
+                            end
+                            local is_sel = (pt.ev.sel == true) or (state.selected_cc_indices and state.selected_cc_indices[pt.ev.idx]) or in_marquee
+
+                            if is_sel then
+                                -- Glowing selection halo / ring
+                                local halo_col = is_hov and 0xFFD16688 or 0xF59E0B66
+                                reaper.ImGui_DrawList_AddCircleFilled(dl, pt.x, pt.y, 6.0, halo_col)
+                                -- Bright golden / amber core
+                                local sel_core_col = is_hov and 0xFFE066FF or 0xF59E0BFF
+                                reaper.ImGui_DrawList_AddCircleFilled(dl, pt.x, pt.y, 4.2, sel_core_col)
+                                -- Crisp white outer border
+                                reaper.ImGui_DrawList_AddCircle(dl, pt.x, pt.y, 4.2, 0xFFFFFFFF, 0, 1.4)
+                            else
+                                local b_col = is_hov and 0xFFB703FF or eff_node_col
+                                local b_r = is_hov and 4.2 or 2.8
+                                reaper.ImGui_DrawList_AddCircleFilled(dl, pt.x, pt.y, b_r, b_col)
+                                reaper.ImGui_DrawList_AddCircle(dl, pt.x, pt.y, b_r, node_border, 0, 1.0)
+                            end
                         end
                     end
                 end
@@ -1003,15 +1092,17 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                 else
                     -- Unlocked: Full Interactive Editing
                     hovered_cc_node = nil
-                    if is_hovered and not is_drawing_cc and not is_dragging_cc_node then
+                    if is_hovered and not is_drawing_cc and not is_dragging_cc_nodes and not cc_marquee_active then
                         for _, ev in ipairs(cc_evts) do
                             local ex = qn_to_x(ev.qn)
                             local ey = val_to_y(ev.val)
-                            if math.abs(mouse_x - ex) <= 7 and math.abs(mouse_y - ey) <= 7 then
+                            if math.abs(mouse_x - ex) <= 8 and math.abs(mouse_y - ey) <= 8 then
                                 hovered_cc_node = ev
-                                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeNS())
+                                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeAll and reaper.ImGui_MouseCursor_ResizeAll() or reaper.ImGui_MouseCursor_ResizeNS())
                                 local sh_name = SHAPE_LABELS[ev.shape or 1] or "Linear"
-                                reaper.ImGui_SetTooltip(ctx, string.format("CC %d: %d | Time: %s | Shape: %s\n(Drag to edit, Right-Click to delete)", cur_cc_num, ev.val, format_qn_time(ev.qn), sh_name))
+                                local is_sel = ev.sel or (state.selected_cc_indices and state.selected_cc_indices[ev.idx])
+                                local sel_txt = is_sel and " [Selected]" or ""
+                                reaper.ImGui_SetTooltip(ctx, string.format("CC %d: %d%s | Time: %s | Shape: %s\n(Drag to move point(s), Shift+Drag to lock axis, Right-Click to delete)", cur_cc_num, ev.val, sel_txt, format_qn_time(ev.qn), sh_name))
                                 break
                             end
                         end
@@ -1019,18 +1110,111 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
 
                     -- Pointer Tool Interaction
                     if cur_tool == "select" then
-                        if is_hovered and hovered_cc_node and reaper.ImGui_IsMouseClicked(ctx, 1) then
-                            -- Right-click node -> Delete event
+                        -- Check for Delete/Backspace key to delete selected CCs
+                        if is_hovered and (reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Delete()) or reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Backspace())) then
+                            local del_cnt = 0
                             reaper.Undo_BeginBlock2(0)
-                            reaper.MIDI_DeleteCC(active_take, hovered_cc_node.idx)
+                            local _, _, cccnt = reaper.MIDI_CountEvts(active_take)
+                            for i = (cccnt or 0) - 1, 0, -1 do
+                                local ok, sel, _, _, chanmsg, _, msg2, _ = reaper.MIDI_GetCC(active_take, i)
+                                if ok and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == cur_cc_num then
+                                    if sel or (state.selected_cc_indices and state.selected_cc_indices[i]) then
+                                        reaper.MIDI_DeleteCC(active_take, i)
+                                        del_cnt = del_cnt + 1
+                                    end
+                                end
+                            end
+                            if del_cnt > 0 then
+                                reaper.MIDI_Sort(active_take)
+                                reaper.UpdateArrange()
+                                state.selected_cc_indices = {}
+                                hovered_cc_node = nil
+                                reaper.Undo_EndBlock2(0, string.format("Delete %d CC %d Event(s)", del_cnt, cur_cc_num), -1)
+                                state.status_msg = string.format("Deleted %d CC %d event(s)", del_cnt, cur_cc_num)
+                            else
+                                reaper.Undo_EndBlock2(0, "Delete CC Events", -1)
+                            end
+                        end
+
+                        if is_hovered and hovered_cc_node and reaper.ImGui_IsMouseClicked(ctx, 1) then
+                            -- Right-click node -> Delete event (or all selected events if hovered is selected)
+                            reaper.Undo_BeginBlock2(0)
+                            local is_hovered_selected = hovered_cc_node.sel or (state.selected_cc_indices and state.selected_cc_indices[hovered_cc_node.idx])
+                            local del_cnt = 0
+                            local _, _, cccnt = reaper.MIDI_CountEvts(active_take)
+                            for i = (cccnt or 0) - 1, 0, -1 do
+                                local ok, sel, _, _, chanmsg, _, msg2, _ = reaper.MIDI_GetCC(active_take, i)
+                                if ok and ((chanmsg == 176) or ((chanmsg >> 4) == 0xB)) and msg2 == cur_cc_num then
+                                    local should_del = false
+                                    if is_hovered_selected and (sel or (state.selected_cc_indices and state.selected_cc_indices[i])) then
+                                        should_del = true
+                                    elseif hovered_cc_node.idx == i then
+                                        should_del = true
+                                    end
+                                    if should_del then
+                                        reaper.MIDI_DeleteCC(active_take, i)
+                                        del_cnt = del_cnt + 1
+                                    end
+                                end
+                            end
                             reaper.MIDI_Sort(active_take)
                             reaper.UpdateArrange()
-                            reaper.Undo_EndBlock2(0, string.format("Delete CC %d Event", cur_cc_num), -1)
+                            state.selected_cc_indices = {}
                             hovered_cc_node = nil
+                            reaper.Undo_EndBlock2(0, string.format("Delete %d CC %d Event(s)", del_cnt, cur_cc_num), -1)
+                            state.status_msg = string.format("Deleted %d CC %d event(s)", del_cnt, cur_cc_num)
+
                         elseif is_hovered and hovered_cc_node and reaper.ImGui_IsMouseClicked(ctx, 0) then
-                            is_dragging_cc_node = true
-                            drag_cc_event = hovered_cc_node
+                            -- Left-click on node
+                            state.selected_cc_indices = state.selected_cc_indices or {}
+                            local was_sel = hovered_cc_node.sel or (state.selected_cc_indices[hovered_cc_node.idx] == true)
+
+                            if is_shift or is_ctrl then
+                                -- Toggle selection
+                                if was_sel then
+                                    state.selected_cc_indices[hovered_cc_node.idx] = nil
+                                    hovered_cc_node.sel = false
+                                    midi_service.set_cc_selected(active_take, hovered_cc_node.idx, false, true)
+                                else
+                                    state.selected_cc_indices[hovered_cc_node.idx] = true
+                                    hovered_cc_node.sel = true
+                                    midi_service.set_cc_selected(active_take, hovered_cc_node.idx, true, true)
+                                end
+                            else
+                                -- Single click: if not already selected, clear previous and select this one
+                                if not was_sel then
+                                    midi_service.clear_cc_selection(active_take, cur_cc_num)
+                                    state.selected_cc_indices = {}
+                                    for _, e in ipairs(cc_evts) do e.sel = false end
+                                    state.selected_cc_indices[hovered_cc_node.idx] = true
+                                    hovered_cc_node.sel = true
+                                    midi_service.set_cc_selected(active_take, hovered_cc_node.idx, true, true)
+                                end
+                            end
+
+                            -- Start multi-node drag
+                            is_dragging_cc_nodes = true
+                            cc_drag_lead_event = hovered_cc_node
+                            cc_drag_start_x = mouse_x
+                            cc_drag_start_y = mouse_y
+                            cc_drag_start_qn = hovered_cc_node.qn
+                            cc_drag_start_val = hovered_cc_node.val
+                            cc_drag_snapshots = {}
+                            for _, ev in ipairs(cc_evts) do
+                                if ev.sel or (state.selected_cc_indices and state.selected_cc_indices[ev.idx]) or (ev.idx == hovered_cc_node.idx) then
+                                    table.insert(cc_drag_snapshots, {
+                                        idx = ev.idx,
+                                        orig_qn = ev.qn,
+                                        orig_val = ev.val,
+                                        orig_ppq = ev.ppq,
+                                        chan = ev.chan,
+                                        shape = ev.shape,
+                                        ev = ev
+                                    })
+                                end
+                            end
                             reaper.Undo_BeginBlock2(0)
+
                         elseif is_hovered and not hovered_cc_node and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
                             -- Double-click empty space -> Insert CC point with active shape
                             local target_qn = math.max(it_start_qn, math.min(it_end_qn, x_to_qn(mouse_x)))
@@ -1038,7 +1222,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             local ppq = reaper.MIDI_GetPPQPosFromProjQN(active_take, target_qn)
                             local cur_sh = state.midi_editor_cc_shape or 1
                             reaper.Undo_BeginBlock2(0)
-                            reaper.MIDI_InsertCC(active_take, false, false, ppq, 176, 0, cur_cc_num, target_v)
+                            reaper.MIDI_InsertCC(active_take, true, false, ppq, 176, 0, cur_cc_num, target_v)
                             reaper.MIDI_Sort(active_take)
                             if reaper.APIExists("MIDI_SetCCShape") then
                                 local _, _, total_ccs = reaper.MIDI_CountEvts(active_take)
@@ -1052,22 +1236,110 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             end
                             reaper.UpdateArrange()
                             reaper.Undo_EndBlock2(0, string.format("Insert CC %d Event", cur_cc_num), -1)
+
+                        elseif is_hovered and not hovered_cc_node and reaper.ImGui_IsMouseClicked(ctx, 0) then
+                            -- Single click empty space -> Start CC Marquee Selection Box
+                            cc_marquee_active = true
+                            cc_marquee_start_x = mouse_x
+                            cc_marquee_start_y = mouse_y
+                            if not is_shift and not is_ctrl then
+                                state.selected_cc_indices = {}
+                                midi_service.clear_cc_selection(active_take, cur_cc_num)
+                                for _, e in ipairs(cc_evts) do e.sel = false end
+                            end
                         end
 
-                        if is_dragging_cc_node and drag_cc_event then
+                        -- Active Multi-Node Dragging
+                        if is_dragging_cc_nodes and #cc_drag_snapshots > 0 then
                             if reaper.ImGui_IsMouseDown(ctx, 0) then
-                                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeNS())
-                                local new_v = y_to_val(mouse_y)
-                                if drag_cc_event.val ~= new_v then
-                                    drag_cc_event.val = new_v
-                                    midi_service.set_cc_value(active_take, drag_cc_event.idx, new_v, true)
+                                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeAll and reaper.ImGui_MouseCursor_ResizeAll() or reaper.ImGui_MouseCursor_ResizeNS())
+                                local cur_v = y_to_val(mouse_y)
+                                local delta_v = cur_v - cc_drag_start_val
+
+                                local delta_qn = 0.0
+                                if math.abs(mouse_x - cc_drag_start_x) >= 4 then
+                                    local cur_qn = x_to_qn(mouse_x)
+                                    delta_qn = cur_qn - cc_drag_start_qn
+                                end
+
+                                if is_shift then
+                                    local dx = math.abs(mouse_x - cc_drag_start_x)
+                                    local dy = math.abs(mouse_y - cc_drag_start_y)
+                                    if dx > dy then
+                                        delta_v = 0
+                                    else
+                                        delta_qn = 0.0
+                                    end
+                                end
+
+                                for _, snap in ipairs(cc_drag_snapshots) do
+                                    local new_val = math.max(0, math.min(127, snap.orig_val + delta_v))
+                                    local new_qn = math.max(it_start_qn, math.min(it_end_qn, snap.orig_qn + delta_qn))
+                                    local new_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(active_take, new_qn) + 0.5)
+
+                                    reaper.MIDI_SetCC(active_take, snap.idx, true, false, new_ppq, 176, snap.chan or 0, cur_cc_num, new_val, true)
+                                    if snap.ev then
+                                        snap.ev.val = new_val
+                                        snap.ev.qn = new_qn
+                                        snap.ev.ppq = new_ppq
+                                    end
                                 end
                             else
-                                is_dragging_cc_node = false
-                                drag_cc_event = nil
+                                -- Mouse button released: finish drag
+                                is_dragging_cc_nodes = false
+                                local moved_dist = math.abs(mouse_x - cc_drag_start_x) + math.abs(mouse_y - cc_drag_start_y)
+                                if moved_dist < 3 and not is_shift and not is_ctrl and cc_drag_lead_event then
+                                    -- Click without drag on an already selected node -> isolate that single node
+                                    midi_service.clear_cc_selection(active_take, cur_cc_num)
+                                    state.selected_cc_indices = {}
+                                    for _, e in ipairs(cc_evts) do e.sel = false end
+                                    state.selected_cc_indices[cc_drag_lead_event.idx] = true
+                                    cc_drag_lead_event.sel = true
+                                    midi_service.set_cc_selected(active_take, cc_drag_lead_event.idx, true, true)
+                                end
+
                                 reaper.MIDI_Sort(active_take)
                                 reaper.UpdateArrange()
-                                reaper.Undo_EndBlock2(0, string.format("Adjust CC %d", cur_cc_num), -1)
+                                reaper.Undo_EndBlock2(0, string.format("Move %d CC %d Point(s)", #cc_drag_snapshots, cur_cc_num), -1)
+                                state.status_msg = string.format("Moved %d CC %d point(s)", #cc_drag_snapshots, cur_cc_num)
+                                cc_drag_snapshots = {}
+                                cc_drag_lead_event = nil
+                            end
+                        end
+
+                        -- Active CC Marquee Selection Box
+                        if cc_marquee_active then
+                            if reaper.ImGui_IsMouseDown(ctx, 0) then
+                                local mx0 = math.min(cc_marquee_start_x, mouse_x)
+                                local my0 = math.min(cc_marquee_start_y, mouse_y)
+                                local mx1 = math.max(cc_marquee_start_x, mouse_x)
+                                local my1 = math.max(cc_marquee_start_y, mouse_y)
+                                reaper.ImGui_DrawList_AddRectFilled(dl, mx0, my0, mx1, my1, 0x3498DB22)
+                                reaper.ImGui_DrawList_AddRect(dl, mx0, my0, mx1, my1, 0x3498DBAA, 0, 0, 1.0)
+                            else
+                                cc_marquee_active = false
+                                local mx0 = math.min(cc_marquee_start_x, mouse_x)
+                                local my0 = math.min(cc_marquee_start_y, mouse_y)
+                                local mx1 = math.max(cc_marquee_start_x, mouse_x)
+                                local my1 = math.max(cc_marquee_start_y, mouse_y)
+
+                                state.selected_cc_indices = state.selected_cc_indices or {}
+                                local newly_selected = 0
+                                for _, ev in ipairs(cc_evts) do
+                                    local ex = qn_to_x(ev.qn)
+                                    local ey = val_to_y(ev.val)
+                                    if ex >= mx0 - 6 and ex <= mx1 + 6 and ey >= my0 - 6 and ey <= my1 + 6 then
+                                        ev.sel = true
+                                        state.selected_cc_indices[ev.idx] = true
+                                        midi_service.set_cc_selected(active_take, ev.idx, true, true)
+                                        newly_selected = newly_selected + 1
+                                    end
+                                end
+                                reaper.MIDI_Sort(active_take)
+                                reaper.UpdateArrange()
+                                if newly_selected > 0 then
+                                    state.status_msg = string.format("Selected %d CC %d point(s)", newly_selected, cur_cc_num)
+                                end
                             end
                         end
                     end
@@ -1075,7 +1347,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     -- Pencil / Draw Tool Interaction
                     if cur_tool == "draw" then
                         if is_hovered then
-                            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_TextInput())
+                            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_None())
                         end
 
                         if is_hovered and reaper.ImGui_IsMouseClicked(ctx, 0) then
@@ -1120,7 +1392,14 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                 end
             end
 
+            -- Render Custom Pen Cursor if Draw Tool is active and lane is hovered
+            if cur_tool == "draw" and is_hovered and (is_vel_lane or not is_locked) then
+                local fg_dl = (reaper.APIExists("ImGui_GetForegroundDrawList") and reaper.ImGui_GetForegroundDrawList(ctx)) or dl
+                draw_pen_cursor(fg_dl, mouse_x, mouse_y, is_drawing_vel or is_drawing_cc)
+            end
+
             reaper.ImGui_EndChild(ctx)
+
         end
         reaper.ImGui_PopStyleColor(ctx) -- Lane ChildBg
 

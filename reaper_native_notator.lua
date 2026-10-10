@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.5
+-- @version 1.8.0-beta.6
 -- @changelog
+--   + v1.8.0-beta.6: MIDI Editor Custom Pen Cursor, CC Marquee Box & Multi-Point Movement:
+--             - Custom Vector Pen Cursor: Dedicated DAW pencil/pen tool cursor for Draw mode in both Velocity and CC lanes (replacing text I-beam mark) with active cyan glow and precision hotspot tip.
+--             - CC Marquee Box Selection: Drag selection rectangle ('Rahmen aufziehen') in CC lanes to group-select multiple CC curve points with live preview highlighting and Shift/Ctrl toggle.
+--             - Multi-Point Movement: Dragging any selected CC node moves all selected points synchronously in value (vertical) and time (horizontal), with Shift-constrained axis locking.
+--             - Batch CC Deletion: Instantly delete all selected CC points via Right-Click or Delete/Backspace key.
 --   + v1.8.0-beta.5: CC Curve Shape Synchronization & Settings MIDI Editor Colors:
 --             - REAPER CC Shape Synchronization: Curves drawn in Notator now default to Shape 1 (Linear Ramp), eliminating square steps ("Stufen") in REAPER's native MIDI editor.
 --             - Toolbar Shape Selector: Choose between Linear, Square, Slow/Fast, and Bézier curves with 1-click batch conversion for the active CC lane.

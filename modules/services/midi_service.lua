@@ -5723,6 +5723,61 @@ function MidiService.set_cc_value(take, cc_idx, new_val, no_sort)
     return false
 end
 
+--- Sets the selection state of a specific CC event in the REAPER take
+function MidiService.set_cc_selected(take, cc_idx, is_selected, no_sort)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not cc_idx or cc_idx < 0 then
+        return false
+    end
+    local ok, _, muted, ppq, chanmsg, chan, msg2, msg3 = reaper.MIDI_GetCC(take, cc_idx)
+    if ok then
+        reaper.MIDI_SetCC(take, cc_idx, is_selected and true or false, muted, ppq, chanmsg, chan, msg2, msg3, no_sort or false)
+        return true
+    end
+    return false
+end
+
+--- Clears selection for all CC events of a specific CC number (or all CCs if nil) in the take
+function MidiService.clear_cc_selection(take, cc_num)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then return end
+    local _, _, cccnt = reaper.MIDI_CountEvts(take)
+    local any_changed = false
+    for i = 0, (cccnt or 0) - 1 do
+        local ok, sel, muted, ppq, chanmsg, chan, msg2, msg3 = reaper.MIDI_GetCC(take, i)
+        if ok and sel then
+            if not cc_num or msg2 == cc_num then
+                reaper.MIDI_SetCC(take, i, false, muted, ppq, chanmsg, chan, msg2, msg3, true)
+                any_changed = true
+            end
+        end
+    end
+    if any_changed then
+        reaper.MIDI_Sort(take)
+    end
+end
+
+--- Updates a CC event's position (QN/PPQ), value, and/or selection in the REAPER take
+function MidiService.set_cc_event(take, cc_idx, new_qn, new_val, is_selected, no_sort)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not cc_idx or cc_idx < 0 then
+        return false
+    end
+    local ok, sel, muted, ppq, chanmsg, chan, msg2, msg3 = reaper.MIDI_GetCC(take, cc_idx)
+    if ok then
+        local target_ppq = ppq
+        if new_qn then
+            target_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_qn) + 0.5)
+        end
+        local target_val = msg3
+        if new_val then
+            target_val = math.max(0, math.min(127, math.floor(new_val + 0.5)))
+        end
+        local target_sel = (is_selected ~= nil) and (is_selected and true or false) or sel
+        reaper.MIDI_SetCC(take, cc_idx, target_sel, muted, target_ppq, chanmsg, chan, msg2, target_val, no_sort or false)
+        return true
+    end
+    return false
+end
+
+
 --- Draws/updates a CC curve across a time range with given points [{qn, val}, ...]
 --- Applies target_shape (default: 1 = Linear Ramp) so curves appear smooth in REAPER without square steps
 function MidiService.draw_cc_curve(take, cc_num, points, chan, opt_shape)
