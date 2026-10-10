@@ -631,43 +631,47 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, width,
                     local stalk_col = 0x64748BAA
                     local handle_col = 0x94A3B8FF
                     local border_col = 0x1E293BFF
-                    local stalk_w = 1.5
+                    local stalk_w = 3.0
+                    local flag_h = 1.6
+                    local bead_r = 2.5
 
                     if is_sel then
                         stalk_col = 0xFF9F1CFF
                         handle_col = 0xFFB703FF
                         border_col = 0x78350FFF
-                        stalk_w = 2.2
+                        stalk_w = 3.6
+                        flag_h = 2.0
+                        bead_r = 3.0
                     elseif is_hov then
                         stalk_col = 0x38BDF8FF
                         handle_col = 0x7DD3FCFF
-                        stalk_w = 2.0
+                        stalk_w = 3.4
+                        flag_h = 2.0
+                        bead_r = 2.8
                     end
 
-                    -- 1. Vertical Stalk (Stem)
+                    -- 1. Vertical Stalk (Stem - 3.0px wide)
                     reaper.ImGui_DrawList_AddLine(dl, nx, plot_bot_y, nx, ny, stalk_col, stalk_w)
 
-                    -- 2. REAPER Top Handle Flag ("Fähnchen" - 3x length: 22.5px)
+                    -- 2. REAPER Top Handle Flag ("Fähnchen" - thin horizontal flag tab)
                     local flag_w = 22.5
-                    local flag_h = 6.0
                     local flag_x0 = nx
                     local flag_y0 = ny - (flag_h * 0.5)
                     local flag_x1 = nx + flag_w
                     local flag_y1 = ny + (flag_h * 0.5)
 
                     -- Flag background
-                    reaper.ImGui_DrawList_AddRectFilled(dl, flag_x0, flag_y0, flag_x1, flag_y1, handle_col, 2.0)
+                    reaper.ImGui_DrawList_AddRectFilled(dl, flag_x0, flag_y0, flag_x1, flag_y1, handle_col, 0.8)
                     -- Flag dark outline
-                    reaper.ImGui_DrawList_AddRect(dl, flag_x0 - 0.5, flag_y0 - 0.5, flag_x1 + 0.5, flag_y1 + 0.5, border_col, 2.0, 0, 1.0)
+                    reaper.ImGui_DrawList_AddRect(dl, flag_x0 - 0.5, flag_y0 - 0.5, flag_x1 + 0.5, flag_y1 + 0.5, border_col, 0.8, 0, 1.0)
 
                     -- Central bead cap at stem apex
-                    local bead_r = is_sel and 4.2 or 3.4
                     reaper.ImGui_DrawList_AddCircleFilled(dl, nx, ny, bead_r, handle_col)
                     reaper.ImGui_DrawList_AddCircle(dl, nx, ny, bead_r, border_col, 0, 1.0)
 
                     -- Subtle highlight center dot for selected notes
                     if is_sel then
-                        reaper.ImGui_DrawList_AddCircleFilled(dl, nx, ny, 1.6, 0xFFFFFFFF)
+                        reaper.ImGui_DrawList_AddCircleFilled(dl, nx, ny, 1.2, 0xFFFFFFFF)
                     end
                 end
             end
