@@ -52,6 +52,20 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         return ShortcutManager.is_action_pressed(ctx, action_id, is_ctrl, is_shift, is_alt)
     end
 
+    local is_playing = (reaper.GetPlayState() == 1)
+    if is_playing then
+        -- Playback Fast-Path: Only allow transport commands (Play/Pause, Escape) to execute.
+        -- Prevents accidental pitch transpositions, note deletions, or tool toggles while listening.
+        if is_action_pressed("play_pause") or (reaper.APIExists("ImGui_Key_Space") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Space(), false)) then
+            reaper.OnStopButton()
+            state.status_msg = "Playback stopped"
+            state.status_time = reaper.time_precise()
+        elseif reaper.APIExists("ImGui_Key_Escape") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape(), false) then
+            state:clear_selection()
+        end
+        return
+    end
+
     -- Refresh Engine Cache / Reload Modules (F5 or user-defined shortcut)
     if is_action_pressed("refresh_cache") or (reaper.APIExists("ImGui_Key_F5") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_F5(), false)) then
         for k in pairs(package.loaded) do

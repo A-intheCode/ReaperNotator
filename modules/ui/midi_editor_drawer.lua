@@ -695,7 +695,8 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                 return math.max(0, math.min(127, math.floor(norm * 127.0 + 0.5)))
             end
 
-            local is_hovered = reaper.ImGui_IsWindowHovered(ctx)
+            local is_playing = (reaper.GetPlayState() == 1)
+            local is_hovered = reaper.ImGui_IsWindowHovered(ctx) and not is_playing
             local mouse_x, mouse_y = reaper.ImGui_GetMousePos(ctx)
             local is_shift = reaper.APIExists("ImGui_Mod_Shift") and ((reaper.ImGui_GetKeyMods(ctx) & reaper.ImGui_Mod_Shift()) ~= 0) or false
             local is_ctrl = reaper.APIExists("ImGui_Mod_Ctrl") and ((reaper.ImGui_GetKeyMods(ctx) & reaper.ImGui_Mod_Ctrl()) ~= 0) or false
@@ -1410,6 +1411,16 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                             end
                         end
                     end
+                end
+            end
+
+            -- Render Playhead during Playback
+            if is_playing then
+                local play_time = reaper.GetPlayPosition()
+                local play_qn = reaper.TimeMap2_timeToQN(0, play_time)
+                local play_x = qn_to_x(play_qn)
+                if play_x >= win_x0 and play_x <= win_x0 + win_w then
+                    reaper.ImGui_DrawList_AddLine(dl, play_x, plot_top_y - 8, play_x, plot_bot_y + 6, 0x2ECC71FF, 2.0)
                 end
             end
 

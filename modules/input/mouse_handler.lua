@@ -16,6 +16,24 @@ local MouseHandler = {}
 function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_engine)
     if not canvas_info then return end
     if state._is_canvas_panning then return end
+    
+    local is_playing = (reaper.GetPlayState() == 1)
+    if is_playing then
+        -- Playback Fast-Path: Bypasses all editing, note manipulation, dragging, marquee & hit-testing.
+        -- Repositions the edit cursor if user clicks on the canvas during playback:
+        if reaper.ImGui_IsMouseClicked(ctx, 0) and reaper.ImGui_IsItemHovered(ctx) then
+            local mouse_x = reaper.ImGui_GetMousePos(ctx)
+            local margin_left = canvas_info.margin_left
+            local qn_per_measure = canvas_info.qn_per_measure
+            local measure_map = canvas_info.measure_map or state.measure_map
+            local s = state.zoom
+            local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
+            local target_time = reaper.TimeMap2_QNToTime(0, target_qn)
+            reaper.SetEditCurPos(target_time, false, false)
+        end
+        return
+    end
+
     local margin_left = canvas_info.margin_left
     local qn_per_measure = canvas_info.qn_per_measure
     local measure_map = canvas_info.measure_map or state.measure_map

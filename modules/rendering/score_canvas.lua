@@ -543,20 +543,22 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local vis_min_measure = math.max(0, math.floor(vis_min_qn / qn_per_measure))
     local vis_max_measure = math.min(total_measures, math.ceil(vis_max_qn / qn_per_measure))
 
-    local is_hovered = reaper.ImGui_IsItemHovered(ctx)
-    local is_active  = reaper.ImGui_IsItemActive(ctx)
+    local is_hovered = reaper.ImGui_IsItemHovered(ctx) and not is_playing
+    local is_active  = reaper.ImGui_IsItemActive(ctx) and not is_playing
     local mouse_x, mouse_y = reaper.ImGui_GetMousePos(ctx)
     
-    -- Immediately update live drag targets for dynamics and articulations
-    if state.drag_articulation and reaper.ImGui_IsMouseDragging(ctx, 0, 3.0) and not state.is_resizing_item then
-        state.is_dragging_articulation = true
-        state.drag_art_target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
+    -- Immediately update live drag targets for dynamics and articulations (only when not playing)
+    if not is_playing then
+        if state.drag_articulation and reaper.ImGui_IsMouseDragging(ctx, 0, 3.0) and not state.is_resizing_item then
+            state.is_dragging_articulation = true
+            state.drag_art_target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
+        end
+        if state.drag_dynamic and reaper.ImGui_IsMouseDragging(ctx, 0, 3.0) and not state.is_resizing_item then
+            state.is_dragging_dynamic = true
+            state.drag_dyn_target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
+        end
     end
-    if state.drag_dynamic and reaper.ImGui_IsMouseDragging(ctx, 0, 3.0) and not state.is_resizing_item then
-        state.is_dragging_dynamic = true
-        state.drag_dyn_target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
-    end
-    if not reaper.ImGui_IsMouseDown(ctx, 0) and not reaper.ImGui_IsMouseReleased(ctx, 0) then
+    if is_playing or (not reaper.ImGui_IsMouseDown(ctx, 0) and not reaper.ImGui_IsMouseReleased(ctx, 0)) then
         state.is_dragging_dynamic = false
         state.drag_dynamic = nil
         state.drag_dyn_target_qn = nil
@@ -3733,19 +3735,43 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         CanvasContextMenus.render_all(ctx, state, midi_service, active_tracks_data, qn_per_measure)
     end
     
-    state.hovered_note = note_hovered_this_frame
-    state.hovered_dynamic = dyn_hovered_this_frame
-    state.hovered_articulation = art_hovered_this_frame
-    state.hovered_item_edge = item_edge_hovered_this_frame
-    state.hovered_hairpin = hairpin_hovered_this_frame
-    state.hovered_hairpin_handle = hairpin_handle_hovered_this_frame
-    state.hovered_dynamic_text = dynamic_text_hovered_this_frame
-    state.hovered_dynamic_text_handle = dynamic_text_handle_hovered_this_frame
-    state.hovered_pedal = pedal_hovered_this_frame
-    state.hovered_pedal_handle = pedal_handle_hovered_this_frame
-    state.hovered_text_item = text_item_hovered_this_frame
-    state.hovered_chord_item = chord_hovered_this_frame
-    state.hovered_chord_handle = chord_handle_hovered_this_frame
+    if is_playing then
+        state.hovered_note = nil
+        state.hovered_dynamic = nil
+        state.hovered_articulation = nil
+        state.hovered_item_edge = nil
+        state.hovered_hairpin = nil
+        state.hovered_hairpin_handle = nil
+        state.hovered_dynamic_text = nil
+        state.hovered_dynamic_text_handle = nil
+        state.hovered_pedal = nil
+        state.hovered_pedal_handle = nil
+        state.hovered_text_item = nil
+        state.hovered_chord_item = nil
+        state.hovered_chord_handle = nil
+        state.hovered_slur = nil
+        state.hovered_tie = nil
+        state.hovered_portamento = nil
+        state.hovered_glissando = nil
+        state.hovered_fermata = nil
+        state.hovered_tempo_marker = nil
+        state.hovered_rehearsal_mark = nil
+        state.draw_preview = nil
+    else
+        state.hovered_note = note_hovered_this_frame
+        state.hovered_dynamic = dyn_hovered_this_frame
+        state.hovered_articulation = art_hovered_this_frame
+        state.hovered_item_edge = item_edge_hovered_this_frame
+        state.hovered_hairpin = hairpin_hovered_this_frame
+        state.hovered_hairpin_handle = hairpin_handle_hovered_this_frame
+        state.hovered_dynamic_text = dynamic_text_hovered_this_frame
+        state.hovered_dynamic_text_handle = dynamic_text_handle_hovered_this_frame
+        state.hovered_pedal = pedal_hovered_this_frame
+        state.hovered_pedal_handle = pedal_handle_hovered_this_frame
+        state.hovered_text_item = text_item_hovered_this_frame
+        state.hovered_chord_item = chord_hovered_this_frame
+        state.hovered_chord_handle = chord_handle_hovered_this_frame
+    end
     state.measure_map = measure_map
     
     AudioPreview.update(state, ctx)
