@@ -5578,4 +5578,103 @@ function MidiService.remove_glissandos_for_notes(state, notes, active_tracks_dat
     return GlissandoService.remove_glissandos_for_notes(state, notes, active_tracks_data)
 end
 
+-- ==============================================================================
+-- MIDI Editor & Velocity Lane Helpers
+-- ==============================================================================
+
+--- Finds the active MediaItem and Take to display in the MIDI Editor
+--- Prioritizes: 1) currently selected note's take/item, 2) REAPER selected item, 3) active take
+function MidiService.get_active_midi_item_and_take(state)
+    -- 1. If note is selected in score, use its take and item
+    if state and state.selected_note then
+        local sn = state.selected_note
+        if sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") and reaper.TakeIsMIDI(sn.take) then
+            local it = sn.item or reaper.GetMediaItemTake_Item(sn.take)
+            local trk = sn.track or (it and (reaper.GetMediaItem_Track(it) or reaper.GetMediaItemTrack(it)))
+            return it, sn.take, trk
+        end
+    end
+
+    -- 2. REAPER selected media items
+    local num_sel = reaper.CountSelectedMediaItems(0)
+    for i = 0, num_sel - 1 do
+        local it = reaper.GetSelectedMediaItem(0, i)
+        local tk = it and reaper.GetActiveTake(it)
+        if tk and reaper.ValidatePtr(tk, "MediaItem_Take*") and reaper.TakeIsMIDI(tk) then
+            local trk = reaper.GetMediaItem_Track(it) or reaper.GetMediaItemTrack(it)
+            return it, tk, trk
+        end
+    end
+
+    -- 3. MIDIEditor active take or active project take
+    local act_tk = MidiService.get_active_midi_take()
+    if act_tk and reaper.ValidatePtr(act_tk, "MediaItem_Take*") then
+        local it = reaper.GetMediaItemTake_Item(act_tk)
+        local trk = it and (reaper.GetMediaItem_Track(it) or reaper.GetMediaItemTrack(it))
+        return it, act_tk, trk
+    end
+
+    return nil, nil, nil
+end
+
+--- Retrieves all notes from a take formatted as MidiNote objects with note indices
+function MidiService.get_take_notes_for_editor(take, opt_item, opt_track)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) then
+        return {}
+    end
+    local item = opt_item or reaper.GetMediaItemTake_Item(take)
+    local track = opt_track or (item and (reaper.GetMediaItem_Track(item) or reaper.GetMediaItemTrack(item)))
+    local _, notecnt = reaper.MIDI_CountEvts(take)
+    local notes = {}
+    for i = 0, notecnt - 1 do
+        local ok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
+        if ok and not muted then
+            local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+            local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
+            local n_obj = MidiNote.new({
+                idx = i,
+                pitch = pitch,
+                start_qn = sqn,
+                end_qn = eqn,
+                dur_qn = math.max(0.01, eqn - sqn),
+                vel = vel,
+                chan = chan,
+                take = take,
+                item = item,
+                track = track
+            })
+            n_obj.reaper_sel = sel
+            table.insert(notes, n_obj)
+        end
+    end
+    return notes
+end
+
+--- Updates a note's velocity in the REAPER take
+function MidiService.set_note_velocity(take, note_idx, new_vel, no_sort)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not note_idx or note_idx < 0 then
+        return false
+    end
+    local ok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, note_idx)
+    if ok then
+        local clamped_vel = math.max(1, math.min(127, math.floor(new_vel + 0.5)))
+        reaper.MIDI_SetNote(take, note_idx, sel, muted, sppq, eppq, chan, pitch, clamped_vel, no_sort or false)
+        return true
+    end
+    return false
+end
+
+--- Synchronizes selection flag of a note in the REAPER take
+function MidiService.sync_take_note_selection(take, note_idx, is_sel, no_sort)
+    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") or not note_idx or note_idx < 0 then
+        return false
+    end
+    local ok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, note_idx)
+    if ok then
+        reaper.MIDI_SetNote(take, note_idx, is_sel and true or false, muted, sppq, eppq, chan, pitch, vel, no_sort or false)
+        return true
+    end
+    return false
+end
+
 return MidiService

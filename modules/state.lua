@@ -286,6 +286,13 @@ function State.new()
         pattern_preview_track = nil,
         dragged_pattern = nil,
         is_dragging_pattern = false,
+
+        -- MIDI Editor (Velocity Lane & Graph View) Bottom Pane System
+        show_midi_editor = (reaper.GetExtState("REAPER_Notator", "ShowMidiEditor") == "true"),
+        midi_editor_h = tonumber(reaper.GetExtState("REAPER_Notator", "MidiEditorHeight")) or 180,
+        midi_editor_tool = "select", -- "select" | "draw"
+        midi_editor_zoom_x = 1.0,
+        midi_editor_scroll_x = 0,
         
         -- Octave Lines (8va, 15ma, 22ma, 8vb, 15mb, 22mb, loco)
         octave_lines = {},

@@ -74,14 +74,31 @@ function BottomBar.render(ctx, state, h, child_border, bottom_flags)
     if reaper.ImGui_BeginChild(ctx, "BottomButtonsScroll", 0, child_h, 0, scroll_flags) then
         reaper.ImGui_SetScrollY(ctx, 0)
         local avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
-        local total_needed_w = 145 + 8 + 120 + 8 + 180 + 8 + 25 -- 494 px
+        local total_needed_w = 125 + 8 + 145 + 8 + 120 + 8 + 180 + 8 + 25 -- 622 px
         if avail_w > total_needed_w then
             reaper.ImGui_SetCursorPosX(ctx, avail_w - total_needed_w)
         end
         reaper.ImGui_SetCursorPosY(ctx, 3)
         
+        if toggle_btn(ctx, "🎹 MIDI Editor", state.show_midi_editor, 125, 24, 0x8E44ADFF) then
+            state.show_midi_editor = not state.show_midi_editor
+            if state.show_midi_editor and state.show_pattern_browser then
+                state.show_pattern_browser = false
+                reaper.SetExtState("REAPER_Notator", "ShowPatternBrowser", "false", true)
+            end
+            reaper.SetExtState("REAPER_Notator", "ShowMidiEditor", state.show_midi_editor and "true" or "false", true)
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Toggle MIDI Editor (Velocity Lane & Graph View for active MIDI Item)")
+        end
+
+        reaper.ImGui_SameLine(ctx, 0, 8)
         if toggle_btn(ctx, "🎼 Pattern Browser", state.show_pattern_browser, 145, 24, 0xE67E22FF) then
             state.show_pattern_browser = not state.show_pattern_browser
+            if state.show_pattern_browser and state.show_midi_editor then
+                state.show_midi_editor = false
+                reaper.SetExtState("REAPER_Notator", "ShowMidiEditor", "false", true)
+            end
             reaper.SetExtState("REAPER_Notator", "ShowPatternBrowser", state.show_pattern_browser and "true" or "false", true)
         end
         if reaper.ImGui_IsItemHovered(ctx) then

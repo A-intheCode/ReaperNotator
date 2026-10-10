@@ -5,9 +5,9 @@
 
 local Version = {
     major = 1,
-    minor = 7,
-    patch = 1,
-    suffix = "", -- e.g. "-beta", "-rc1"
+    minor = 8,
+    patch = 0,
+    suffix = "-beta.1", -- e.g. "-beta", "-rc1"
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

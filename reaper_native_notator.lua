@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.7.1
+-- @version 1.8.0-beta.1
 -- @changelog
+--   + v1.8.0-beta.1: Beta Release: MIDI Editor (Velocity Lane & Graph View):
+--             - Dedicated Bottom Drawer: Toggleable via '🎹 MIDI Editor' in the bottom bar, docked above the bottom bar with persistent height and interactive horizontal splitter.
+--             - REAPER-style Velocity Stalks & Flag Handles ('Fähnchen'): Authentic vertical stems with top flag handles for intuitive grab-and-drag manipulation.
+--             - Bidirectional Note Selection Synchronization: Seamless synchronization between score canvas noteheads and velocity stalks in both directions.
+--             - Pointer & Pencil Draw Tools: Grab-and-drag single or relative multi-note velocity scaling, alongside freehand continuous pencil drawing with interpolation.
+--             - Expressive Presets & Audition: Fast dynamic presets (pp, mp, mf, f, ff), linear ramp, humanization, and live acoustic preview via AudioPreview.
 --   + v1.7.1: Hotfix: Resolved nil global normalize_guid in PortamentoService.
 --   + v1.7.0: Major Release: Elaine Gould Slurs, Glissandi, Portamento & Bidirectional MusicXML 4.0:
 --             - Elaine Gould Phrasing & Slurs: True acoustic legato playback (+2 PPQ micro-overlap), voice-isolated multi-voice pairing, Reaticulate keyswitch integration, and automatic chase.
@@ -212,6 +218,7 @@ local MusicXmlModal        = require("ui.musicxml_modal")
 local SlurService          = require("services.slur_service")
 local PortamentoService    = require("services.portamento_service")
 local GlissandoService     = require("services.glissando_service")
+local MidiEditorDrawer     = require("ui.midi_editor_drawer")
 
 -- 4. Initialization of State & Fonts
 local state = State.new()
@@ -535,7 +542,14 @@ local function loop()
             state.pattern_browser_h = math.max(120, math.min(max_pb_h, state.pattern_browser_h))
             browser_h = state.pattern_browser_h + h_splitter_h + 10
         end
-        local main_content_h = math.max(100, main_avail_h - bottom_bar_h - browser_h - 6)
+        local midi_editor_pane_h = 0
+        if state.show_midi_editor then
+            state.midi_editor_h = state.midi_editor_h or 180
+            local max_me_h = math.max(100, main_avail_h - bottom_bar_h - browser_h - 140)
+            state.midi_editor_h = math.max(100, math.min(max_me_h, state.midi_editor_h))
+            midi_editor_pane_h = state.midi_editor_h + h_splitter_h + 10
+        end
+        local main_content_h = math.max(100, main_avail_h - bottom_bar_h - browser_h - midi_editor_pane_h - 6)
         
         state.sidebar_w = state.sidebar_w or 230
         state.drawer_w = state.drawer_w or 236
@@ -811,6 +825,35 @@ local function loop()
             end
             
             PatternBrowser.render(ctx, state, MidiService, AudioPreview, main_avail_w, state.pattern_browser_h, project_tracks, fonts.font_music, fonts.font_main)
+        end
+
+        -- ======================================================================
+        -- 2c. BOTTOM PANE: MIDI EDITOR (Velocity Lane, resizable via horizontal splitter!)
+        -- ======================================================================
+        if state.show_midi_editor then
+            -- HORIZONTAL SPLITTER: MIDI Editor pane resizing
+            reaper.ImGui_SetCursorPosY(ctx, reaper.ImGui_GetCursorPosY(ctx) + 2)
+            reaper.ImGui_InvisibleButton(ctx, "hsplitter_bottom_midi_editor", main_avail_w, h_splitter_h)
+            if reaper.ImGui_IsItemActive(ctx) then
+                local _, delta_y = reaper.ImGui_GetMouseDelta(ctx)
+                local max_me_h = math.max(100, main_avail_h - bottom_bar_h - 140)
+                state.midi_editor_h = math.max(100, math.min(max_me_h, state.midi_editor_h - delta_y))
+                reaper.SetExtState("REAPER_Notator", "MidiEditorHeight", tostring(math.floor(state.midi_editor_h)), true)
+            end
+            if reaper.ImGui_IsItemHovered(ctx) or reaper.ImGui_IsItemActive(ctx) then
+                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeNS())
+                local dl = reaper.ImGui_GetWindowDrawList(ctx)
+                local sp_x0, sp_y0 = reaper.ImGui_GetItemRectMin(ctx)
+                local sp_x1, sp_y1 = reaper.ImGui_GetItemRectMax(ctx)
+                local sp_col = reaper.ImGui_IsItemActive(ctx) and 0x8E44ADFF or 0x8E44AD77
+                reaper.ImGui_DrawList_AddRectFilled(dl, sp_x0, sp_y0 + 1, sp_x1, sp_y1 - 1, sp_col)
+            end
+            if reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
+                state.midi_editor_h = 180 -- Double-click resets to default height
+                reaper.SetExtState("REAPER_Notator", "MidiEditorHeight", "180", true)
+            end
+
+            MidiEditorDrawer.render(ctx, state, MidiService, AudioPreview, main_avail_w, state.midi_editor_h, project_tracks, fonts.font_main)
         end
         
         -- ======================================================================
