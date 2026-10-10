@@ -421,8 +421,8 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, width,
                     local nx = qn_to_x(n.start_qn)
                     local ny = vel_to_y(n.vel)
 
-                    -- Top handle hitbox: [nx - 6, ny - 8, nx + 12, ny + 8]
-                    local in_handle = (mouse_x >= nx - 6 and mouse_x <= nx + 12 and mouse_y >= ny - 8 and mouse_y <= ny + 8)
+                    -- Top handle hitbox: [nx - 6, ny - 8, nx + 26, ny + 8] (extended for 3x longer flag)
+                    local in_handle = (mouse_x >= nx - 6 and mouse_x <= nx + 26 and mouse_y >= ny - 8 and mouse_y <= ny + 8)
                     -- Stalk hitbox: [nx - 4, ny, nx + 4, plot_bot_y]
                     local in_stalk = (mouse_x >= nx - 4 and mouse_x <= nx + 4 and mouse_y >= ny and mouse_y <= plot_bot_y + 2)
 
@@ -536,7 +536,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, width,
                             local ny = vel_to_y(n.vel)
                             -- Check if handle or stalk intersects marquee rect
                             local stalk_hit = (nx >= mx0 and nx <= mx1 and my0 <= plot_bot_y and my1 >= ny)
-                            local handle_hit = (mx1 >= nx - 4 and mx0 <= nx + 8 and my1 >= ny - 4 and my0 <= ny + 4)
+                            local handle_hit = (mx1 >= nx - 4 and mx0 <= nx + 25 and my1 >= ny - 4 and my0 <= ny + 4)
                             if stalk_hit or handle_hit then
                                 state:select_note(n)
                                 midi_service.sync_take_note_selection(active_take, n.idx, true, true)
@@ -621,11 +621,10 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, width,
             -- ==================================================================
             -- 2e. RENDER VELOCITY STALKS & REAPER "FÄHNCHEN" HANDLES
             -- ==================================================================
-            for _, n in ipairs(notes) do
+            local function draw_single_note_stalk(n, is_sel)
                 local nx = qn_to_x(n.start_qn)
-                if nx >= win_x0 - 20 and nx <= win_x0 + win_w + 20 then
+                if nx >= win_x0 - 40 and nx <= win_x0 + win_w + 40 then
                     local ny = vel_to_y(n.vel)
-                    local is_sel = state:is_note_selected(n)
                     local is_hov = (hovered_note == n)
 
                     -- Colors
@@ -638,7 +637,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, width,
                         stalk_col = 0xFF9F1CFF
                         handle_col = 0xFFB703FF
                         border_col = 0x78350FFF
-                        stalk_w = 2.0
+                        stalk_w = 2.2
                     elseif is_hov then
                         stalk_col = 0x38BDF8FF
                         handle_col = 0x7DD3FCFF
@@ -648,9 +647,8 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, width,
                     -- 1. Vertical Stalk (Stem)
                     reaper.ImGui_DrawList_AddLine(dl, nx, plot_bot_y, nx, ny, stalk_col, stalk_w)
 
-                    -- 2. REAPER Top Handle Flag ("Fähnchen")
-                    -- Horizontal flag tab extending to the right
-                    local flag_w = 7.5
+                    -- 2. REAPER Top Handle Flag ("Fähnchen" - 3x length: 22.5px)
+                    local flag_w = 22.5
                     local flag_h = 6.0
                     local flag_x0 = nx
                     local flag_y0 = ny - (flag_h * 0.5)
@@ -658,19 +656,33 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, width,
                     local flag_y1 = ny + (flag_h * 0.5)
 
                     -- Flag background
-                    reaper.ImGui_DrawList_AddRectFilled(dl, flag_x0, flag_y0, flag_x1, flag_y1, handle_col, 1.5)
+                    reaper.ImGui_DrawList_AddRectFilled(dl, flag_x0, flag_y0, flag_x1, flag_y1, handle_col, 2.0)
                     -- Flag dark outline
-                    reaper.ImGui_DrawList_AddRect(dl, flag_x0 - 0.5, flag_y0 - 0.5, flag_x1 + 0.5, flag_y1 + 0.5, border_col, 1.5, 0, 1.0)
+                    reaper.ImGui_DrawList_AddRect(dl, flag_x0 - 0.5, flag_y0 - 0.5, flag_x1 + 0.5, flag_y1 + 0.5, border_col, 2.0, 0, 1.0)
 
                     -- Central bead cap at stem apex
-                    local bead_r = is_sel and 4.0 or 3.2
+                    local bead_r = is_sel and 4.2 or 3.4
                     reaper.ImGui_DrawList_AddCircleFilled(dl, nx, ny, bead_r, handle_col)
                     reaper.ImGui_DrawList_AddCircle(dl, nx, ny, bead_r, border_col, 0, 1.0)
 
                     -- Subtle highlight center dot for selected notes
                     if is_sel then
-                        reaper.ImGui_DrawList_AddCircleFilled(dl, nx, ny, 1.5, 0xFFFFFFFF)
+                        reaper.ImGui_DrawList_AddCircleFilled(dl, nx, ny, 1.6, 0xFFFFFFFF)
                     end
+                end
+            end
+
+            -- Pass 1: Draw unselected notes
+            for _, n in ipairs(notes) do
+                if not state:is_note_selected(n) then
+                    draw_single_note_stalk(n, false)
+                end
+            end
+
+            -- Pass 2: Draw selected notes (rendered on top with maximum visual priority)
+            for _, n in ipairs(notes) do
+                if state:is_note_selected(n) then
+                    draw_single_note_stalk(n, true)
                 end
             end
 
