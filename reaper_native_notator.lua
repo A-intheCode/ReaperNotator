@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.16
+-- @version 1.8.0-beta.17
 -- @changelog
+--   + v1.8.0-beta.17: Rendering Pipeline & Anti-Aliasing Optimization (60-70 FPS on 30+ Tracks):
+--             - Anti-Aliasing Control: Line and fill edge anti-aliasing can now be toggled in Settings -> General Settings (disabled by default & during playback) to eliminate expensive CPU edge fringe tessellation on stems, beams, and staff lines.
+--             - Note Layout Caching: Precomputed visual note segmentation, chord clustering, stem directions, collision spacing, and beam groups across frames; bypassed O(N_notes) per-frame recalculation during playback.
+--             - Single-Pass Measure Decoration: Consolidated barlines, key signatures, bar numbers, and measure repeat marks into a single pass over visible tracks.
+--             - O(1) Hash Map for Repeat Marks: RepeatService now uses a lazy hash lookup and empty-list bypass, replacing thousands of linear scans per frame.
+--             - Frustum Viewport Culling: Added 2D (horizontal and vertical) frustum culling to SlurService, PortamentoService, and GlissandoService, skipping curve calculations for off-screen staves.
 --   + v1.8.0-beta.16: Playback Performance Overhaul (Orchestral 30+ Tracks 60-70 FPS):
 --             - Zero-C-API Key Signature Resolution: Eliminated linear Take text/sysex event scanning (MIDI_GetTextSysexEvt) per note per frame via take event memoization and item_obj in-memory resolution.
 --             - Barline & Measure Key Signature Fast-Path: Bypassed redundant track item scans and C-API polling across unaffected tracks at barlines.

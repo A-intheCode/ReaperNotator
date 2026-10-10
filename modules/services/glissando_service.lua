@@ -1212,8 +1212,10 @@ function GlissandoService.draw_glissandos(ctx, draw_list, state, all_note_render
 
             local min_x = math.min(x1, x2)
             local max_x = math.max(x1, x2)
+            local min_y = math.min(y1, y2) - 20 * s
+            local max_y = math.max(y1, y2) + 20 * s
 
-            if max_x >= cull_min_x and min_x <= cull_max_x then
+            if max_x >= cull_min_x and min_x <= cull_max_x and (not cull_min_y or (max_y >= cull_min_y and min_y <= cull_max_y)) then
                 local dx = x2 - x1
                 local dy = y2 - y1
                 local dist = math.sqrt(dx * dx + dy * dy)

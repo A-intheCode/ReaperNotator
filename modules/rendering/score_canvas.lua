@@ -346,15 +346,322 @@ local function sync_arrange_selection(state, project_tracks)
     end
 end
 
+local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left)
+    local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil)
+    
+    -- Voice filtering and ghosting (MIDI channels 0-15)
+    if filter_chan ~= nil then
+        if state.hide_inactive_voices then
+            local filtered_vn = {}
+            for _, vn in ipairs(visual_notes) do
+                if vn.orig and (vn.orig.chan or 0) == filter_chan then
+                    table.insert(filtered_vn, vn)
+                end
+            end
+            visual_notes = filtered_vn
+        else
+            for _, vn in ipairs(visual_notes) do
+                if vn.orig and (vn.orig.chan or 0) ~= filter_chan then
+                    vn.is_ghost_voice = true
+                end
+            end
+        end
+    end
+    
+    for _, vn in ipairs(visual_notes) do
+        local pref_acc = Engraver.get_note_preferred_accidental(vn, state)
+        local eff_pitch, active_oct, oct_shift = Engraver.get_note_effective_pitch(vn.pitch, vn.start_qn, tdata.guid, state)
+        
+        local note_item = vn.item_obj or (vn.orig and vn.orig.item_obj) or vn.item or (vn.orig and vn.orig.item)
+        local note_clef = track_clef
+        local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[note_clef]
+        local is_unpitched = cdef and cdef.unpitched
+        local note_key_idx = resolve_effective_key(state, tdata, note_item, vn.start_qn)
+        
+        local force_staff = nil
+        if is_grand then
+            local manual_st = Engraver.get_note_staff(vn, state)
+            if manual_st == "treble" or manual_st == "bass" then
+                force_staff = manual_st
+            end
+        end
+        
+        local ny, in_treble_b, dstep, acc, staff_target = Engraver.pitch_to_canvas_y(
+            eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, note_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff
+        )
+        vn.nominal_ny = ny
+        vn.in_staff = staff_target
+        vn.in_treble = in_treble_b
+        vn.dstep = dstep
+        vn.acc = is_unpitched and 0 or acc
+        vn.notehead_type = is_unpitched and Constants.get_percussion_notehead_type(eff_pitch) or "standard"
+        vn.is_unpitched = is_unpitched
+        vn.active_octave_line = active_oct
+        
+        -- Display quantize: visual snapping of note positions to the selected grid
+        local display_qn = vn.start_qn
+        if state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001 then
+            local dq_grid = state.display_quantize_grid
+            display_qn = math.floor((vn.start_qn / dq_grid) + 0.5) * dq_grid
+        end
+        vn.display_qn = display_qn
+        vn.head_x_offset = 0
+        vn.acc_x_offset = 0
+        vn.collision_push = 0
+        vn.rel_ny = -(dstep * step_y)
+        vn.nominal_nx = Engraver.qn_to_canvas_x(display_qn, margin_left, s, qn_per_measure, measure_map)
+        vn.vis_nx = vn.nominal_nx
+        vn.vis_ny = vn.nominal_ny
+    end
+    
+    -- Sort notes by staff (in_staff), then onset time, then pitch
+    local staff_order = { treble = 1, mid = 2, alto = 2, bass = 3 }
+    table.sort(visual_notes, function(a, b)
+        local sa = a.in_staff or (a.in_treble and "treble" or "bass")
+        local sb = b.in_staff or (b.in_treble and "treble" or "bass")
+        local oa = staff_order[sa] or (a.in_treble and 1 or 3)
+        local ob = staff_order[sb] or (b.in_treble and 1 or 3)
+        if oa ~= ob then return oa < ob end
+        if math.abs(a.start_qn - b.start_qn) > 0.02 then return a.start_qn < b.start_qn end
+        return a.pitch < b.pitch
+    end)
+    
+    -- Check whether polyphonic voices are active on this track
+    local track_voices_set = {}
+    for _, vn in ipairs(visual_notes) do
+        local v = (vn.orig and vn.orig.chan) or 0
+        track_voices_set[v] = true
+    end
+    local track_voice_count = 0
+    for _ in pairs(track_voices_set) do track_voice_count = track_voice_count + 1 end
+    local is_polyphonic_track = (track_voice_count > 1)
+
+    -- Form chord clusters (strictly separated by staff AND by voice!)
+    local chord_clusters = {}
+    local cur_cluster = nil
+    for _, vn in ipairs(visual_notes) do
+        local vn_v = (vn.orig and vn.orig.chan) or 0
+        local vn_staff = vn.in_staff or (vn.in_treble and "treble" or "bass")
+        local is_arp = (vn.orig and (vn.orig.arpeggio or vn.orig.articulation == "arpeggio"))
+        local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.08 or 0.03
+        local same_staff = cur_cluster and (cur_cluster.staff == vn_staff)
+        local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < time_tol)
+        local same_voice = cur_cluster and (cur_cluster.voice == vn_v)
+        if not (same_staff and same_time and same_voice) then
+            cur_cluster = {
+                start_qn     = vn.start_qn,
+                staff        = vn_staff,
+                in_treble    = vn.in_treble,
+                voice        = vn_v,
+                notes        = {},
+                is_arpeggio  = (is_arp == true or is_arp == "up" or is_arp == "down"),
+                arpeggio_dir = (vn.orig and vn.orig.arpeggio) or "up"
+            }
+            table.insert(chord_clusters, cur_cluster)
+        end
+        if is_arp then
+            cur_cluster.is_arpeggio = true
+            if vn.orig and vn.orig.arpeggio then cur_cluster.arpeggio_dir = vn.orig.arpeggio end
+        end
+        table.insert(cur_cluster.notes, vn)
+        vn.chord_cluster = cur_cluster
+    end
+    
+    for _, cluster in ipairs(chord_clusters) do
+        local cnotes = cluster.notes
+        local max_dist = -1
+        local chord_stem_down = false
+        local manual_stem_dir = nil
+        for _, vn in ipairs(cnotes) do
+            local sdir = Engraver.get_note_stem_direction(vn, state)
+            if sdir then
+                manual_stem_dir = sdir
+            end
+            local mid_step = 4 -- Middle line of 5-line staff
+            local dist = math.abs(vn.dstep - mid_step)
+            if dist > max_dist then
+                max_dist = dist
+                chord_stem_down = (vn.dstep >= mid_step)
+            end
+        end
+        if manual_stem_dir == "up" then
+            cluster.stem_down = false
+        elseif manual_stem_dir == "down" then
+            cluster.stem_down = true
+        elseif is_polyphonic_track then
+            if (cluster.voice or 0) % 2 == 1 then
+                cluster.stem_down = true
+            else
+                cluster.stem_down = false
+            end
+        else
+            cluster.stem_down = chord_stem_down
+        end
+        
+        local note_w = 10.8 * s
+        for i = 1, #cnotes do
+            local vn = cnotes[i]
+            if i > 1 then
+                local prev_vn = cnotes[i - 1]
+                local step_diff = vn.dstep - prev_vn.dstep
+                if step_diff == 0 then
+                    vn.head_x_offset = prev_vn.head_x_offset + 11.5 * s
+                elseif step_diff == 1 then
+                    if cluster.stem_down then
+                        if prev_vn.head_x_offset == 0 then prev_vn.head_x_offset = -note_w else vn.head_x_offset = note_w end
+                    else
+                        if prev_vn.head_x_offset == 0 then vn.head_x_offset = note_w else vn.head_x_offset = 0 end
+                    end
+                end
+            end
+            vn.vis_nx = vn.nominal_nx + vn.head_x_offset
+        end
+        
+        local acc_notes = {}
+        for _, vn in ipairs(cnotes) do
+            if vn.acc ~= 0 and (not vn.is_segment or vn.seg_idx == 1) then table.insert(acc_notes, vn) end
+        end
+        if #acc_notes > 1 then
+            for ai = 1, #acc_notes do
+                if ai % 2 == 0 then acc_notes[ai].acc_x_offset = -10.0 * s end
+            end
+        end
+    end
+    
+    -- Collision spacing adjustment (only within the same staff and measure!)
+    for ci = 2, #chord_clusters do
+        local cur_c = chord_clusters[ci]
+        local cur_m = math.floor(cur_c.start_qn / bpi)
+        
+        -- 1. Check if this cluster is simultaneous with any earlier cluster on the same staff
+        local sim_c = nil
+        for pi = ci - 1, 1, -1 do
+            local prev = chord_clusters[pi]
+            if prev.staff == cur_c.staff and math.abs(cur_c.start_qn - prev.start_qn) < 0.03 then
+                sim_c = prev
+                break
+            end
+        end
+        
+        if sim_c then
+            local sim_base_nx = sim_c.notes[1].nominal_nx
+            for _, cvn in ipairs(cur_c.notes) do
+                cvn.nominal_nx = sim_base_nx
+                cvn.vis_nx = cvn.nominal_nx + (cvn.head_x_offset or 0)
+            end
+            
+            local pitch_collides = false
+            for pi = ci - 1, 1, -1 do
+                local prev = chord_clusters[pi]
+                if prev.staff == cur_c.staff and math.abs(cur_c.start_qn - prev.start_qn) < 0.03 then
+                    for _, cvn in ipairs(cur_c.notes) do
+                        for _, pvn in ipairs(prev.notes) do
+                            if math.abs(cvn.dstep - pvn.dstep) <= 1 then
+                                pitch_collides = true
+                                break
+                            end
+                        end
+                        if pitch_collides then break end
+                    end
+                end
+                if pitch_collides then break end
+            end
+            
+            if pitch_collides then
+                local note_w = 11.5 * s
+                for _, cvn in ipairs(cur_c.notes) do
+                    cvn.head_x_offset = (cvn.head_x_offset or 0) + note_w
+                    cvn.nominal_nx = cvn.nominal_nx + note_w
+                    cvn.vis_nx = cvn.nominal_nx + (cvn.head_x_offset or 0)
+                end
+            end
+        end
+        
+        -- 2. Sequential spacing adjustment against earlier temporal notes on the same staff and measure
+        local prev_max_x = nil
+        local max_prev_start_qn = -1
+        for pi = ci - 1, 1, -1 do
+            local prev = chord_clusters[pi]
+            if prev.staff == cur_c.staff and (cur_c.start_qn - prev.start_qn) >= 0.03 then
+                local prev_m = math.floor(prev.start_qn / bpi)
+                if prev_m == cur_m then
+                    if prev.start_qn > max_prev_start_qn then
+                        max_prev_start_qn = prev.start_qn
+                    end
+                    if math.abs(prev.start_qn - max_prev_start_qn) < 0.03 then
+                        for _, pvn in ipairs(prev.notes) do
+                            local px = pvn.vis_nx
+                            if Engraver.is_dotted_duration(pvn.dur_qn) then px = px + 8 * s end
+                            if not prev_max_x or px > prev_max_x then prev_max_x = px end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if prev_max_x then
+            local cur_min_x = cur_c.notes[1].vis_nx
+            for _, cvn in ipairs(cur_c.notes) do
+                local left_edge = cvn.vis_nx
+                if cvn.acc ~= 0 then left_edge = cvn.vis_nx - 11.5 * s + cvn.acc_x_offset end
+                if left_edge < cur_min_x then cur_min_x = left_edge end
+            end
+            local min_gap = 14 * s
+            if cur_min_x < prev_max_x + min_gap then
+                local push = (prev_max_x + min_gap) - cur_min_x
+                local measure_w = Engraver.get_measure_layout(s, qn_per_measure)
+                local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or (margin_left + (cur_m + 1) * measure_w)
+                local max_allowed_x = m_end_x - 18 * s
+                for _, cvn in ipairs(cur_c.notes) do
+                    local pushed_x = math.min(max_allowed_x, cvn.vis_nx + push)
+                    local actual_push = pushed_x - cvn.vis_nx
+                    cvn.collision_push = (cvn.collision_push or 0) + actual_push
+                    cvn.vis_nx = pushed_x
+                    cvn.nominal_nx = cvn.vis_nx - (cvn.head_x_offset or 0)
+                end
+            end
+        end
+    end
+    
+    local display_notes = {}
+    for _, vn in ipairs(visual_notes) do
+        local note_bar = math.floor((vn.start_qn + 0.001) / bpi)
+        if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
+            table.insert(display_notes, vn)
+        end
+    end
+    local beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping)
+    
+    return {
+        visual_notes = visual_notes,
+        chord_clusters = chord_clusters,
+        beam_groups = beam_groups,
+        bar_ties = bar_ties,
+        is_polyphonic_track = is_polyphonic_track
+    }
+end
+
 function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
+    local is_playing = (reaper.GetPlayState() == 1)
     local draw_list = reaper.ImGui_GetWindowDrawList(ctx)
     if reaper.APIExists("ImGui_DrawList_GetFlags") and reaper.APIExists("ImGui_DrawList_SetFlags") then
         local dl_flags = reaper.ImGui_DrawList_GetFlags(draw_list)
+        local enable_aa = (state.antialiasing == true) and not is_playing
         if reaper.APIExists("ImGui_DrawListFlags_AntiAliasedLines") then
-            dl_flags = dl_flags | reaper.ImGui_DrawListFlags_AntiAliasedLines()
+            local aa_lines = reaper.ImGui_DrawListFlags_AntiAliasedLines()
+            if enable_aa then
+                dl_flags = dl_flags | aa_lines
+            else
+                dl_flags = dl_flags & (~aa_lines)
+            end
         end
         if reaper.APIExists("ImGui_DrawListFlags_AntiAliasedFill") then
-            dl_flags = dl_flags | reaper.ImGui_DrawListFlags_AntiAliasedFill()
+            local aa_fill = reaper.ImGui_DrawListFlags_AntiAliasedFill()
+            if enable_aa then
+                dl_flags = dl_flags | aa_fill
+            else
+                dl_flags = dl_flags & (~aa_fill)
+            end
         end
         reaper.ImGui_DrawList_SetFlags(draw_list, dl_flags)
     end
@@ -381,7 +688,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local active_tracks_data = {}
     local max_proj_qn = 16 * 4.0
     local cur_time = reaper.GetCursorPosition()
-    local is_playing = (reaper.GetPlayState() == 1)
     local time_pos = is_playing and reaper.GetPlayPosition() or cur_time
     
     local timesig_num, timesig_denom = reaper.TimeMap_GetTimeSigAtTime(0, time_pos)
@@ -393,7 +699,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     for _, t in ipairs(project_tracks) do
         if state.selected_tracks[t.guid] then
-            local items, trk_notes, dyns, arts, trk_max_qn, r_cache = midi_service.get_track_items_and_notes(t.track)
+            local items, trk_notes, dyns, arts, trk_max_qn, r_cache, l_cache = midi_service.get_track_items_and_notes(t.track)
             if trk_max_qn and trk_max_qn > max_proj_qn then
                 max_proj_qn = trk_max_qn
             else
@@ -410,7 +716,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 items = items,
                 notes = trk_notes,
                 dynamics = dyns, articulations = arts,
-                rests_cache = r_cache
+                rests_cache = r_cache,
+                layout_cache = l_cache
             })
         end
     end
@@ -1279,336 +1586,412 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             draw_staff_rests(trk_rests, staff_bottom_y, true)
         end
         
-        -- Visual notes (culled to visible viewport)
-        local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn)
-        for _, bt in ipairs(bar_ties) do table.insert(all_bar_ties, bt) end
+        -- Visual notes, chord clusters, beams & ties (retrieved from layout_cache or built once)
+        local visual_notes, chord_clusters, beam_groups, is_polyphonic_track
+        local cached_layout = nil
+        if not is_dragging_notes and tdata.layout_cache then
+            local dq_sig = string.format("%s_%.3f", tostring(state.display_quantize), tonumber(state.display_quantize_grid) or 0)
+            local rep_cnt = state.repeat_marks and #state.repeat_marks or 0
+            local layout_key = string.format("%.3f_%s_%s_%s_%.3f_%s_%s_%d_%d",
+                s, tostring(track_clef), tostring(filter_chan),
+                tostring(state.hide_inactive_voices), qn_per_measure,
+                tostring(state.beam_grouping), dq_sig, rep_cnt, (state.accidental_change_cnt or 0))
+            cached_layout = tdata.layout_cache[layout_key]
+            if not cached_layout then
+                cached_layout = build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left)
+                tdata.layout_cache[layout_key] = cached_layout
+            end
+        end
         
-        -- Voice filtering and ghosting (MIDI channels 0-15)
-        if filter_chan ~= nil then
-            if state.hide_inactive_voices then
-                local filtered_vn = {}
-                for _, vn in ipairs(visual_notes) do
-                    if vn.orig and (vn.orig.chan or 0) == filter_chan then
-                        table.insert(filtered_vn, vn)
+        local display_notes = {}
+        local beamed_notes_map = {}
+        
+        if cached_layout then
+            visual_notes = cached_layout.visual_notes
+            chord_clusters = cached_layout.chord_clusters
+            beam_groups = cached_layout.beam_groups
+            is_polyphonic_track = cached_layout.is_polyphonic_track
+            
+            -- Register ties in visible range
+            for _, bt in ipairs(cached_layout.bar_ties) do
+                if bt.end_qn >= vis_min_qn - 4.0 and bt.start_qn <= vis_max_qn + 4.0 then
+                    table.insert(all_bar_ties, bt)
+                end
+            end
+            
+            -- Fast screen position update & render registration for notes near/in visible window
+            for _, vn in ipairs(visual_notes) do
+                local is_sel = state:is_note_selected(vn.orig)
+                local in_range = (vn.end_qn >= vis_min_qn - 8.0 and vn.start_qn <= vis_max_qn + 8.0)
+                if is_sel or in_range then
+                    local staff_bot = staff_bottom_y
+                    if is_harp then
+                        staff_bot = (vn.in_staff == "treble") and treble_bottom_y or ((vn.in_staff == "mid" or vn.in_staff == "alto") and mid_bottom_y or bass_bottom_y)
+                    elseif is_grand then
+                        staff_bot = (vn.in_staff == "treble") and treble_bottom_y or bass_bottom_y
+                    end
+                    vn.vis_ny = staff_bot + vn.rel_ny
+                    vn.nominal_nx = Engraver.qn_to_canvas_x(vn.display_qn, margin_left, s, qn_per_measure, measure_map)
+                    vn.vis_nx = vn.nominal_nx + (vn.head_x_offset or 0) + (vn.collision_push or 0)
+                    
+                    local rdata = {
+                        pitch = vn.pitch, start_qn = vn.start_qn, end_qn = vn.end_qn,
+                        dur_qn = vn.dur_qn, nx = vn.vis_nx, ny = vn.vis_ny,
+                        in_treble = vn.in_treble, in_staff = vn.in_staff, dstep = vn.dstep, stem_down = false,
+                        stem_x = vn.vis_nx, stem_end_y = vn.vis_ny, flag_count = Engraver.get_flag_count(vn.dur_qn),
+                        key = vn.key, note = vn.orig, orig = vn.orig, track = tdata.track,
+                        track_guid = tdata.guid,
+                        item = vn.orig and vn.orig.item, take = vn.orig and vn.orig.take,
+                        idx = vn.orig and vn.orig.idx, is_segment = vn.is_segment,
+                        chan = (vn.orig and vn.orig.chan) or (vn.chan or 0),
+                        is_ghost_voice = vn.is_ghost_voice
+                    }
+                    table.insert(all_note_render_data, rdata)
+                    all_note_render_by_key[vn.key] = rdata
+                    
+                    local note_bar = math.floor((vn.start_qn + 0.001) / bpi)
+                    if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
+                        table.insert(display_notes, vn)
                     end
                 end
-                visual_notes = filtered_vn
-            else
-                for _, vn in ipairs(visual_notes) do
-                    if vn.orig and (vn.orig.chan or 0) ~= filter_chan then
-                        vn.is_ghost_voice = true
+            end
+            
+            -- Draw beams in visible window
+            for _, bgroup in ipairs(beam_groups) do
+                local b_start = bgroup[1].start_qn
+                local b_end = bgroup[#bgroup].end_qn or (b_start + bgroup[#bgroup].dur_qn)
+                if b_end >= vis_min_qn and b_start <= vis_max_qn then
+                    local all_ghost = true
+                    for _, bvn in ipairs(bgroup) do
+                        if not bvn.is_ghost_voice then all_ghost = false break end
                     end
-                end
-            end
-        end
-        
-        for _, vn in ipairs(visual_notes) do
-            local pref_acc = Engraver.get_note_preferred_accidental(vn, state)
-            local eff_pitch, active_oct, oct_shift = Engraver.get_note_effective_pitch(vn.pitch, vn.start_qn, tdata.guid, state)
-            
-            local note_item = vn.item_obj or (vn.orig and vn.orig.item_obj) or vn.item or (vn.orig and vn.orig.item)
-            local note_clef = track_clef
-            local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[note_clef]
-            local is_unpitched = cdef and cdef.unpitched
-            local note_key_idx = resolve_effective_key(state, tdata, note_item, vn.start_qn)
-            
-            local force_staff = nil
-            if is_grand then
-                local manual_st = Engraver.get_note_staff(vn, state)
-                if manual_st == "treble" or manual_st == "bass" then
-                    force_staff = manual_st
-                end
-            end
-            
-            local ny, in_treble_b, dstep, acc, staff_target = Engraver.pitch_to_canvas_y(eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, note_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff)
-            vn.nominal_ny = ny
-            vn.in_staff = staff_target
-            vn.in_treble = in_treble_b
-            vn.dstep = dstep
-            vn.acc = is_unpitched and 0 or acc
-            vn.notehead_type = is_unpitched and Constants.get_percussion_notehead_type(eff_pitch) or "standard"
-            vn.is_unpitched = is_unpitched
-            vn.active_octave_line = active_oct
-            
-            -- Display quantize: visual snapping of note positions to the selected grid
-            local display_qn = vn.start_qn
-            if state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001 then
-                local dq_grid = state.display_quantize_grid
-                display_qn = math.floor((vn.start_qn / dq_grid) + 0.5) * dq_grid
-            end
-            vn.nominal_nx = Engraver.qn_to_canvas_x(display_qn, margin_left, s, qn_per_measure, measure_map)
-            vn.head_x_offset = 0
-            vn.acc_x_offset = 0
-            vn.vis_nx = vn.nominal_nx
-            vn.vis_ny = vn.nominal_ny
-        end
-        
-        -- Sort notes by staff (in_staff), then onset time, then pitch
-        local staff_order = { treble = 1, mid = 2, alto = 2, bass = 3 }
-        table.sort(visual_notes, function(a, b)
-            local sa = a.in_staff or (a.in_treble and "treble" or "bass")
-            local sb = b.in_staff or (b.in_treble and "treble" or "bass")
-            local oa = staff_order[sa] or (a.in_treble and 1 or 3)
-            local ob = staff_order[sb] or (b.in_treble and 1 or 3)
-            if oa ~= ob then return oa < ob end
-            if math.abs(a.start_qn - b.start_qn) > 0.02 then return a.start_qn < b.start_qn end
-            return a.pitch < b.pitch
-        end)
-        
-        -- Check whether polyphonic voices are active on this track
-        local track_voices_set = {}
-        for _, vn in ipairs(visual_notes) do
-            local v = (vn.orig and vn.orig.chan) or 0
-            track_voices_set[v] = true
-        end
-        local track_voice_count = 0
-        for _ in pairs(track_voices_set) do track_voice_count = track_voice_count + 1 end
-        local is_polyphonic_track = (track_voice_count > 1)
-
-        -- Form chord clusters (strictly separated by staff AND by voice!)
-        local chord_clusters = {}
-        local cur_cluster = nil
-        for _, vn in ipairs(visual_notes) do
-            local vn_v = (vn.orig and vn.orig.chan) or 0
-            local vn_staff = vn.in_staff or (vn.in_treble and "treble" or "bass")
-            local is_arp = (vn.orig and (vn.orig.arpeggio or vn.orig.articulation == "arpeggio"))
-            local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.08 or 0.03
-            local same_staff = cur_cluster and (cur_cluster.staff == vn_staff)
-            local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < time_tol)
-            local same_voice = cur_cluster and (cur_cluster.voice == vn_v)
-            if not (same_staff and same_time and same_voice) then
-                cur_cluster = {
-                    start_qn     = vn.start_qn,
-                    staff        = vn_staff,
-                    in_treble    = vn.in_treble,
-                    voice        = vn_v,
-                    notes        = {},
-                    is_arpeggio  = (is_arp == true or is_arp == "up" or is_arp == "down"),
-                    arpeggio_dir = (vn.orig and vn.orig.arpeggio) or "up"
-                }
-                table.insert(chord_clusters, cur_cluster)
-            end
-            if is_arp then
-                cur_cluster.is_arpeggio = true
-                if vn.orig and vn.orig.arpeggio then cur_cluster.arpeggio_dir = vn.orig.arpeggio end
-            end
-            table.insert(cur_cluster.notes, vn)
-            vn.chord_cluster = cur_cluster
-        end
-        
-        for _, cluster in ipairs(chord_clusters) do
-            local cnotes = cluster.notes
-            local max_dist = -1
-            local chord_stem_down = false
-            local manual_stem_dir = nil
-            for _, vn in ipairs(cnotes) do
-                local sdir = Engraver.get_note_stem_direction(vn, state)
-                if sdir then
-                    manual_stem_dir = sdir
-                end
-                local mid_step = 4 -- Middle line of 5-line staff (B4 in treble clef, D3 in bass clef, C4 in alto clef)
-                local dist = math.abs(vn.dstep - mid_step)
-                if dist > max_dist then
-                    max_dist = dist
-                    chord_stem_down = (vn.dstep >= mid_step)
-                end
-            end
-            if manual_stem_dir == "up" then
-                cluster.stem_down = false
-            elseif manual_stem_dir == "down" then
-                cluster.stem_down = true
-            elseif is_polyphonic_track then
-                -- Gould ("Behind Bars"): polyphonic voice-leading per engraving standards
-                -- Voice 1 (and odd voices: Voice 1, 3 -> chan 0, 2) = stems UP!
-                -- Voice 2 (and even voices: Voice 2, 4 -> chan 1, 3) = stems DOWN!
-                if (cluster.voice or 0) % 2 == 1 then
-                    cluster.stem_down = true
-                else
-                    cluster.stem_down = false
-                end
-            else
-                cluster.stem_down = chord_stem_down
-            end
-            
-            local note_w = 10.8 * s
-            for i = 1, #cnotes do
-                local vn = cnotes[i]
-                if i > 1 then
-                    local prev_vn = cnotes[i - 1]
-                    local step_diff = vn.dstep - prev_vn.dstep
-                    if step_diff == 0 then
-                        vn.head_x_offset = prev_vn.head_x_offset + 11.5 * s
-                    elseif step_diff == 1 then
-                        if chord_stem_down then
-                            if prev_vn.head_x_offset == 0 then prev_vn.head_x_offset = -note_w else vn.head_x_offset = note_w end
+                    local beam_col = Constants.COLORS.beam_color
+                    if all_ghost then
+                        local b_v = (bgroup[1].orig and bgroup[1].orig.chan or 0) + 1
+                        if (state.voice_color_mode ~= false) and b_v > 1 then
+                            beam_col = (Constants.get_voice_color(b_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
                         else
-                            if prev_vn.head_x_offset == 0 then vn.head_x_offset = note_w else vn.head_x_offset = 0 end
+                            beam_col = global_ghost_col
+                        end
+                    end
+                    local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, is_polyphonic_track)
+                    for k in pairs(bmap) do beamed_notes_map[k] = true end
+                end
+            end
+            
+            -- Synchronize chord clusters with beamed stem directions
+            for _, cluster in ipairs(chord_clusters) do
+                if cluster.start_qn >= vis_min_qn - 4.0 and cluster.start_qn <= vis_max_qn + 4.0 then
+                    for _, cvn in ipairs(cluster.notes) do
+                        if cvn.beam_stem_down ~= nil then
+                            cluster.stem_down = cvn.beam_stem_down
+                            break
                         end
                     end
                 end
-                vn.vis_nx = vn.nominal_nx + vn.head_x_offset
             end
+        else
+            -- Fallback / Live Drag path: un-cached dynamic calculation
+            local live_ties
+            visual_notes, live_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn)
+            for _, bt in ipairs(live_ties) do table.insert(all_bar_ties, bt) end
             
-            local acc_notes = {}
-            for _, vn in ipairs(cnotes) do
-                if vn.acc ~= 0 and (not vn.is_segment or vn.seg_idx == 1) then table.insert(acc_notes, vn) end
-            end
-            if #acc_notes > 1 then
-                for ai = 1, #acc_notes do
-                    if ai % 2 == 0 then acc_notes[ai].acc_x_offset = -10.0 * s end
-                end
-            end
-        end
-        
-        -- Collision spacing adjustment (only within the same staff and measure!)
-        for ci = 2, #chord_clusters do
-            local cur_c = chord_clusters[ci]
-            local cur_m = math.floor(cur_c.start_qn / bpi)
-            
-            -- 1. Check if this cluster is simultaneous with any earlier cluster on the same staff
-            local sim_c = nil
-            for pi = ci - 1, 1, -1 do
-                local prev = chord_clusters[pi]
-                if prev.staff == cur_c.staff and math.abs(cur_c.start_qn - prev.start_qn) < 0.03 then
-                    sim_c = prev
-                    break
+            if filter_chan ~= nil then
+                if state.hide_inactive_voices then
+                    local filtered_vn = {}
+                    for _, vn in ipairs(visual_notes) do
+                        if vn.orig and (vn.orig.chan or 0) == filter_chan then
+                            table.insert(filtered_vn, vn)
+                        end
+                    end
+                    visual_notes = filtered_vn
+                else
+                    for _, vn in ipairs(visual_notes) do
+                        if vn.orig and (vn.orig.chan or 0) ~= filter_chan then
+                            vn.is_ghost_voice = true
+                        end
+                    end
                 end
             end
             
-            if sim_c then
-                -- Align nominal_nx with simultaneous cluster so both voices share the beat axis
-                local sim_base_nx = sim_c.notes[1].nominal_nx
-                for _, cvn in ipairs(cur_c.notes) do
-                    cvn.nominal_nx = sim_base_nx
-                    cvn.vis_nx = cvn.nominal_nx + (cvn.head_x_offset or 0)
+            for _, vn in ipairs(visual_notes) do
+                local pref_acc = Engraver.get_note_preferred_accidental(vn, state)
+                local eff_pitch, active_oct, oct_shift = Engraver.get_note_effective_pitch(vn.pitch, vn.start_qn, tdata.guid, state)
+                
+                local note_item = vn.item_obj or (vn.orig and vn.orig.item_obj) or vn.item or (vn.orig and vn.orig.item)
+                local note_clef = track_clef
+                local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[note_clef]
+                local is_unpitched = cdef and cdef.unpitched
+                local note_key_idx = resolve_effective_key(state, tdata, note_item, vn.start_qn)
+                
+                local force_staff = nil
+                if is_grand then
+                    local manual_st = Engraver.get_note_staff(vn, state)
+                    if manual_st == "treble" or manual_st == "bass" then
+                        force_staff = manual_st
+                    end
                 end
                 
-                -- Check for pitch collisions against all earlier simultaneous clusters (unisons or seconds: |dstep_a - dstep_b| <= 1)
-                local pitch_collides = false
+                local ny, in_treble_b, dstep, acc, staff_target = Engraver.pitch_to_canvas_y(eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, note_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff)
+                vn.nominal_ny = ny
+                vn.in_staff = staff_target
+                vn.in_treble = in_treble_b
+                vn.dstep = dstep
+                vn.acc = is_unpitched and 0 or acc
+                vn.notehead_type = is_unpitched and Constants.get_percussion_notehead_type(eff_pitch) or "standard"
+                vn.is_unpitched = is_unpitched
+                vn.active_octave_line = active_oct
+                
+                local display_qn = vn.start_qn
+                if state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001 then
+                    local dq_grid = state.display_quantize_grid
+                    display_qn = math.floor((vn.start_qn / dq_grid) + 0.5) * dq_grid
+                end
+                vn.nominal_nx = Engraver.qn_to_canvas_x(display_qn, margin_left, s, qn_per_measure, measure_map)
+                vn.head_x_offset = 0
+                vn.acc_x_offset = 0
+                vn.vis_nx = vn.nominal_nx
+                vn.vis_ny = vn.nominal_ny
+            end
+            
+            local staff_order = { treble = 1, mid = 2, alto = 2, bass = 3 }
+            table.sort(visual_notes, function(a, b)
+                local sa = a.in_staff or (a.in_treble and "treble" or "bass")
+                local sb = b.in_staff or (b.in_treble and "treble" or "bass")
+                local oa = staff_order[sa] or (a.in_treble and 1 or 3)
+                local ob = staff_order[sb] or (b.in_treble and 1 or 3)
+                if oa ~= ob then return oa < ob end
+                if math.abs(a.start_qn - b.start_qn) > 0.02 then return a.start_qn < b.start_qn end
+                return a.pitch < b.pitch
+            end)
+            
+            local track_voices_set = {}
+            for _, vn in ipairs(visual_notes) do
+                local v = (vn.orig and vn.orig.chan) or 0
+                track_voices_set[v] = true
+            end
+            local track_voice_count = 0
+            for _ in pairs(track_voices_set) do track_voice_count = track_voice_count + 1 end
+            is_polyphonic_track = (track_voice_count > 1)
+
+            chord_clusters = {}
+            local cur_cluster = nil
+            for _, vn in ipairs(visual_notes) do
+                local vn_v = (vn.orig and vn.orig.chan) or 0
+                local vn_staff = vn.in_staff or (vn.in_treble and "treble" or "bass")
+                local is_arp = (vn.orig and (vn.orig.arpeggio or vn.orig.articulation == "arpeggio"))
+                local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.08 or 0.03
+                local same_staff = cur_cluster and (cur_cluster.staff == vn_staff)
+                local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < time_tol)
+                local same_voice = cur_cluster and (cur_cluster.voice == vn_v)
+                if not (same_staff and same_time and same_voice) then
+                    cur_cluster = {
+                        start_qn     = vn.start_qn,
+                        staff        = vn_staff,
+                        in_treble    = vn.in_treble,
+                        voice        = vn_v,
+                        notes        = {},
+                        is_arpeggio  = (is_arp == true or is_arp == "up" or is_arp == "down"),
+                        arpeggio_dir = (vn.orig and vn.orig.arpeggio) or "up"
+                    }
+                    table.insert(chord_clusters, cur_cluster)
+                end
+                if is_arp then
+                    cur_cluster.is_arpeggio = true
+                    if vn.orig and vn.orig.arpeggio then cur_cluster.arpeggio_dir = vn.orig.arpeggio end
+                end
+                table.insert(cur_cluster.notes, vn)
+                vn.chord_cluster = cur_cluster
+            end
+            
+            for _, cluster in ipairs(chord_clusters) do
+                local cnotes = cluster.notes
+                local max_dist = -1
+                local chord_stem_down = false
+                local manual_stem_dir = nil
+                for _, vn in ipairs(cnotes) do
+                    local sdir = Engraver.get_note_stem_direction(vn, state)
+                    if sdir then manual_stem_dir = sdir end
+                    local mid_step = 4
+                    local dist = math.abs(vn.dstep - mid_step)
+                    if dist > max_dist then
+                        max_dist = dist
+                        chord_stem_down = (vn.dstep >= mid_step)
+                    end
+                end
+                if manual_stem_dir == "up" then
+                    cluster.stem_down = false
+                elseif manual_stem_dir == "down" then
+                    cluster.stem_down = true
+                elseif is_polyphonic_track then
+                    if (cluster.voice or 0) % 2 == 1 then
+                        cluster.stem_down = true
+                    else
+                        cluster.stem_down = false
+                    end
+                else
+                    cluster.stem_down = chord_stem_down
+                end
+                
+                local note_w = 10.8 * s
+                for i = 1, #cnotes do
+                    local vn = cnotes[i]
+                    if i > 1 then
+                        local prev_vn = cnotes[i - 1]
+                        local step_diff = vn.dstep - prev_vn.dstep
+                        if step_diff == 0 then
+                            vn.head_x_offset = prev_vn.head_x_offset + 11.5 * s
+                        elseif step_diff == 1 then
+                            if cluster.stem_down then
+                                if prev_vn.head_x_offset == 0 then prev_vn.head_x_offset = -note_w else vn.head_x_offset = note_w end
+                            else
+                                if prev_vn.head_x_offset == 0 then vn.head_x_offset = note_w else vn.head_x_offset = 0 end
+                            end
+                        end
+                    end
+                    vn.vis_nx = vn.nominal_nx + vn.head_x_offset
+                end
+                
+                local acc_notes = {}
+                for _, vn in ipairs(cnotes) do
+                    if vn.acc ~= 0 and (not vn.is_segment or vn.seg_idx == 1) then table.insert(acc_notes, vn) end
+                end
+                if #acc_notes > 1 then
+                    for ai = 1, #acc_notes do
+                        if ai % 2 == 0 then acc_notes[ai].acc_x_offset = -10.0 * s end
+                    end
+                end
+            end
+            
+            for ci = 2, #chord_clusters do
+                local cur_c = chord_clusters[ci]
+                local cur_m = math.floor(cur_c.start_qn / bpi)
+                local sim_c = nil
                 for pi = ci - 1, 1, -1 do
                     local prev = chord_clusters[pi]
                     if prev.staff == cur_c.staff and math.abs(cur_c.start_qn - prev.start_qn) < 0.03 then
-                        for _, cvn in ipairs(cur_c.notes) do
-                            for _, pvn in ipairs(prev.notes) do
-                                if math.abs(cvn.dstep - pvn.dstep) <= 1 then
-                                    pitch_collides = true
-                                    break
-                                end
-                            end
-                            if pitch_collides then break end
-                        end
+                        sim_c = prev
+                        break
                     end
-                    if pitch_collides then break end
                 end
-                
-                if pitch_collides then
-                    local note_w = 11.5 * s
+                if sim_c then
+                    local sim_base_nx = sim_c.notes[1].nominal_nx
                     for _, cvn in ipairs(cur_c.notes) do
-                        cvn.head_x_offset = (cvn.head_x_offset or 0) + note_w
-                        cvn.nominal_nx = cvn.nominal_nx + note_w
+                        cvn.nominal_nx = sim_base_nx
                         cvn.vis_nx = cvn.nominal_nx + (cvn.head_x_offset or 0)
                     end
-                end
-            end
-            
-            -- 2. Sequential spacing adjustment against earlier temporal notes on the same staff and measure
-            local prev_max_x = nil
-            local max_prev_start_qn = -1
-            for pi = ci - 1, 1, -1 do
-                local prev = chord_clusters[pi]
-                if prev.staff == cur_c.staff and (cur_c.start_qn - prev.start_qn) >= 0.03 then
-                    local prev_m = math.floor(prev.start_qn / bpi)
-                    if prev_m == cur_m then
-                        if prev.start_qn > max_prev_start_qn then
-                            max_prev_start_qn = prev.start_qn
+                    local pitch_collides = false
+                    for pi = ci - 1, 1, -1 do
+                        local prev = chord_clusters[pi]
+                        if prev.staff == cur_c.staff and math.abs(cur_c.start_qn - prev.start_qn) < 0.03 then
+                            for _, cvn in ipairs(cur_c.notes) do
+                                for _, pvn in ipairs(prev.notes) do
+                                    if math.abs(cvn.dstep - pvn.dstep) <= 1 then
+                                        pitch_collides = true
+                                        break
+                                    end
+                                end
+                                if pitch_collides then break end
+                            end
                         end
-                        if math.abs(prev.start_qn - max_prev_start_qn) < 0.03 then
-                            for _, pvn in ipairs(prev.notes) do
-                                local px = pvn.vis_nx
-                                if Engraver.is_dotted_duration(pvn.dur_qn) then px = px + 8 * s end
-                                if not prev_max_x or px > prev_max_x then prev_max_x = px end
+                        if pitch_collides then break end
+                    end
+                    if pitch_collides then
+                        local note_w = 11.5 * s
+                        for _, cvn in ipairs(cur_c.notes) do
+                            cvn.head_x_offset = (cvn.head_x_offset or 0) + note_w
+                            cvn.nominal_nx = cvn.nominal_nx + note_w
+                            cvn.vis_nx = cvn.nominal_nx + (cvn.head_x_offset or 0)
+                        end
+                    end
+                end
+                
+                local prev_max_x = nil
+                local max_prev_start_qn = -1
+                for pi = ci - 1, 1, -1 do
+                    local prev = chord_clusters[pi]
+                    if prev.staff == cur_c.staff and (cur_c.start_qn - prev.start_qn) >= 0.03 then
+                        local prev_m = math.floor(prev.start_qn / bpi)
+                        if prev_m == cur_m then
+                            if prev.start_qn > max_prev_start_qn then max_prev_start_qn = prev.start_qn end
+                            if math.abs(prev.start_qn - max_prev_start_qn) < 0.03 then
+                                for _, pvn in ipairs(prev.notes) do
+                                    local px = pvn.vis_nx
+                                    if Engraver.is_dotted_duration(pvn.dur_qn) then px = px + 8 * s end
+                                    if not prev_max_x or px > prev_max_x then prev_max_x = px end
+                                end
                             end
                         end
                     end
                 end
-            end
-            
-            if prev_max_x then
-                local cur_min_x = cur_c.notes[1].vis_nx
-                for _, cvn in ipairs(cur_c.notes) do
-                    local left_edge = cvn.vis_nx
-                    if cvn.acc ~= 0 then left_edge = cvn.vis_nx - 11.5 * s + cvn.acc_x_offset end
-                    if left_edge < cur_min_x then cur_min_x = left_edge end
-                end
-                local min_gap = 14 * s
-                if cur_min_x < prev_max_x + min_gap then
-                    local push = (prev_max_x + min_gap) - cur_min_x
-                    local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or (margin_left + (cur_m + 1) * measure_w)
-                    local max_allowed_x = m_end_x - 18 * s -- Safety clearance before right barline
+                if prev_max_x then
+                    local cur_min_x = cur_c.notes[1].vis_nx
                     for _, cvn in ipairs(cur_c.notes) do
-                        cvn.vis_nx = math.min(max_allowed_x, cvn.vis_nx + push)
-                        cvn.nominal_nx = cvn.vis_nx - (cvn.head_x_offset or 0)
+                        local left_edge = cvn.vis_nx
+                        if cvn.acc ~= 0 then left_edge = cvn.vis_nx - 11.5 * s + cvn.acc_x_offset end
+                        if left_edge < cur_min_x then cur_min_x = left_edge end
+                    end
+                    local min_gap = 14 * s
+                    if cur_min_x < prev_max_x + min_gap then
+                        local push = (prev_max_x + min_gap) - cur_min_x
+                        local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or (margin_left + (cur_m + 1) * measure_w)
+                        local max_allowed_x = m_end_x - 18 * s
+                        for _, cvn in ipairs(cur_c.notes) do
+                            cvn.vis_nx = math.min(max_allowed_x, cvn.vis_nx + push)
+                            cvn.nominal_nx = cvn.vis_nx - (cvn.head_x_offset or 0)
+                        end
                     end
                 end
             end
-        end
-        
-        -- Register note rendering data
-        for _, vn in ipairs(visual_notes) do
-            local rdata = {
-                pitch = vn.pitch, start_qn = vn.start_qn, end_qn = vn.end_qn,
-                dur_qn = vn.dur_qn, nx = vn.vis_nx, ny = vn.vis_ny,
-                in_treble = vn.in_treble, in_staff = vn.in_staff, dstep = vn.dstep, stem_down = false,
-                stem_x = vn.vis_nx, stem_end_y = vn.vis_ny, flag_count = Engraver.get_flag_count(vn.dur_qn),
-                key = vn.key, note = vn.orig, orig = vn.orig, track = tdata.track,
-                track_guid = tdata.guid,
-                item = vn.orig and vn.orig.item, take = vn.orig and vn.orig.take,
-                idx = vn.orig and vn.orig.idx, is_segment = vn.is_segment,
-                chan = (vn.orig and vn.orig.chan) or (vn.chan or 0),
-                is_ghost_voice = vn.is_ghost_voice
-            }
-            table.insert(all_note_render_data, rdata)
-            all_note_render_by_key[vn.key] = rdata
-        end
-        
-        -- ======================================================================
-        -- STANDARD-COMPLIANT BEAMING CALCULATION & NOTE FILTER
-        -- ======================================================================
-        -- Notes from repeated measures are completely hidden from visual rendering:
-        local display_notes = {}
-        for _, vn in ipairs(visual_notes) do
-            local note_bar = math.floor((vn.start_qn + 0.001) / bpi)
-            if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
-                table.insert(display_notes, vn)
+            
+            for _, vn in ipairs(visual_notes) do
+                local rdata = {
+                    pitch = vn.pitch, start_qn = vn.start_qn, end_qn = vn.end_qn,
+                    dur_qn = vn.dur_qn, nx = vn.vis_nx, ny = vn.vis_ny,
+                    in_treble = vn.in_treble, in_staff = vn.in_staff, dstep = vn.dstep, stem_down = false,
+                    stem_x = vn.vis_nx, stem_end_y = vn.vis_ny, flag_count = Engraver.get_flag_count(vn.dur_qn),
+                    key = vn.key, note = vn.orig, orig = vn.orig, track = tdata.track,
+                    track_guid = tdata.guid,
+                    item = vn.orig and vn.orig.item, take = vn.orig and vn.orig.take,
+                    idx = vn.orig and vn.orig.idx, is_segment = vn.is_segment,
+                    chan = (vn.orig and vn.orig.chan) or (vn.chan or 0),
+                    is_ghost_voice = vn.is_ghost_voice
+                }
+                table.insert(all_note_render_data, rdata)
+                all_note_render_by_key[vn.key] = rdata
             end
-        end
-
-        local beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping)
-        local beamed_notes_map = {}
-        for _, bgroup in ipairs(beam_groups) do
-            local all_ghost = true
-            for _, bvn in ipairs(bgroup) do
-                if not bvn.is_ghost_voice then all_ghost = false break end
-            end
-            local beam_col = Constants.COLORS.beam_color
-            if all_ghost then
-                local b_v = (bgroup[1].orig and bgroup[1].orig.chan or 0) + 1
-                if (state.voice_color_mode ~= false) and b_v > 1 then
-                    beam_col = (Constants.get_voice_color(b_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
-                else
-                    beam_col = global_ghost_col
+            
+            for _, vn in ipairs(visual_notes) do
+                local note_bar = math.floor((vn.start_qn + 0.001) / bpi)
+                if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
+                    table.insert(display_notes, vn)
                 end
             end
-            local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, is_polyphonic_track)
-            for k in pairs(bmap) do beamed_notes_map[k] = true end
-        end
-        
-        -- Synchronize chord clusters with beamed stem directions before drawing noteheads & articulations
-        for _, cluster in ipairs(chord_clusters) do
-            for _, cvn in ipairs(cluster.notes) do
-                if cvn.beam_stem_down ~= nil then
-                    cluster.stem_down = cvn.beam_stem_down
-                    break
+            beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping)
+            for _, bgroup in ipairs(beam_groups) do
+                local all_ghost = true
+                for _, bvn in ipairs(bgroup) do
+                    if not bvn.is_ghost_voice then all_ghost = false break end
+                end
+                local beam_col = Constants.COLORS.beam_color
+                if all_ghost then
+                    local b_v = (bgroup[1].orig and bgroup[1].orig.chan or 0) + 1
+                    if (state.voice_color_mode ~= false) and b_v > 1 then
+                        beam_col = (Constants.get_voice_color(b_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                    else
+                        beam_col = global_ghost_col
+                    end
+                end
+                local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, is_polyphonic_track)
+                for k in pairs(bmap) do beamed_notes_map[k] = true end
+            end
+            
+            for _, cluster in ipairs(chord_clusters) do
+                for _, cvn in ipairs(cluster.notes) do
+                    if cvn.beam_stem_down ~= nil then
+                        cluster.stem_down = cvn.beam_stem_down
+                        break
+                    end
                 end
             end
         end
@@ -2861,143 +3244,133 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local bar_btm_y = (last_staff_bottom_y or (score_bottom_y - 40 * s)) + (4 * s)
     local bar_col = Constants.COLORS.barline or 0x000000FF
     
+    local visible_tracks_data = {}
+    for t_idx, td in ipairs(active_tracks_data) do
+        if td.is_visible_vertically and td.staff_top_y and td.staff_bottom_y then
+            table.insert(visible_tracks_data, { tdata = td, t_idx = t_idx })
+        end
+    end
+    
     local start_m = math.max(0, vis_min_measure - 1)
     local end_m = math.min(total_measures, vis_max_measure + 1)
+    local bar_num_col = Constants.COLORS.bar_num or Constants.COLORS.notehead_black or 0x111111FF
+    local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 47.5)) * s
+    local bar_num_off_x = (state.bar_num_offset_x or 0.0) * s
+    local bar_num_sz = (state.bar_num_size or 20.0) * s
+    local has_add_text_ex = (reaper.APIExists("ImGui_DrawList_AddTextEx") and font_main ~= nil)
+
     for m = start_m, end_m do
         local mx = (measure_map and measure_map.starts and measure_map.starts[m]) or (margin_left + (m * measure_w))
         if mx >= cull_min_x - 10 * s and mx <= cull_max_x + 10 * s and mx <= staff_end_x then
             local is_key_change = (measure_map and measure_map.key_changes and measure_map.key_changes[m])
-            
-            -- Barline per instrument (only within respective staff and visible track)
-            for t_idx, tdata in ipairs(active_tracks_data) do
-                if tdata.is_visible_vertically and tdata.staff_top_y and tdata.staff_bottom_y then
-                    local trk_info = is_key_change and is_key_change.tracks and (is_key_change.tracks[tdata] or is_key_change.tracks[tdata.track] or (tdata.guid and is_key_change.tracks[tdata.guid]) or is_key_change.tracks[t_idx])
-                    local has_this_trk_change = trk_info and (trk_info.curr_idx ~= trk_info.prev_idx)
-                    if (is_key_change and m > 0) and has_this_trk_change then
-                        -- Thin double barline before key change per Gould/Read
-                        reaper.ImGui_DrawList_AddLine(draw_list, mx - 4.0 * s, tdata.staff_top_y, mx - 4.0 * s, tdata.staff_bottom_y, bar_col, 1.8 * s)
-                        reaper.ImGui_DrawList_AddLine(draw_list, mx, tdata.staff_top_y, mx, tdata.staff_bottom_y, bar_col, 1.8 * s)
-                    else
-                        reaper.ImGui_DrawList_AddLine(draw_list, mx, tdata.staff_top_y, mx, tdata.staff_bottom_y, bar_col, 1.8 * s)
-                    end
-                end
-            end
-            
-            -- Draw key change signature directly following the double barline
-            if is_key_change and m > 0 then
-                local kx = mx + 5.0 * s
-                for t_idx, tdata in ipairs(active_tracks_data) do
-                    if tdata.is_visible_vertically and tdata.staff_bottom_y then
-                        local trk_info = is_key_change.tracks and (is_key_change.tracks[tdata] or is_key_change.tracks[tdata.track] or (tdata.guid and is_key_change.tracks[tdata.guid]) or is_key_change.tracks[t_idx])
-                        local new_k = trk_info and trk_info.curr_idx
-                        local prev_k = trk_info and trk_info.prev_idx or 0
-                        local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[tdata.clef]
-                        local is_unpitched = cdef and cdef.unpitched
-                        
-                        if not is_unpitched and new_k ~= nil and new_k ~= prev_k then
-                            local l_spacing = tdata.line_spacing or (8.0 * s)
-                            local cancel_k = (new_k == 0 and prev_k ~= 0) and prev_k or nil
-                            if tdata.is_harp then
-                                Engraver.draw_key_signature(draw_list, new_k, kx, tdata.treble_bottom_y, l_spacing, s, bar_col, font_music, "treble", cancel_k)
-                                Engraver.draw_key_signature(draw_list, new_k, kx, tdata.mid_bottom_y, l_spacing, s, bar_col, font_music, "alto", cancel_k)
-                                Engraver.draw_key_signature(draw_list, new_k, kx, tdata.bass_bottom_y, l_spacing, s, bar_col, font_music, "bass", cancel_k)
-                            elseif tdata.is_grand then
-                                Engraver.draw_key_signature(draw_list, new_k, kx, tdata.treble_bottom_y, l_spacing, s, bar_col, font_music, "treble", cancel_k)
-                                Engraver.draw_key_signature(draw_list, new_k, kx, tdata.bass_bottom_y, l_spacing, s, bar_col, font_music, "bass", cancel_k)
-                            else
-                                local s_clef = (tdata.clef == "bass" and "bass") or (tdata.clef == "alto" and "alto") or "treble"
-                                Engraver.draw_key_signature(draw_list, new_k, kx, tdata.staff_bottom_y, l_spacing, s, bar_col, font_music, s_clef, cancel_k)
-                            end
-                        end
-                    end
-                end
-            end
-            -- Bar number above each staff system
-            if (state.show_bar_numbers ~= false) then
-                local bar_num_col = Constants.COLORS.bar_num or Constants.COLORS.notehead_black or 0x111111FF
-                local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 47.5)) * s
-                local bar_num_off_x = (state.bar_num_offset_x or 0.0) * s
-                local bar_num_sz = (state.bar_num_size or 20.0) * s
-                for _, tdata in ipairs(active_tracks_data) do
-                    if tdata.is_visible_vertically and tdata.staff_top_y then
-                        local bx = mx + 4*s + bar_num_off_x
-                        local by = tdata.staff_top_y - bar_num_off_y
-                        local drew = false
-                        if reaper.APIExists("ImGui_DrawList_AddTextEx") and font_main then
-                            local ok = pcall(reaper.ImGui_DrawList_AddTextEx, draw_list, font_main, bar_num_sz, bx, by, bar_num_col, tostring(m + 1))
-                            drew = ok
-                        end
-                        if not drew then
-                            reaper.ImGui_DrawList_AddText(draw_list, bx, by, bar_num_col, tostring(m + 1))
-                        end
-                    end
-                end
-            end
-            
-            -- Measure repeat mark (simile / repeat-bar %, repeat1Bar)
             local mx_next = (measure_map and measure_map.starts and measure_map.starts[m + 1]) or (margin_left + ((m + 1) * measure_w))
             local rep_cx = (mx + mx_next) / 2
             
-            for _, tdata in ipairs(active_tracks_data) do
-                if tdata.is_visible_vertically and tdata.staff_bottom_y then
-                    local has_rep, rep_mark = RepeatService.has_repeat_mark(state, tdata.guid, m)
-                    if has_rep then
+            for _, vtr in ipairs(visible_tracks_data) do
+                local tdata = vtr.tdata
+                local t_idx = vtr.t_idx
+                
+                -- 1. Barline per instrument (only within respective staff and visible track)
+                local trk_info = is_key_change and is_key_change.tracks and (is_key_change.tracks[tdata] or is_key_change.tracks[tdata.track] or (tdata.guid and is_key_change.tracks[tdata.guid]) or is_key_change.tracks[t_idx])
+                local has_this_trk_change = trk_info and (trk_info.curr_idx ~= trk_info.prev_idx)
+                if (is_key_change and m > 0) and has_this_trk_change then
+                    reaper.ImGui_DrawList_AddLine(draw_list, mx - 4.0 * s, tdata.staff_top_y, mx - 4.0 * s, tdata.staff_bottom_y, bar_col, 1.8 * s)
+                    reaper.ImGui_DrawList_AddLine(draw_list, mx, tdata.staff_top_y, mx, tdata.staff_bottom_y, bar_col, 1.8 * s)
+                else
+                    reaper.ImGui_DrawList_AddLine(draw_list, mx, tdata.staff_top_y, mx, tdata.staff_bottom_y, bar_col, 1.8 * s)
+                end
+                
+                -- 2. Draw key change signature directly following the double barline
+                if is_key_change and m > 0 then
+                    local new_k = trk_info and trk_info.curr_idx
+                    local prev_k = trk_info and trk_info.prev_idx or 0
+                    local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[tdata.clef]
+                    local is_unpitched = cdef and cdef.unpitched
+                    
+                    if not is_unpitched and new_k ~= nil and new_k ~= prev_k then
+                        local kx = mx + 5.0 * s
                         local l_spacing = tdata.line_spacing or (8.0 * s)
-                        local rep_cy
-                        if tdata.is_grand then
-                            rep_cy = (tdata.treble_bottom_y or (tdata.staff_top_y + 32 * s)) - (2 * l_spacing)
+                        local cancel_k = (new_k == 0 and prev_k ~= 0) and prev_k or nil
+                        if tdata.is_harp then
+                            Engraver.draw_key_signature(draw_list, new_k, kx, tdata.treble_bottom_y, l_spacing, s, bar_col, font_music, "treble", cancel_k)
+                            Engraver.draw_key_signature(draw_list, new_k, kx, tdata.mid_bottom_y, l_spacing, s, bar_col, font_music, "alto", cancel_k)
+                            Engraver.draw_key_signature(draw_list, new_k, kx, tdata.bass_bottom_y, l_spacing, s, bar_col, font_music, "bass", cancel_k)
+                        elseif tdata.is_grand then
+                            Engraver.draw_key_signature(draw_list, new_k, kx, tdata.treble_bottom_y, l_spacing, s, bar_col, font_music, "treble", cancel_k)
+                            Engraver.draw_key_signature(draw_list, new_k, kx, tdata.bass_bottom_y, l_spacing, s, bar_col, font_music, "bass", cancel_k)
                         else
-                            rep_cy = tdata.staff_bottom_y - (2 * l_spacing)
+                            local s_clef = (tdata.clef == "bass" and "bass") or (tdata.clef == "alto" and "alto") or "treble"
+                            Engraver.draw_key_signature(draw_list, new_k, kx, tdata.staff_bottom_y, l_spacing, s, bar_col, font_music, s_clef, cancel_k)
                         end
+                    end
+                end
+                
+                -- 3. Bar number above each staff system (direct call, zero pcall overhead)
+                local by = tdata.staff_top_y - bar_num_off_y
+                if (state.show_bar_numbers ~= false) then
+                    local bx = mx + 4*s + bar_num_off_x
+                    if has_add_text_ex then
+                        reaper.ImGui_DrawList_AddTextEx(draw_list, font_main, bar_num_sz, bx, by, bar_num_col, tostring(m + 1))
+                    else
+                        reaper.ImGui_DrawList_AddText(draw_list, bx, by, bar_num_col, tostring(m + 1))
+                    end
+                end
+                
+                -- 4. Measure repeat mark (simile / repeat-bar %, repeat1Bar)
+                local has_rep, rep_mark = RepeatService.has_repeat_mark(state, tdata.guid, m)
+                if has_rep then
+                    local l_spacing = tdata.line_spacing or (8.0 * s)
+                    local rep_cy
+                    if tdata.is_grand then
+                        rep_cy = (tdata.treble_bottom_y or (tdata.staff_top_y + 32 * s)) - (2 * l_spacing)
+                    else
+                        rep_cy = tdata.staff_bottom_y - (2 * l_spacing)
+                    end
+                    
+                    local is_rep_hov = is_hovered and (math.abs(mouse_x - rep_cx) <= 20 * s and math.abs(mouse_y - rep_cy) <= 20 * s)
+                    if is_rep_hov then
+                        reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+                        reaper.ImGui_DrawList_AddCircle(draw_list, rep_cx, rep_cy, 18 * s, Constants.COLORS.selection_gold, 0, 2.0 * s)
+                        local src_m = RepeatService.find_source_measure(state, tdata.guid, m)
+                        local src_info = src_m and string.format("Repeats Bar %d", src_m + 1) or "No source bar"
+                        reaper.ImGui_SetTooltip(ctx, string.format("Bar %d: Repeat Mark (%%)\n%s\nRight-click for options", m + 1, src_info))
                         
-                        local is_rep_hov = is_hovered and (math.abs(mouse_x - rep_cx) <= 20 * s and math.abs(mouse_y - rep_cy) <= 20 * s)
-                        if is_rep_hov then
-                            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
-                            reaper.ImGui_DrawList_AddCircle(draw_list, rep_cx, rep_cy, 18 * s, Constants.COLORS.selection_gold, 0, 2.0 * s)
-                            local src_m = RepeatService.find_source_measure(state, tdata.guid, m)
-                            local src_info = src_m and string.format("Repeats Bar %d", src_m + 1) or "No source bar"
-                            reaper.ImGui_SetTooltip(ctx, string.format("Bar %d: Repeat Mark (%%)\n%s\nRight-click for options", m + 1, src_info))
-                            
-                            if reaper.ImGui_IsMouseClicked(ctx, 1) then
-                                state.context_repeat_mark = rep_mark
-                                state.context_repeat_track = tdata.track
-                                reaper.ImGui_OpenPopup(ctx, "repeat_mark_context_popup")
-                            end
-                        end
-                        
-                        local rep_col = is_rep_hov and Constants.COLORS.selection_gold or (Constants.COLORS.notehead_black or 0x111111FF)
-                        Engraver.draw_repeat_mark(draw_list, rep_cx, rep_cy, s, rep_col, font_music, rep_mark.type or "1bar")
-                        
-                        if tdata.is_grand and tdata.bass_bottom_y then
-                            local rep_cy_bass = tdata.bass_bottom_y - (2 * l_spacing)
-                            Engraver.draw_repeat_mark(draw_list, rep_cx, rep_cy_bass, s, rep_col, font_music, rep_mark.type or "1bar")
+                        if reaper.ImGui_IsMouseClicked(ctx, 1) then
+                            state.context_repeat_mark = rep_mark
+                            state.context_repeat_track = tdata.track
+                            reaper.ImGui_OpenPopup(ctx, "repeat_mark_context_popup")
                         end
                     end
                     
-                    -- Context menu for measure (right-click in measure header area strictly above the staff)
-                    local bar_num_off_y = (50.0 + (state.bar_num_offset_y or 47.5)) * s
-                    local bar_num_sz = (state.bar_num_size or 20.0) * s
-                    local by = tdata.staff_top_y - bar_num_off_y
-                    local is_bar_hdr_hov = is_hovered
-                        and not note_right_clicked_this_frame
-                        and not closest_hovered_vn
-                        and not note_hovered_this_frame
-                        and not dyn_hovered_this_frame
-                        and not hairpin_hovered_this_frame
-                        and not art_hovered_this_frame
-                        and not text_item_hovered_this_frame
-                        and not state.hovered_fermata
-                        and not state.hovered_rehearsal_mark
-                        and not state.hovered_portamento
-                        and not state.hovered_glissando
-                        and (mouse_x >= mx and mouse_x <= mx_next)
-                        and (mouse_y >= (by - 8 * s) and mouse_y <= (by + bar_num_sz + 8 * s))
-                        and (mouse_y < (tdata.staff_top_y - 25 * s))
-                    if is_bar_hdr_hov and reaper.ImGui_IsMouseClicked(ctx, 1) then
-                        state.context_measure = m
-                        state.context_measure_track = tdata.track
-                        reaper.ImGui_OpenPopup(ctx, "measure_header_context_popup")
+                    local rep_col = is_rep_hov and Constants.COLORS.selection_gold or (Constants.COLORS.notehead_black or 0x111111FF)
+                    Engraver.draw_repeat_mark(draw_list, rep_cx, rep_cy, s, rep_col, font_music, rep_mark.type or "1bar")
+                    
+                    if tdata.is_grand and tdata.bass_bottom_y then
+                        local rep_cy_bass = tdata.bass_bottom_y - (2 * l_spacing)
+                        Engraver.draw_repeat_mark(draw_list, rep_cx, rep_cy_bass, s, rep_col, font_music, rep_mark.type or "1bar")
                     end
+                end
+                
+                -- 5. Context menu for measure header
+                local is_bar_hdr_hov = is_hovered
+                    and not note_right_clicked_this_frame
+                    and not closest_hovered_vn
+                    and not note_hovered_this_frame
+                    and not dyn_hovered_this_frame
+                    and not hairpin_hovered_this_frame
+                    and not art_hovered_this_frame
+                    and not text_item_hovered_this_frame
+                    and not state.hovered_fermata
+                    and not state.hovered_rehearsal_mark
+                    and not state.hovered_portamento
+                    and not state.hovered_glissando
+                    and (mouse_x >= mx and mouse_x <= mx_next)
+                    and (mouse_y >= (by - 8 * s) and mouse_y <= (by + bar_num_sz + 8 * s))
+                    and (mouse_y < (tdata.staff_top_y - 25 * s))
+                if is_bar_hdr_hov and reaper.ImGui_IsMouseClicked(ctx, 1) then
+                    state.context_measure = m
+                    state.context_measure_track = tdata.track
+                    reaper.ImGui_OpenPopup(ctx, "measure_header_context_popup")
                 end
             end
         end

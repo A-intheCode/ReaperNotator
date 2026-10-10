@@ -963,7 +963,8 @@ function MidiService.get_track_items_and_notes(track)
         -- Fast Path O(1): Entire REAPER project state is identical, zero modifications occurred.
         -- Return cached track data immediately without inspecting any items!
         if not cached.rests_cache then cached.rests_cache = {} end
-        return cached.items_info, cached.all_notes, cached.all_dynamics, cached.all_articulations, cached.max_qn, cached.rests_cache
+        if not cached.layout_cache then cached.layout_cache = {} end
+        return cached.items_info, cached.all_notes, cached.all_dynamics, cached.all_articulations, cached.max_qn, cached.rests_cache, cached.layout_cache
     else
         local sigs = cached.items_sig
         for i = 0, num_items - 1 do
@@ -1000,7 +1001,8 @@ function MidiService.get_track_items_and_notes(track)
     if not is_dirty and cached then
         cached.proj_change_cnt = proj_change_cnt
         if not cached.rests_cache then cached.rests_cache = {} end
-        return cached.items_info, cached.all_notes, cached.all_dynamics, cached.all_articulations, cached.max_qn, cached.rests_cache
+        if not cached.layout_cache then cached.layout_cache = {} end
+        return cached.items_info, cached.all_notes, cached.all_dynamics, cached.all_articulations, cached.max_qn, cached.rests_cache, cached.layout_cache
     end
     
     -- Cache miss: re-parse track
@@ -1111,10 +1113,11 @@ function MidiService.get_track_items_and_notes(track)
         all_dynamics = all_dynamics,
         all_articulations = all_articulations,
         max_qn = max_qn,
-        rests_cache = {}
+        rests_cache = {},
+        layout_cache = {}
     }
     
-    return items_info, all_notes, all_dynamics, all_articulations, max_qn, MidiService._track_cache[track_guid].rests_cache
+    return items_info, all_notes, all_dynamics, all_articulations, max_qn, MidiService._track_cache[track_guid].rests_cache, MidiService._track_cache[track_guid].layout_cache
 end
 
 function MidiService.sync_selection_to_reaper(state, active_tracks_data)

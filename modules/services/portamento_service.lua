@@ -1359,8 +1359,10 @@ function PortamentoService.draw_portamentos(ctx, draw_list, state, all_note_rend
 
                 local min_x = math.min(nd1.nx, nd2.nx)
                 local max_x = math.max(nd1.nx, nd2.nx)
+                local min_y = math.min(nd1.ny, nd2.ny) - 20 * s
+                local max_y = math.max(nd1.ny, nd2.ny) + 20 * s
 
-                if max_x >= cull_min_x and min_x <= cull_max_x then
+                if max_x >= cull_min_x and min_x <= cull_max_x and (not cull_min_y or (max_y >= cull_min_y and min_y <= cull_max_y)) then
                     -- Notehead center offsets with clean, visible gap between notehead and line
                     local gap = ((state and state.portamento_default_gap) or 16.0) * s
                     local start_x = nd1.nx + gap

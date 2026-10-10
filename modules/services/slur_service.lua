@@ -1447,7 +1447,9 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                 drawn_slur_pairs[pair_key] = true
             local x_min = math.min(nd1.nx, nd2.nx)
             local x_max = math.max(nd1.nx, nd2.nx)
-            if x_max >= cull_min_x and x_min <= cull_max_x then
+            local y_min = math.min(nd1.ny, nd2.ny) - 30 * s
+            local y_max = math.max(nd1.ny, nd2.ny) + 30 * s
+            if x_max >= cull_min_x and x_min <= cull_max_x and (not cull_min_y or (y_max >= cull_min_y and y_min <= cull_max_y)) then
                 -- Determine curve direction (Elaine Gould standard)
                 -- If both stems up -> curve below (above = false)
                 -- If both stems down -> curve above (above = true)
@@ -1567,7 +1569,9 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
                 drawn_tie_pairs[pair_key] = true
             local x_min = math.min(nd1.nx, nd2.nx)
             local x_max = math.max(nd1.nx, nd2.nx)
-            if x_max >= cull_min_x and x_min <= cull_max_x then
+            local y_min = math.min(nd1.ny, nd2.ny) - 30 * s
+            local y_max = math.max(nd1.ny, nd2.ny) + 30 * s
+            if x_max >= cull_min_x and x_min <= cull_max_x and (not cull_min_y or (y_max >= cull_min_y and y_min <= cull_max_y)) then
                 -- Determine curve direction (Elaine Gould standard)
                 -- If both stems up -> tie is below (above = false)
                 -- If both stems down -> tie is above (above = true)

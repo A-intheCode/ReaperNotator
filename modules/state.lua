@@ -231,6 +231,7 @@ function State.new()
         show_articulation_menu = (reaper.GetExtState("REAPER_Notator", "ShowArticulations") == "true"),
         show_settings = false,
         capturing_action = nil,
+        antialiasing = false,
         
         -- ScoreTools Dynamics Drawer
         show_dynamics = false,
@@ -803,6 +804,7 @@ function State:load_settings()
     self.custom_resource_path = load_str("reaper_resource_path", "")
     self.target_fps = load_num("target_fps", 60)
     self.max_undo_steps = load_num("max_undo_steps", 50)
+    self.antialiasing = load_bool("antialiasing", false)
     local saved_lane = load_str("midi_editor_lane", "velocity")
     if tonumber(saved_lane) then
         self.midi_editor_lane = tonumber(saved_lane)
@@ -985,6 +987,7 @@ function State.save_settings(self)
     save_val("reaper_resource_path", self.custom_resource_path or "")
     save_val("target_fps", math.floor(self.target_fps or 60))
     save_val("max_undo_steps", math.floor(self.max_undo_steps or 50))
+    save_val("antialiasing", self.antialiasing == true)
     save_val("midi_editor_lane", tostring(self.midi_editor_lane or "velocity"))
 
     -- Track Clefs

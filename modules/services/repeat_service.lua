@@ -118,14 +118,21 @@ function RepeatService.save_repeat_marks(state)
 end
 
 function RepeatService.has_repeat_mark(state, track_guid, measure)
-    if not state or not state.repeat_marks or not track_guid or measure == nil then
+    if not state or not state.repeat_marks or #state.repeat_marks == 0 or not track_guid or measure == nil then
         return false, nil
     end
-    for _, rm in ipairs(state.repeat_marks) do
-        if rm.track_guid == track_guid and rm.measure == measure then
-            return true, rm
+    if not state._repeat_marks_map or state._repeat_marks_map_cnt ~= #state.repeat_marks then
+        local map = {}
+        for _, rm in ipairs(state.repeat_marks) do
+            if rm.track_guid and rm.measure ~= nil then
+                map[string.format("%s_%d", rm.track_guid, rm.measure)] = rm
+            end
         end
+        state._repeat_marks_map = map
+        state._repeat_marks_map_cnt = #state.repeat_marks
     end
+    local rm = state._repeat_marks_map[string.format("%s_%d", track_guid, measure)]
+    if rm then return true, rm end
     return false, nil
 end
 
