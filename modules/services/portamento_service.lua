@@ -547,7 +547,11 @@ end
 
 function PortamentoService.load_portamentos(state)
     state.portamento_marks = {}
-    local known = {}
+    local known_ids = {}
+    local known_note_pairs = {}
+    local had_duplicates = false
+    local had_recovered = false
+
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "portamento_marks")
     if raw and raw ~= "" then
         for entry in raw:gmatch("([^;]+)") do
@@ -556,53 +560,73 @@ function PortamentoService.load_portamentos(state)
                 table.insert(parts, p)
             end
             local id = parts[1]
-            if id and id ~= "" and not known[id] then
-                known[id] = true
-                local pm = PortamentoMark.new({
-                    id            = id,
-                    track_guid    = parts[2],
-                    chan          = tonumber(parts[3]) or 0,
-                    n1_key        = parts[4],
-                    pitch1        = tonumber(parts[5]) or 60,
-                    start_qn1     = tonumber(parts[6]) or 0.0,
-                    dur_qn1       = tonumber(parts[7]) or 1.0,
-                    n2_key        = parts[8],
-                    pitch2        = tonumber(parts[9]) or 62,
-                    start_qn2     = tonumber(parts[10]) or 1.0,
-                    dur_qn2       = tonumber(parts[11]) or 1.0,
-                    hold_start_qn = tonumber(parts[12]),
-                    hold_end_qn   = tonumber(parts[13]),
-                    mode          = (parts[14] and parts[14] ~= "") and parts[14] or "cc64",
-                    show_text     = (parts[15] == "1" or parts[15] == "true"),
-                    start_pct1    = tonumber(parts[16]) or 50,
-                    end_pct2      = tonumber(parts[17]) or 50
-                })
-                pm:recalculate_timing()
-                local trk_exists = false
-                if pm.track_guid and pm.track_guid ~= "" then
-                    local num_tr = reaper.CountTracks(0)
-                    local norm_pm_guid = normalize_guid(pm.track_guid)
-                    for ti = 0, num_tr - 1 do
-                        local t = reaper.GetTrack(0, ti)
-                        if t and normalize_guid(reaper.GetTrackGUID(t)) == norm_pm_guid then
-                            trk_exists = true
-                            break
+            local trk_guid = parts[2]
+            local norm_tg = normalize_guid(trk_guid)
+            local ch = tonumber(parts[3]) or 0
+            local p1 = tonumber(parts[5]) or 60
+            local sqn1 = tonumber(parts[6]) or 0.0
+            local p2 = tonumber(parts[9]) or 62
+            local sqn2 = tonumber(parts[10]) or 1.0
+
+            local n1_k = (parts[4] and parts[4] ~= "") and parts[4] or string.format("%d_%.4f_%d", p1, sqn1, ch)
+            local n2_k = (parts[8] and parts[8] ~= "") and parts[8] or string.format("%d_%.4f_%d", p2, sqn2, ch)
+            local note_pair_key = string.format("%s_%s_%s", norm_tg, n1_k, n2_k)
+
+            if id and id ~= "" then
+                if known_ids[id] or known_note_pairs[note_pair_key] then
+                    had_duplicates = true
+                else
+                    known_ids[id] = true
+                    known_ids[id .. "_" .. norm_tg] = true
+                    known_note_pairs[note_pair_key] = true
+
+                    local pm = PortamentoMark.new({
+                        id            = id,
+                        track_guid    = trk_guid,
+                        chan          = ch,
+                        n1_key        = n1_k,
+                        pitch1        = p1,
+                        start_qn1     = sqn1,
+                        dur_qn1       = tonumber(parts[7]) or 1.0,
+                        n2_key        = n2_k,
+                        pitch2        = p2,
+                        start_qn2     = sqn2,
+                        dur_qn2       = tonumber(parts[11]) or 1.0,
+                        hold_start_qn = tonumber(parts[12]),
+                        hold_end_qn   = tonumber(parts[13]),
+                        mode          = (parts[14] and parts[14] ~= "") and parts[14] or "cc64",
+                        show_text     = (parts[15] == "1" or parts[15] == "true"),
+                        start_pct1    = tonumber(parts[16]) or 50,
+                        end_pct2      = tonumber(parts[17]) or 50
+                    })
+                    pm:recalculate_timing()
+
+                    local trk_exists = false
+                    if trk_guid and trk_guid ~= "" then
+                        local num_tr = reaper.CountTracks(0)
+                        for ti = 0, num_tr - 1 do
+                            local t = reaper.GetTrack(0, ti)
+                            if t and normalize_guid(reaper.GetTrackGUID(t)) == norm_tg then
+                                trk_exists = true
+                                break
+                            end
                         end
                     end
-                end
-                if trk_exists then
-                    table.insert(state.portamento_marks, pm)
+                    if trk_exists then
+                        table.insert(state.portamento_marks, pm)
+                    end
                 end
             end
         end
     end
 
-    -- 2. Dual persistence: scan takes for Type 15 NOTATOR_PORTAMENTO
+    -- 2. Dual persistence: scan takes for Type 15 NOTATOR_PORTAMENTO (recovery / track duplication)
     local trk_count = reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
         local trk = reaper.GetTrack(0, ti)
         if trk then
             local trk_guid = reaper.GetTrackGUID(trk)
+            local norm_trk_guid = normalize_guid(trk_guid)
             local item_count = reaper.CountTrackMediaItems(trk)
             for ii = 0, item_count - 1 do
                 local item = reaper.GetTrackMediaItem(trk, ii)
@@ -615,27 +639,65 @@ function PortamentoService.load_portamentos(state)
                             local parts = {}
                             for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
                             local id = parts[2]
+                            local ch = tonumber(parts[4]) or 0
+                            local p1 = tonumber(parts[6]) or 60
+                            local sqn1 = tonumber(parts[7]) or 0.0
+                            local p2 = tonumber(parts[10]) or 62
+                            local sqn2 = tonumber(parts[11]) or 1.0
+                            local n1_k = (parts[5] and parts[5] ~= "") and parts[5] or string.format("%d_%.4f_%d", p1, sqn1, ch)
+                            local n2_k = (parts[9] and parts[9] ~= "") and parts[9] or string.format("%d_%.4f_%d", p2, sqn2, ch)
+                            local note_pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
+
                             if id and id ~= "" then
-                                local port_track_key = id .. "_" .. normalize_guid(trk_guid)
-                                if not known[port_track_key] then
-                                    known[port_track_key] = true
-                                    local eff_id = id
-                                    if known[id] then
-                                        eff_id = id .. "_cp_" .. normalize_guid(trk_guid):sub(1, 6)
-                                    else
-                                        known[id] = true
+                                -- Check if already loaded or if a mark already connects this note pair on this track
+                                if known_ids[id .. "_" .. norm_trk_guid] or known_note_pairs[note_pair_key] then
+                                    -- Already loaded on this track: do not duplicate!
+                                elseif known_ids[id] then
+                                    -- Same ID but on a DIFFERENT track (track was duplicated in REAPER):
+                                    local eff_id = id .. "_cp_" .. norm_trk_guid:sub(1, 6)
+                                    if not known_ids[eff_id] and not known_note_pairs[note_pair_key] then
+                                        known_ids[eff_id] = true
+                                        known_ids[eff_id .. "_" .. norm_trk_guid] = true
+                                        known_note_pairs[note_pair_key] = true
+                                        local pm = PortamentoMark.new({
+                                            id            = eff_id,
+                                            track_guid    = trk_guid,
+                                            chan          = ch,
+                                            n1_key        = n1_k,
+                                            pitch1        = p1,
+                                            start_qn1     = sqn1,
+                                            dur_qn1       = tonumber(parts[8]) or 1.0,
+                                            n2_key        = n2_k,
+                                            pitch2        = p2,
+                                            start_qn2     = sqn2,
+                                            dur_qn2       = tonumber(parts[12]) or 1.0,
+                                            hold_start_qn = tonumber(parts[13]),
+                                            hold_end_qn   = tonumber(parts[14]),
+                                            mode          = (parts[15] and parts[15] ~= "") and parts[15] or "cc64",
+                                            show_text     = (parts[16] == "1" or parts[16] == "true"),
+                                            start_pct1    = tonumber(parts[17]) or 50,
+                                            end_pct2      = tonumber(parts[18]) or 50
+                                        })
+                                        pm:recalculate_timing()
+                                        table.insert(state.portamento_marks, pm)
+                                        had_recovered = true
                                     end
+                                else
+                                    -- Completely new mark recovered from take:
+                                    known_ids[id] = true
+                                    known_ids[id .. "_" .. norm_trk_guid] = true
+                                    known_note_pairs[note_pair_key] = true
                                     local pm = PortamentoMark.new({
-                                        id            = eff_id,
+                                        id            = id,
                                         track_guid    = trk_guid,
-                                        chan          = tonumber(parts[4]) or 0,
-                                        n1_key        = parts[5],
-                                        pitch1        = tonumber(parts[6]) or 60,
-                                        start_qn1     = tonumber(parts[7]) or 0.0,
+                                        chan          = ch,
+                                        n1_key        = n1_k,
+                                        pitch1        = p1,
+                                        start_qn1     = sqn1,
                                         dur_qn1       = tonumber(parts[8]) or 1.0,
-                                        n2_key        = parts[9],
-                                        pitch2        = tonumber(parts[10]) or 62,
-                                        start_qn2     = tonumber(parts[11]) or 1.0,
+                                        n2_key        = n2_k,
+                                        pitch2        = p2,
+                                        start_qn2     = sqn2,
                                         dur_qn2       = tonumber(parts[12]) or 1.0,
                                         hold_start_qn = tonumber(parts[13]),
                                         hold_end_qn   = tonumber(parts[14]),
@@ -646,6 +708,7 @@ function PortamentoService.load_portamentos(state)
                                     })
                                     pm:recalculate_timing()
                                     table.insert(state.portamento_marks, pm)
+                                    had_recovered = true
                                 end
                             end
                         end
@@ -654,7 +717,13 @@ function PortamentoService.load_portamentos(state)
             end
         end
     end
+
+    -- Auto-heal: If duplicates were pruned or new marks recovered, synchronize storage to keep takes clean
+    if had_duplicates or had_recovered then
+        PortamentoService.save_portamentos(state)
+    end
 end
+
 
 -- ------------------------------------------------------------------------------
 -- Portamento Creation & Toggling
@@ -1278,89 +1347,96 @@ function PortamentoService.draw_portamentos(ctx, draw_list, state, all_note_rend
     if not state or not state.portamento_marks or #state.portamento_marks == 0 then return nil end
     local now_hovered_pm = nil
 
+    local drawn_note_pairs = {}
     for _, pm in ipairs(state.portamento_marks) do
         local nd1, nd2 = resolve_effective_portamento_notes(state, pm, all_note_render_by_key)
 
         if nd1 and nd2 and nd1.nx and nd2.nx and (nd2.nx > nd1.nx + 2.0 * s) and notes_share_same_scope(nd1, nd2) and math.abs(nd1.ny - nd2.ny) <= 100.0 * s then
-            local min_x = math.min(nd1.nx, nd2.nx)
-            local max_x = math.max(nd1.nx, nd2.nx)
+            -- Runtime deduplication guard: never draw multiple portamentos between the same two notes in the same frame!
+            local pair_key = string.format("%s_%s", nd1.key or (nd1.pitch .. "_" .. nd1.start_qn), nd2.key or (nd2.pitch .. "_" .. nd2.start_qn))
+            if not drawn_note_pairs[pair_key] then
+                drawn_note_pairs[pair_key] = true
 
-            if max_x >= cull_min_x and min_x <= cull_max_x then
-                -- Notehead center offsets with clean, visible gap between notehead and line
-                local gap = ((state and state.portamento_default_gap) or 16.0) * s
-                local start_x = nd1.nx + gap
-                local start_y = nd1.ny
-                local end_x   = nd2.nx - gap
-                local end_y   = nd2.ny
+                local min_x = math.min(nd1.nx, nd2.nx)
+                local max_x = math.max(nd1.nx, nd2.nx)
 
-                if end_x < start_x + 4.0 * s then
-                    local total_dx = nd2.nx - nd1.nx
-                    local safe_gap = math.max(4.0 * s, (total_dx - 4.0 * s) * 0.5)
-                    start_x = nd1.nx + safe_gap
-                    end_x   = nd2.nx - safe_gap
-                end
+                if max_x >= cull_min_x and min_x <= cull_max_x then
+                    -- Notehead center offsets with clean, visible gap between notehead and line
+                    local gap = ((state and state.portamento_default_gap) or 16.0) * s
+                    local start_x = nd1.nx + gap
+                    local start_y = nd1.ny
+                    local end_x   = nd2.nx - gap
+                    local end_y   = nd2.ny
 
-                if end_x > start_x then
-                    -- Interactive hit testing: Notes ALWAYS have priority!
-                    -- If a note is hovered or clicked, portamento hit-testing is bypassed so notes can be selected cleanly.
-                    local is_hit = false
-                    local note_is_active = (state.hovered_note ~= nil) or (opt_note_hovered ~= nil)
-                    if ctx and is_hovered and mouse_x and mouse_y and not note_is_active then
-                        local d = dist_point_to_line_segment(mouse_x, mouse_y, start_x, start_y, end_x, end_y)
-                        local max_dist = (state.selected_portamento and state.selected_portamento.id == pm.id) and (8.0 * s) or (5.0 * s)
+                    if end_x < start_x + 4.0 * s then
+                        local total_dx = nd2.nx - nd1.nx
+                        local safe_gap = math.max(4.0 * s, (total_dx - 4.0 * s) * 0.5)
+                        start_x = nd1.nx + safe_gap
+                        end_x   = nd2.nx - safe_gap
+                    end
 
+                    if end_x > start_x then
+                        -- Interactive hit testing: Notes ALWAYS have priority!
+                        -- If a note is hovered or clicked, portamento hit-testing is bypassed so notes can be selected cleanly.
+                        local is_hit = false
+                        local note_is_active = (state.hovered_note ~= nil) or (opt_note_hovered ~= nil)
+                        if ctx and is_hovered and mouse_x and mouse_y and not note_is_active then
+                            local d = dist_point_to_line_segment(mouse_x, mouse_y, start_x, start_y, end_x, end_y)
+                            local max_dist = (state.selected_portamento and state.selected_portamento.id == pm.id) and (8.0 * s) or (5.0 * s)
+
+                            if pm.show_text then
+                                local mid_x = (start_x + end_x) * 0.5
+                                local mid_y = (start_y + end_y) * 0.5 - 26.0 * s
+                                if mouse_x >= (mid_x - 14.0 * s) and mouse_x <= (mid_x + 24.0 * s) and
+                                   mouse_y >= (mid_y - 6.0 * s) and mouse_y <= (mid_y + 18.0 * s) then
+                                    d = 0
+                                end
+                            end
+
+                            if d <= max_dist then
+                                is_hit = true
+                                now_hovered_pm = pm
+
+                                reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
+                                reaper.ImGui_SetTooltip(ctx, string.format("Portamento: %s -> %s\nMode: %s\nLeft-click to select | Right-click for options | Del to delete",
+                                    pitch_to_name(pm.pitch1), pitch_to_name(pm.pitch2),
+                                    PortamentoService.get_mode_label(pm.mode)))
+
+                                if reaper.ImGui_IsMouseClicked(ctx, 0) then
+                                    state:clear_selection()
+                                    state.selected_portamento = pm
+                                end
+                                if reaper.ImGui_IsMouseClicked(ctx, 1) then
+                                    state:clear_selection()
+                                    state.selected_portamento = pm
+                                    state.context_portamento = pm
+                                    reaper.ImGui_OpenPopup(ctx, "portamento_context_popup")
+                                end
+                            end
+                        end
+
+                        local is_sel = (state.selected_portamento and state.selected_portamento.id == pm.id)
+                        local col = Constants.COLORS.notehead_black or 0x222222FF
+                        if is_sel then
+                            col = 0xE67E22FF -- Selected: Gold
+                        elseif is_hit then
+                            col = 0x3498DBFF -- Hovered: Cyan
+                        end
+
+                        local base_th = (state and state.portamento_default_thickness) or 1.6
+                        local line_thickness = (is_sel or is_hit) and (base_th * 1.5 * s) or (base_th * s)
+                        reaper.ImGui_DrawList_AddLine(draw_list, start_x, start_y, end_x, end_y, col, line_thickness)
+
+                        -- Draw optional "port." text if enabled (elevated cleanly above the line)
                         if pm.show_text then
                             local mid_x = (start_x + end_x) * 0.5
                             local mid_y = (start_y + end_y) * 0.5 - 26.0 * s
-                            if mouse_x >= (mid_x - 14.0 * s) and mouse_x <= (mid_x + 24.0 * s) and
-                               mouse_y >= (mid_y - 6.0 * s) and mouse_y <= (mid_y + 18.0 * s) then
-                                d = 0
+                            local f_it = (fonts and fonts.font_italic)
+                            if f_it and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+                                reaper.ImGui_DrawList_AddTextEx(draw_list, f_it, 13.0 * s, mid_x - 10.0 * s, mid_y, col, "port.")
+                            else
+                                reaper.ImGui_DrawList_AddText(draw_list, mid_x - 10.0 * s, mid_y, col, "port.")
                             end
-                        end
-
-                        if d <= max_dist then
-                            is_hit = true
-                            now_hovered_pm = pm
-
-                            reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
-                            reaper.ImGui_SetTooltip(ctx, string.format("Portamento: %s -> %s\nMode: %s\nLeft-click to select | Right-click for options | Del to delete",
-                                pitch_to_name(pm.pitch1), pitch_to_name(pm.pitch2),
-                                PortamentoService.get_mode_label(pm.mode)))
-
-                            if reaper.ImGui_IsMouseClicked(ctx, 0) then
-                                state:clear_selection()
-                                state.selected_portamento = pm
-                            end
-                            if reaper.ImGui_IsMouseClicked(ctx, 1) then
-                                state:clear_selection()
-                                state.selected_portamento = pm
-                                state.context_portamento = pm
-                                reaper.ImGui_OpenPopup(ctx, "portamento_context_popup")
-                            end
-                        end
-                    end
-
-                    local is_sel = (state.selected_portamento and state.selected_portamento.id == pm.id)
-                    local col = Constants.COLORS.notehead_black or 0x222222FF
-                    if is_sel then
-                        col = 0xE67E22FF -- Selected: Gold
-                    elseif is_hit then
-                        col = 0x3498DBFF -- Hovered: Cyan
-                    end
-
-                    local base_th = (state and state.portamento_default_thickness) or 1.6
-                    local line_thickness = (is_sel or is_hit) and (base_th * 1.5 * s) or (base_th * s)
-                    reaper.ImGui_DrawList_AddLine(draw_list, start_x, start_y, end_x, end_y, col, line_thickness)
-
-                    -- Draw optional "port." text if enabled (elevated cleanly above the line)
-                    if pm.show_text then
-                        local mid_x = (start_x + end_x) * 0.5
-                        local mid_y = (start_y + end_y) * 0.5 - 26.0 * s
-                        local f_it = (fonts and fonts.font_italic)
-                        if f_it and reaper.APIExists("ImGui_DrawList_AddTextEx") then
-                            reaper.ImGui_DrawList_AddTextEx(draw_list, f_it, 13.0 * s, mid_x - 10.0 * s, mid_y, col, "port.")
-                        else
-                            reaper.ImGui_DrawList_AddText(draw_list, mid_x - 10.0 * s, mid_y, col, "port.")
                         end
                     end
                 end
@@ -1380,8 +1456,11 @@ function PortamentoService.reconcile_from_takes(state)
     local any_changed = false
 
     local port_by_id = {}
+    local seen_note_pairs = {}
     for _, pm in ipairs(state.portamento_marks) do
         if pm.id then port_by_id[pm.id] = pm end
+        local p_key = string.format("%s_%s_%s", normalize_guid(pm.track_guid), pm.n1_key or "", pm.n2_key or "")
+        seen_note_pairs[p_key] = pm
     end
     local seen_port_ids = {}
 
@@ -1390,6 +1469,7 @@ function PortamentoService.reconcile_from_takes(state)
         local trk = reaper.GetTrack(0, ti)
         if trk then
             local trk_guid = reaper.GetTrackGUID(trk)
+            local norm_trk_guid = normalize_guid(trk_guid)
             local item_count = reaper.CountTrackMediaItems(trk)
             for ii = 0, item_count - 1 do
                 local item = reaper.GetTrackMediaItem(trk, ii)
@@ -1402,9 +1482,20 @@ function PortamentoService.reconcile_from_takes(state)
                             local parts = {}
                             for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
                             local id = parts[2]
+                            local n1_k = parts[5] or ""
+                            local n2_k = parts[9] or ""
+                            local pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
+
                             if id and id ~= "" then
-                                if not seen_port_ids[id] then
-                                    seen_port_ids[id] = trk_guid
+                                if seen_port_ids[id .. "_" .. norm_trk_guid] or seen_note_pairs[pair_key] then
+                                    -- Already registered on this track: do nothing (do NOT duplicate!)
+                                    local ep = port_by_id[id] or seen_note_pairs[pair_key]
+                                    if ep and ep.track_guid ~= trk_guid then
+                                        ep.track_guid = trk_guid
+                                        any_changed = true
+                                    end
+                                else
+                                    seen_port_ids[id .. "_" .. norm_trk_guid] = true
                                     local ep = port_by_id[id]
                                     if ep then
                                         if ep.track_guid ~= trk_guid then
@@ -1416,11 +1507,11 @@ function PortamentoService.reconcile_from_takes(state)
                                             id            = id,
                                             track_guid    = trk_guid,
                                             chan          = tonumber(parts[4]) or 0,
-                                            n1_key        = parts[5],
+                                            n1_key        = n1_k,
                                             pitch1        = tonumber(parts[6]) or 60,
                                             start_qn1     = tonumber(parts[7]) or 0.0,
                                             dur_qn1       = tonumber(parts[8]) or 1.0,
-                                            n2_key        = parts[9],
+                                            n2_key        = n2_k,
                                             pitch2        = tonumber(parts[10]) or 62,
                                             start_qn2     = tonumber(parts[11]) or 1.0,
                                             dur_qn2       = tonumber(parts[12]) or 1.0,
@@ -1434,38 +1525,9 @@ function PortamentoService.reconcile_from_takes(state)
                                         pm:recalculate_timing()
                                         table.insert(state.portamento_marks, pm)
                                         port_by_id[id] = pm
+                                        seen_note_pairs[pair_key] = pm
                                         any_changed = true
                                     end
-                                else
-                                    local new_id = "port_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
-                                    parts[2] = new_id
-                                    parts[3] = trk_guid
-                                    local new_msg = table.concat(parts, "|", 1, #parts - 1)
-                                    reaper.MIDI_SetTextSysexEvt(take, text_i, false, false, ppq, 15, new_msg, false)
-                                    local pm = PortamentoMark.new({
-                                        id            = new_id,
-                                        track_guid    = trk_guid,
-                                        chan          = tonumber(parts[4]) or 0,
-                                        n1_key        = parts[5],
-                                        pitch1        = tonumber(parts[6]) or 60,
-                                        start_qn1     = tonumber(parts[7]) or 0.0,
-                                        dur_qn1       = tonumber(parts[8]) or 1.0,
-                                        n2_key        = parts[9],
-                                        pitch2        = tonumber(parts[10]) or 62,
-                                        start_qn2     = tonumber(parts[11]) or 1.0,
-                                        dur_qn2       = tonumber(parts[12]) or 1.0,
-                                        hold_start_qn = tonumber(parts[13]),
-                                        hold_end_qn   = tonumber(parts[14]),
-                                        mode          = (parts[15] and parts[15] ~= "") and parts[15] or "cc64",
-                                        show_text     = (parts[16] == "1" or parts[16] == "true"),
-                                        start_pct1    = tonumber(parts[17]) or 50,
-                                        end_pct2      = tonumber(parts[18]) or 50
-                                    })
-                                    pm:recalculate_timing()
-                                    table.insert(state.portamento_marks, pm)
-                                    port_by_id[new_id] = pm
-                                    seen_port_ids[new_id] = trk_guid
-                                    any_changed = true
                                 end
                             end
                         end
@@ -1480,5 +1542,6 @@ function PortamentoService.reconcile_from_takes(state)
     end
     return any_changed
 end
+
 
 return PortamentoService

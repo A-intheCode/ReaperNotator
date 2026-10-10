@@ -259,6 +259,9 @@ end
 function GlissandoService.load_glissandos(state)
     state.glissando_marks = {}
     local known = {}
+    local known_note_pairs = {}
+    local duplicates_pruned = false
+
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "glissando_marks")
     if raw and raw ~= "" then
         for entry in raw:gmatch("([^;]+)") do
@@ -267,40 +270,58 @@ function GlissandoService.load_glissandos(state)
                 table.insert(parts, p)
             end
             local id = parts[1]
-            if id and id ~= "" and not known[id] then
-                known[id] = true
-                local p1 = tonumber(parts[4]) or 60
-                local p2 = tonumber(parts[7]) or 62
-                local is_cross = (parts[12] == "1" or parts[12] == "true")
-                if not is_cross and p1 and p2 then
-                    if (p1 < 60 and p2 >= 60) or (p1 >= 60 and p2 < 60) then
-                        is_cross = true
+            local trk_g = parts[2] or ""
+            local norm_tg = normalize_guid(trk_g)
+            local ch = tonumber(parts[3]) or 0
+            local p1 = tonumber(parts[4]) or 60
+            local sqn1 = tonumber(parts[5]) or 0.0
+            local p2 = tonumber(parts[7]) or 62
+            local sqn2 = tonumber(parts[8]) or 1.0
+            local n1_k = parts[16] or string.format("%d_%.4f_%d", p1, sqn1, ch)
+            local n2_k = parts[17] or string.format("%d_%.4f_%d", p2, sqn2, ch)
+            local pair_key = string.format("%s_%s_%s", norm_tg, n1_k, n2_k)
+
+            if id and id ~= "" then
+                if known[id] or known_note_pairs[pair_key] then
+                    duplicates_pruned = true
+                else
+                    known[id] = true
+                    known[id .. "_" .. norm_tg] = true
+                    known_note_pairs[pair_key] = true
+
+                    local is_cross = (parts[12] == "1" or parts[12] == "true")
+                    if not is_cross and p1 and p2 then
+                        if (p1 < 60 and p2 >= 60) or (p1 >= 60 and p2 < 60) then
+                            is_cross = true
+                        end
                     end
-                end
 
-                local show_txt = (parts[11] == "1" or parts[11] == "true")
-                if parts[11] == nil or parts[11] == "" then
-                    show_txt = (state and state.glissando_default_show_text ~= false)
-                end
+                    local show_txt = (parts[11] == "1" or parts[11] == "true")
+                    if parts[11] == nil or parts[11] == "" then
+                        show_txt = (state and state.glissando_default_show_text ~= false)
+                    end
 
-                local gm = GlissandoMark.new({
-                    id          = id,
-                    track_guid  = parts[2],
-                    chan        = tonumber(parts[3]) or 0,
-                    pitch1      = p1,
-                    start_qn1   = tonumber(parts[5]) or 0.0,
-                    orig_dur1   = tonumber(parts[6]) or 1.0,
-                    dur_qn1     = tonumber(parts[6]) or 1.0,
-                    pitch2      = p2,
-                    start_qn2   = tonumber(parts[8]) or 1.0,
-                    dur_qn2     = tonumber(parts[9]) or 1.0,
-                    start_pct1  = tonumber(parts[10]) or 50,
-                    show_text   = show_txt,
-                    cross_staff = is_cross,
-                    vel_mode    = (parts[13] and parts[13] ~= "") and parts[13] or "interpolate",
-                    wave_style  = (parts[14] and parts[14] ~= "") and parts[14] or "sine"
-                })
-                table.insert(state.glissando_marks, gm)
+                    local gm = GlissandoMark.new({
+                        id          = id,
+                        track_guid  = trk_g,
+                        chan        = ch,
+                        n1_key      = n1_k,
+                        pitch1      = p1,
+                        start_qn1   = sqn1,
+                        orig_dur1   = tonumber(parts[6]) or 1.0,
+                        dur_qn1     = tonumber(parts[6]) or 1.0,
+                        n2_key      = n2_k,
+                        pitch2      = p2,
+                        start_qn2   = sqn2,
+                        dur_qn2     = tonumber(parts[9]) or 1.0,
+                        start_pct1  = tonumber(parts[10]) or 50,
+                        show_text   = show_txt,
+                        cross_staff = is_cross,
+                        vel_mode    = (parts[13] and parts[13] ~= "") and parts[13] or "interpolate",
+                        wave_style  = (parts[14] and parts[14] ~= "") and parts[14] or "sine"
+                    })
+                    table.insert(state.glissando_marks, gm)
+                end
             end
         end
     end
@@ -311,6 +332,7 @@ function GlissandoService.load_glissandos(state)
         local trk = reaper.GetTrack(0, ti)
         if trk then
             local trk_guid = reaper.GetTrackGUID(trk)
+            local norm_trk_guid = normalize_guid(trk_guid)
             local item_cnt = reaper.CountTrackMediaItems(trk)
             for ii = 0, item_cnt - 1 do
                 local it = reaper.GetTrackMediaItem(trk, ii)
@@ -323,18 +345,26 @@ function GlissandoService.load_glissandos(state)
                             local g_parts = {}
                             for field in (msg .. "|"):gmatch("([^|]*)|") do table.insert(g_parts, field) end
                             local gid = g_parts[2]
+                            local ch = tonumber(g_parts[4]) or 0
+                            local p1 = tonumber(g_parts[5]) or 60
+                            local sqn1 = tonumber(g_parts[6]) or 0.0
+                            local p2 = tonumber(g_parts[8]) or 62
+                            local sqn2 = tonumber(g_parts[9]) or 1.0
+                            local n1_k = string.format("%d_%.4f_%d", p1, sqn1, ch)
+                            local n2_k = string.format("%d_%.4f_%d", p2, sqn2, ch)
+                            local pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
+
                             if gid and gid ~= "" then
-                                local gliss_track_key = gid .. "_" .. normalize_guid(trk_guid)
-                                if not known[gliss_track_key] then
+                                local gliss_track_key = gid .. "_" .. norm_trk_guid
+                                if not known[gliss_track_key] and not known_note_pairs[pair_key] then
                                     known[gliss_track_key] = true
+                                    known_note_pairs[pair_key] = true
                                     local eff_id = gid
                                     if known[gid] then
-                                        eff_id = gid .. "_cp_" .. normalize_guid(trk_guid):sub(1, 6)
+                                        eff_id = gid .. "_cp_" .. norm_trk_guid:sub(1, 6)
                                     else
                                         known[gid] = true
                                     end
-                                    local p1 = tonumber(g_parts[5]) or 60
-                                    local p2 = tonumber(g_parts[8]) or 62
                                     local is_cross = (g_parts[13] == "1" or g_parts[13] == "true")
                                     if not is_cross and p1 and p2 then
                                         if (p1 < 60 and p2 >= 60) or (p1 >= 60 and p2 < 60) then
@@ -348,13 +378,15 @@ function GlissandoService.load_glissandos(state)
                                     local gm = GlissandoMark.new({
                                         id          = eff_id,
                                         track_guid  = trk_guid,
-                                        chan        = tonumber(g_parts[4]) or 0,
+                                        chan        = ch,
+                                        n1_key      = n1_k,
                                         pitch1      = p1,
-                                        start_qn1   = tonumber(g_parts[6]) or 0.0,
+                                        start_qn1   = sqn1,
                                         orig_dur1   = tonumber(g_parts[7]) or 1.0,
                                         dur_qn1     = tonumber(g_parts[7]) or 1.0,
+                                        n2_key      = n2_k,
                                         pitch2      = p2,
-                                        start_qn2   = tonumber(g_parts[9]) or 1.0,
+                                        start_qn2   = sqn2,
                                         dur_qn2     = tonumber(g_parts[10]) or 1.0,
                                         start_pct1  = tonumber(g_parts[11]) or 50,
                                         show_text   = show_txt,
@@ -363,6 +395,8 @@ function GlissandoService.load_glissandos(state)
                                         wave_style  = (g_parts[15] and g_parts[15] ~= "") and g_parts[15] or "sine"
                                     })
                                     table.insert(state.glissando_marks, gm)
+                                else
+                                    duplicates_pruned = true
                                 end
                             end
                         end
@@ -370,6 +404,11 @@ function GlissandoService.load_glissandos(state)
                 end
             end
         end
+    end
+
+    -- Auto-heal project if duplicated marks were detected and pruned
+    if duplicates_pruned then
+        GlissandoService.save_glissandos(state)
     end
 end
 
@@ -1154,11 +1193,18 @@ function GlissandoService.draw_glissandos(ctx, draw_list, state, all_note_render
     local gap_px = ((state and state.glissando_default_gap) or 12.0) * s
     local base_thickness = ((state and state.glissando_default_thickness) or 1.6) * s
     local now_hovered_gm = nil
+    local drawn_note_pairs = {}
 
     for _, gm in ipairs(state.glissando_marks) do
         local nd1, nd2 = resolve_effective_glissando_notes(state, gm, all_note_render_by_key)
 
         if nd1 and nd2 and nd1.nx and nd2.nx and (nd2.nx > nd1.nx + 2.0 * s) then
+            local k1 = nd1.key or (nd1.orig and nd1.orig.key) or (nd1.get_key and nd1:get_key()) or tostring(nd1)
+            local k2 = nd2.key or (nd2.orig and nd2.orig.key) or (nd2.get_key and nd2:get_key()) or tostring(nd2)
+            local pair_key = string.format("%s_%s_%s", normalize_guid(gm.track_guid), k1, k2)
+
+            if not drawn_note_pairs[pair_key] then
+                drawn_note_pairs[pair_key] = true
             local x1 = nd1.nx
             local y1 = nd1.ny
             local x2 = nd2.nx
@@ -1314,6 +1360,7 @@ function GlissandoService.draw_glissandos(ctx, draw_list, state, all_note_render
             end
         end
     end
+    end
 
     state.hovered_glissando = now_hovered_gm
     return now_hovered_gm
@@ -1325,8 +1372,11 @@ function GlissandoService.reconcile_from_takes(state)
     local any_changed = false
 
     local gliss_by_id = {}
+    local seen_note_pairs = {}
     for _, gm in ipairs(state.glissando_marks) do
         if gm.id then gliss_by_id[gm.id] = gm end
+        local p_key = string.format("%s_%s_%s", normalize_guid(gm.track_guid), gm.n1_key or "", gm.n2_key or "")
+        seen_note_pairs[p_key] = gm
     end
     local seen_gliss_ids = {}
 
@@ -1335,6 +1385,7 @@ function GlissandoService.reconcile_from_takes(state)
         local trk = reaper.GetTrack(0, ti)
         if trk then
             local trk_guid = reaper.GetTrackGUID(trk)
+            local norm_trk_guid = normalize_guid(trk_guid)
             local item_cnt = reaper.CountTrackMediaItems(trk)
             for ii = 0, item_cnt - 1 do
                 local it = reaper.GetTrackMediaItem(trk, ii)
@@ -1347,9 +1398,25 @@ function GlissandoService.reconcile_from_takes(state)
                             local g_parts = {}
                             for field in (msg .. "|"):gmatch("([^|]*)|") do table.insert(g_parts, field) end
                             local gid = g_parts[2]
+                            local ch = tonumber(g_parts[4]) or 0
+                            local p1 = tonumber(g_parts[5]) or 60
+                            local sqn1 = tonumber(g_parts[6]) or 0.0
+                            local p2 = tonumber(g_parts[8]) or 62
+                            local sqn2 = tonumber(g_parts[9]) or 1.0
+                            local n1_k = string.format("%d_%.4f_%d", p1, sqn1, ch)
+                            local n2_k = string.format("%d_%.4f_%d", p2, sqn2, ch)
+                            local pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
+
                             if gid and gid ~= "" then
-                                if not seen_gliss_ids[gid] then
-                                    seen_gliss_ids[gid] = trk_guid
+                                if seen_gliss_ids[gid .. "_" .. norm_trk_guid] or seen_note_pairs[pair_key] then
+                                    -- Already registered on this track: do nothing (do NOT duplicate!)
+                                    local eg = gliss_by_id[gid] or seen_note_pairs[pair_key]
+                                    if eg and eg.track_guid ~= trk_guid then
+                                        eg.track_guid = trk_guid
+                                        any_changed = true
+                                    end
+                                else
+                                    seen_gliss_ids[gid .. "_" .. norm_trk_guid] = true
                                     local eg = gliss_by_id[gid]
                                     if eg then
                                         if eg.track_guid ~= trk_guid then
@@ -1357,8 +1424,6 @@ function GlissandoService.reconcile_from_takes(state)
                                             any_changed = true
                                         end
                                     else
-                                        local p1 = tonumber(g_parts[5]) or 60
-                                        local p2 = tonumber(g_parts[8]) or 62
                                         local is_cross = (g_parts[13] == "1" or g_parts[13] == "true")
                                         if not is_cross and p1 and p2 then
                                             if (p1 < 60 and p2 >= 60) or (p1 >= 60 and p2 < 60) then
@@ -1368,13 +1433,15 @@ function GlissandoService.reconcile_from_takes(state)
                                         local gm = GlissandoMark.new({
                                             id          = gid,
                                             track_guid  = trk_guid,
-                                            chan        = tonumber(g_parts[4]) or 0,
+                                            chan        = ch,
+                                            n1_key      = n1_k,
                                             pitch1      = p1,
-                                            start_qn1   = tonumber(g_parts[6]) or 0.0,
+                                            start_qn1   = sqn1,
                                             orig_dur1   = tonumber(g_parts[7]) or 1.0,
                                             dur_qn1     = tonumber(g_parts[7]) or 1.0,
+                                            n2_key      = n2_k,
                                             pitch2      = p2,
-                                            start_qn2   = tonumber(g_parts[9]) or 1.0,
+                                            start_qn2   = sqn2,
                                             dur_qn2     = tonumber(g_parts[10]) or 1.0,
                                             start_pct1  = tonumber(g_parts[11]) or 50,
                                             show_text   = (g_parts[12] == "1" or g_parts[12] == "true"),
@@ -1384,37 +1451,9 @@ function GlissandoService.reconcile_from_takes(state)
                                         })
                                         table.insert(state.glissando_marks, gm)
                                         gliss_by_id[gid] = gm
+                                        seen_note_pairs[pair_key] = gm
                                         any_changed = true
                                     end
-                                else
-                                    local new_gid = "gliss_" .. tostring(os.time()) .. "_" .. tostring(math.random(1000, 9999))
-                                    g_parts[2] = new_gid
-                                    g_parts[3] = trk_guid
-                                    local new_msg = table.concat(g_parts, "|", 1, #g_parts - 1)
-                                    reaper.MIDI_SetTextSysexEvt(tk, t_idx, false, false, ppq, 15, new_msg, false)
-                                    local p1 = tonumber(g_parts[5]) or 60
-                                    local p2 = tonumber(g_parts[8]) or 62
-                                    local gm = GlissandoMark.new({
-                                        id          = new_gid,
-                                        track_guid  = trk_guid,
-                                        chan        = tonumber(g_parts[4]) or 0,
-                                        pitch1      = p1,
-                                        start_qn1   = tonumber(g_parts[6]) or 0.0,
-                                        orig_dur1   = tonumber(g_parts[7]) or 1.0,
-                                        dur_qn1     = tonumber(g_parts[7]) or 1.0,
-                                        pitch2      = p2,
-                                        start_qn2   = tonumber(g_parts[9]) or 1.0,
-                                        dur_qn2     = tonumber(g_parts[10]) or 1.0,
-                                        start_pct1  = tonumber(g_parts[11]) or 50,
-                                        show_text   = (g_parts[12] == "1" or g_parts[12] == "true"),
-                                        cross_staff = (g_parts[13] == "1" or g_parts[13] == "true"),
-                                        vel_mode    = (g_parts[14] and g_parts[14] ~= "") and g_parts[14] or "interpolate",
-                                        wave_style  = (g_parts[15] and g_parts[15] ~= "") and g_parts[15] or "sine"
-                                    })
-                                    table.insert(state.glissando_marks, gm)
-                                    gliss_by_id[new_gid] = gm
-                                    seen_gliss_ids[new_gid] = trk_guid
-                                    any_changed = true
                                 end
                             end
                         end

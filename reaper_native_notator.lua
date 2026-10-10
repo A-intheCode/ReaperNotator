@@ -1,7 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.6
+-- @version 1.8.0-beta.7
 -- @changelog
+--   + v1.8.0-beta.7: Fix Duplicate Portamento/Glissando/Slur Persistence & Jagged Rendering:
+--             - Dual Persistence De-Duplication: Fixed an issue where loading from MIDI takes generated clone copies (_cp_) on the same track, causing portamento/glissando/slur marks to duplicate repeatedly on project load/save.
+--             - Canvas Rendering De-Duplication: Added strict runtime guards preventing duplicate overlapping curves or text badges between identical note pairs, eliminating jagged antialiasing artifacts ('gezackte Linien') and duplicated 'port.' badges.
+--             - Automatic Project Healing: Corrupted project ext state and redundant MIDI take sysex events are automatically pruned and repaired upon loading.
 --   + v1.8.0-beta.6: MIDI Editor Custom Pen Cursor, CC Marquee Box & Multi-Point Movement:
 --             - Custom Vector Pen Cursor: Dedicated DAW pencil/pen tool cursor for Draw mode in both Velocity and CC lanes (replacing text I-beam mark) with active cyan glow and precision hotspot tip.
 --             - CC Marquee Box Selection: Drag selection rectangle ('Rahmen aufziehen') in CC lanes to group-select multiple CC curve points with live preview highlighting and Shift/Ctrl toggle.
