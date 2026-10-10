@@ -1,7 +1,18 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0-beta.20
+-- @version 1.8.0
 -- @changelog
+--   + v1.8.0: Major Production Release: Integrated MIDI Editor Suite, Performance Overhaul & Modernized Settings:
+--             - Integrated Multi-Lane MIDI Editor: Interactive bottom drawer with live bidirectional synchronization between the score notation canvas and REAPER's active MIDI takes.
+--             - Note Velocity Lane & Flag Handles: REAPER-style velocity stalks with interactive flag handles ('Fähnchen'), real-time acoustic auditioning on drag, freehand pencil drawing, presets (pp to ff), linear ramping, and natural humanizing (+/- 7).
+--             - 128 Continuous Controller Lanes: Full support for all 128 CC channels (Modulation CC1, Breath CC2, Expression CC11, Volume CC7, Pan CC10, Sustain CC64, etc.) with REAPER CC curve envelope integration (Linear Ramp default, Square Step, Slow Start/End, Fast Start/End, and Bézier).
+--             - Convert All to Linear: 1-click batch conversion eliminating staircase steps ('Treppenstufen') across the active CC lane.
+--             - Dynamic CC Shaping Protection: Automatic lock ('🔒 CC Locked') protecting CC1/CC11 orchestral dynamics from accidental overwrites, with 1-click Unlock / Bypass toggle.
+--             - High-Performance Playback Pipeline (60-70+ FPS on 30+ Tracks): Zero-latency query bypass, precomputed layout caches, and zero-allocation visible note rendering eliminating tens of thousands of per-second allocations.
+--             - Viewport Frustum Culling & Coordinate Invalidation: Strict coordinate invalidation (-999999) preventing frozen stems or ghost barlines during fast scrolling and auto-scroll jumps.
+--             - Same-Frame Auto-Scroll Re-anchoring: Zero-frame latency coordinate re-synchronization on playhead jumps, with stopped-state decoupling for smooth manual score inspection.
+--             - Modernized Settings Modal: Target Framerate selector (15 to 144 FPS / Uncapped) with live FPS meter, hardware vector line anti-aliasing toggle, configurable undo depth (0-200) with instant RAM purge button, full mouse & navigation controls with speed multipliers and direction inversion, and MIDI Editor color customization.
+--             - Documentation Suite: Comprehensive User Manual update (Chapters 1-17), dedicated standalone MIDI Editor Manual (docs/midi_editor_manual.md), and regenerated codebase statistics.
 --   + v1.8.0-beta.20: Auto-Scroll Focus Synchronization & Frozen Stems/Barlines Fix:
 --             - Auto-Scroll Immediate Re-anchoring: Implemented apply_scroll_x_offset to immediately re-synchronize canvas_p0_x, margin_left, and measure_map within the same frame on SetScrollX, eliminating frozen barlines and measure boundary ghosting during Auto-Scroll jumps.
 --             - Stopped-State Auto-Scroll Decoupling: Prevented stopped-state auto-scroll from constantly overriding manual canvas navigation; only re-centers when REAPER's edit cursor position is explicitly moved externally.

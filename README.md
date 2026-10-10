@@ -23,6 +23,28 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
+- **Integrated Multi-Lane MIDI Editor Suite (v1.8.0)**:
+  - **Synchronized Drawer Architecture**: Interactive bottom drawer with live bidirectional synchronization between the score notation canvas and REAPER's active MIDI takes.
+  - **Velocity Stalks & Flag Handles**: Authentic REAPER-style velocity stalks with interactive flag handles (*"Fähnchen"*), realtime acoustic auditioning on vertical drag, and freehand pencil drawing (`✏ Draw`).
+  - **Velocity Presets & Tools**: One-click dynamic velocity presets ($pp$, $mp$, $mf$, $f$, $ff$), linear velocity ramping, and natural acoustic humanizing ($\pm 7$).
+  - **128 Continuous Controller Lanes**: Complete support for all 128 MIDI CC channels (Modulation CC1, Breath CC2, Expression CC11, Volume CC7, Pan CC10, Sustain CC64, etc.) with REAPER CC curve envelope integration (Linear Ramp default, Square Step, Slow Start/End S-Curve, Fast Start/End, and Bézier).
+  - **Convert All to Linear**: 1-click batch conversion eliminating staircase artifacts (*"Treppenstufen"*).
+  - **Dynamic CC Shaping Protection**: Automatic padlock lock (`🔒 CC Locked`) protecting CC1/CC11 orchestral dynamics from accidental overwrites, with a 1-click Unlock / Bypass toggle.
+  - **Dedicated User Manual**: See the standalone documentation at [**`docs/midi_editor_manual.md`**](docs/midi_editor_manual.md).
+
+- **Performance Overhaul & 60-70+ FPS Playback Pipeline (v1.8.0)**:
+  - **Zero-Latency Playback Query Bypass**: During active playback, interactive hover checks, ghost note previews, drag evaluations, Take C-API queries, and track scans are completely bypassed, rendering purely from pre-allocated memory caches.
+  - **In-Memory Layout Caching**: Precomputed note layouts, beam groups, and rest collision avoidance eliminate tens of thousands of table allocations per second during playback.
+  - **Viewport Frustum Culling & Coordinate Invalidation**: Strict coordinate invalidation (`-999999`) and 2D frustum culling ensure fast scrolling and auto-scroll jumps never leave behind frozen stems or ghost barlines.
+  - **Same-Frame Auto-Scroll Re-anchoring**: Immediate same-frame coordinate re-synchronization eliminating 1-frame latency on playhead jumps, with stopped-state decoupling for uninterrupted manual score inspection.
+
+- **Modernized Interface & Performance Settings (v1.8.0)**:
+  - **Target Framerate (FPS)**: Selectable presets (15, 30, 60, 90, 120, 144, Uncapped) with real-time measured FPS counter (`⚡ Live: XX.X FPS`).
+  - **Hardware Vector Line Anti-Aliasing**: Toggleable Dear ImGui line/fill edge anti-aliasing with high-performance mode for 30+ track scores.
+  - **Configurable Undo History**: Max Undo Steps slider (0-200) and 1-click `🧹 Clear Project Undo History` purge button.
+  - **Ergonomic View Navigation**: Fully customizable keyboard modifiers and mouse buttons for Horizontal/Vertical scroll, Hand-tool pan, and Zoom, with speed multipliers and direction inversion.
+  - **MIDI Editor Color Themes**: Complete palette customization in Settings -> MIDI Editor Colors.
+
 - **Standard-Compliant Music Engraving**:
   - Full SMuFL glyph font rendering (Bravura).
   - Strict measure division and rhythmic decomposition.
@@ -105,6 +127,14 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 - **Interoperability**:
   - Native **MusicXML 4.0** import and export.
   - Clipboard copy/paste for dynamic marks, pedal lines, and score annotations.
+
+---
+
+## Documentation
+
+- 📖 **[Official User Manual & Function Reference](docs/user_manual.md)** ([PDF Version](docs/reaper_notator_user_manual.pdf)): Comprehensive guide covering all engraving, playback, and DAW synchronization features.
+- 🎹 **[Integrated MIDI Editor Manual](docs/midi_editor_manual.md)**: Dedicated standalone guide for the MIDI Velocity & 128 CC Automation drawer, curve shaping, and dynamic protection.
+- 📊 **[Codebase Architecture & Volume Statistics](docs/codebase_statistics.md)** ([PDF Version](docs/reaper_notator_codebase_statistics.pdf)): Technical metrics and architecture breakdown.
 
 ---
 

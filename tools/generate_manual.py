@@ -603,16 +603,114 @@ MANUAL_DATA = [
                 "text": "Functions:\n"
                         "- Pure GPU-Rasterized Drawing: ReaImGui dispatches all vector paths, noteheads, and beams directly to DirectX 11 / OpenGL / Vulkan.\n"
                         "- Optimized Beam Meshing: Eliminated redundant contour stroking on filled polygons, reducing vertex count by 60% and halving C-API call overhead."
+            },
+            {
+                "heading": "14.3 Playback Editing Query Bypass (60-70+ FPS on 30+ Tracks)",
+                "text": "Functions:\n"
+                        "- Zero-Latency Playback Pipeline: During active timeline playback, all mouse hover checks, ghost note previews, drag evaluations, Take C-API queries, and redundant track state scans are completely bypassed.\n"
+                        "- In-Memory Layout Cache: Visual notes, stems, beams, and collision avoidance tables are precomputed once into an ultra-fast layout cache, rendering notes directly from memory with zero table allocations per frame.\n"
+                        "- High Track Count Scalability: Delivers stable 60-70+ FPS playback on complex symphonic projects exceeding 30 tracks and thousands of active notes."
+            },
+            {
+                "heading": "14.4 Viewport Frustum Culling & Coordinate Invalidation",
+                "text": "Functions:\n"
+                        "- 2D Frustum Culling: Bypasses drawing calculations for staves, notes, slurs, glissandi, and dynamic markings located outside the visible screen viewport.\n"
+                        "- Strict Coordinate Invalidation: Off-screen notes in the layout cache have their visual coordinates explicitly set to -999999, preventing stale stems, beams, or barlines from rendering when rapidly scrolling or jumping via auto-scroll."
+            },
+            {
+                "heading": "14.5 Same-Frame Auto-Scroll Re-anchoring",
+                "text": "Functions:\n"
+                        "- Zero-Latency Viewport Tracking: When follow-playhead (Auto-Scroll) triggers SetScrollX, the canvas origin, margin offsets, and measure position maps are re-anchored immediately within the exact same frame, eliminating single-frame desynchronization and visual jitter.\n"
+                        "- Stopped-State Auto-Scroll Decoupling: While playback is stopped, auto-scroll is decoupled from manual canvas navigation, re-centering only when REAPER's edit cursor is explicitly relocated externally."
             }
         ]
     },
     {
         "chapter": 15,
+        "title": "Integrated Multi-Lane MIDI Editor",
+        "sections": [
+            {
+                "heading": "15.1 Architecture & Synchronized Workflow",
+                "text": "Functions:\n"
+                        "- Docked Bottom Drawer: The Integrated MIDI Editor lives in a collapsible drawer docked directly beneath the score canvas, toggled via the bottom utility bar.\n"
+                        "- Bidirectional Take Synchronization: Any edits made on the notation canvas instantly update the MIDI Editor timeline, and adjustments to velocities or CC nodes immediately write to REAPER's active MIDI take.\n"
+                        "- Standalone Reference Guide: For an exhaustive guide, see the dedicated standalone documentation at docs/midi_editor_manual.md."
+            },
+            {
+                "heading": "15.2 Note Velocity Lane & REAPER Flag Handles",
+                "text": "Functions:\n"
+                        "- Velocity Stalks with Flags: Note velocities (1 to 127) are represented as vertical stalks with interactive top handles ('Fahnchen') styled after REAPER's native MIDI editor.\n"
+                        "- Interactive Audition Drag: Clicking and vertically dragging any flag handle adjusts the note velocity in real time, accompanied by zero-latency acoustic preview sound reflecting the new velocity level.\n"
+                        "- Pencil Draw Tool: Activating the Draw tool (pencil cursor) allows sweeping across the lane to paint freehand velocity curves across consecutive notes.\n"
+                        "- Dynamic Velocity Presets: Instant one-click quantization buttons for pp (32), mp (64), mf (80), f (96), and ff (112) applied to selected notes or all notes.\n"
+                        "- Linear Ramp & Humanize: 'Ramp' generates a smooth linear velocity progression between selected notes, while 'Humanize' applies natural acoustic micro-variations (+/- 7)."
+            },
+            {
+                "heading": "15.3 128 Continuous Controller Lanes & Linear Ramping",
+                "text": "Functions:\n"
+                        "- Complete 128 CC Controller Support: Edit Modulation (CC 1), Breath (CC 2), Volume (CC 7), Pan (CC 10), Expression (CC 11), Sustain Pedal (CC 64), and any other standard MIDI controller (CC 0 to 127).\n"
+                        "- Freehand CC Curve Drawing: Paint smooth continuous automation curves with real-time vector pencil feedback.\n"
+                        "- REAPER CC Curve Shapes: Fully integrated with REAPER's envelope shapes (Linear Ramp default, Square Step, Slow Start/End S-Curve, Fast Start, Fast End, and Bezier), eliminating ugly staircase steps ('Treppenstufen').\n"
+                        "- Convert All to Linear: One-click batch conversion command that scans the active CC lane and transforms legacy step events into smooth linear ramps.\n"
+                        "- Level Stamps & Purge: Instant level buttons (0, 32, 64, 96, 127) to stamp constant values across the item, and 'Clear CC' to purge the lane."
+            },
+            {
+                "heading": "15.4 Dynamic CC Shaping Protection & Bypass Lock",
+                "text": "Functions:\n"
+                        "- Orchestral Dynamics Protection: When automated score dynamics (hairpins, swell curves) are controlling CC 1 (Modulation) or CC 11 (Expression), these lanes are automatically locked to prevent accidental pencil overwrites.\n"
+                        "- Visual Lock Status: The lane header displays a red padlock indicator ('[Locked] CC Locked (Dynamic Shaping)').\n"
+                        "- 1-Click Unlock / Bypass: Clicking 'Unlock (Enable Bypass)' immediately decouples the active item from automated shaping, giving full manual control over the CC curve."
+            }
+        ]
+    },
+    {
+        "chapter": 16,
+        "title": "Modernized Interface & Performance Settings",
+        "sections": [
+            {
+                "heading": "16.1 Target Framerate (FPS) Configuration",
+                "text": "Functions:\n"
+                        "- Configurable Target FPS: Located in Settings -> General Settings, allowing users to tailor GUI performance to their hardware.\n"
+                        "- Selectable Presets: 15 FPS (Ultra Power Saver), 30 FPS (Power Saver / Large Scores), 60 FPS (Default / Standard Smooth), 90 FPS (High-Refresh), 120 FPS (High-Refresh Pro), 144 FPS (Ultra-High Refresh), and Uncapped / Native Host Rate (VSync).\n"
+                        "- Live Real-Time FPS Meter: Displays real-time rendering framerate ('Live: XX.X FPS') to evaluate GPU load."
+            },
+            {
+                "heading": "16.2 Hardware Vector Line Anti-Aliasing",
+                "text": "Functions:\n"
+                        "- Dear ImGui Anti-Aliasing Toggle: Controls subpixel edge smoothing on vector lines and polygons.\n"
+                        "- High-Performance Mode (Unchecked - Recommended): Delivers pure zero-overhead rasterization for massive 30+ track orchestral scores.\n"
+                        "- Smooth Line AA Mode (Checked): Enables alpha-gradient edge anti-aliasing on stems, beams, and staff lines.\n"
+                        "- Font Atlas Independence: Noteheads, accidentals, clefs, numbers, and rehearsal marks are rendered via high-resolution font texture atlases and remain ultra-smooth in all modes."
+            },
+            {
+                "heading": "16.3 Undo Depth Limit & Memory Management",
+                "text": "Functions:\n"
+                        "- Max Undo Steps Slider: Restricts consecutive undo history depth (0 to 200, default: 50). Prevents continuous CC/velocity pencil drawing from ballooning project RAM and slowing REAPER state serialization.\n"
+                        "- Clear Project Undo History: Dedicated button ('Clear Project Undo History') that purges accumulated project undo history on demand and reclaims RAM."
+            },
+            {
+                "heading": "16.4 View Navigation & Mouse Engine",
+                "text": "Functions:\n"
+                        "- Ergonomic Input Mapping: Full customization of keyboard modifiers (None, Shift, Ctrl, Alt, Space, combinations) and mouse triggers (Mouse Wheel Vertical/Horizontal, Middle Mouse, Right Mouse, Left Mouse).\n"
+                        "- Controllable Actions: Independently configure Horizontal View Scroll, Vertical View Scroll, Canvas Pan (Hand-Tool), and Canvas Zoom (In/Out).\n"
+                        "- Speed & Inversion Sliders: Fine-tune horizontal and vertical scroll speed multipliers (0.5x to 5.0x) with independent 'Invert Horizontal Direction' and 'Invert Vertical Direction' checkboxes.\n"
+                        "- One-Click Reset: 'Reset Navigation Defaults' restores standard navigation configuration instantly."
+            },
+            {
+                "heading": "16.5 MIDI Editor & Score Color Themes",
+                "text": "Functions:\n"
+                        "- Dedicated Palette Customization: Settings -> MIDI Editor Colors enables full aesthetic customization of background, lane fills, grid lines, velocity stalks/flags, selection tints, and CC curves.\n"
+                        "- Dark Mode & Invert Contrast: Handcrafted contrast adaptations for score paper, staves, barlines, and rehearsal boxes."
+            }
+        ]
+    },
+    {
+        "chapter": 17,
         "title": "Keyboard Shortcuts & Quick Reference",
         "sections": [
             {
-                "heading": "15.1 Comprehensive Hotkey Matrix",
-                "text": "Quick reference table for high-speed score entry:\n\n"
+                "heading": "17.1 Comprehensive Hotkey Matrix",
+                "text": "Quick reference table for high-speed score entry, MIDI editing, and viewport navigation:\n\n"
                         "| Key / Shortcut | Action | Description |\n"
                         "| :--- | :--- | :--- |\n"
                         "| Space | Play / Pause | Starts or stops timeline playback |\n"
@@ -628,11 +726,14 @@ MANUAL_DATA = [
                         "| 1 .. 6 | Rhythmic Values | 1=Whole, 2=Half, 3=Quarter, 4=Eighth, 5=16th, 6=32nd |\n"
                         "| . (Period) | Toggle Dot | Toggles dotted note duration (1.5x) |\n"
                         "| - / 0 / = | Accidentals | -=Flat (b), 0=Natural (nat), ==Sharp (#) |\n"
-                        "| S | Slur / Legato (⌒) | Toggles musical legato slur over 2 notes (or note to next); engages Legato keyswitch |\n"
-                        "| T | Tie / Haltebogen (‿) | Toggles tie between 2 notes of identical pitch (duration sum without second note attack) |\n"
+                        "| S | Slur / Legato ([Slur]) | Toggles musical legato slur over 2 notes (or note to next); engages Legato keyswitch |\n"
+                        "| T | Tie / Haltebogen ([Tie]) | Toggles tie between 2 notes of identical pitch (duration sum without second note attack) |\n"
                         "| A | Accent | Toggles accent mark (>) on selected note |\n"
                         "| Ctrl + T | New Text Item | Creates a floating text annotation at cursor position |\n"
-                        "| Ctrl + S | Save Project | Triggers REAPER project save |"
+                        "| Ctrl + S | Save Project | Triggers REAPER project save |\n"
+                        "| Shift + Wheel | Horizontal Scroll | Default horizontal viewport scroll (customizable in Settings) |\n"
+                        "| Middle Mouse Drag | Canvas Pan | Default Hand-tool panning (customizable in Settings) |\n"
+                        "| Ctrl + Wheel | Canvas Zoom | Zooms score canvas in and out |"
             }
         ]
     }
@@ -772,6 +873,22 @@ def sanitize_pdf_text(text: str) -> str:
         "✕": "[X]",
         "⌒": "[Slur]",
         "‿": "[Tie]",
+        "🎹": "[MIDI]",
+        "📈": "[Linear]",
+        "🔒": "[Locked]",
+        "🔓": "[Unlocked]",
+        "✏": "[Draw]",
+        "🎲": "[Humanize]",
+        "⚙": "[Settings]",
+        "🖱": "[Mouse]",
+        "↺": "[Reset]",
+        "⎍": "[Step]",
+        "〰": "[S-Curve]",
+        "⏳": "[Fast End]",
+        "∿": "[Bezier]",
+        "↔": "[Fit]",
+        "＋": "+",
+        "－": "-",
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
