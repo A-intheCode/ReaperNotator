@@ -3,6 +3,7 @@
 -- Bottom status and grid bar with beam toggles
 -- ==============================================================================
 
+local MidiService = require("services.midi_service")
 local BottomBar = {}
 
 local function toggle_btn(ctx, label, is_active, w, h, active_col)
@@ -38,12 +39,43 @@ function BottomBar.render(ctx, state, h, child_border, bottom_flags)
     for _, g in ipairs(grids) do
         local is_g = (math.abs(state.grid_qn - g.qn) < 0.001)
         if toggle_btn(ctx, g.l, is_g, 42, 22) then
-            state.grid_qn = g.qn
-            state.grid_label = g.l
-            state.status_msg = "Grid: " .. g.l
+            if state.set_grid then
+                state:set_grid(g.qn, g.l, MidiService)
+            else
+                state.grid_qn = g.qn
+                state.grid_label = g.l
+                if state.sync_grid_to_note and g.qn > 0 then
+                    state.active_dur = g.qn
+                    state.dur_label = g.l:gsub("%s*T", "")
+                    if state:count_selected_notes() > 0 then
+                        MidiService.change_selected_duration(state, g.qn)
+                    end
+                end
+            end
+            state.status_msg = "Grid: " .. g.l .. (state.sync_grid_to_note and " (🔗 Note synced)" or "")
         end
         reaper.ImGui_SameLine(ctx)
     end
+
+    -- Connection button right next to "Free" (🔗)
+    local is_linked = (state.sync_grid_to_note == true)
+    if toggle_btn(ctx, "🔗", is_linked, 26, 22, 0x27AE60FF) then
+        state.sync_grid_to_note = not state.sync_grid_to_note
+        if state.sync_grid_to_note then
+            if state.active_dur and state.active_dur > 0 then
+                state.grid_qn = state.active_dur
+                state.grid_label = state.dur_label or "1/4"
+            end
+            state.status_msg = "Grid & Note Duration Linked: 🔗 ON"
+        else
+            state.status_msg = "Grid & Note Duration Unlinked: OFF"
+        end
+        require("state").save_settings(state)
+    end
+    if reaper.ImGui_IsItemHovered(ctx) then
+        reaper.ImGui_SetTooltip(ctx, "Link Grid & Note Duration (🔗):\nWhen enabled, setting Note Duration automatically sets the Grid,\nand setting Grid automatically sets the Note Duration.")
+    end
+    reaper.ImGui_SameLine(ctx)
 
     local track_name = "No track selected"
     local track = reaper.GetSelectedTrack(0, 0)

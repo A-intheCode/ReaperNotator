@@ -92,10 +92,19 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
         local is_active = (state.active_dur == d.val)
         local btn_lbl = string.format("%s [%s]", d.label, d.key)
         if toggle_btn(ctx, btn_lbl, is_active, -1, 25) then
-            state.active_dur = d.val
-            state.dur_label = d.label:match("(%d+/%d+)")
-            if state:count_selected_notes() > 0 then
-                midi_service.change_selected_duration(state, d.val)
+            local clean_lbl = d.label:match("(%d+/%d+)")
+            if state.set_active_duration then
+                state:set_active_duration(d.val, clean_lbl, midi_service)
+            else
+                state.active_dur = d.val
+                state.dur_label = clean_lbl
+                if state.sync_grid_to_note then
+                    state.grid_qn = d.val
+                    state.grid_label = clean_lbl
+                end
+                if state:count_selected_notes() > 0 then
+                    midi_service.change_selected_duration(state, d.val)
+                end
             end
         end
     end

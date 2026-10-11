@@ -727,6 +727,8 @@ MANUAL_DATA = [
                         "| Alt + Shift + Left / Right | Expand Selection | Expands multi-note selection along the timeline |\n"
                         "| X | Invert Stem | Flips note stem direction (up <-> down) |\n"
                         "| 1 .. 6 | Rhythmic Values | 1=Whole, 2=Half, 3=Quarter, 4=Eighth, 5=16th, 6=32nd |\n"
+                        "| Ctrl + 1 .. 7 | Grid Snap Settings | Sets score grid: Ctrl+7=1/1, Ctrl+6=1/2, Ctrl+5=1/4, Ctrl+4=1/8, Ctrl+3=1/16, Ctrl+2=1/32, Ctrl+1=Free |\n"
+                        "| Ctrl + K / 🔗 Button | Grid & Note Sync | Links Note Duration and Grid so changing one automatically updates the other |\n"
                         "| . (Period) | Toggle Dot | Toggles dotted note duration (1.5x) |\n"
                         "| - / 0 / = | Accidentals | -=Flat (b), 0=Natural (nat), ==Sharp (#) |\n"
                         "| S | Slur / Legato ([Slur]) | Toggles musical legato slur over 2 notes (or note to next); engages Legato keyswitch |\n"
