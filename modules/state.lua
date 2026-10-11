@@ -410,7 +410,14 @@ function State.new()
         -- MusicXML Import & Export Modal (Bottom Bar Button "MusicXML...")
         show_musicxml_modal = false,
 
-        -- Explode Chords Modal (Tools Button "Explode Chords...")
+        -- Divisio Vocum Modal (Tools Button "Divisio Vocum...")
+        show_divisio_vocum_modal = false,
+        divisio_vocum_target_voices = 5,
+        divisio_vocum_tolerance_ms = 25,
+        divisio_vocum_gap_fill = true,
+        divisio_vocum_scope = "selected",
+
+        -- Backward compatibility aliases
         show_explode_chords_modal = false,
         explode_chords_target_voices = 5,
         explode_chords_tolerance_ms = 25,

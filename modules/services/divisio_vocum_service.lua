@@ -1,12 +1,12 @@
 -- ==============================================================================
--- REAPER Native Notator - Service: ExplodeChordsService
+-- REAPER Native Notator - Service: DivisioVocumService
 -- Splits multi-voice chords on a single track and distributes them vertically
--- across the tracks displayed in the viewport below the source track.
+-- across the tracks displayed in the viewport below the source track (Divisio Vocum).
 -- ==============================================================================
 
 local MidiService = require("services.midi_service")
 
-local ExplodeChordsService = {}
+local DivisioVocumService = {}
 
 --- Helper to get track display name
 local function get_track_display_name(trk)
@@ -27,7 +27,7 @@ end
 --- @param opt_source_track MediaTrack Optional explicit source track
 --- @return table target_tracks List of { track = MediaTrack*, name = string, guid = string, is_source = boolean }
 --- @return MediaTrack* source_track
-function ExplodeChordsService.get_target_tracks(state, active_tracks_data, target_voice_count, opt_source_track)
+function DivisioVocumService.get_target_tracks(state, active_tracks_data, target_voice_count, opt_source_track)
     local voice_count = math.max(2, math.min(16, target_voice_count or 4))
     
     -- 1. Identify source track
@@ -116,7 +116,7 @@ end
 --- @param state table Optional Notator state for selection filtering
 --- @return table chord_groups List of { { pitch = ..., start_time = ..., dur_qn = ..., vel = ..., chan = ..., articulation = ..., take = ... }, ... }
 --- @return number total_notes
-function ExplodeChordsService.collect_notes_and_chords(source_track, tolerance_ms, selected_only, state)
+function DivisioVocumService.collect_notes_and_chords(source_track, tolerance_ms, selected_only, state)
     local chord_groups = {}
     local total_notes = 0
     if not source_track or not reaper.ValidatePtr(source_track, "MediaTrack*") then
@@ -233,7 +233,7 @@ end
 --- @param opts table Configuration options
 --- @return boolean success
 --- @return string status_msg
-function ExplodeChordsService.explode(state, opts)
+function DivisioVocumService.execute(state, opts)
     opts = opts or {}
     local active_tracks_data = opts.active_tracks_data or (state and state.active_tracks_cache)
     local target_voice_count = math.max(2, math.min(16, opts.target_voices or 5))
@@ -247,14 +247,14 @@ function ExplodeChordsService.explode(state, opts)
         selected_only = false
     end
 
-    local target_tracks, src_track = ExplodeChordsService.get_target_tracks(state, active_tracks_data, target_voice_count, opts.source_track)
+    local target_tracks, src_track = DivisioVocumService.get_target_tracks(state, active_tracks_data, target_voice_count, opts.source_track)
     if not src_track or #target_tracks < 2 then
-        return false, "Explode Chords requires at least 2 tracks (Source + destination tracks in viewport)!"
+        return false, "Divisio Vocum requires at least 2 tracks (Source + destination tracks in viewport)!"
     end
 
-    local chord_groups, total_notes = ExplodeChordsService.collect_notes_and_chords(src_track, tolerance_ms, selected_only, state)
+    local chord_groups, total_notes = DivisioVocumService.collect_notes_and_chords(src_track, tolerance_ms, selected_only, state)
     if #chord_groups == 0 then
-        return false, "No notes or chords found to explode on source track!"
+        return false, "No notes or chords found for Divisio Vocum on source track!"
     end
 
     reaper.Undo_BeginBlock2(0)
@@ -396,17 +396,21 @@ function ExplodeChordsService.explode(state, opts)
         end
     end
 
-    reaper.Undo_EndBlock2(0, string.format("Notator: Explode %d Chords to %d Tracks", exploded_chords_count, #target_tracks), -1)
+    reaper.Undo_EndBlock2(0, string.format("Notator: Divisio Vocum (%d Chords to %d Tracks)", exploded_chords_count, #target_tracks), -1)
     reaper.UpdateArrange()
     MidiService.invalidate_cache()
     if state then
         state.active_tracks_cache = nil
         state.selected_notes = {}
         state.selected_note = nil
-        state.status_msg = string.format("Exploded %d chord(s) across %d tracks (%d voices written)", exploded_chords_count, #target_tracks, exploded_notes_count)
+        state.status_msg = string.format("Divisio Vocum: Distributed %d chord(s) across %d tracks (%d voices written)", exploded_chords_count, #target_tracks, exploded_notes_count)
     end
 
-    return true, string.format("Exploded %d chord(s) across %d tracks!", exploded_chords_count, #target_tracks)
+    return true, string.format("Divisio Vocum: Distributed %d chord(s) across %d tracks!", exploded_chords_count, #target_tracks)
 end
 
-return ExplodeChordsService
+-- Backward compatibility alias
+DivisioVocumService.explode = DivisioVocumService.execute
+
+return DivisioVocumService
+
