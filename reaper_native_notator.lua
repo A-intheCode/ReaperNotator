@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.8.0
+-- @version 1.9.0-beta.1
 -- @changelog
+--   + v1.9.0-beta.1: Explode Chords Suite & Viewport Voice Distribution:
+--             - Explode Chords Feature: Distributes multi-voice chords from a single track vertically across the visible score tracks in the viewport below.
+--             - Explode Chords Context Modal: Native modal window in Tools Drawer and context menu with live routing preview, target voice count (2-16), detection tolerance (5-100 ms), and gap-filling doubling for lower string voices.
+--             - In-Place Element Distribution: Directly writes distributed voices into existing/created MIDI takes on the target tracks below and cleanly consumes secondary chord notes on the source track.
+--             - Playback & Articulation Integrity: Automatic articulation preservation and auto-chase resolution across all affected tracks.
 --   + v1.8.0: Major Production Release: Integrated MIDI Editor Suite, Performance Overhaul & Modernized Settings:
 --             - Integrated Multi-Lane MIDI Editor: Interactive bottom drawer with live bidirectional synchronization between the score notation canvas and REAPER's active MIDI takes.
 --             - Note Velocity Lane & Flag Handles: REAPER-style velocity stalks with interactive flag handles ('Fähnchen'), real-time acoustic auditioning on drag, freehand pencil drawing, presets (pp to ff), linear ramping, and natural humanizing (+/- 7).
@@ -266,6 +271,7 @@ local SlurService          = require("services.slur_service")
 local PortamentoService    = require("services.portamento_service")
 local GlissandoService     = require("services.glissando_service")
 local MidiEditorDrawer     = require("ui.midi_editor_drawer")
+local ExplodeChordsModal   = require("ui.explode_chords_modal")
 
 -- 4. Initialization of State & Fonts
 local state = State.new()
@@ -586,6 +592,7 @@ local function loop()
         BankPickerModal.render(ctx, state, state.focused_track, state.active_tracks_cache)
         ScaleModal.render(ctx, state)
         MusicXmlModal.render(ctx, state, project_tracks)
+        ExplodeChordsModal.render(ctx, state, MidiService, state.active_tracks_cache)
         ArticulationsDrawer.render_last_resort_modal(ctx, state, state.active_tracks_cache)
         
         -- ======================================================================

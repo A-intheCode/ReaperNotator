@@ -410,6 +410,13 @@ function State.new()
         -- MusicXML Import & Export Modal (Bottom Bar Button "MusicXML...")
         show_musicxml_modal = false,
 
+        -- Explode Chords Modal (Tools Button "Explode Chords...")
+        show_explode_chords_modal = false,
+        explode_chords_target_voices = 5,
+        explode_chords_tolerance_ms = 25,
+        explode_chords_gap_fill = true,
+        explode_chords_scope = "selected",
+
         -- Measure repeat marks (Simile %, repeat1Bar)
         repeat_marks = {},
         show_repeat_marks_layer = true,

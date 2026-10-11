@@ -73,6 +73,19 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
             reaper.ImGui_SetTooltip(ctx, "Auto Voice (Whole Track):\nDetects note overlaps across entire track and splits them into voices 1-16.")
         end
 
+        reaper.ImGui_Spacing(ctx)
+
+        -- Explode Chords Button
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x1E4D6BFF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2980B9FF)
+        if reaper.ImGui_Button(ctx, "💥 Explode Chords...", width - 24, 26) then
+            state.show_explode_chords_modal = true
+        end
+        reaper.ImGui_PopStyleColor(ctx, 2)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Explode Chords:\nOpens the Explode Chords dialog to distribute multi-voice chords\nvertically across the visible tracks in the score viewport below.")
+        end
+
         -- ------------------------------------------------------------------
         -- CLEANUP TOOLS (Selected MIDI Item) - Safety Section
         -- ------------------------------------------------------------------
