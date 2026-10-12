@@ -152,6 +152,7 @@ end
 local function find_next_chronological_note(n1, active_tracks_data, require_same_pitch)
     if not n1 then return nil end
     local n1_sqn = n1.start_qn or 0
+    local n1_eqn = n1.end_qn or (n1_sqn + (n1.dur_qn or 1.0))
     local n1_chan = n1.chan or 0
     local n1_guid = get_track_guid_from_note(n1)
     local n1_trk = get_track_from_note(n1)
@@ -174,15 +175,22 @@ local function find_next_chronological_note(n1, active_tracks_data, require_same
                 for _, cand in ipairs(td.notes) do
                     local cand_sqn = cand.start_qn or 0
                     local dt = cand_sqn - n1_sqn
-                    if dt > 0.005 and (cand.chan or 0) == n1_chan then
-                        if not require_same_pitch or cand.pitch == n1.pitch then
-                            if dt < min_dt then
-                                min_dt = dt
-                                best_note = cand
-                            elseif math.abs(dt - min_dt) < 0.005 and best_note then
-                                -- In chord: pick note with closest pitch
-                                if math.abs(cand.pitch - n1.pitch) < math.abs(best_note.pitch - n1.pitch) then
+                    if dt > 0.005 then
+                        -- For ties (require_same_pitch): cand must be immediately contiguous (no intervening rests)!
+                        local is_contiguous = not require_same_pitch or (cand_sqn <= n1_eqn + 0.06 and math.abs(cand_sqn - n1_eqn) <= 0.15)
+                        if is_contiguous then
+                            local chan_match = ((cand.chan or 0) == n1_chan) or require_same_pitch
+                            if chan_match and (not require_same_pitch or cand.pitch == n1.pitch) then
+                                if dt < min_dt then
+                                    min_dt = dt
                                     best_note = cand
+                                elseif math.abs(dt - min_dt) < 0.005 and best_note then
+                                    -- In chord: pick note with matching channel or closest pitch
+                                    if (cand.chan or 0) == n1_chan and (best_note.chan or 0) ~= n1_chan then
+                                        best_note = cand
+                                    elseif math.abs(cand.pitch - n1.pitch) < math.abs(best_note.pitch - n1.pitch) then
+                                        best_note = cand
+                                    end
                                 end
                             end
                         end
@@ -200,26 +208,30 @@ local function find_next_chronological_note(n1, active_tracks_data, require_same
         local _, notecnt = reaper.MIDI_CountEvts(take)
         for i = 0, notecnt - 1 do
             local ok, _, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
-            if ok and not muted and chan == n1_chan then
+            if ok and not muted then
                 local cand_sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
                 local cand_eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
                 local dt = cand_sqn - n1_sqn
                 if dt > 0.005 then
-                    if not require_same_pitch or pitch == n1.pitch then
-                        if dt < min_dt then
-                            min_dt = dt
-                            best_note = MidiNote.new({
-                                idx = i,
-                                take = take,
-                                item = item,
-                                track = n1.track,
-                                chan = chan,
-                                pitch = pitch,
-                                vel = vel,
-                                start_qn = cand_sqn,
-                                end_qn = cand_eqn,
-                                dur_qn = cand_eqn - cand_sqn
-                            })
+                    local is_contiguous = not require_same_pitch or (cand_sqn <= n1_eqn + 0.06 and math.abs(cand_sqn - n1_eqn) <= 0.15)
+                    if is_contiguous then
+                        local chan_match = (chan == n1_chan) or require_same_pitch
+                        if chan_match and (not require_same_pitch or pitch == n1.pitch) then
+                            if dt < min_dt then
+                                min_dt = dt
+                                best_note = MidiNote.new({
+                                    idx = i,
+                                    take = take,
+                                    item = item,
+                                    track = n1.track,
+                                    chan = chan,
+                                    pitch = pitch,
+                                    vel = vel,
+                                    start_qn = cand_sqn,
+                                    end_qn = cand_eqn,
+                                    dur_qn = cand_eqn - cand_sqn
+                                })
+                            end
                         end
                     end
                 end
@@ -507,6 +519,12 @@ function SlurService.toggle_tie(state, active_tracks_data)
             end
             if targets[i].pitch ~= targets[1].pitch then
                 state.status_msg = "⚠️ Tie requires notes of the same pitch! Use Slur [S] for melodic phrases."
+                return
+            end
+            local prev_eqn = targets[i - 1].end_qn or ((targets[i - 1].start_qn or 0) + (targets[i - 1].dur_qn or 1.0))
+            local cur_sqn = targets[i].start_qn or 0
+            if cur_sqn > prev_eqn + 0.06 or (cur_sqn - prev_eqn) < -0.06 then
+                state.status_msg = "⚠️ Ties can only connect immediately adjacent notes without intervening rests."
                 return
             end
         end
@@ -1354,7 +1372,7 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
         for _, nd in pairs(all_note_render_by_key) do
             if notes_share_same_track(nd, nd2) then
                 local is_same_note = (nd.orig and nd2.orig and nd.orig == nd2.orig)
-                if not is_same_note and nd2.orig and nd.orig and nd2.orig.take and nd.orig.take and nd2.orig.take == nd.orig.take and nd2.orig.idx and nd.orig.idx and nd2.orig.idx == nd.orig.idx then
+                if not is_same_note and nd2.orig and nd.orig and nd2.orig.take and nd.orig.take and nd2.orig.take == nd.orig.take and nd2.orig.idx and nd.orig.idx and nd2.orig.idx >= 0 and nd.orig.idx >= 0 and nd2.orig.idx == nd.orig.idx then
                     is_same_note = true
                 end
                 if is_same_note and nd.is_segment then
@@ -1693,10 +1711,15 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
             -- It NEVER connects across an intervening note of the same pitch!
             local has_intermediate_note = false
             if all_note_render_by_key then
+                local nd1_sqn = nd1.start_qn or (nd1.orig and nd1.orig.start_qn) or tie.n1_start_qn or 0
+                local nd2_sqn = nd2.start_qn or (nd2.orig and nd2.orig.start_qn) or tie.n2_start_qn or 0
+                local min_sqn = math.min(nd1_sqn, nd2_sqn)
+                local max_sqn = math.max(nd1_sqn, nd2_sqn)
                 for _, cand in pairs(all_note_render_by_key) do
                     if cand ~= nd1 and cand ~= nd2 and cand.pitch == tie.pitch and cand.nx and notes_share_same_track(cand, nd1) then
+                        local c_sqn = cand.start_qn or (cand.orig and cand.orig.start_qn) or 0
                         local cx = cand.nx
-                        if cx > (x_min + 8.0 * s) and cx < (x_max - 8.0 * s) then
+                        if c_sqn > (min_sqn + 0.05) and c_sqn < (max_sqn - 0.05) and cx > (x_min + 8.0 * s) and cx < (x_max - 8.0 * s) then
                             has_intermediate_note = true
                             break
                         end
@@ -2089,12 +2112,22 @@ function SlurService.heal_slurs_and_ties(state)
         local t1_max = math.max(t1.n1_start_qn or 0, t1.n2_start_qn or 0)
         local t1_norm_tg = normalize_guid(t1.track_guid)
         for j, t2 in ipairs(clean_ties) do
-            if i ~= j and t1.pitch == t2.pitch and (t1.chan or 0) == (t2.chan or 0) and normalize_guid(t2.track_guid) == t1_norm_tg then
-                local s1 = t2.n1_start_qn or 0
-                local s2 = t2.n2_start_qn or 0
-                if (s1 > t1_min + 0.05 and s1 < t1_max - 0.05) or (s2 > t1_min + 0.05 and s2 < t1_max - 0.05) then
-                    is_leap = true
-                    break
+            if i ~= j and t1.pitch == t2.pitch and normalize_guid(t2.track_guid) == t1_norm_tg then
+                local s1 = math.min(t2.n1_start_qn or 0, t2.n2_start_qn or 0)
+                local s2 = math.max(t2.n1_start_qn or 0, t2.n2_start_qn or 0)
+                -- If t1 and t2 touch at an endpoint, they form a valid chain:
+                local touches = math.abs(s1 - t1_max) <= 0.06 or math.abs(s2 - t1_min) <= 0.06 or math.abs(s1 - t1_min) <= 0.06 or math.abs(s2 - t1_max) <= 0.06
+                if not touches then
+                    if (s1 > t1_min + 0.05 and s1 < t1_max - 0.05) or (s2 > t1_min + 0.05 and s2 < t1_max - 0.05) then
+                        is_leap = true
+                        break
+                    end
+                else
+                    -- If they touch at one end, but the other end of t2 is strictly inside t1, then t1 is a leap over t2!
+                    if (s1 > t1_min + 0.06 and s1 < t1_max - 0.06) or (s2 > t1_min + 0.06 and s2 < t1_max - 0.06) then
+                        is_leap = true
+                        break
+                    end
                 end
             end
         end
