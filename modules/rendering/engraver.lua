@@ -1172,6 +1172,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
         local bar_notes = notes_by_bar[m]
         local bar_sqn = m * bpi
         local bar_eqn = (m + 1) * bpi
+        local bar_end_qn = bar_eqn
         
         if #bar_notes == 0 then
             -- Measure is completely empty across ALL voices: emit a single centered whole rest
