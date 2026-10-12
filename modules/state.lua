@@ -410,12 +410,27 @@ function State.new()
         -- MusicXML Import & Export Modal (Bottom Bar Button "MusicXML...")
         show_musicxml_modal = false,
 
+        -- Divisio Vocum Modal (Tools Button "Divisio Vocum...")
+        show_divisio_vocum_modal = false,
+        divisio_vocum_target_voices = 5,
+        divisio_vocum_tolerance_ms = 25,
+        divisio_vocum_gap_fill = true,
+        divisio_vocum_scope = "selected",
+
+        -- Backward compatibility aliases
+        show_explode_chords_modal = false,
+        explode_chords_target_voices = 5,
+        explode_chords_tolerance_ms = 25,
+        explode_chords_gap_fill = true,
+        explode_chords_scope = "selected",
+
         -- Measure repeat marks (Simile %, repeat1Bar)
         repeat_marks = {},
         show_repeat_marks_layer = true,
 
         grid_qn = 0.5,            --QN: 1.0 = 1/4, 0.5 = 1/8, 0.25 = 1/16, etc.
         grid_label = "1/8",
+        sync_grid_to_note = false, -- Bidirectional link between Grid and Note Duration (🔗)
         display_quantize = false, -- Visual note alignment in score view (Display Quantize)
         display_quantize_grid = 1.0,   -- Dedicated grid for Display Quantize (in QN)
         display_quantize_label = "1/4", -- Label for Display Quantize grid
@@ -767,6 +782,7 @@ function State:load_settings()
     self.zoom = load_num("zoom", 1.0)
     self.grid_qn = load_num("grid_qn", 0.5)
     self.grid_label = load_str("grid_label", "1/8")
+    self.sync_grid_to_note = load_bool("sync_grid_to_note", false)
     self.display_quantize = load_bool("display_quantize", false)
     self.display_quantize_grid = load_num("display_quantize_grid", 1.0)
     self.display_quantize_label = load_str("display_quantize_label", "1/4")
@@ -950,6 +966,7 @@ function State.save_settings(self)
     save_val("zoom", string.format("%.2f", self.zoom or 1.0))
     save_val("grid_qn", self.grid_qn or 0.5)
     save_val("grid_label", self.grid_label or "1/8")
+    save_val("sync_grid_to_note", self.sync_grid_to_note == true)
     save_val("display_quantize", self.display_quantize == true)
     save_val("display_quantize_grid", self.display_quantize_grid or 1.0)
     save_val("display_quantize_label", self.display_quantize_label or "1/4")
@@ -1076,6 +1093,39 @@ function State:set_input_mode(mode)
         self.input_mode = false
         self.draw_preview = nil
         self.status_msg = "Selection mode active"
+    end
+end
+
+--- Sets active note duration and synchronizes grid if link is enabled
+--- @param dur number Duration in QN (e.g. 0.5 for 1/8)
+--- @param label string Display label (e.g. "1/8")
+--- @param midi_service table Optional MidiService to update selected notes
+function State:set_active_duration(dur, label, midi_service)
+    self.active_dur = dur
+    if label then self.dur_label = label end
+    if self.sync_grid_to_note and dur and dur > 0 then
+        self.grid_qn = dur
+        self.grid_label = self.dur_label or string.format("%.3g", dur)
+    end
+    if midi_service and self.count_selected_notes and self:count_selected_notes() > 0 then
+        midi_service.change_selected_duration(self, dur)
+    end
+end
+
+--- Sets grid resolution and synchronizes active note duration if link is enabled
+--- @param qn number Grid resolution in QN (e.g. 0.5 for 1/8, or 0.0 for Free)
+--- @param label string Display label (e.g. "1/8" or "Free")
+--- @param midi_service table Optional MidiService to update selected notes
+function State:set_grid(qn, label, midi_service)
+    self.grid_qn = qn
+    if label then self.grid_label = label end
+    if self.sync_grid_to_note and qn and qn > 0 then
+        self.active_dur = qn
+        local clean_lbl = self.grid_label and self.grid_label:gsub("%s*T", "")
+        self.dur_label = clean_lbl or string.format("%.3g", qn)
+        if midi_service and self.count_selected_notes and self:count_selected_notes() > 0 then
+            midi_service.change_selected_duration(self, qn)
+        end
     end
 end
 

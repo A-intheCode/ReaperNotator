@@ -993,6 +993,10 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                     midi_service.auto_split_overlaps_to_voices(state, trk)
                 end
             end
+            if reaper.ImGui_MenuItem(ctx, "🎼 Divisio Vocum...") then
+                state.show_divisio_vocum_modal = true
+                state.show_explode_chords_modal = true
+            end
             
             reaper.ImGui_Separator(ctx)
             
@@ -1133,6 +1137,11 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 if midi_service and midi_service.auto_split_overlaps_to_voices then
                     midi_service.auto_split_overlaps_to_voices(state, cur_trk)
                 end
+            end
+            
+            if reaper.ImGui_MenuItem(ctx, "🎼 Divisio Vocum...") then
+                state.show_divisio_vocum_modal = true
+                state.show_explode_chords_modal = true
             end
             
             if reaper.ImGui_MenuItem(ctx, "⚡ Quantize Track... (Q)") then

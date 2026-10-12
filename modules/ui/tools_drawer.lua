@@ -73,6 +73,19 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
             reaper.ImGui_SetTooltip(ctx, "Auto Voice (Whole Track):\nDetects note overlaps across entire track and splits them into voices 1-16.")
         end
 
+        reaper.ImGui_Spacing(ctx)
+
+        -- Divisio Vocum Button
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x1E4D6BFF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2980B9FF)
+        if reaper.ImGui_Button(ctx, "🎼 Divisio Vocum...", width - 24, 26) then
+            state.show_divisio_vocum_modal = true
+        end
+        reaper.ImGui_PopStyleColor(ctx, 2)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Divisio Vocum (Stimmteilung):\nOpens the Divisio Vocum dialog to distribute multi-voice chords\nvertically across the visible tracks in the score viewport below.")
+        end
+
         -- ------------------------------------------------------------------
         -- CLEANUP TOOLS (Selected MIDI Item) - Safety Section
         -- ------------------------------------------------------------------

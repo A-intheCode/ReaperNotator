@@ -27,8 +27,10 @@ def get_version():
             m_maj = re.search(r"major\s*=\s*(\d+)", content)
             m_min = re.search(r"minor\s*=\s*(\d+)", content)
             m_pat = re.search(r"patch\s*=\s*(\d+)", content)
+            m_suf = re.search(r'suffix\s*=\s*"([^"]*)"', content)
+            suf = m_suf.group(1) if m_suf else ""
             if m_maj and m_min and m_pat:
-                return f"{m_maj.group(1)}.{m_min.group(1)}.{m_pat.group(1)}"
+                return f"{m_maj.group(1)}.{m_min.group(1)}.{m_pat.group(1)}{suf}"
     return "1.3.6"
 
 VERSION = get_version()
@@ -538,6 +540,7 @@ MANUAL_DATA = [
                 "text": "Functions: Fast editing actions consolidated in the right-hand Tools drawer:\n"
                         "- Make Notes Legato: Extends note durations to adjacent note downbeats for seamless cantabile phrasing.\n"
                         "- Auto Voice & Auto Voice on Selection: Polyphonic splitting of selected chords into upper Voice 1 (stems up) and lower Voice 2 (stems down).\n"
+                        "- Divisio Vocum (Voice Distribution): Distributes multi-voice chords from a single track vertically across the visible tracks displayed below in the score viewport (e.g. from Violin 1 down through Contrabass). Features an interactive context modal with live routing preview, target voice count (2-16), chord detection tolerance (5-100 ms), and bass voice gap-filling.\n"
                         "- Arpeggio Strums: Realistic harp and guitar roll simulation with upward/downward wavy line engraving and non-destructive playback micro-offset.\n"
                         "- Quantize Tools: Integrated triplet, swing, and 1/4 through 1/64 grid snapping directly inside the Tools drawer."
             },
@@ -724,6 +727,8 @@ MANUAL_DATA = [
                         "| Alt + Shift + Left / Right | Expand Selection | Expands multi-note selection along the timeline |\n"
                         "| X | Invert Stem | Flips note stem direction (up <-> down) |\n"
                         "| 1 .. 6 | Rhythmic Values | 1=Whole, 2=Half, 3=Quarter, 4=Eighth, 5=16th, 6=32nd |\n"
+                        "| Ctrl + 1 .. 7 | Grid Snap Settings | Sets score grid: Ctrl+7=1/1, Ctrl+6=1/2, Ctrl+5=1/4, Ctrl+4=1/8, Ctrl+3=1/16, Ctrl+2=1/32, Ctrl+1=Free |\n"
+                        "| Ctrl + K / 🔗 Button | Grid & Note Sync | Links Note Duration and Grid so changing one automatically updates the other |\n"
                         "| . (Period) | Toggle Dot | Toggles dotted note duration (1.5x) |\n"
                         "| - / 0 / = | Accidentals | -=Flat (b), 0=Natural (nat), ==Sharp (#) |\n"
                         "| S | Slur / Legato ([Slur]) | Toggles musical legato slur over 2 notes (or note to next); engages Legato keyswitch |\n"

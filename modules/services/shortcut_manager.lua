@@ -67,6 +67,70 @@ ShortcutManager.DEFAULT_SHORTCUTS = {
         shift = true,
         alt  = false
     },
+    grid_1 = {
+        name = "Grid: 1/1 (Whole)",
+        cat  = "Grid & Note Length",
+        key  = "7",
+        ctrl = true,
+        shift = false,
+        alt  = false
+    },
+    grid_2 = {
+        name = "Grid: 1/2 (Half)",
+        cat  = "Grid & Note Length",
+        key  = "6",
+        ctrl = true,
+        shift = false,
+        alt  = false
+    },
+    grid_4 = {
+        name = "Grid: 1/4 (Quarter)",
+        cat  = "Grid & Note Length",
+        key  = "5",
+        ctrl = true,
+        shift = false,
+        alt  = false
+    },
+    grid_8 = {
+        name = "Grid: 1/8 (Eighth)",
+        cat  = "Grid & Note Length",
+        key  = "4",
+        ctrl = true,
+        shift = false,
+        alt  = false
+    },
+    grid_16 = {
+        name = "Grid: 1/16 (16th)",
+        cat  = "Grid & Note Length",
+        key  = "3",
+        ctrl = true,
+        shift = false,
+        alt  = false
+    },
+    grid_32 = {
+        name = "Grid: 1/32 (32nd)",
+        cat  = "Grid & Note Length",
+        key  = "2",
+        ctrl = true,
+        shift = false,
+        alt  = false
+    },
+    grid_free = {
+        name = "Grid: Free",
+        cat  = "Grid & Note Length",
+        key  = "1",
+        ctrl = true,
+        shift = false,
+        alt  = false
+    },
+    toggle_grid_note_sync = {
+        name = "Toggle Grid & Note Value Sync (🔗)",
+        cat  = "Grid & Note Length",
+        key  = "K",
+        ctrl = true,
+        shift = false,
+        alt  = false
+    },
     
     -- 2. Grid Position
     move_right = {
@@ -502,6 +566,14 @@ ShortcutManager.DEFAULT_SHORTCUTS = {
 ShortcutManager.ACTION_LIST = {
     "lengthen_note",
     "shorten_note",
+    "grid_1",
+    "grid_2",
+    "grid_4",
+    "grid_8",
+    "grid_16",
+    "grid_32",
+    "grid_free",
+    "toggle_grid_note_sync",
     "move_right",
     "move_left",
     "pitch_up",
@@ -651,7 +723,17 @@ function ShortcutManager.is_action_pressed(ctx, action_id, is_ctrl, is_shift, is
     local key_code = ShortcutManager.get_key_enum(sc.key)
     if not key_code then return false end
     
-    return reaper.ImGui_IsKeyPressed(ctx, key_code, false)
+    if reaper.ImGui_IsKeyPressed(ctx, key_code, false) then
+        return true
+    end
+    -- Also accept Numpad/Keypad equivalent if single digit (e.g. "4" -> "Keypad4")
+    if sc.key:match("^%d$") then
+        local kp_enum = ShortcutManager.get_key_enum("Keypad" .. sc.key)
+        if kp_enum and reaper.ImGui_IsKeyPressed(ctx, kp_enum, false) then
+            return true
+        end
+    end
+    return false
 end
 
 function ShortcutManager.set_shortcut(action_id, def)

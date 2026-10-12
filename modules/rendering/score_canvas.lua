@@ -875,9 +875,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local items, trk_notes, dyns, arts, trk_max_qn, r_cache, l_cache = midi_service.get_track_items_and_notes(t.track)
             if trk_max_qn and trk_max_qn > max_proj_qn then
                 max_proj_qn = trk_max_qn
-            else
+            end
+            if items then
                 for _, it in ipairs(items) do
-                    if it.end_qn > max_proj_qn then max_proj_qn = it.end_qn end
+                    local cur_end = (state.is_resizing_item and state.resize_item_info and state.resize_item_info.item == it.item and state.resize_item_info.end_qn) or it.end_qn
+                    if cur_end and cur_end > max_proj_qn then
+                        max_proj_qn = cur_end
+                    end
                 end
             end
             table.insert(active_tracks_data, {
@@ -1198,8 +1202,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             
             -- Draw MIDI items (culled to visible horizontal window)
             for _, it in ipairs(tdata.items) do
-                local ix0 = Engraver.cursor_qn_to_canvas_x(it.start_qn, margin_left, s, qn_per_measure, measure_map)
-                local ix1 = Engraver.cursor_qn_to_canvas_x(it.end_qn, margin_left, s, qn_per_measure, measure_map)
+                local is_resizing_this = (state.is_resizing_item and state.resize_item_info and state.resize_item_info.item == it.item)
+                local cur_start_qn = (is_resizing_this and state.resize_item_info.start_qn) or it.start_qn
+                local cur_end_qn = (is_resizing_this and state.resize_item_info.end_qn) or it.end_qn
+
+                local ix0 = Engraver.cursor_qn_to_canvas_x(cur_start_qn, margin_left, s, qn_per_measure, measure_map)
+                local ix1 = Engraver.cursor_qn_to_canvas_x(cur_end_qn, margin_left, s, qn_per_measure, measure_map)
                 if ix1 >= cull_min_x and ix0 <= cull_max_x then
                     local iy0 = staff_top_y - 8 * s
                     local iy1 = staff_bottom_y + 8 * s
@@ -1207,19 +1215,25 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     local is_item_sel = (state.selected_item and state.selected_item == it.item)
                     local show_boxes = (state.show_item_boxes ~= false)
                     
-                    if show_boxes or is_item_sel then
+                    if show_boxes or is_item_sel or is_resizing_this then
                         local user_intensity = (state.item_box_intensity or 25) / 100.0
                         local fill_alpha = math.max(8, math.min(255, math.floor(user_intensity * 255)))
                         local border_alpha = math.max(30, math.min(255, math.floor(math.min(1.0, user_intensity * 1.6 + 0.2) * 255)))
                         local tag_alpha = math.max(60, math.min(255, math.floor(math.min(1.0, user_intensity * 1.2 + 0.4) * 255)))
                         local sel_fill_alpha = math.max(0x18, math.min(0xCC, math.floor(user_intensity * 255 * 0.9)))
 
-                        local fill_col = is_item_sel and (0xFFD70000 | sel_fill_alpha) or reaper_color_to_rgba(it.col, fill_alpha)
-                        local border_col = is_item_sel and 0xFFD700FF or reaper_color_to_rgba(it.col, border_alpha)
-                        local border_th = is_item_sel and (2.2 * s) or (1.0 * s)
+                        local fill_col = (is_item_sel or is_resizing_this) and (0xFFD70000 | sel_fill_alpha) or reaper_color_to_rgba(it.col, fill_alpha)
+                        local border_col = is_resizing_this and 0x00E5FFFF or (is_item_sel and 0xFFD700FF or reaper_color_to_rgba(it.col, border_alpha))
+                        local border_th = (is_item_sel or is_resizing_this) and (2.2 * s) or (1.0 * s)
                         
                         reaper.ImGui_DrawList_AddRectFilled(draw_list, ix0, iy0, ix1, iy1, fill_col, 5)
                         reaper.ImGui_DrawList_AddRect(draw_list, ix0, iy0, ix1, iy1, border_col, 5, 0, border_th)
+                        
+                        -- Active resize edge highlight
+                        if is_resizing_this then
+                            local active_edge_x = (state.resize_edge == "left") and ix0 or ix1
+                            reaper.ImGui_DrawList_AddLine(draw_list, active_edge_x, iy0 - 3 * s, active_edge_x, iy1 + 3 * s, 0x00E5FFFF, 3.0 * s)
+                        end
                         
                         -- Top-left item tag
                         local tag_w = math.min(180 * s, math.max(60 * s, #it.name * 7.5 * s + 22 * s))
@@ -1284,9 +1298,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             if math.abs(mouse_x - ix0) <= edge_tol then
                                 item_edge_hovered_this_frame = { item_info = it, edge = "left", track = tdata.track }
                                 reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeEW())
+                                reaper.ImGui_DrawList_AddLine(draw_list, ix0, iy0, ix0, iy1, 0xFFD700CC, 2.5 * s)
                             elseif math.abs(mouse_x - ix1) <= edge_tol then
                                 item_edge_hovered_this_frame = { item_info = it, edge = "right", track = tdata.track }
                                 reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeEW())
+                                reaper.ImGui_DrawList_AddLine(draw_list, ix1, iy0, ix1, iy1, 0xFFD700CC, 2.5 * s)
                             end
                         end
                     end
@@ -4071,6 +4087,33 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             reaper.ImGui_DrawList_AddRect(draw_list, bx, by, bx + bw, by + bh, badge_bdr, 4, 0, 1.2 * s)
             reaper.ImGui_DrawList_AddText(draw_list, bx + 8 * s, by + 3 * s, badge_bdr, tip)
         end
+    end
+
+    -- DRAG PREVIEW FOR ITEM RESIZING (Guideline & position / length HUD)
+    if state.is_resizing_item and state.resize_item_info then
+        local it = state.resize_item_info
+        local bpi = qn_per_measure or 4
+        local active_edge = state.resize_edge or "right"
+        local edge_qn = (active_edge == "left") and (it.start_qn or 0) or (it.end_qn or 0)
+        local gx = Engraver.cursor_qn_to_canvas_x(edge_qn, margin_left, s, qn_per_measure, measure_map)
+        
+        -- High-visibility vertical guideline across all staves at the active edge
+        local line_col = 0x00E5FFFF
+        reaper.ImGui_DrawList_AddLine(draw_list, gx, bar_top_y, gx, bar_btm_y + 10 * s, line_col, 2.0 * s)
+        
+        -- Tooltip HUD box beside mouse cursor with measure, beat, and length
+        local len_qn = math.max(0, (it.end_qn or 0) - (it.start_qn or 0))
+        local len_m = len_qn / bpi
+        local edge_m = (edge_qn / bpi) + 1
+        local tip = string.format("Item %s: Bar %.2f | Length: %.2f bars (%.1f beats)",
+            (active_edge == "left") and "Start" or "End", edge_m, len_m, len_qn)
+        local bw = (#tip * 7.2 * s) + 16 * s
+        local bh = 22 * s
+        local bx = mouse_x + 16 * s
+        local by = mouse_y - 26 * s
+        reaper.ImGui_DrawList_AddRectFilled(draw_list, bx, by, bx + bw, by + bh, 0x111111EE, 4)
+        reaper.ImGui_DrawList_AddRect(draw_list, bx, by, bx + bw, by + bh, line_col, 4, 0, 1.2 * s)
+        reaper.ImGui_DrawList_AddText(draw_list, bx + 8 * s, by + 3 * s, line_col, tip)
     end
 
     -- Draw marquee selection box

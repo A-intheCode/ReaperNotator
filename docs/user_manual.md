@@ -1,7 +1,7 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
-**Version:** 1.8.0  
-**Date:** 2026-10-11  
+**Version:** 1.9.0-beta.1  
+**Date:** 2026-10-12  
 **License:** GNU General Public License v3.0  
 
 ---
@@ -52,7 +52,7 @@ REAPER-Notator can run as a floating window or docked directly into any REAPER d
 
 ### 2.1 Title & Version Indicator
 
-Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v1.8.0). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
+Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v1.9.0-beta.1). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
 
 ### 2.2 Transport & Playhead Controls
 
@@ -511,6 +511,7 @@ Functions: Classical pause and hold articulation across all staves:
 Functions: Fast editing actions consolidated in the right-hand Tools drawer:
 - Make Notes Legato: Extends note durations to adjacent note downbeats for seamless cantabile phrasing.
 - Auto Voice & Auto Voice on Selection: Polyphonic splitting of selected chords into upper Voice 1 (stems up) and lower Voice 2 (stems down).
+- Divisio Vocum (Voice Distribution): Distributes multi-voice chords from a single track vertically across the visible tracks displayed below in the score viewport (e.g. from Violin 1 down through Contrabass). Features an interactive context modal with live routing preview, target voice count (2-16), chord detection tolerance (5-100 ms), and bass voice gap-filling.
 - Arpeggio Strums: Realistic harp and guitar roll simulation with upward/downward wavy line engraving and non-destructive playback micro-offset.
 - Quantize Tools: Integrated triplet, swing, and 1/4 through 1/64 grid snapping directly inside the Tools drawer.
 
@@ -686,6 +687,8 @@ Quick reference table for high-speed score entry, MIDI editing, and viewport nav
 | Alt + Shift + Left / Right | Expand Selection | Expands multi-note selection along the timeline |
 | X | Invert Stem | Flips note stem direction (up <-> down) |
 | 1 .. 6 | Rhythmic Values | 1=Whole, 2=Half, 3=Quarter, 4=Eighth, 5=16th, 6=32nd |
+| Ctrl + 1 .. 7 | Grid Snap Settings | Sets score grid: Ctrl+7=1/1, Ctrl+6=1/2, Ctrl+5=1/4, Ctrl+4=1/8, Ctrl+3=1/16, Ctrl+2=1/32, Ctrl+1=Free |
+| Ctrl + K / 🔗 Button | Grid & Note Sync | Links Note Duration and Grid so changing one automatically updates the other |
 | . (Period) | Toggle Dot | Toggles dotted note duration (1.5x) |
 | - / 0 / = | Accidentals | -=Flat (b), 0=Natural (nat), ==Sharp (#) |
 | S | Slur / Legato ([Slur]) | Toggles musical legato slur over 2 notes (or note to next); engages Legato keyswitch |

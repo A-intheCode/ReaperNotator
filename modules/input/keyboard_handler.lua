@@ -516,13 +516,20 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     
     -- Number keys for note values (2..7)
     local function set_dur(dval, dlbl)
-        state.active_dur = dval
-        state.dur_label = dlbl
-        if state:count_selected_notes() > 0 then
-            midi_service.change_selected_duration(state, dval)
+        if state.set_active_duration then
+            state:set_active_duration(dval, dlbl, midi_service)
         else
-            state.status_msg = "Note value: " .. dlbl
+            state.active_dur = dval
+            state.dur_label = dlbl
+            if state.sync_grid_to_note then
+                state.grid_qn = dval
+                state.grid_label = dlbl
+            end
+            if state:count_selected_notes() > 0 then
+                midi_service.change_selected_duration(state, dval)
+            end
         end
+        state.status_msg = "Note value: " .. dlbl .. (state.sync_grid_to_note and " (🔗 Grid synced)" or "")
     end
     
     if is_action_pressed("dur_32") then set_dur(0.125, "1/32") end
@@ -531,6 +538,43 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     if is_action_pressed("dur_4")  then set_dur(1.0,   "1/4")  end
     if is_action_pressed("dur_2")  then set_dur(2.0,   "1/2")  end
     if is_action_pressed("dur_1")  then set_dur(4.0,   "1/1")  end
+
+    -- Grid shortcuts (Ctrl + 1..7)
+    local function set_grid(gqn, glbl)
+        if state.set_grid then
+            state:set_grid(gqn, glbl, midi_service)
+        else
+            state.grid_qn = gqn
+            state.grid_label = glbl
+            if state.sync_grid_to_note and gqn > 0 then
+                state.active_dur = gqn
+                state.dur_label = glbl
+                if state:count_selected_notes() > 0 then
+                    midi_service.change_selected_duration(state, gqn)
+                end
+            end
+        end
+        state.status_msg = "Grid: " .. glbl .. (state.sync_grid_to_note and " (🔗 Note synced)" or "")
+    end
+
+    if is_action_pressed("grid_1") then set_grid(4.0, "1/1") end
+    if is_action_pressed("grid_2") then set_grid(2.0, "1/2") end
+    if is_action_pressed("grid_4") then set_grid(1.0, "1/4") end
+    if is_action_pressed("grid_8") then set_grid(0.5, "1/8") end
+    if is_action_pressed("grid_16") then set_grid(0.25, "1/16") end
+    if is_action_pressed("grid_32") then set_grid(0.125, "1/32") end
+    if is_action_pressed("grid_free") then set_grid(0.0, "Free") end
+
+    -- Toggle Grid & Note Value Sync (🔗)
+    if is_action_pressed("toggle_grid_note_sync") then
+        state.sync_grid_to_note = not state.sync_grid_to_note
+        if state.sync_grid_to_note and state.active_dur and state.active_dur > 0 then
+            state.grid_qn = state.active_dur
+            state.grid_label = state.dur_label or "1/4"
+        end
+        state.status_msg = "Grid & Note Duration Linked: " .. (state.sync_grid_to_note and "🔗 ON" or "OFF")
+        require("state").save_settings(state)
+    end
     
     -- Dotting
     if is_action_pressed("toggle_dot") then

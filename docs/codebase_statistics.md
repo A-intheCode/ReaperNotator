@@ -1,15 +1,15 @@
-# REAPER-Notator v1.8.0 — Codebase & Library Statistics
+# REAPER-Notator v1.9.0-beta.1 — Codebase & Library Statistics
 
-**Generated:** 2026-10-11 01:04
+**Generated:** 2026-10-12 18:31
 
 ## Executive Summary
 
-- **Version:** v1.8.0
-- **Total Source Files:** 73 Lua files
-- **Total Line Count:** 55,161
-- **Executable Code Lines:** 46,496 (84.3%)
-- **Comments & Documentation:** 3,983 (7.2%)
-- **Blank / Formatting Lines:** 5,200 (9.4%)
+- **Version:** v1.9.0-beta.1
+- **Total Source Files:** 75 Lua files
+- **Total Line Count:** 56,111
+- **Executable Code Lines:** 47,238 (84.2%)
+- **Comments & Documentation:** 4,095 (7.3%)
+- **Blank / Formatting Lines:** 5,300 (9.4%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
@@ -17,23 +17,23 @@
 
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `modules/services` | 27 | 28,697 | 24,520 | 1,729 | 2,577 | 85.4% |
-| `modules/rendering` | 7 | 11,590 | 9,849 | 719 | 1,074 | 85.0% |
-| `modules/ui` | 18 | 9,062 | 7,326 | 690 | 1,072 | 80.8% |
-| `modules` | 3 | 2,136 | 1,872 | 406 | 134 | 87.6% |
-| `modules/input` | 2 | 1,937 | 1,681 | 89 | 169 | 86.8% |
-| `Root` | 1 | 965 | 651 | 240 | 78 | 67.5% |
+| `modules/services` | 28 | 29,195 | 24,909 | 1,789 | 2,629 | 85.3% |
+| `modules/rendering` | 7 | 11,642 | 9,891 | 723 | 1,080 | 85.0% |
+| `modules/ui` | 19 | 9,337 | 7,539 | 718 | 1,106 | 80.7% |
+| `modules` | 3 | 2,186 | 1,908 | 417 | 138 | 87.3% |
+| `modules/input` | 2 | 2,002 | 1,740 | 91 | 173 | 86.9% |
+| `Root` | 1 | 975 | 654 | 247 | 78 | 67.1% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **73** | **55,161** | **46,496** | **3,983** | **5,200** | **84.3%** |
+| **TOTAL** | **75** | **56,111** | **47,238** | **4,095** | **5,300** | **84.2%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
 | File | Module | Lines | Code | Comments |
 | :--- | :--- | :---: | :---: | :---: |
 | `modules/services/midi_service.lua` | modules/services | 5,982 | 5,215 | 242 |
-| `modules/rendering/score_canvas.lua` | modules/rendering | 4,367 | 3,786 | 206 |
+| `modules/rendering/score_canvas.lua` | modules/rendering | 4,410 | 3,820 | 210 |
 | `modules/rendering/engraver.lua` | modules/rendering | 2,785 | 2,371 | 213 |
-| `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,195 | 1,905 | 105 |
+| `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,204 | 1,913 | 105 |
 | `modules/services/slur_service.lua` | modules/services | 2,120 | 1,830 | 102 |
 | `modules/services/musicxml_import_service.lua` | modules/services | 2,107 | 1,828 | 124 |
 | `modules/services/musicxml_export_service.lua` | modules/services | 1,698 | 1,435 | 145 |
@@ -41,9 +41,9 @@
 | `modules/services/glissando_service.lua` | modules/services | 1,474 | 1,245 | 79 |
 | `modules/ui/midi_editor_drawer.lua` | modules/ui | 1,448 | 1,205 | 118 |
 | `modules/ui/settings_modal.lua` | modules/ui | 1,409 | 1,144 | 96 |
-| `modules/input/mouse_handler.lua` | modules/input | 1,298 | 1,137 | 50 |
+| `modules/input/mouse_handler.lua` | modules/input | 1,319 | 1,157 | 50 |
 | `modules/services/dynamics_engine.lua` | modules/services | 1,275 | 1,128 | 45 |
-| `modules/state.lua` | modules | 1,082 | 944 | 188 |
+| `modules/state.lua` | modules | 1,132 | 980 | 199 |
 | `modules/services/clipboard_service.lua` | modules/services | 1,044 | 890 | 58 |
 
 ## 3. Orchestral Pattern Library Breakdown

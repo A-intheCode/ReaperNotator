@@ -13,6 +13,24 @@ local DynamicTextService = require("services.dynamic_text_service")
 
 local MouseHandler = {}
 
+local function apply_item_extents(it_info, s_qn, e_qn)
+    if not it_info then return end
+    if it_info.set_extents then
+        it_info:set_extents(s_qn, e_qn)
+    else
+        if it_info.item and reaper.ValidatePtr(it_info.item, "MediaItem*") then
+            reaper.SetMediaItemInfo_Value(it_info.item, "B_LOOPSRC", 0)
+            reaper.MIDI_SetItemExtents(it_info.item, s_qn, e_qn)
+            reaper.SetMediaItemInfo_Value(it_info.item, "B_LOOPSRC", 0)
+        end
+        it_info.start_qn = s_qn
+        it_info.end_qn = e_qn
+        it_info.pos = reaper.TimeMap2_QNToTime(0, s_qn)
+        local end_time = reaper.TimeMap2_QNToTime(0, e_qn)
+        it_info.len = end_time - it_info.pos
+    end
+end
+
 function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_engine)
     if not canvas_info then return end
     if state._is_canvas_panning then return end
@@ -51,25 +69,28 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
         state.resize_start_x = mouse_x
         state.resize_orig_pos = state.hovered_item_edge.item_info.pos
         state.resize_orig_len = state.hovered_item_edge.item_info.len
+        state.selected_item = state.hovered_item_edge.item_info.item
+        state.selected_take = state.hovered_item_edge.item_info.take
+        if state.hovered_item_edge.track then
+            state.focused_track = state.hovered_item_edge.track
+        end
     end
     
     if state.is_resizing_item and reaper.ImGui_IsMouseDown(ctx, 0) then
         reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeEW())
-        local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
+        local snap_grid = is_shift and 0.001 or state.grid_qn
+        local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, snap_grid, measure_map)
+        local min_len_qn = (snap_grid and snap_grid > 0) and math.min(0.25, snap_grid) or 0.25
         
         if state.resize_edge == "right" then
             local start_qn = reaper.TimeMap2_timeToQN(0, state.resize_orig_pos)
-            local new_end_qn = math.max(start_qn + 0.25, target_qn)
-            reaper.SetMediaItemInfo_Value(state.resize_item_info.item, "B_LOOPSRC", 0)
-            reaper.MIDI_SetItemExtents(state.resize_item_info.item, start_qn, new_end_qn)
-            reaper.SetMediaItemInfo_Value(state.resize_item_info.item, "B_LOOPSRC", 0)
+            local new_end_qn = math.max(start_qn + min_len_qn, target_qn)
+            apply_item_extents(state.resize_item_info, start_qn, new_end_qn)
         elseif state.resize_edge == "left" then
             local orig_end_time = state.resize_orig_pos + state.resize_orig_len
             local orig_end_qn = reaper.TimeMap2_timeToQN(0, orig_end_time)
-            local new_start_qn = math.min(orig_end_qn - 0.25, target_qn)
-            reaper.SetMediaItemInfo_Value(state.resize_item_info.item, "B_LOOPSRC", 0)
-            reaper.MIDI_SetItemExtents(state.resize_item_info.item, new_start_qn, orig_end_qn)
-            reaper.SetMediaItemInfo_Value(state.resize_item_info.item, "B_LOOPSRC", 0)
+            local new_start_qn = math.max(0.0, math.min(orig_end_qn - min_len_qn, target_qn))
+            apply_item_extents(state.resize_item_info, new_start_qn, orig_end_qn)
         end
         reaper.UpdateArrange()
     end
