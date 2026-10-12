@@ -1,12 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.0-beta.1
+-- @version 1.9.0
 -- @changelog
---   + v1.9.0-beta.1: Divisio Vocum (Voice Distribution) Suite:
+--   + v1.9.0: Divisio Vocum (Voice Distribution) Suite, Live Item Scaling & Grid Shortcuts:
 --             - Divisio Vocum Feature: Distributes multi-voice chords from a single track vertically across the visible score tracks in the viewport below.
 --             - Divisio Vocum Context Modal: Native modal window in Tools Drawer and context menu with live routing preview, target voice count (2-16), detection tolerance (5-100 ms), and gap-filling doubling for lower string voices.
 --             - In-Place Element Distribution: Directly writes distributed voices into existing/created MIDI takes on the target tracks below and cleanly consumes secondary chord notes on the source track.
 --             - Playback & Articulation Integrity: Automatic articulation preservation and auto-chase resolution across all affected tracks.
+--             - Live MIDI Item Boundary Scaling: Dragging outer item edges in the score canvas updates boundaries live at 60+ FPS in real-time with glowing edge handles, vertical guide lines, and measure/beat HUD tooltips.
 --             - Grid Keyboard Shortcuts: Instant grid switching via Ctrl+1..7 (Ctrl+7=1/1, Ctrl+6=1/2, Ctrl+5=1/4, Ctrl+4=1/8, Ctrl+3=1/16, Ctrl+2=1/32, Ctrl+1=Free) with transparent Numpad/Keypad support.
 --             - Bidirectional Grid & Note Duration Link (🔗): Dedicated connection toggle button next to Free in Bottom Bar and Ctrl+K shortcut; synchronizes note values to grid and grid to note values in real-time.
 --   + v1.8.0: Major Production Release: Integrated MIDI Editor Suite, Performance Overhaul & Modernized Settings:

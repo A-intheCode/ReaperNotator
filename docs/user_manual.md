@@ -1,7 +1,7 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
 **Version:** 1.9.0-beta.1  
-**Date:** 2026-10-11  
+**Date:** 2026-10-12  
 **License:** GNU General Public License v3.0  
 
 ---
