@@ -83,15 +83,16 @@ def update_index_xml(semver, changelog_note=None):
     
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     
-    # Update version name and time in <version name="..." ... time="...">
+    # Update version name and time in <version name="..." ... time="..."> (ONLY FIRST / LATEST)
     content = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
                      f'<version name="{semver}" author="\\1" time="{now}">',
-                     content)
+                     content,
+                     count=1)
     
     if changelog_note:
-        # Prepend to changelog
+        # Prepend to changelog (ONLY FIRST / LATEST)
         note_str = f"+ v{semver}: {changelog_note}\n"
-        content = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', content)
+        content = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', content, count=1)
     
     with open(INDEX_XML, "w", encoding="utf-8") as f:
         f.write(content)

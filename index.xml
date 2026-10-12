@@ -103,10 +103,8 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
+      <version name="1.8.0" author="A-intheCode" time="2026-10-11T01:30:00Z">
         <changelog><![CDATA[
-+ v1.9.2: Release vpatch
-+ v1.9.1: Release vpatch
 + v1.8.0: Major Production Release: Integrated MIDI Editor Suite, Performance Overhaul & Modernized Settings:
   - Integrated Multi-Lane MIDI Editor: Interactive bottom drawer with live bidirectional synchronization between the score notation canvas and REAPER's active MIDI takes.
   - Note Velocity Lane & Flag Handles: REAPER-style velocity stalks with interactive flag handles ('Fähnchen'), real-time acoustic auditioning on drag, freehand pencil drawing, presets (pp to ff), linear ramping, and natural humanizing (+/- 7).
@@ -196,10 +194,8 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
+      <version name="1.7.1" author="A-intheCode" time="2026-10-10T02:35:00Z">
         <changelog><![CDATA[
-+ v1.9.2: Release vpatch
-+ v1.9.1: Release vpatch
 + v1.7.1: Hotfix: Resolved nil global normalize_guid in PortamentoService.
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
@@ -277,10 +273,8 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
+      <version name="1.7.0" author="A-intheCode" time="2026-10-10T02:30:00Z">
         <changelog><![CDATA[
-+ v1.9.2: Release vpatch
-+ v1.9.1: Release vpatch
 + v1.7.0: Major Release: Elaine Gould Slurs, Glissandi, Portamento & Bidirectional MusicXML 4.0:
           - Elaine Gould Phrasing & Slurs: True acoustic legato playback (+2 PPQ micro-overlap), voice-isolated multi-voice pairing, Reaticulate keyswitch integration, and automatic chase.
           - Glissando & Portamento Suite: Full chromatic ladder playback, wavy line engraving, and portamento slide CC automation with dual-reality MIDI take persistence.
@@ -363,10 +357,8 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
+      <version name="1.6.5" author="A-intheCode" time="2026-10-07T23:14:34Z">
         <changelog><![CDATA[
-+ v1.9.2: Release vpatch
-+ v1.9.1: Release vpatch
 + v1.6.5: PreviewPlayback Hotfix: Track isolation, arm settling buffer & audition duration tuning:
           - Track Isolation: Temporarily disarms other armed tracks during score note click preview to strictly prevent foreign instruments from sounding via Virtual MIDI Keyboard.
           - Initial Arm Settling Buffer: Added a 250ms buffer upon mouse release after initial track arming to let VST audio buffers settle, guaranteeing clean initial note attacks with 0ms latency on consecutive notes.
