@@ -6,8 +6,13 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.9.3-beta" author="A-intheCode" time="2026-10-12T21:50:32Z">
+      <version name="1.9.4-beta" author="A-intheCode" time="2026-10-12T22:05:47Z">
         <changelog><![CDATA[
++ v1.9.4-beta: Measure-Local Polyphonic Stem Direction & Consecutive Voice Rest Suppression:
+  - Measure-Local Stem Direction: Stem directions split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist on the staff (Gould 'Behind Bars' p. 301). In monophonic measures (where only Voice 1 or only Voice 2 is active), notes follow standard single-voice pitch-based stem directions (middle-line rule). A single Voice 2 note in later measures no longer forces earlier Voice 1 note stems upwards.
+  - Consecutive Voice Rest Suppression: When voices share a staff sequentially without temporal overlap (e.g. Voice 1 on beats 1-2, Voice 2 on beats 3-4), inactive voice rests are suppressed when the measure is filled sequentially (Gould p. 308), eliminating spurious double rest bars/layers.
+  - Consecutive Voice Gap Rests: If consecutive voices leave an unplayed gap in the measure, a single shared centered rest fills the silent duration rather than cluttered per-voice rests.
+  - Polyphonic Overlap Rests: Full polyphonic per-voice rest streams (with vertical staff-line separation) are retained exclusively when voices sound simultaneously.
 + v1.9.3-beta: Engraving Rest Generation & Multi-Measure Note Segmentation:
   - Multi-Voice Rest Suppression: Inactive voices in polyphonic tracks no longer emit unwanted full-measure whole rests in measures where another voice is active, strictly adhering to Gould ('Behind Bars' p. 308).
   - Cross-Measure Note Coverage: bar_has_notes correctly marks all measures spanned by sustained or tied notes across barlines.

@@ -445,6 +445,24 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         return a.pitch < b.pitch
     end)
     
+    -- Compute measure-local voice counts on each staff (Gould "Behind Bars" p. 301):
+    -- Stems split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist!
+    local measure_staff_voices = {}
+    for _, vn in ipairs(visual_notes) do
+        local m = math.floor((vn.start_qn + 0.001) / bpi)
+        local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
+        local key = string.format("%d_%s", m, st)
+        if not measure_staff_voices[key] then measure_staff_voices[key] = {} end
+        local v = (vn.orig and vn.orig.chan) or (vn.chan or 0)
+        measure_staff_voices[key][v] = true
+    end
+    local measure_staff_voice_counts = {}
+    for k, vset in pairs(measure_staff_voices) do
+        local cnt = 0
+        for _ in pairs(vset) do cnt = cnt + 1 end
+        measure_staff_voice_counts[k] = cnt
+    end
+
     -- Check whether polyphonic voices are active on this track
     local track_voices_set = {}
     for _, vn in ipairs(visual_notes) do
@@ -503,17 +521,24 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 chord_stem_down = (vn.dstep >= mid_step)
             end
         end
+        
+        local m = math.floor((cluster.start_qn + 0.001) / bpi)
+        local key = string.format("%d_%s", m, cluster.staff or (cluster.in_treble and "treble" or "bass"))
+        local m_voice_cnt = measure_staff_voice_counts[key] or 1
+
         if manual_stem_dir == "up" then
             cluster.stem_down = false
         elseif manual_stem_dir == "down" then
             cluster.stem_down = true
-        elseif is_polyphonic_track then
+        elseif m_voice_cnt > 1 then
+            -- Elaine Gould ("Behind Bars" p. 301): Stems split by voice ONLY when multiple voices share the measure!
             if (cluster.voice or 0) % 2 == 1 then
                 cluster.stem_down = true
             else
                 cluster.stem_down = false
             end
         else
+            -- Monophonic measure on this staff: standard pitch-based stem direction!
             cluster.stem_down = chord_stem_down
         end
         
@@ -820,6 +845,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         beam_groups = beam_groups,
         bar_ties = bar_ties,
         is_polyphonic_track = is_polyphonic_track,
+        measure_staff_voice_counts = measure_staff_voice_counts,
         rests = precomputed_rests
     }
 end
@@ -1835,7 +1861,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             beam_col = global_ghost_col
                         end
                     end
-                    local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, is_polyphonic_track)
+                    local bg_m = math.floor(((bgroup[1] and bgroup[1].start_qn or 0) + 0.001) / bpi)
+                    local bg_st = bgroup[1] and (bgroup[1].in_staff or (bgroup[1].in_treble and "treble" or "bass"))
+                    local bg_is_poly = cached_layout and cached_layout.measure_staff_voice_counts and ((cached_layout.measure_staff_voice_counts[string.format("%d_%s", bg_m, bg_st)] or 1) > 1)
+                    local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, bg_is_poly)
                     for k in pairs(bmap) do beamed_notes_map[k] = true end
                 end
             end
@@ -1927,6 +1956,22 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 return a.pitch < b.pitch
             end)
             
+            local live_measure_staff_voices = {}
+            for _, vn in ipairs(visual_notes) do
+                local m = math.floor((vn.start_qn + 0.001) / bpi)
+                local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
+                local key = string.format("%d_%s", m, st)
+                if not live_measure_staff_voices[key] then live_measure_staff_voices[key] = {} end
+                local v = (vn.orig and vn.orig.chan) or (vn.chan or 0)
+                live_measure_staff_voices[key][v] = true
+            end
+            local live_measure_staff_voice_counts = {}
+            for k, vset in pairs(live_measure_staff_voices) do
+                local cnt = 0
+                for _ in pairs(vset) do cnt = cnt + 1 end
+                live_measure_staff_voice_counts[k] = cnt
+            end
+
             local track_voices_set = {}
             for _, vn in ipairs(visual_notes) do
                 local v = (vn.orig and vn.orig.chan) or 0
@@ -1981,11 +2026,16 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         chord_stem_down = (vn.dstep >= mid_step)
                     end
                 end
+                
+                local m = math.floor((cluster.start_qn + 0.001) / bpi)
+                local key = string.format("%d_%s", m, cluster.staff or (cluster.in_treble and "treble" or "bass"))
+                local m_voice_cnt = live_measure_staff_voice_counts[key] or 1
+
                 if manual_stem_dir == "up" then
                     cluster.stem_down = false
                 elseif manual_stem_dir == "down" then
                     cluster.stem_down = true
-                elseif is_polyphonic_track then
+                elseif m_voice_cnt > 1 then
                     if (cluster.voice or 0) % 2 == 1 then
                         cluster.stem_down = true
                     else
@@ -2155,7 +2205,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         beam_col = global_ghost_col
                     end
                 end
-                local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, is_polyphonic_track)
+                local bg_m = math.floor(((bgroup[1] and bgroup[1].start_qn or 0) + 0.001) / bpi)
+                local bg_st = bgroup[1] and (bgroup[1].in_staff or (bgroup[1].in_treble and "treble" or "bass"))
+                local bg_is_poly = (live_measure_staff_voice_counts[string.format("%d_%s", bg_m, bg_st)] or 1) > 1
+                local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, bg_is_poly)
                 for k in pairs(bmap) do beamed_notes_map[k] = true end
             end
             

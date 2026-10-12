@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.3-beta
+-- @version 1.9.4-beta
 -- @changelog
+--   + v1.9.4-beta: Measure-Local Polyphonic Stem Direction & Consecutive Voice Rest Suppression:
+--             - Measure-Local Stem Direction: Stem directions split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist on the staff (Gould 'Behind Bars' p. 301). In monophonic measures (where only Voice 1 or only Voice 2 is active), notes follow standard single-voice pitch-based stem directions (middle-line rule). A single Voice 2 note in later measures no longer forces earlier Voice 1 note stems upwards.
+--             - Consecutive Voice Rest Suppression: When voices share a staff sequentially without temporal overlap (e.g. Voice 1 on beats 1-2, Voice 2 on beats 3-4), inactive voice rests are suppressed when the measure is filled sequentially (Gould p. 308), eliminating spurious double rest bars/layers.
+--             - Consecutive Voice Gap Rests: If consecutive voices leave an unplayed gap in the measure, a single shared centered rest fills the silent duration rather than cluttered per-voice rests.
+--             - Polyphonic Overlap Rests: Full polyphonic per-voice rest streams (with vertical staff-line separation) are retained exclusively when voices sound simultaneously.
 --   + v1.9.0: Divisio Vocum (Voice Distribution) Suite, Live Item Scaling & Grid Shortcuts:
 --             - Divisio Vocum Feature: Distributes multi-voice chords from a single track vertically across the visible score tracks in the viewport below.
 --             - Divisio Vocum Context Modal: Native modal window in Tools Drawer and context menu with live routing preview, target voice count (2-16), detection tolerance (5-100 ms), and gap-filling doubling for lower string voices.

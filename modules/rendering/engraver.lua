@@ -1140,53 +1140,196 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
         return Engraver.generate_track_rests(track_notes, total_measures, qn_per_measure, dq, min_m, max_m)
     end
     
-    -- Polyphonic track (Elaine Gould / Gardner Read):
-    -- Each voice has its own metric rest stream.
+    -- Polyphonic track (Elaine Gould "Behind Bars" p. 308 / Gardner Read):
+    -- Each voice has its own metric rest stream when sounding simultaneously.
+    -- However, when voices share a stave consecutively rather than simultaneously
+    -- (e.g. voice 1 plays beats 1-2, voice 2 plays beats 3-4):
+    -- 1. Inactive voices NEVER emit rests for inactive periods if the measure is filled sequentially!
+    -- 2. If consecutive voices leave a gap, a single shared rest fills the empty part.
+    -- 3. Stems and rests only split per voice when multiple voices actually coexist/overlap.
     local all_rests = {}
     local start_m = math.max(0, min_m or 0)
     local stop_m = math.min(total_measures - 1, max_m or (total_measures - 1))
+    if start_m > stop_m then return all_rests end
     
-    -- Determine measure occupancy across all voices (including notes spanning across measure barlines)
-    local bar_has_notes = {}
-    for m = start_m, stop_m do bar_has_notes[m] = false end
+    local notes_by_bar = {}
+    for m = start_m, stop_m do notes_by_bar[m] = {} end
+    
     for _, n in ipairs(track_notes or {}) do
-        local n_sqn = n.start_qn or 0
-        local n_dur = n.dur_qn or (n.end_qn and (n.end_qn - n_sqn)) or 0
-        local n_eqn = n.end_qn or (n_sqn + n_dur)
-        local m_start = math.max(start_m, math.floor((n_sqn + 0.001) / bpi))
-        local m_end = math.min(stop_m, math.floor(math.max(n_sqn, n_eqn - 0.001) / bpi))
-        for m = m_start, m_end do
-            if bar_has_notes[m] ~= nil then
-                bar_has_notes[m] = true
-            end
+        local n_start = dq and (math.floor((n.start_qn / dq) + 0.5) * dq) or n.start_qn
+        local n_dur = dq and (math.max(dq, math.floor(((n.dur_qn or (n.end_qn - n.start_qn)) / dq) + 0.5) * dq)) or (n.dur_qn or (n.end_qn - n.start_qn))
+        local n_end = n_start + n_dur
+        local start_bar = math.floor((n_start + 0.001) / bpi)
+        local end_bar = math.floor(math.max(n_start, n_end - 0.001) / bpi)
+        local from_b = math.max(start_m, start_bar)
+        local to_b = math.min(stop_m, end_bar)
+        for m = from_b, to_b do
+            if notes_by_bar[m] then table.insert(notes_by_bar[m], n) end
         end
     end
     
-    for v = 1, 4 do
-        if voices_present[v] then
-            local v_notes = {}
-            for _, n in ipairs(track_notes) do
-                if ((n.chan or 0) + 1) == v then
-                    table.insert(v_notes, n)
+    for m = start_m, stop_m do
+        local bar_notes = notes_by_bar[m]
+        local bar_sqn = m * bpi
+        local bar_eqn = (m + 1) * bpi
+        
+        if #bar_notes == 0 then
+            -- Measure is completely empty across ALL voices: emit a single centered whole rest
+            table.insert(all_rests, {
+                type = "whole",
+                start_qn = bar_sqn,
+                dur_qn = bpi,
+                measure_idx = m,
+                is_full_measure = true
+            })
+        else
+            -- Group notes in this measure by voice
+            local voices_in_bar = {}
+            local notes_by_v = {}
+            for _, n in ipairs(bar_notes) do
+                local v = (n.chan or 0) + 1
+                if not notes_by_v[v] then
+                    notes_by_v[v] = {}
+                    table.insert(voices_in_bar, v)
                 end
+                table.insert(notes_by_v[v], n)
             end
+            table.sort(voices_in_bar)
             
-            local v_rests = Engraver.generate_track_rests(v_notes, total_measures, qn_per_measure, dq, min_m, max_m)
-            for _, r in ipairs(v_rests) do
-                r.voice = v
-                local m = r.measure_idx or math.floor(r.start_qn / bpi)
-                -- Elaine Gould ("Behind Bars" p. 308):
-                -- If measure is completely empty across ALL voices: only voice 1 emits the centered whole measure rest.
-                -- If measure has notes in another voice: an inactive voice NEVER emits a whole-measure rest!
-                if r.is_full_measure then
-                    if not bar_has_notes[m] then
-                        if v == 1 then
-                            r.voice = nil -- Standard centered
-                            table.insert(all_rests, r)
+            if #voices_in_bar == 1 then
+                -- Only ONE voice is active in this measure.
+                -- Inactive voices emit 0 rests. The active voice behaves like a standard single voice.
+                local v = voices_in_bar[1]
+                local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m)
+                for _, r in ipairs(v_rests) do
+                    if not r.is_full_measure then
+                        r.voice = nil -- Standard centered rest for monophonic measure
+                        table.insert(all_rests, r)
+                    end
+                end
+            else
+                -- Multiple voices are active in this measure.
+                -- Check for simultaneous overlap between distinct voices:
+                local has_simultaneous_overlap = false
+                for i = 1, #bar_notes do
+                    local na = bar_notes[i]
+                    local va = (na.chan or 0) + 1
+                    local sa = math.max(bar_sqn, na.start_qn)
+                    local ea = math.min(bar_eqn, na.end_qn or (na.start_qn + (na.dur_qn or 1.0)))
+                    for j = i + 1, #bar_notes do
+                        local nb = bar_notes[j]
+                        local vb = (nb.chan or 0) + 1
+                        if va ~= vb then
+                            local sb = math.max(bar_sqn, nb.start_qn)
+                            local eb = math.min(bar_eqn, nb.end_qn or (nb.start_qn + (nb.dur_qn or 1.0)))
+                            local overlap_len = math.min(ea, eb) - math.max(sa, sb)
+                            if overlap_len > 0.05 then
+                                has_simultaneous_overlap = true
+                                break
+                            end
                         end
                     end
+                    if has_simultaneous_overlap then break end
+                end
+                
+                if not has_simultaneous_overlap then
+                    -- Consecutive voices (Gould "Behind Bars" p. 308):
+                    -- Voices do not sound simultaneously. Check combined metric coverage of the measure.
+                    local distinct_onsets = {}
+                    for _, n in ipairs(bar_notes) do
+                        local snap_grid = dq or 0.125
+                        local eff_n_start = math.max(bar_sqn, n.start_qn)
+                        local eff_n_end = math.min(bar_eqn, n.end_qn or (n.start_qn + (n.dur_qn or (n.end_qn and (n.end_qn - n.start_qn) or 1.0))))
+                        local eff_n_dur = math.max(0, eff_n_end - eff_n_start)
+                        local rel_s = eff_n_start - bar_sqn
+                        local snapped_s = bar_sqn + (math.floor((rel_s / snap_grid) + 0.5) * snap_grid)
+                        local nom_dur = dq and (math.max(dq, math.floor((eff_n_dur / dq) + 0.5) * dq)) or Engraver.get_nominal_rhythmic_duration(eff_n_dur)
+                        
+                        local found = false
+                        local tol = dq and (dq * 0.7) or 0.10
+                        for _, slot in ipairs(distinct_onsets) do
+                            if math.abs(slot.s - snapped_s) < tol then
+                                slot.dur = math.max(slot.dur, nom_dur)
+                                slot.actual_end = math.max(slot.actual_end, eff_n_end)
+                                found = true
+                                break
+                            end
+                        end
+                        if not found then
+                            table.insert(distinct_onsets, {
+                                s = snapped_s,
+                                dur = nom_dur,
+                                actual_end = eff_n_end
+                            })
+                        end
+                    end
+                    table.sort(distinct_onsets, function(a, b) return a.s < b.s end)
+                    
+                    local intervals = {}
+                    for idx, slot in ipairs(distinct_onsets) do
+                        local s_qn = math.max(bar_sqn, slot.s)
+                        local nom_e = s_qn + slot.dur
+                        if idx < #distinct_onsets then
+                            local next_s = distinct_onsets[idx + 1].s
+                            if next_s > s_qn + 0.05 then
+                                nom_e = math.min(nom_e, next_s)
+                            end
+                        else
+                            local fill_tol = dq and (dq * 0.5) or 0.20
+                            if nom_e >= bar_end_qn - fill_tol or slot.actual_end >= bar_end_qn - fill_tol then
+                                nom_e = bar_end_qn
+                            end
+                        end
+                        if slot.actual_end >= bar_end_qn - 0.05 then
+                            nom_e = bar_end_qn
+                        end
+                        local e_qn = math.min(bar_end_qn, math.max(nom_e, slot.actual_end))
+                        if e_qn > s_qn + 0.05 then
+                            table.insert(intervals, { s = s_qn, e = e_qn })
+                        end
+                    end
+                    
+                    local merged = {}
+                    for _, inv in ipairs(intervals) do
+                        if #merged == 0 or inv.s > merged[#merged].e + 0.08 then
+                            table.insert(merged, { s = inv.s, e = inv.e })
+                        else
+                            merged[#merged].e = math.max(merged[#merged].e, inv.e)
+                        end
+                    end
+                    
+                    local covered = 0
+                    for _, inv in ipairs(merged) do
+                        covered = covered + (inv.e - inv.s)
+                    end
+                    
+                    local fill_tol = dq and (dq * 0.5) or 0.20
+                    if covered < bpi - fill_tol then
+                        local cur_pos = bar_sqn
+                        for _, inv in ipairs(merged) do
+                            if inv.s > cur_pos + fill_tol then
+                                local gap_dur = inv.s - cur_pos
+                                Engraver.decompose_rest_gap(all_rests, cur_pos, gap_dur, m, bpi)
+                            end
+                            cur_pos = math.max(cur_pos, inv.e)
+                        end
+                        if bar_eqn > cur_pos + fill_tol then
+                            Engraver.decompose_rest_gap(all_rests, cur_pos, bar_eqn - cur_pos, m, bpi)
+                        end
+                    end
+                    -- If covered >= bpi - fill_tol: completely full consecutively, 0 rests!
                 else
-                    table.insert(all_rests, r)
+                    -- Overlapping voices: true polyphony in this measure.
+                    -- Each voice gets its independent rest stream tagged with r.voice = v.
+                    for _, v in ipairs(voices_in_bar) do
+                        local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m)
+                        for _, r in ipairs(v_rests) do
+                            if not r.is_full_measure then
+                                r.voice = v
+                                table.insert(all_rests, r)
+                            end
+                        end
+                    end
                 end
             end
         end
