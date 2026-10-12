@@ -1,10 +1,10 @@
-# REAPER-Notator v1.9.0 — Codebase & Library Statistics
+# REAPER-Notator v1.9.1 — Codebase & Library Statistics
 
-**Generated:** 2026-10-12 18:38
+**Generated:** 2026-10-12 18:43
 
 ## Executive Summary
 
-- **Version:** v1.9.0
+- **Version:** v1.9.1
 - **Total Source Files:** 75 Lua files
 - **Total Line Count:** 56,112
 - **Executable Code Lines:** 47,238 (84.2%)
@@ -50,7 +50,7 @@
 
 | Service File | Subsystem & Musical Responsibility | Code Lines |
 | :--- | :--- | :---: |
-| `modules/services/divisio_vocum_service.lua` | Divisio Vocum - Orchestral Voice Division / Stimmteilung across tracks | 308 |
+| `modules/services/divisio_vocum_service.lua` | Divisio Vocum - Orchestral Voice Division across tracks | 308 |
 | `modules/services/dynamics_engine.lua` | Orchestral Dynamics Engine - Bezier/Linear CC automation shaping | 1,128 |
 | `modules/services/glissando_service.lua` | Glissando Engine - Smooth chromatic / diatonic slide generation | 1,245 |
 | `modules/services/midi_service.lua` | Core MIDI Engine - Low-latency take I/O and event synchronization | 5,215 |

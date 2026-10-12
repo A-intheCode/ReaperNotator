@@ -1,6 +1,6 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
-**Version:** 1.9.0  
+**Version:** 1.9.1  
 **Date:** 2026-10-12  
 **License:** GNU General Public License v3.0  
 
@@ -52,7 +52,7 @@ REAPER-Notator can run as a floating window or docked directly into any REAPER d
 
 ### 2.1 Title & Version Indicator
 
-Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v1.9.0). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
+Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v1.9.1). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
 
 ### 2.2 Transport & Playhead Controls
 
@@ -521,7 +521,7 @@ Functions: Fast editing actions consolidated in the right-hand Tools drawer:
 ### 11.4 Divisio Vocum (Orchestral Voice Distribution / Explode Chords)
 
 Overview & Musical Concept:
-Divisio Vocum (classical Latin for 'voice division' / Stimmteilung) is an intelligent orchestral arranging service implemented in modules/services/divisio_vocum_service.lua with UI modal modules/ui/divisio_vocum_modal.lua. It takes multi-voice chords played or sketched on a single track (such as an ensemble piano reduction, string sketch, or brass fanfare on Violin 1) and distributes the individual polyphonic voices vertically across the active tracks displayed in the score viewport below (for example: distributing a 5-voice chord from Track 1 across Violin 1, Violin 2, Viola, Cello, and Contrabass).
+Divisio Vocum (classical Latin for 'voice division') is an intelligent orchestral arranging service implemented in modules/services/divisio_vocum_service.lua with UI modal modules/ui/divisio_vocum_modal.lua. It takes multi-voice chords played or sketched on a single track (such as an ensemble piano reduction, string sketch, or brass fanfare on Violin 1) and distributes the individual polyphonic voices vertically across the active tracks displayed in the score viewport below (for example: distributing a 5-voice chord from Track 1 across Violin 1, Violin 2, Viola, Cello, and Contrabass).
 
 How to Access the Tool:
 - Method 1 (Score Tools Drawer): Open the right-hand Tools drawer and click 'Divisio Vocum...'.

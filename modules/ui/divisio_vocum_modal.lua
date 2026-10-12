@@ -201,7 +201,7 @@ function DivisioVocumModal.render(ctx, state, midi_service, active_tracks_data)
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Divisio Vocum (Stimmteilung):\nSplits multi-voice chords from the source track and distributes them\nvertically across the target tracks in the viewport below.\nConsumes secondary chord notes on the source track.")
+            reaper.ImGui_SetTooltip(ctx, "Divisio Vocum (Voice Division):\nSplits multi-voice chords from the source track and distributes them\nvertically across the target tracks in the viewport below.\nConsumes secondary chord notes on the source track.")
         end
 
         reaper.ImGui_SameLine(ctx, 0, 12)

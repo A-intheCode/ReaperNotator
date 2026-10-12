@@ -163,7 +163,7 @@ with open(MD_PATH, 'w', encoding='utf-8') as md:
     md.write("| Service File | Subsystem & Musical Responsibility | Code Lines |\n")
     md.write("| :--- | :--- | :---: |\n")
     services_desc = [
-        ("modules/services/divisio_vocum_service.lua", "Divisio Vocum - Orchestral Voice Division / Stimmteilung across tracks"),
+        ("modules/services/divisio_vocum_service.lua", "Divisio Vocum - Orchestral Voice Division across tracks"),
         ("modules/services/dynamics_engine.lua", "Orchestral Dynamics Engine - Bezier/Linear CC automation shaping"),
         ("modules/services/glissando_service.lua", "Glissando Engine - Smooth chromatic / diatonic slide generation"),
         ("modules/services/midi_service.lua", "Core MIDI Engine - Low-latency take I/O and event synchronization"),

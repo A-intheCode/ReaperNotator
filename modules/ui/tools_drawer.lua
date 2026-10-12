@@ -83,7 +83,7 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Divisio Vocum (Stimmteilung):\nOpens the Divisio Vocum dialog to distribute multi-voice chords\nvertically across the visible tracks in the score viewport below.")
+            reaper.ImGui_SetTooltip(ctx, "Divisio Vocum (Voice Division):\nOpens the Divisio Vocum dialog to distribute multi-voice chords\nvertically across the visible tracks in the score viewport below.")
         end
 
         -- ------------------------------------------------------------------

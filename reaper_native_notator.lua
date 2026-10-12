@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.0
+-- @version 1.9.1
 -- @changelog
 --   + v1.9.0: Divisio Vocum (Voice Distribution) Suite, Live Item Scaling & Grid Shortcuts:
 --             - Divisio Vocum Feature: Distributes multi-voice chords from a single track vertically across the visible score tracks in the viewport below.
