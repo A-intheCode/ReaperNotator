@@ -3,6 +3,7 @@
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![REAPER](https://img.shields.io/badge/REAPER-v7.0+-orange.svg)](https://www.reaper.fm/)
 [![ReaImGui](https://img.shields.io/badge/ReaImGui-v0.9+-green.svg)](https://github.com/cfillion/reaimgui)
+[![Reaticulate](https://img.shields.io/badge/Reaticulate-Required-blueviolet.svg)](https://reaticulate.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#)
 
 > **REAPER-Notator** is a native, professional music notation, score editing, and engraving suite built directly for Cockos REAPER using ReaImGui and standard SMuFL vector glyphs.
@@ -143,31 +144,40 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 ### Method 1: Via ReaPack (Recommended)
 
 1. Ensure you have **ReaPack** installed in REAPER ([reapack.com](https://reapack.com/)).
-2. In REAPER, go to:
+2. Install the required dependencies in ReaPack (`Extensions` → `ReaPack` → `Browse packages...`):
+   - **ReaImGui** (v0.9+ from ReaTeam Extensions)
+   - **Reaticulate** (**required** — install via ReaPack or import repository `https://reaticulate.com/index.xml`)
+3. In REAPER, go to:
    `Extensions` → `ReaPack` → `Import a repository...`
-3. Enter the following repository URL:
+4. Enter the following repository URL:
    ```text
    https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/index.xml
    ```
-4. Open `Extensions` → `ReaPack` → `Browse packages...`.
-5. Search for `REAPER-Notator`, right-click on it, select **Install**, and click **Apply**.
-6. Run `Script: reaper_native_notator.lua` from the REAPER Actions list (`?`).
+5. Open `Extensions` → `ReaPack` → `Browse packages...`.
+6. Search for `REAPER-Notator`, right-click on it, select **Install**, and click **Apply**.
+7. Run `Script: reaper_native_notator.lua` from the REAPER Actions list (`?`).
 
 ### Method 2: Manual Installation
 
-1. Clone or download this repository into your REAPER Scripts folder:
+1. Install the required dependencies:
+   - **ReaImGui** (v0.9+)
+   - **Reaticulate** (**required** — [reaticulate.com](https://reaticulate.com/))
+2. Clone or download this repository into your REAPER Scripts folder:
    - **Windows:** `%APPDATA%\REAPER\Scripts\REAPER-Notator`
    - **macOS:** `~/Library/Application Support/REAPER/Scripts/REAPER-Notator`
    - **Linux:** `~/.config/REAPER/Scripts/REAPER-Notator`
-2. Open REAPER, press `?` to open the **Actions List**, click **New Action...** → **Load ReaScript...**, and select `reaper_native_notator.lua`.
+3. Open REAPER, press `?` to open the **Actions List**, click **New Action...** → **Load ReaScript...**, and select `reaper_native_notator.lua`.
 
 ---
 
 ## Requirements
 
 - **Cockos REAPER** v7.0 or higher
-- **ReaImGui** v0.9+ (available via ReaPack)
-- **SWS / S&M Extension** (recommended)
+- **ReaImGui** v0.9+ (required — available via ReaPack from the ReaTeam repository)
+- **Reaticulate** (**required** — available via ReaPack: [reaticulate.com](https://reaticulate.com/))
+  > **Note:** Reaticulate is an essential prerequisite for REAPER-Notator to run. It handles articulation sound bank definitions, keyswitch chasing, and MIDI playback orchestration. Make sure Reaticulate is installed before launching REAPER-Notator.
+- **SWS / S&M Extension** (recommended — [sws-extension.org](https://www.sws-extension.org/))
+- **JS_ReaScriptAPI** (recommended — available via ReaPack)
 
 ---
 

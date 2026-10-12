@@ -30,9 +30,15 @@
 
 ## Chapter 1: Introduction & Interface Architecture
 
-### 1.1 Overview & Vision
+### 1.1 Overview, Vision & Prerequisites
 
 REAPER-Notator is a native, professional music scoring, notation editing, and engraving environment built directly into Cockos REAPER using ReaImGui and standard SMuFL (Standard Music Font Layout) Bravura vector glyphs. Unlike external scoring applications, Notator runs directly inside REAPER's audio engine and timeline, providing instantaneous two-way synchronization between visual music notation and underlying REAPER MIDI takes, CC automation, and tempo maps.
+
+Prerequisites & System Requirements:
+- Cockos REAPER v7.0 or higher.
+- ReaImGui extension (v0.9+ via ReaPack).
+- Reaticulate (Required prerequisite for articulation handling, sound bank definitions, keyswitch chasing, and playback routing; install via ReaPack: https://reaticulate.com/).
+- SWS / S&M Extension & JS_ReaScriptAPI (recommended).
 
 ### 1.2 The Three-Column Workspace Layout
 

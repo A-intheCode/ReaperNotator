@@ -41,8 +41,13 @@ MANUAL_DATA = [
         "title": "Introduction & Interface Architecture",
         "sections": [
             {
-                "heading": "1.1 Overview & Vision",
-                "text": "REAPER-Notator is a native, professional music scoring, notation editing, and engraving environment built directly into Cockos REAPER using ReaImGui and standard SMuFL (Standard Music Font Layout) Bravura vector glyphs. Unlike external scoring applications, Notator runs directly inside REAPER's audio engine and timeline, providing instantaneous two-way synchronization between visual music notation and underlying REAPER MIDI takes, CC automation, and tempo maps."
+                "heading": "1.1 Overview, Vision & Prerequisites",
+                "text": "REAPER-Notator is a native, professional music scoring, notation editing, and engraving environment built directly into Cockos REAPER using ReaImGui and standard SMuFL (Standard Music Font Layout) Bravura vector glyphs. Unlike external scoring applications, Notator runs directly inside REAPER's audio engine and timeline, providing instantaneous two-way synchronization between visual music notation and underlying REAPER MIDI takes, CC automation, and tempo maps.\n\n"
+                        "Prerequisites & System Requirements:\n"
+                        "- Cockos REAPER v7.0 or higher.\n"
+                        "- ReaImGui extension (v0.9+ via ReaPack).\n"
+                        "- Reaticulate (Required prerequisite for articulation handling, sound bank definitions, keyswitch chasing, and playback routing; install via ReaPack: https://reaticulate.com/).\n"
+                        "- SWS / S&M Extension & JS_ReaScriptAPI (recommended)."
             },
             {
                 "heading": "1.2 The Three-Column Workspace Layout",
@@ -853,7 +858,7 @@ pdf.rect(14, box_y, pdf.epw, 36, "DF")
 items = [
     ("Version:", f"v{VERSION} (Production Release)"),
     ("Release Date:", datetime.datetime.now().strftime("%B %d, %Y")),
-    ("Compatibility:", "Cockos REAPER v7.0+ (Windows, macOS, Linux) with ReaImGui"),
+    ("Compatibility:", "Cockos REAPER v7.0+ (Windows, macOS, Linux) with ReaImGui & Reaticulate"),
     ("License:", "GNU General Public License v3.0 (GPL-3.0)")
 ]
 
