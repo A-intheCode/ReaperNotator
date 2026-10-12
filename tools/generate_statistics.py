@@ -159,7 +159,33 @@ with open(MD_PATH, 'w', encoding='utf-8') as md:
         md.write(f"| `{item['rel']}` | {item['parent']} | {item['lines']:,} | {item['code']:,} | {item['comment']:,} |\n")
     md.write("\n")
     
-    md.write("## 3. Orchestral Pattern Library Breakdown\n\n")
+    md.write("## 3. Specialized Orchestral & Engraving Services (`modules/services`)\n\n")
+    md.write("| Service File | Subsystem & Musical Responsibility | Code Lines |\n")
+    md.write("| :--- | :--- | :---: |\n")
+    services_desc = [
+        ("modules/services/divisio_vocum_service.lua", "Divisio Vocum - Orchestral Voice Division / Stimmteilung across tracks"),
+        ("modules/services/dynamics_engine.lua", "Orchestral Dynamics Engine - Bezier/Linear CC automation shaping"),
+        ("modules/services/glissando_service.lua", "Glissando Engine - Smooth chromatic / diatonic slide generation"),
+        ("modules/services/midi_service.lua", "Core MIDI Engine - Low-latency take I/O and event synchronization"),
+        ("modules/services/musicxml_export_service.lua", "MusicXML 4.0 Exporter - Standard score interchange file generation"),
+        ("modules/services/musicxml_import_service.lua", "MusicXML 4.0 Importer - Orchestral part loading and articulation mapping"),
+        ("modules/services/audio_preview.lua", "Audition Preview Engine - Non-destructive note click playback chasing"),
+        ("modules/services/reaticulate_parser.lua", "Reaticulate Bridge - Bank parsing and articulation keyswitch management"),
+        ("modules/services/scale_service.lua", "Scale & Harmony Service - Chord Track harmonic transformations"),
+        ("modules/services/slur_service.lua", "Slur Engine - Ergonomic Bezier phrasing curves and keyswitch binding"),
+        ("modules/services/portamento_service.lua", "Portamento Service - High-resolution micro-tonal pitch-bend transitions"),
+        ("modules/services/pattern_service.lua", "Pattern Engine - Orchestral motif browser and timeline stamping"),
+        ("modules/services/rehearsal_mark_service.lua", "Rehearsal Marks - Structural navigation and drag-and-drop bar markers"),
+        ("modules/services/fermata_service.lua", "Fermata Service - Score-wide pause holds and tempo mapping"),
+        ("modules/services/pedal_service.lua", "Pedal Service - Classical damper and sustain pedal CC64 lane"),
+    ]
+    file_lines_map = {item['rel']: item['code'] for item in file_records}
+    for s_file, s_desc in services_desc:
+        c_lines = file_lines_map.get(s_file, 0)
+        md.write(f"| `{s_file}` | {s_desc} | {c_lines:,} |\n")
+    md.write("\n")
+
+    md.write("## 4. Orchestral Pattern Library Breakdown\n\n")
     md.write("| Category | Sub-Genre / Instrumentation | Pattern Count |\n")
     md.write("| :--- | :--- | :---: |\n")
     category_labels = {
@@ -370,8 +396,38 @@ pdf.cell(col_w3[1], 6.5, f"  {len(pattern_stats)} Curated Production Categories"
 pdf.cell(col_w3[2], 6.5, f"{total_patterns:,} patterns  ", 0, new_x=XPos.RIGHT, new_y=YPos.TOP, align="R", fill=True)
 pdf.ln(6.5)
 
-# Bottom note box
-pdf.ln(4)
+# PAGE 3: Specialized Orchestral & Engraving Services (modules/services)
+pdf.add_page()
+
+pdf.set_font("Helvetica", "B", 13)
+pdf.set_text_color(30, 41, 59)
+pdf.cell(0, 8, "4. Specialized Orchestral & Engraving Services Subsystem", 0, new_x=XPos.LMARGIN, new_y=YPos.NEXT, align="L")
+pdf.ln(1)
+
+col_ws = [75, 90, 25]
+hs = ["Service Subsystem File", "Musical & Architectural Responsibility", "Code Lines"]
+
+pdf.set_font("Helvetica", "B", 8)
+pdf.set_fill_color(30, 41, 59)
+pdf.set_text_color(255, 255, 255)
+for w, h in zip(col_ws, hs):
+    pdf.cell(w, 6.5, h, 0, new_x=XPos.RIGHT, new_y=YPos.TOP, align="C" if w < 40 else "L", fill=True)
+pdf.ln(6.5)
+
+pdf.set_font("Helvetica", "", 7.5)
+for r_i, (s_file, s_desc) in enumerate(services_desc):
+    bg = 255 if r_i % 2 == 0 else 248
+    pdf.set_fill_color(bg, bg, bg)
+    pdf.set_text_color(30, 41, 59)
+    c_lines = file_lines_map.get(s_file, 0)
+    base_name = os.path.basename(s_file)
+    pdf.cell(col_ws[0], 5.5, f"  {base_name}", 0, new_x=XPos.RIGHT, new_y=YPos.TOP, align="L", fill=True)
+    pdf.cell(col_ws[1], 5.5, f"  {s_desc[:52]}", 0, new_x=XPos.RIGHT, new_y=YPos.TOP, align="L", fill=True)
+    pdf.cell(col_ws[2], 5.5, f"{c_lines:,}  ", 0, new_x=XPos.RIGHT, new_y=YPos.TOP, align="R", fill=True)
+    pdf.ln(5.5)
+
+# Bottom note box on Page 3
+pdf.ln(6)
 pdf.set_fill_color(240, 253, 244) # Green 50
 pdf.set_draw_color(187, 247, 208) # Green 200
 pdf.rect(10, pdf.get_y(), 190, 14, "DF")
@@ -389,3 +445,4 @@ pdf.cell(0, 4, f"All {total_files} source files and {total_patterns:,} pattern J
 pdf.output(PDF_PATH)
 print(f"Successfully generated PDF: {PDF_PATH}")
 print(f"Successfully generated Markdown: {MD_PATH}")
+

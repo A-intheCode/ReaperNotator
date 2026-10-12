@@ -1,14 +1,14 @@
-# REAPER-Notator v1.9.0-beta.1 — Codebase & Library Statistics
+# REAPER-Notator v1.9.0 — Codebase & Library Statistics
 
-**Generated:** 2026-10-12 18:31
+**Generated:** 2026-10-12 18:38
 
 ## Executive Summary
 
-- **Version:** v1.9.0-beta.1
+- **Version:** v1.9.0
 - **Total Source Files:** 75 Lua files
-- **Total Line Count:** 56,111
+- **Total Line Count:** 56,112
 - **Executable Code Lines:** 47,238 (84.2%)
-- **Comments & Documentation:** 4,095 (7.3%)
+- **Comments & Documentation:** 4,096 (7.3%)
 - **Blank / Formatting Lines:** 5,300 (9.4%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
@@ -22,9 +22,9 @@
 | `modules/ui` | 19 | 9,337 | 7,539 | 718 | 1,106 | 80.7% |
 | `modules` | 3 | 2,186 | 1,908 | 417 | 138 | 87.3% |
 | `modules/input` | 2 | 2,002 | 1,740 | 91 | 173 | 86.9% |
-| `Root` | 1 | 975 | 654 | 247 | 78 | 67.1% |
+| `Root` | 1 | 976 | 654 | 248 | 78 | 67.0% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **75** | **56,111** | **47,238** | **4,095** | **5,300** | **84.2%** |
+| **TOTAL** | **75** | **56,112** | **47,238** | **4,096** | **5,300** | **84.2%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
@@ -46,7 +46,27 @@
 | `modules/state.lua` | modules | 1,132 | 980 | 199 |
 | `modules/services/clipboard_service.lua` | modules/services | 1,044 | 890 | 58 |
 
-## 3. Orchestral Pattern Library Breakdown
+## 3. Specialized Orchestral & Engraving Services (`modules/services`)
+
+| Service File | Subsystem & Musical Responsibility | Code Lines |
+| :--- | :--- | :---: |
+| `modules/services/divisio_vocum_service.lua` | Divisio Vocum - Orchestral Voice Division / Stimmteilung across tracks | 308 |
+| `modules/services/dynamics_engine.lua` | Orchestral Dynamics Engine - Bezier/Linear CC automation shaping | 1,128 |
+| `modules/services/glissando_service.lua` | Glissando Engine - Smooth chromatic / diatonic slide generation | 1,245 |
+| `modules/services/midi_service.lua` | Core MIDI Engine - Low-latency take I/O and event synchronization | 5,215 |
+| `modules/services/musicxml_export_service.lua` | MusicXML 4.0 Exporter - Standard score interchange file generation | 1,435 |
+| `modules/services/musicxml_import_service.lua` | MusicXML 4.0 Importer - Orchestral part loading and articulation mapping | 1,828 |
+| `modules/services/audio_preview.lua` | Audition Preview Engine - Non-destructive note click playback chasing | 805 |
+| `modules/services/reaticulate_parser.lua` | Reaticulate Bridge - Bank parsing and articulation keyswitch management | 376 |
+| `modules/services/scale_service.lua` | Scale & Harmony Service - Chord Track harmonic transformations | 835 |
+| `modules/services/slur_service.lua` | Slur Engine - Ergonomic Bezier phrasing curves and keyswitch binding | 1,830 |
+| `modules/services/portamento_service.lua` | Portamento Service - High-resolution micro-tonal pitch-bend transitions | 1,312 |
+| `modules/services/pattern_service.lua` | Pattern Engine - Orchestral motif browser and timeline stamping | 411 |
+| `modules/services/rehearsal_mark_service.lua` | Rehearsal Marks - Structural navigation and drag-and-drop bar markers | 244 |
+| `modules/services/fermata_service.lua` | Fermata Service - Score-wide pause holds and tempo mapping | 232 |
+| `modules/services/pedal_service.lua` | Pedal Service - Classical damper and sustain pedal CC64 lane | 530 |
+
+## 4. Orchestral Pattern Library Breakdown
 
 | Category | Sub-Genre / Instrumentation | Pattern Count |
 | :--- | :--- | :---: |

@@ -137,10 +137,12 @@ MANUAL_DATA = [
                         "DAW Effect: Inserts a new MIDI note event into the focused track's active MIDI take via REAPER's MIDI_InsertNote API."
             },
             {
-                "heading": "3.2 Note Duration & Augmentation Dots",
+                "heading": "3.2 Note Duration, Augmentation Dots & Grid Synchronization",
                 "text": "Functions:\n"
-                        "- Note Values: Supports 1/1 (Whole), 1/2 (Half), 1/4 (Quarter), 1/8 (Eighth), 1/16 (16th), and 1/32 (32nd) notes.\n"
-                        "- Augmentation Dot: Toggles 1.5x duration expansion. A dotted quarter note spans 1.5 quarter notes (3 eighths).\n"
+                        "- Note Values: Supports 1/1 (Whole), 1/2 (Half), 1/4 (Quarter), 1/8 (Eighth), 1/16 (16th), and 1/32 (32nd) notes (number keys 1 through 6).\n"
+                        "- Augmentation Dot: Toggles 1.5x duration expansion (keyboard shortcut: . [period]). A dotted quarter note spans 1.5 quarter notes (3 eighths).\n"
+                        "- Grid & Note Duration Synchronization ([Link] Button / Ctrl+K): Allows linking the active note entry duration to the score grid snapping value so that adjusting one automatically updates the other.\n"
+                        "- Dedicated Grid Hotkeys (Ctrl+1 .. Ctrl+7): Instantly sets score grid snapping via keyboard: Ctrl+7=1/1, Ctrl+6=1/2, Ctrl+5=1/4, Ctrl+4=1/8, Ctrl+3=1/16, Ctrl+2=1/32, Ctrl+1=Free Grid.\n"
                         "DAW Effect: Sets note start and end positions accurately in Quarter Note (QN) timeline units."
             },
             {
@@ -152,13 +154,14 @@ MANUAL_DATA = [
                         "DAW Effect: Transposes the underlying MIDI note number (0-127) and tags visual notation accidentals."
             },
             {
-                "heading": "3.4 Note Manipulation (Move, Pitch, Length)",
+                "heading": "3.4 Note Manipulation & Live MIDI Item Edge Resizing",
                 "text": "Functions:\n"
                         "- Horizontal Drag: Moves notes forward or backward in time, snapping to the selected rhythmic grid (e.g. 1/4, 1/8, 1/16).\n"
                         "- Vertical Drag: Transposes note pitch chromatically. Moving noteheads automatically updates accidentals.\n"
                         "- End-Edge Drag: Lengthens or shortens note duration by pulling the right edge of the notehead.\n"
                         "- Arrow Keys: Up/Down transposes by semitones (Shift+Up/Down by octaves). Left/Right moves by grid increments.\n"
-                        "DAW Effect: Calls MIDI_SetNote to update pitch, QN start, and QN end in real time with undo history."
+                        "- Live MIDI Item Edge Resizing: Hovering and dragging the left or right boundary edges of any MIDI item directly on the score canvas scales the item with instantaneous, real-time visual feedback during the drag (eliminating latency until mouse release) and updates REAPER's timeline media item bounds synchronously.\n"
+                        "DAW Effect: Calls MIDI_SetNote and REAPER's SetMediaItemInfo_Value to update pitch, QN start, QN end, and item timeline boundaries in real time with atomic undo history."
             },
             {
                 "heading": "3.5 Multi-Note Selection & Marquee Tool",
@@ -545,7 +548,32 @@ MANUAL_DATA = [
                         "- Quantize Tools: Integrated triplet, swing, and 1/4 through 1/64 grid snapping directly inside the Tools drawer."
             },
             {
-                "heading": "11.4 Floating Text Items & In-Place Editing",
+                "heading": "11.4 Divisio Vocum (Orchestral Voice Distribution / Explode Chords)",
+                "text": "Overview & Musical Concept:\n"
+                        "Divisio Vocum (classical Latin for 'voice division' / Stimmteilung) is an intelligent orchestral arranging service implemented in modules/services/divisio_vocum_service.lua with UI modal modules/ui/divisio_vocum_modal.lua. It takes multi-voice chords played or sketched on a single track (such as an ensemble piano reduction, string sketch, or brass fanfare on Violin 1) and distributes the individual polyphonic voices vertically across the active tracks displayed in the score viewport below (for example: distributing a 5-voice chord from Track 1 across Violin 1, Violin 2, Viola, Cello, and Contrabass).\n\n"
+                        "How to Access the Tool:\n"
+                        "- Method 1 (Score Tools Drawer): Open the right-hand Tools drawer and click 'Divisio Vocum...'.\n"
+                        "- Method 2 (Canvas Context Menu): Right-click on any selected notehead or empty measure on the score canvas and select 'Divisio Vocum...' from the context menu.\n\n"
+                        "Interactive Dialog Controls & Features:\n"
+                        "- Source Track Detection: The service automatically identifies the source track based on the current note selection, focused track, or the uppermost visible viewport track.\n"
+                        "- Target Tracks / Voices (2 to 16): An interactive slider to configure how many target tracks and polyphonic voices will receive notes. Defaults to 5 tracks.\n"
+                        "- 'Match Viewport' One-Click Button: Automatically queries the number of active tracks currently visible in your score canvas and synchronizes the target voice count to match them in a single click.\n"
+                        "- Live Routing Breakdown (Interactive Preview Table): Shows an immediate breakdown of voice routing before applying changes:\n"
+                        "  * Voice 1 (Top / Highest Pitch): Retained directly on the source track (e.g. Violin 1 / Soprano lead).\n"
+                        "  * Voice 2 (Upper Middle): Routed to Track 2 below.\n"
+                        "  * Voice 3 (Middle): Routed to Track 3 below.\n"
+                        "  * Voice 4 (Lower Middle): Routed to Track 4 below.\n"
+                        "  * Voice 5..N (Bass / Lowest Pitch): Routed to Track 5 and subsequent lower tracks (e.g. Celli and Contrabasses).\n"
+                        "- Chord Detection Tolerance (5 ms to 100 ms, default 25 ms): Configures the time window used to group notes into vertical chords. Notes played on MIDI keyboards with slight live humanization are clustered accurately into cohesive vertical chords.\n"
+                        "- Pad / Double Bass Voice in Lower Tracks (Gap-Fill): When active, chords with fewer notes than target tracks (e.g. a 3-note triad distributed over 5 orchestral tracks) automatically double the lowest root/bass note into the remaining bottom tracks (e.g. Celli and Contrabass both receive the bass note). When unchecked, lower tracks remain empty for sparse chords.\n"
+                        "- Scope Selection: Choose between 'Selected Chords' (restricting the operation strictly to currently selected notes) and 'All Chords on Track / Item'.\n\n"
+                        "DAW Execution, Articulation & Sound Bank Bridging:\n"
+                        "- Clean Voice Extraction: Distributed secondary voices (Voice 2..N) are seamlessly moved to the destination tracks at their exact Quarter-Note positions and durations, while the source track cleanly retains only Voice 1 without duplicate note clutter.\n"
+                        "- Intelligent Articulation & Reaticulate Bridging: Preserves SMuFL note-level articulations (Staccato, Accent, Tenuto, Marcato, etc.) and queries each destination track's Reaticulate sound bank to output the corresponding Bank Select (CC0/CC32) and Program Change events tailored to each instrument.\n"
+                        "- Transactional Undo Safety: The entire multi-track distribution operation is enclosed in a single REAPER undo transaction (Undo_BeginBlock2), ensuring immediate, complete rollback with Ctrl+Z."
+            },
+            {
+                "heading": "11.5 Floating Text Items & In-Place Editing",
                 "text": "Functions: Pressing Ctrl+T inserts a floating score text item at the cursor. Double-click any text item to open an in-place editing field. Configure font size, standard/italic/bold styling, and staff attachment anchor points."
             }
         ]
@@ -894,6 +922,13 @@ def sanitize_pdf_text(text: str) -> str:
         "↔": "[Fit]",
         "＋": "+",
         "－": "-",
+        "🎼": "[Score]",
+        "🛠": "[Tools]",
+        "➔": "->",
+        "✓": "[OK]",
+        "⚠": "[!]",
+        "🔗": "[Link]",
+        "🗑": "[Delete]",
     }
     for k, v in replacements.items():
         text = text.replace(k, v)
