@@ -1402,6 +1402,58 @@ function SlurService.is_note_slurred(n, state, trk_guid)
     return false
 end
 
+local function has_tie_on_same_side(state, nd1, nd2, slur_above, all_note_render_by_key)
+    local min_x = math.min(nd1.nx, nd2.nx) - 2
+    local max_x = math.max(nd1.nx, nd2.nx) + 2
+    
+    -- Check user ties
+    if state and state.user_ties then
+        for _, tie in ipairs(state.user_ties) do
+            local t_nd1, t_nd2 = resolve_effective_tie_notes(state, tie, all_note_render_by_key)
+            if t_nd1 and t_nd2 and t_nd1.nx and t_nd2.nx then
+                local t_min_x = math.min(t_nd1.nx, t_nd2.nx)
+                local t_max_x = math.max(t_nd1.nx, t_nd2.nx)
+                if t_max_x >= min_x and t_min_x <= max_x then
+                    local tie_above = true
+                    if t_nd1.stem_down == false and t_nd2.stem_down == false then
+                        tie_above = false
+                    elseif t_nd1.stem_down == false then
+                        tie_above = false
+                    end
+                    if tie_above == slur_above then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Check automatic barline / segmentation ties
+    if state and state.active_bar_ties then
+        for _, bt in ipairs(state.active_bar_ties) do
+            local b_nd1 = all_note_render_by_key and all_note_render_by_key[bt.from_key]
+            local b_nd2 = all_note_render_by_key and all_note_render_by_key[bt.to_key]
+            if b_nd1 and b_nd2 and b_nd1.nx and b_nd2.nx then
+                local b_min_x = math.min(b_nd1.nx, b_nd2.nx)
+                local b_max_x = math.max(b_nd1.nx, b_nd2.nx)
+                if b_max_x >= min_x and b_min_x <= max_x then
+                    local tie_above = (b_nd1.stem_down == true) or (b_nd1.dstep and b_nd1.dstep >= 4)
+                    if tie_above == slur_above then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Also check if nd1 or nd2 is a tied segment of the same note
+    if nd1.orig and nd2.orig and nd1.orig == nd2.orig then
+        return true
+    end
+    
+    return false
+end
+
 function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, all_notes_or_s, s_or_cminx, cminx_or_cmaxx, cmaxx_or_cminy, cminy_or_cmaxy, cmaxy_or_hov, opt_hov, opt_mx, opt_my, opt_note_hovered)
     local ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered
     if reaper.APIExists("ImGui_ValidatePtr") and reaper.ImGui_ValidatePtr(ctx_or_dl, "ImGui_Context*") then
@@ -1459,16 +1511,28 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                     above = false
                 end
                 
+                local has_tie = has_tie_on_same_side(state, nd1, nd2, above, all_note_render_by_key)
+                local extra_offset_y = 0
+                local extra_arc = 0
+                if has_tie then
+                    -- Elaine Gould ("Behind Bars" p. 60-63, 110-115):
+                    -- Slur must clear and enclose the tie on the outside with at least 1 staff space separation!
+                    extra_offset_y = 6.5 * s   -- (base 6.5 * s + 6.5 * s = 13.0 * s, well outside the tie at 3.8 * s)
+                    extra_arc = 12.0 * s       -- (deep, wide arch clearing the tie's peak completely)
+                end
+                
                 local dist_x = nd2.nx - nd1.nx
                 local dy = nd2.ny - nd1.ny
                 local chord_len = math.sqrt(dist_x * dist_x + dy * dy)
-                local arc_h = math.min(26 * s, math.max(8 * s, chord_len * 0.12))
+                local base_arc_h = math.min(32.0 * s, math.max(10.0 * s, chord_len * 0.15))
+                local arc_h = base_arc_h + extra_arc
                 local dir = above and -1 or 1
                 
-                local start_x = nd1.nx + 5.0 * s
-                local end_x   = nd2.nx - 5.0 * s
-                local start_y = nd1.ny + dir * 6.0 * s
-                local end_y   = nd2.ny + dir * 6.0 * s
+                local start_x = nd1.nx + 4.5 * s
+                local end_x   = nd2.nx - 4.5 * s
+                local base_offset_y = 6.5 * s
+                local start_y = nd1.ny + dir * (base_offset_y + extra_offset_y)
+                local end_y   = nd2.ny + dir * (base_offset_y + extra_offset_y)
                 
                 local cp_dist = math.abs(start_x - end_x) * 0.28
                 local cp1_x = start_x + cp_dist
@@ -1517,7 +1581,7 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                     col = (col & 0xFFFFFF00) | alpha
                 end
                 
-                Engraver.draw_slur(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, col, above, thickness)
+                Engraver.draw_slur(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, col, above, thickness, extra_offset_y, extra_arc)
             end
         end
     end
@@ -1584,15 +1648,15 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
                 end
                 
                 local dist = math.abs(nd2.nx - nd1.nx)
-                local arc_h = math.min(16 * s, math.max(6 * s, dist * 0.10))
+                local arc_h = math.min(10.0 * s, math.max(4.0 * s, dist * 0.075))
                 local dir = above and -1 or 1
                 local offset_y = dir * arc_h
-                local cp_offset = dist * 0.28
+                local cp_offset = dist * 0.25
                 
-                local start_x = nd1.nx + 4 * s
-                local end_x   = nd2.nx - 4 * s
-                local start_y = nd1.ny + dir * 5.0 * s
-                local end_y   = nd2.ny + dir * 5.0 * s
+                local start_x = nd1.nx + 6.0 * s
+                local end_x   = nd2.nx - 6.0 * s
+                local start_y = nd1.ny + dir * 3.8 * s
+                local end_y   = nd2.ny + dir * 3.8 * s
                 local cp1_x = start_x + cp_offset
                 local cp1_y = start_y + offset_y
                 local cp2_x = end_x - cp_offset

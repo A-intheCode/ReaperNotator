@@ -3701,6 +3701,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- SLURS & TIES (Legato Phrase Marks & Ties via SlurService)
     -- ======================================================================
     if SlurService then
+        state.active_bar_ties = all_bar_ties
         if SlurService.draw_slurs then
             SlurService.draw_slurs(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered_this_frame)
         end

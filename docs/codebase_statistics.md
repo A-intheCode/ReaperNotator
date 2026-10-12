@@ -1,15 +1,15 @@
-# REAPER-Notator v1.9.4-beta.1 — Codebase & Library Statistics
+# REAPER-Notator v1.9.5-beta — Codebase & Library Statistics
 
-**Generated:** 2026-10-13 00:13
+**Generated:** 2026-10-13 00:24
 
 ## Executive Summary
 
-- **Version:** v1.9.4-beta.1
+- **Version:** v1.9.5-beta
 - **Total Source Files:** 75 Lua files
-- **Total Line Count:** 56,410
-- **Executable Code Lines:** 47,497 (84.2%)
-- **Comments & Documentation:** 4,117 (7.3%)
-- **Blank / Formatting Lines:** 5,317 (9.4%)
+- **Total Line Count:** 56,486
+- **Executable Code Lines:** 47,555 (84.2%)
+- **Comments & Documentation:** 4,131 (7.3%)
+- **Blank / Formatting Lines:** 5,323 (9.4%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
@@ -17,24 +17,24 @@
 
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `modules/services` | 28 | 29,218 | 24,931 | 1,788 | 2,630 | 85.3% |
-| `modules/rendering` | 7 | 11,912 | 10,128 | 740 | 1,096 | 85.0% |
+| `modules/services` | 28 | 29,282 | 24,984 | 1,795 | 2,636 | 85.3% |
+| `modules/rendering` | 7 | 11,920 | 10,133 | 743 | 1,096 | 85.0% |
 | `modules/ui` | 19 | 9,337 | 7,539 | 718 | 1,106 | 80.7% |
 | `modules` | 3 | 2,186 | 1,908 | 417 | 138 | 87.3% |
 | `modules/input` | 2 | 2,002 | 1,740 | 91 | 173 | 86.9% |
-| `Root` | 1 | 981 | 654 | 253 | 78 | 66.7% |
+| `Root` | 1 | 985 | 654 | 257 | 78 | 66.4% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **75** | **56,410** | **47,497** | **4,117** | **5,317** | **84.2%** |
+| **TOTAL** | **75** | **56,486** | **47,555** | **4,131** | **5,323** | **84.2%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
 | File | Module | Lines | Code | Comments |
 | :--- | :--- | :---: | :---: | :---: |
 | `modules/services/midi_service.lua` | modules/services | 5,994 | 5,226 | 241 |
-| `modules/rendering/score_canvas.lua` | modules/rendering | 4,478 | 3,878 | 214 |
-| `modules/rendering/engraver.lua` | modules/rendering | 2,948 | 2,513 | 226 |
+| `modules/rendering/score_canvas.lua` | modules/rendering | 4,479 | 3,879 | 214 |
+| `modules/rendering/engraver.lua` | modules/rendering | 2,955 | 2,517 | 229 |
 | `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,204 | 1,913 | 105 |
-| `modules/services/slur_service.lua` | modules/services | 2,120 | 1,830 | 102 |
+| `modules/services/slur_service.lua` | modules/services | 2,184 | 1,883 | 109 |
 | `modules/services/musicxml_import_service.lua` | modules/services | 2,118 | 1,839 | 124 |
 | `modules/services/musicxml_export_service.lua` | modules/services | 1,698 | 1,435 | 145 |
 | `modules/services/portamento_service.lua` | modules/services | 1,549 | 1,312 | 88 |
@@ -59,7 +59,7 @@
 | `modules/services/audio_preview.lua` | Audition Preview Engine - Non-destructive note click playback chasing | 805 |
 | `modules/services/reaticulate_parser.lua` | Reaticulate Bridge - Bank parsing and articulation keyswitch management | 376 |
 | `modules/services/scale_service.lua` | Scale & Harmony Service - Chord Track harmonic transformations | 835 |
-| `modules/services/slur_service.lua` | Slur Engine - Ergonomic Bezier phrasing curves and keyswitch binding | 1,830 |
+| `modules/services/slur_service.lua` | Slur Engine - Ergonomic Bezier phrasing curves and keyswitch binding | 1,883 |
 | `modules/services/portamento_service.lua` | Portamento Service - High-resolution micro-tonal pitch-bend transitions | 1,312 |
 | `modules/services/pattern_service.lua` | Pattern Engine - Orchestral motif browser and timeline stamping | 411 |
 | `modules/services/rehearsal_mark_service.lua` | Rehearsal Marks - Structural navigation and drag-and-drop bar markers | 244 |

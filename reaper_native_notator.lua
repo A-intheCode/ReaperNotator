@@ -1,7 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.4-beta.1
+-- @version 1.9.5-beta
 -- @changelog
+--   + v1.9.5-beta: Tie & Slur Engraving Hierarchy (Elaine Gould compliant):
+--             - Tie Geometry Refinement: Ties connect directly adjacent noteheads with compact, shallow deflections (starting at 3.8 * s, arc height factor 0.075) hugging notehead contours snuggly.
+--             - Slur Outer Enclosure: Slurs automatically detect when encompassing or coinciding with ties on the same side of the notes. Slur endpoints are offset to 13.0 * s and arc height is augmented by +12.0 * s, arching gracefully outside the tie with at least 1 staff space separation per Elaine Gould ('Behind Bars' p. 60-63, 110-115), Gardner Read p. 113, and Ted Ross p. 147.
+--             - Interactive Hit-Testing Synchronization: Bezier hit-testing formulas and selection bounding boxes in SlurService update synchronously with the outer curve coordinates, ensuring pixel-perfect mouse hovering and clicking.
 --   + v1.9.4-beta: Measure-Local Polyphonic Stem Direction & Consecutive Voice Rest Suppression:
 --             - Measure-Local Stem Direction: Stem directions split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist on the staff (Gould 'Behind Bars' p. 301). In monophonic measures (where only Voice 1 or only Voice 2 is active), notes follow standard single-voice pitch-based stem directions (middle-line rule). A single Voice 2 note in later measures no longer forces earlier Voice 1 note stems upwards.
 --             - Consecutive Voice Rest Suppression: When voices share a staff sequentially without temporal overlap (e.g. Voice 1 on beats 1-2, Voice 2 on beats 3-4), inactive voice rests are suppressed when the measure is filled sequentially (Gould p. 308), eliminating spurious double rest bars/layers.

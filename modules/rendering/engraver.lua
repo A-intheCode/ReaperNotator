@@ -2426,16 +2426,17 @@ function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above, opt_thickne
     if dist < 6 * s then return end
     if math.abs(y2 - y1) > 16 * s then return end
     
-    local arc_h = math.min(16 * s, math.max(6 * s, dist * 0.10))
+    -- Elaine Gould ("Behind Bars" p. 60-63): Ties are compact, shallow, and hug the noteheads closely
+    local arc_h = math.min(10.0 * s, math.max(4.0 * s, dist * 0.075))
     local dir = above and -1 or 1
     local offset_y = dir * arc_h
-    local cp_offset = dist * 0.28
+    local cp_offset = dist * 0.25
     
     local tie_col = col or Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
-    local start_x = x1 + 4 * s
-    local end_x   = x2 - 4 * s
-    local start_y = y1 + dir * 5.0 * s
-    local end_y   = y2 + dir * 5.0 * s
+    local start_x = x1 + 6.0 * s
+    local end_x   = x2 - 6.0 * s
+    local start_y = y1 + dir * 3.8 * s
+    local end_y   = y2 + dir * 3.8 * s
     local thickness = opt_thickness or (2.0 * s)
     
     reaper.ImGui_DrawList_AddBezierCubic(draw_list,
@@ -2446,7 +2447,7 @@ function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above, opt_thickne
         tie_col, thickness)
 end
 
-function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickness)
+function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickness, opt_extra_offset_y, opt_extra_arc_h)
     local dist_x = x2 - x1
     if math.abs(dist_x) < 4 * s then return end
     
@@ -2454,13 +2455,19 @@ function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickn
     local dy = y2 - y1
     local chord_len = math.sqrt(dx * dx + dy * dy)
     
-    local arc_h = math.min(26 * s, math.max(8 * s, chord_len * 0.12))
+    -- Elaine Gould ("Behind Bars" p. 110-115): Slurs have a generous, wide arch.
+    -- When enclosing ties, extra arc height and offset are applied to clear the tie completely.
+    local base_arc_h = math.min(32.0 * s, math.max(10.0 * s, chord_len * 0.15))
+    local extra_arc = opt_extra_arc_h or 0
+    local arc_h = base_arc_h + extra_arc
     local dir = above and -1 or 1
     
-    local start_x = x1 + 5.0 * s
-    local end_x   = x2 - 5.0 * s
-    local start_y = y1 + dir * 6.0 * s
-    local end_y   = y2 + dir * 6.0 * s
+    local extra_y = opt_extra_offset_y or 0
+    local base_offset_y = 6.5 * s
+    local start_x = x1 + 4.5 * s
+    local end_x   = x2 - 4.5 * s
+    local start_y = y1 + dir * (base_offset_y + extra_y)
+    local end_y   = y2 + dir * (base_offset_y + extra_y)
     
     local cp_dist = math.abs(start_x - end_x) * 0.28
     local cp1_x = start_x + cp_dist
