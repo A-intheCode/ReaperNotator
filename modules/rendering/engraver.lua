@@ -1006,9 +1006,12 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
             local distinct_onsets = {}
             for _, n in ipairs(bar_notes) do
                 local snap_grid = dq or 0.125
-                local rel_s = n.start_qn - bar_start_qn
+                local eff_n_start = math.max(bar_start_qn, n.start_qn)
+                local eff_n_end = math.min(bar_end_qn, n.end_qn or (n.start_qn + (n.dur_qn or (n.end_qn and (n.end_qn - n.start_qn) or 1.0))))
+                local eff_n_dur = math.max(0, eff_n_end - eff_n_start)
+                local rel_s = eff_n_start - bar_start_qn
                 local snapped_s = bar_start_qn + (math.floor((rel_s / snap_grid) + 0.5) * snap_grid)
-                local raw_dur = n.dur_qn or (n.end_qn - n.start_qn)
+                local raw_dur = eff_n_dur
                 local nom_dur = dq and (math.max(dq, math.floor((raw_dur / dq) + 0.5) * dq)) or Engraver.get_nominal_rhythmic_duration(raw_dur)
                 
                 local found = false
@@ -1016,7 +1019,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
                 for _, slot in ipairs(distinct_onsets) do
                     if math.abs(slot.s - snapped_s) < tol then
                         slot.dur = math.max(slot.dur, nom_dur)
-                        slot.actual_end = math.max(slot.actual_end, n.end_qn)
+                        slot.actual_end = math.max(slot.actual_end, eff_n_end)
                         found = true
                         break
                     end
@@ -1025,7 +1028,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
                     table.insert(distinct_onsets, {
                         s = snapped_s,
                         dur = nom_dur,
-                        actual_end = n.end_qn
+                        actual_end = eff_n_end
                     })
                 end
             end
@@ -1137,44 +1140,197 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
         return Engraver.generate_track_rests(track_notes, total_measures, qn_per_measure, dq, min_m, max_m)
     end
     
-    -- Polyphonic track (Elaine Gould / Gardner Read):
-    -- Each voice has its own metric rest stream.
+    -- Polyphonic track (Elaine Gould "Behind Bars" p. 308 / Gardner Read):
+    -- Each voice has its own metric rest stream when sounding simultaneously.
+    -- However, when voices share a stave consecutively rather than simultaneously
+    -- (e.g. voice 1 plays beats 1-2, voice 2 plays beats 3-4):
+    -- 1. Inactive voices NEVER emit rests for inactive periods if the measure is filled sequentially!
+    -- 2. If consecutive voices leave a gap, a single shared rest fills the empty part.
+    -- 3. Stems and rests only split per voice when multiple voices actually coexist/overlap.
     local all_rests = {}
     local start_m = math.max(0, min_m or 0)
     local stop_m = math.min(total_measures - 1, max_m or (total_measures - 1))
+    if start_m > stop_m then return all_rests end
     
-    -- Determine measure occupancy across all voices
-    local bar_has_notes = {}
-    for m = start_m, stop_m do bar_has_notes[m] = false end
+    local notes_by_bar = {}
+    for m = start_m, stop_m do notes_by_bar[m] = {} end
+    
     for _, n in ipairs(track_notes or {}) do
-        local m = math.floor((n.start_qn + 0.001) / bpi)
-        if bar_has_notes[m] ~= nil then
-            bar_has_notes[m] = true
+        local n_start = dq and (math.floor((n.start_qn / dq) + 0.5) * dq) or n.start_qn
+        local n_dur = dq and (math.max(dq, math.floor(((n.dur_qn or (n.end_qn - n.start_qn)) / dq) + 0.5) * dq)) or (n.dur_qn or (n.end_qn - n.start_qn))
+        local n_end = n_start + n_dur
+        local start_bar = math.floor((n_start + 0.001) / bpi)
+        local end_bar = math.floor(math.max(n_start, n_end - 0.001) / bpi)
+        local from_b = math.max(start_m, start_bar)
+        local to_b = math.min(stop_m, end_bar)
+        for m = from_b, to_b do
+            if notes_by_bar[m] then table.insert(notes_by_bar[m], n) end
         end
     end
     
-    for v = 1, 4 do
-        if voices_present[v] then
-            local v_notes = {}
-            for _, n in ipairs(track_notes) do
-                if ((n.chan or 0) + 1) == v then
-                    table.insert(v_notes, n)
+    for m = start_m, stop_m do
+        local bar_notes = notes_by_bar[m]
+        local bar_sqn = m * bpi
+        local bar_eqn = (m + 1) * bpi
+        local bar_end_qn = bar_eqn
+        
+        if #bar_notes == 0 then
+            -- Measure is completely empty across ALL voices: emit a single centered whole rest
+            table.insert(all_rests, {
+                type = "whole",
+                start_qn = bar_sqn,
+                dur_qn = bpi,
+                measure_idx = m,
+                is_full_measure = true
+            })
+        else
+            -- Group notes in this measure by voice
+            local voices_in_bar = {}
+            local notes_by_v = {}
+            for _, n in ipairs(bar_notes) do
+                local v = (n.chan or 0) + 1
+                if not notes_by_v[v] then
+                    notes_by_v[v] = {}
+                    table.insert(voices_in_bar, v)
                 end
+                table.insert(notes_by_v[v], n)
             end
+            table.sort(voices_in_bar)
             
-            local v_rests = Engraver.generate_track_rests(v_notes, total_measures, qn_per_measure, dq, min_m, max_m)
-            for _, r in ipairs(v_rests) do
-                r.voice = v
-                local m = r.measure_idx or math.floor(r.start_qn / bpi)
-                -- If measure is completely empty (no notes in any voice):
-                -- Only voice 1 emits the centered whole measure rest (Gould standard).
-                if r.is_full_measure and not bar_has_notes[m] then
-                    if v == 1 then
-                        r.voice = nil -- Standard centered
+            if #voices_in_bar == 1 then
+                -- Only ONE voice is active in this measure.
+                -- Inactive voices emit 0 rests. The active voice behaves like a standard single voice.
+                local v = voices_in_bar[1]
+                local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m)
+                for _, r in ipairs(v_rests) do
+                    if not r.is_full_measure then
+                        r.voice = nil -- Standard centered rest for monophonic measure
                         table.insert(all_rests, r)
                     end
+                end
+            else
+                -- Multiple voices are active in this measure.
+                -- Check for simultaneous overlap between distinct voices:
+                local has_simultaneous_overlap = false
+                for i = 1, #bar_notes do
+                    local na = bar_notes[i]
+                    local va = (na.chan or 0) + 1
+                    local sa = math.max(bar_sqn, na.start_qn)
+                    local ea = math.min(bar_eqn, na.end_qn or (na.start_qn + (na.dur_qn or 1.0)))
+                    for j = i + 1, #bar_notes do
+                        local nb = bar_notes[j]
+                        local vb = (nb.chan or 0) + 1
+                        if va ~= vb then
+                            local sb = math.max(bar_sqn, nb.start_qn)
+                            local eb = math.min(bar_eqn, nb.end_qn or (nb.start_qn + (nb.dur_qn or 1.0)))
+                            local overlap_len = math.min(ea, eb) - math.max(sa, sb)
+                            if overlap_len > 0.05 then
+                                has_simultaneous_overlap = true
+                                break
+                            end
+                        end
+                    end
+                    if has_simultaneous_overlap then break end
+                end
+                
+                if not has_simultaneous_overlap then
+                    -- Consecutive voices (Gould "Behind Bars" p. 308):
+                    -- Voices do not sound simultaneously. Check combined metric coverage of the measure.
+                    local distinct_onsets = {}
+                    for _, n in ipairs(bar_notes) do
+                        local snap_grid = dq or 0.125
+                        local eff_n_start = math.max(bar_sqn, n.start_qn)
+                        local eff_n_end = math.min(bar_eqn, n.end_qn or (n.start_qn + (n.dur_qn or (n.end_qn and (n.end_qn - n.start_qn) or 1.0))))
+                        local eff_n_dur = math.max(0, eff_n_end - eff_n_start)
+                        local rel_s = eff_n_start - bar_sqn
+                        local snapped_s = bar_sqn + (math.floor((rel_s / snap_grid) + 0.5) * snap_grid)
+                        local nom_dur = dq and (math.max(dq, math.floor((eff_n_dur / dq) + 0.5) * dq)) or Engraver.get_nominal_rhythmic_duration(eff_n_dur)
+                        
+                        local found = false
+                        local tol = dq and (dq * 0.7) or 0.10
+                        for _, slot in ipairs(distinct_onsets) do
+                            if math.abs(slot.s - snapped_s) < tol then
+                                slot.dur = math.max(slot.dur, nom_dur)
+                                slot.actual_end = math.max(slot.actual_end, eff_n_end)
+                                found = true
+                                break
+                            end
+                        end
+                        if not found then
+                            table.insert(distinct_onsets, {
+                                s = snapped_s,
+                                dur = nom_dur,
+                                actual_end = eff_n_end
+                            })
+                        end
+                    end
+                    table.sort(distinct_onsets, function(a, b) return a.s < b.s end)
+                    
+                    local intervals = {}
+                    for idx, slot in ipairs(distinct_onsets) do
+                        local s_qn = math.max(bar_sqn, slot.s)
+                        local nom_e = s_qn + slot.dur
+                        if idx < #distinct_onsets then
+                            local next_s = distinct_onsets[idx + 1].s
+                            if next_s > s_qn + 0.05 then
+                                nom_e = math.min(nom_e, next_s)
+                            end
+                        else
+                            local fill_tol = dq and (dq * 0.5) or 0.20
+                            if nom_e >= bar_end_qn - fill_tol or slot.actual_end >= bar_end_qn - fill_tol then
+                                nom_e = bar_end_qn
+                            end
+                        end
+                        if slot.actual_end >= bar_end_qn - 0.05 then
+                            nom_e = bar_end_qn
+                        end
+                        local e_qn = math.min(bar_end_qn, math.max(nom_e, slot.actual_end))
+                        if e_qn > s_qn + 0.05 then
+                            table.insert(intervals, { s = s_qn, e = e_qn })
+                        end
+                    end
+                    
+                    local merged = {}
+                    for _, inv in ipairs(intervals) do
+                        if #merged == 0 or inv.s > merged[#merged].e + 0.08 then
+                            table.insert(merged, { s = inv.s, e = inv.e })
+                        else
+                            merged[#merged].e = math.max(merged[#merged].e, inv.e)
+                        end
+                    end
+                    
+                    local covered = 0
+                    for _, inv in ipairs(merged) do
+                        covered = covered + (inv.e - inv.s)
+                    end
+                    
+                    local fill_tol = dq and (dq * 0.5) or 0.20
+                    if covered < bpi - fill_tol then
+                        local cur_pos = bar_sqn
+                        for _, inv in ipairs(merged) do
+                            if inv.s > cur_pos + fill_tol then
+                                local gap_dur = inv.s - cur_pos
+                                Engraver.decompose_rest_gap(all_rests, cur_pos, gap_dur, m, bpi)
+                            end
+                            cur_pos = math.max(cur_pos, inv.e)
+                        end
+                        if bar_eqn > cur_pos + fill_tol then
+                            Engraver.decompose_rest_gap(all_rests, cur_pos, bar_eqn - cur_pos, m, bpi)
+                        end
+                    end
+                    -- If covered >= bpi - fill_tol: completely full consecutively, 0 rests!
                 else
-                    table.insert(all_rests, r)
+                    -- Overlapping voices: true polyphony in this measure.
+                    -- Each voice gets its independent rest stream tagged with r.voice = v.
+                    for _, v in ipairs(voices_in_bar) do
+                        local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m)
+                        for _, r in ipairs(v_rests) do
+                            if not r.is_full_measure then
+                                r.voice = v
+                                table.insert(all_rests, r)
+                            end
+                        end
+                    end
                 end
             end
         end
@@ -1219,7 +1375,7 @@ function Engraver.decompose_bar_segment(start_in_bar, raw_dur, bpi, depth, allow
     local dur = raw_dur
     local std_vals = { 4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625 }
     for _, sv in ipairs(std_vals) do
-        local tol = math.min(0.08, sv * 0.25)
+        local tol = (sv >= 2.0) and 0.18 or math.min(0.10, math.max(0.03, sv * 0.20))
         if math.abs(dur - sv) <= tol then
             dur = sv
             break
@@ -1249,21 +1405,21 @@ function Engraver.decompose_bar_segment(start_in_bar, raw_dur, bpi, depth, allow
     
     -- 3. Notes starting on beat 1 (0.0):
     if start_in_bar < 0.05 then
-        if math.abs(dur - 3.5) <= 0.08 then
+        if math.abs(dur - 3.5) <= 0.12 then
             -- 3.5 quarters: Dotted half (3.0) tied to eighth (0.5)
             table.insert(segments, { start_in_bar = 0.0, dur_qn = 3.0 })
             table.insert(segments, { start_in_bar = 3.0, dur_qn = 0.5 })
             return segments
-        elseif math.abs(dur - 3.0) <= 0.08 then
+        elseif math.abs(dur - 3.0) <= 0.18 then
             -- 3.0 quarters: Dotted half
             table.insert(segments, { start_in_bar = 0.0, dur_qn = 3.0 })
             return segments
-        elseif math.abs(dur - 2.5) <= 0.08 then
+        elseif math.abs(dur - 2.5) <= 0.12 then
             -- 2.5 quarters: Half note (2.0) tied to eighth (0.5)
             table.insert(segments, { start_in_bar = 0.0, dur_qn = 2.0 })
             table.insert(segments, { start_in_bar = 2.0, dur_qn = 0.5 })
             return segments
-        elseif math.abs(dur - 2.0) <= 0.08 then
+        elseif math.abs(dur - 2.0) <= 0.18 then
             -- 2.0 quarters: Half note
             table.insert(segments, { start_in_bar = 0.0, dur_qn = 2.0 })
             return segments
@@ -1313,18 +1469,96 @@ function Engraver.decompose_bar_segment(start_in_bar, raw_dur, bpi, depth, allow
     return segments
 end
 
-function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn)
+function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn, user_ties)
     local visual_notes = {}
     local bar_ties = {}
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
     if not notes then return visual_notes, bar_ties end
     
+    -- Step 1: Sort notes chronologically to build contiguous chains
+    local sorted_notes = {}
     for _, n in ipairs(notes) do
-        local n_sqn = n.start_qn or n.sqn or 0
+        table.insert(sorted_notes, n)
+    end
+    table.sort(sorted_notes, function(a, b)
+        local s1 = a.start_qn or a.sqn or 0
+        local s2 = b.start_qn or b.sqn or 0
+        if math.abs(s1 - s2) > 0.001 then return s1 < s2 end
+        return (a.pitch or 0) < (b.pitch or 0)
+    end)
+    
+    -- Step 2: Consolidate contiguous tied chains (Elaine Gould "Behind Bars" p. 166)
+    -- When notes of the same pitch and channel are tied and contiguous without intervening rests,
+    -- they form a single sustained musical event across measures (e.g. a full measure becomes a whole note).
+    local visited = {}
+    local chains = {}
+    for i, n in ipairs(sorted_notes) do
+        if not visited[n] then
+            visited[n] = true
+            local chain = { n }
+            local search_forward = true
+            while search_forward do
+                local cur_tail = chain[#chain]
+                local tail_pitch = cur_tail.pitch
+                local tail_chan = cur_tail.chan or 0
+                local tail_s = cur_tail.start_qn or cur_tail.sqn or 0
+                local tail_e = cur_tail.end_qn or cur_tail.eqn or (tail_s + (cur_tail.dur_qn or 1.0))
+                local next_cand = nil
+                
+                for j = 1, #sorted_notes do
+                    local cand = sorted_notes[j]
+                    if not visited[cand] and cand.pitch == tail_pitch and (cand.chan or 0) == tail_chan then
+                        local cand_s = cand.start_qn or cand.sqn or 0
+                        -- Contiguity check: cand must start at or very near tail_e (tolerance 0.08 QN)
+                        if cand_s >= (tail_s - 0.01) and math.abs(cand_s - tail_e) <= 0.08 then
+                            local is_connected = false
+                            if cur_tail.tie_id and cand.tie_id and cur_tail.tie_id == cand.tie_id then
+                                is_connected = true
+                            elseif cur_tail.is_tied_master and (cand.is_tied_slave or (cand.idx and cand.idx == -1)) then
+                                is_connected = true
+                            elseif cur_tail.is_tied_master and cand.is_tied_slave then
+                                is_connected = true
+                            elseif user_ties and #user_ties > 0 then
+                                for _, ut in ipairs(user_ties) do
+                                    if ut.pitch == tail_pitch and (ut.chan == nil or ut.chan == tail_chan) then
+                                        local ut_s1 = ut.n1_start_qn or 0
+                                        local ut_s2 = ut.n2_start_qn or 0
+                                        if math.abs(ut_s1 - tail_s) <= 0.10 and math.abs(ut_s2 - cand_s) <= 0.10 then
+                                            is_connected = true
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                            
+                            if is_connected then
+                                next_cand = cand
+                                break
+                            end
+                        end
+                    end
+                end
+                
+                if next_cand then
+                    visited[next_cand] = true
+                    table.insert(chain, next_cand)
+                else
+                    search_forward = false
+                end
+            end
+            table.insert(chains, chain)
+        end
+    end
+    
+    -- Step 3: Decompose each note or consolidated tied chain into measure-specific visual notes
+    for _, chain in ipairs(chains) do
+        local first_n = chain[1]
+        local last_n = chain[#chain]
+        local n_sqn = first_n.start_qn or first_n.sqn or 0
         if vis_max_qn and n_sqn > vis_max_qn + 1.0 then
             break
         end
-        local n_eqn = n.end_qn or n.eqn or (n_sqn + (n.dur_qn or 1.0))
+        local n_eqn = last_n.end_qn or last_n.eqn or (n_sqn + (last_n.dur_qn or 1.0))
         
         if not vis_min_qn or n_eqn >= vis_min_qn - 2.0 then
             -- Metric smoothing of unquantized REAPER MIDI notes (1/64 grid = 0.0625 QN)
@@ -1361,9 +1595,12 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                 -- Legato snap: When raw duration is very close to full quarters/eighths (e.g. 0.88 -> 1.0, 1.88 -> 2.0, 2.88 -> 3.0, 3.85 -> 4.0)
                 snapped_dur = math.floor((raw_dur / grid) + 0.5) * grid
                 if snapped_dur < grid then snapped_dur = grid end
-                local close_targets = { 4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625 }
+                local close_targets = {
+                    16.0, 15.0, 14.0, 12.0, 10.0, 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5,
+                    4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625
+                }
                 for _, ct in ipairs(close_targets) do
-                    local tol = math.min(0.14, math.max(0.025, ct * 0.25))
+                    local tol = (ct >= 4.0) and 0.18 or math.min(0.14, math.max(0.025, ct * 0.25))
                     if math.abs(raw_dur - ct) <= tol then
                         snapped_dur = ct
                         break
@@ -1388,18 +1625,47 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                         local start_in_bar = seg_sqn - bar_sqn
                         local sub_segs = Engraver.decompose_bar_segment(start_in_bar, seg_dur, bpi)
                         
-                        local it_str = tostring(n.item or "0")
-                        local tk_str = tostring(n.take or "0")
-                        
                         for sub_i, sub in ipairs(sub_segs) do
                             local sub_sqn = bar_sqn + sub.start_in_bar
                             local sub_eqn = sub_sqn + sub.dur_qn
-                            local seg_key = string.format("%s_%s_%.3f_%d_%d_b%d_s%d", it_str, tk_str, sub_sqn, n.pitch, n.chan or 0, bar, sub_i)
                             
-                            local is_segmented = (start_bar ~= end_bar) or (#sub_segs > 1)
+                            -- Find corresponding note in chain for this segment's onset
+                            local active_n = nil
+                            for _, cn in ipairs(chain) do
+                                local c_s = cn.start_qn or cn.sqn or 0
+                                local c_e = cn.end_qn or cn.eqn or (c_s + (cn.dur_qn or 1.0))
+                                if sub_sqn >= (c_s - 0.02) and sub_sqn < (c_e - 0.02) then
+                                    active_n = cn
+                                    break
+                                end
+                            end
+                            if not active_n then
+                                local min_dist = 999999
+                                for _, cn in ipairs(chain) do
+                                    local c_s = cn.start_qn or cn.sqn or 0
+                                    local dist = math.abs(sub_sqn - c_s)
+                                    if dist < min_dist then
+                                        min_dist = dist
+                                        active_n = cn
+                                    end
+                                end
+                            end
+                            if not active_n then active_n = first_n end
+                            
+                            local target_orig = active_n
+                            if target_orig.idx and target_orig.idx < 0 then
+                                -- Synthetic slave note (not in REAPER take): route selection/audition to real take master note
+                                target_orig = first_n
+                            end
+                            
+                            local it_str = tostring(active_n.item or first_n.item or "0")
+                            local tk_str = tostring(active_n.take or first_n.take or "0")
+                            local seg_key = string.format("%s_%s_%.3f_%d_%d_b%d_s%d", it_str, tk_str, sub_sqn, first_n.pitch, first_n.chan or 0, bar, sub_i)
+                            
+                            local is_segmented = (start_bar ~= end_bar) or (#sub_segs > 1) or (#chain > 1)
                             local seg = {
-                                orig = n,
-                                pitch = n.pitch,
+                                orig = target_orig,
+                                pitch = first_n.pitch,
                                 start_qn = sub_sqn,
                                 end_qn = sub_eqn,
                                 dur_qn = sub.dur_qn,
@@ -1407,10 +1673,12 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 seg_idx = sub_i,
                                 key = seg_key,
                                 bar = bar,
-                                item = n.item,
-                                item_obj = n.item_obj,
-                                take = n.take,
-                                track = n.track
+                                item = active_n.item or first_n.item,
+                                item_obj = active_n.item_obj or first_n.item_obj,
+                                take = active_n.take or first_n.take,
+                                track = active_n.track or first_n.track,
+                                is_tied_chain = (#chain > 1),
+                                chain_notes = (#chain > 1) and chain or nil
                             }
                             table.insert(visual_notes, seg)
                             
@@ -1419,11 +1687,12 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 table.insert(bar_ties, {
                                     from_key = prev_seg_key,
                                     to_key = seg_key,
-                                    pitch = n.pitch,
-                                    orig = n,
+                                    pitch = first_n.pitch,
+                                    orig = target_orig,
                                     is_cross_barline = is_cross,
                                     from_bar = prev_seg_bar,
-                                    to_bar = bar
+                                    to_bar = bar,
+                                    is_tied_chain = (#chain > 1)
                                 })
                             end
                             prev_seg_key = seg_key
@@ -2267,16 +2536,17 @@ function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above, opt_thickne
     if dist < 6 * s then return end
     if math.abs(y2 - y1) > 16 * s then return end
     
-    local arc_h = math.min(16 * s, math.max(6 * s, dist * 0.10))
+    -- Elaine Gould ("Behind Bars" p. 60-63): Ties are compact, shallow, and hug the noteheads closely
+    local arc_h = math.min(10.0 * s, math.max(4.0 * s, dist * 0.075))
     local dir = above and -1 or 1
     local offset_y = dir * arc_h
-    local cp_offset = dist * 0.28
+    local cp_offset = dist * 0.25
     
     local tie_col = col or Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
-    local start_x = x1 + 4 * s
-    local end_x   = x2 - 4 * s
-    local start_y = y1 + dir * 5.0 * s
-    local end_y   = y2 + dir * 5.0 * s
+    local start_x = x1 + 6.0 * s
+    local end_x   = x2 - 6.0 * s
+    local start_y = y1 + dir * 3.8 * s
+    local end_y   = y2 + dir * 3.8 * s
     local thickness = opt_thickness or (2.0 * s)
     
     reaper.ImGui_DrawList_AddBezierCubic(draw_list,
@@ -2287,7 +2557,7 @@ function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above, opt_thickne
         tie_col, thickness)
 end
 
-function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickness)
+function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickness, opt_extra_offset_y, opt_extra_arc_h)
     local dist_x = x2 - x1
     if math.abs(dist_x) < 4 * s then return end
     
@@ -2295,13 +2565,19 @@ function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickn
     local dy = y2 - y1
     local chord_len = math.sqrt(dx * dx + dy * dy)
     
-    local arc_h = math.min(26 * s, math.max(8 * s, chord_len * 0.12))
+    -- Elaine Gould ("Behind Bars" p. 110-115): Slurs have a generous, wide arch.
+    -- When enclosing ties, extra arc height and offset are applied to clear the tie completely.
+    local base_arc_h = math.min(32.0 * s, math.max(10.0 * s, chord_len * 0.15))
+    local extra_arc = opt_extra_arc_h or 0
+    local arc_h = base_arc_h + extra_arc
     local dir = above and -1 or 1
     
-    local start_x = x1 + 5.0 * s
-    local end_x   = x2 - 5.0 * s
-    local start_y = y1 + dir * 6.0 * s
-    local end_y   = y2 + dir * 6.0 * s
+    local extra_y = opt_extra_offset_y or 0
+    local base_offset_y = 6.5 * s
+    local start_x = x1 + 4.5 * s
+    local end_x   = x2 - 4.5 * s
+    local start_y = y1 + dir * (base_offset_y + extra_y)
+    local end_y   = y2 + dir * (base_offset_y + extra_y)
     
     local cp_dist = math.abs(start_x - end_x) * 0.28
     local cp1_x = start_x + cp_dist

@@ -1,7 +1,22 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.2
+-- @version 1.9.8
 -- @changelog
+--   + v1.9.8: Official Production Release - Metric Consolidation of Tied Chains & Full-Measure Engraving (Elaine Gould compliant):
+--             - Tied-Chain Pre-Consolidation: Notes connected by ties across multiple measures are consolidated prior to visual decomposition. Full measures (e.g. 4.0 QN in 4/4) automatically engrave as Whole Notes (Semibreves) per Behind Bars p. 166, eliminating fragmented tied half notes inside the measure.
+--             - Seamless Barline Ties: Automatic generation of cross-barline tie arcs entering and exiting whole notes across adjacent measures.
+--             - Tie Deduplication: Strict coordinate and key registry prevents duplicate overlapping tie arcs between barline ties and user ties.
+--             - Full-Measure Rest Invariance: Fully covered measures correctly suppress rest generation.
+--             - Native DAW Selection & Playback: Visual whole note segments retain direct links to the real take notes for gold highlighting, audio audition, and 1-click untie ('T').
+--   + v1.9.5-beta: Tie & Slur Engraving Hierarchy (Elaine Gould compliant):
+--             - Tie Geometry Refinement: Ties connect directly adjacent noteheads with compact, shallow deflections (starting at 3.8 * s, arc height factor 0.075) hugging notehead contours snuggly.
+--             - Slur Outer Enclosure: Slurs automatically detect when encompassing or coinciding with ties on the same side of the notes. Slur endpoints are offset to 13.0 * s and arc height is augmented by +12.0 * s, arching gracefully outside the tie with at least 1 staff space separation per Elaine Gould ('Behind Bars' p. 60-63, 110-115), Gardner Read p. 113, and Ted Ross p. 147.
+--             - Interactive Hit-Testing Synchronization: Bezier hit-testing formulas and selection bounding boxes in SlurService update synchronously with the outer curve coordinates, ensuring pixel-perfect mouse hovering and clicking.
+--   + v1.9.4-beta: Measure-Local Polyphonic Stem Direction & Consecutive Voice Rest Suppression:
+--             - Measure-Local Stem Direction: Stem directions split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist on the staff (Gould 'Behind Bars' p. 301). In monophonic measures (where only Voice 1 or only Voice 2 is active), notes follow standard single-voice pitch-based stem directions (middle-line rule). A single Voice 2 note in later measures no longer forces earlier Voice 1 note stems upwards.
+--             - Consecutive Voice Rest Suppression: When voices share a staff sequentially without temporal overlap (e.g. Voice 1 on beats 1-2, Voice 2 on beats 3-4), inactive voice rests are suppressed when the measure is filled sequentially (Gould p. 308), eliminating spurious double rest bars/layers.
+--             - Consecutive Voice Gap Rests: If consecutive voices leave an unplayed gap in the measure, a single shared centered rest fills the silent duration rather than cluttered per-voice rests.
+--             - Polyphonic Overlap Rests: Full polyphonic per-voice rest streams (with vertical staff-line separation) are retained exclusively when voices sound simultaneously.
 --   + v1.9.0: Divisio Vocum (Voice Distribution) Suite, Live Item Scaling & Grid Shortcuts:
 --             - Divisio Vocum Feature: Distributes multi-voice chords from a single track vertically across the visible score tracks in the viewport below.
 --             - Divisio Vocum Context Modal: Native modal window in Tools Drawer and context menu with live routing preview, target voice count (2-16), detection tolerance (5-100 ms), and gap-filling doubling for lower string voices.

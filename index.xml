@@ -6,8 +6,28 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
+      <version name="1.9.8" author="A-intheCode" time="2026-10-13T01:25:00Z">
         <changelog><![CDATA[
++ v1.9.8: Official Production Release - Metric Consolidation of Tied Chains & Full-Measure Engraving
++ v1.9.7-beta: Fix Chained Slave Note Ties & Enforce Contiguous Tie Adjacency
++ v1.9.6-beta: Tie Deduplication, Sequential Adjacent Chaining and Non-Adjacent Leap Suppression (Elaine Gould compliant)
++ v1.9.5-beta: Tie & Slur Engraving Hierarchy (Elaine Gould compliant: ties snug to noteheads, slurs arching outside):
+  - Tie Geometry Refinement: Ties connect directly adjacent noteheads with compact, shallow deflections (starting at 3.8 * s, arc height factor 0.075) hugging notehead contours snuggly.
+  - Slur Outer Enclosure: Slurs automatically detect when encompassing or coinciding with ties on the same side of the notes. Slur endpoints are offset to 13.0 * s and arc height is augmented by +12.0 * s, arching gracefully outside the tie with at least 1 staff space separation per Elaine Gould ('Behind Bars' p. 60-63, 110-115), Gardner Read p. 113, and Ted Ross p. 147.
+  - Interactive Hit-Testing Synchronization: Bezier hit-testing formulas and selection bounding boxes in SlurService update synchronously with the outer curve coordinates, ensuring pixel-perfect mouse hovering and clicking.
++ v1.9.4-beta.1: Fix nil global bar_end_qn in Engraver.generate_voice_rests
++ v1.9.4-beta: Measure-Local Polyphonic Stem Direction & Consecutive Voice Rest Suppression:
+  - Measure-Local Stem Direction: Stem directions split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist on the staff (Gould 'Behind Bars' p. 301). In monophonic measures (where only Voice 1 or only Voice 2 is active), notes follow standard single-voice pitch-based stem directions (middle-line rule). A single Voice 2 note in later measures no longer forces earlier Voice 1 note stems upwards.
+  - Consecutive Voice Rest Suppression: When voices share a staff sequentially without temporal overlap (e.g. Voice 1 on beats 1-2, Voice 2 on beats 3-4), inactive voice rests are suppressed when the measure is filled sequentially (Gould p. 308), eliminating spurious double rest bars/layers.
+  - Consecutive Voice Gap Rests: If consecutive voices leave an unplayed gap in the measure, a single shared centered rest fills the silent duration rather than cluttered per-voice rests.
+  - Polyphonic Overlap Rests: Full polyphonic per-voice rest streams (with vertical staff-line separation) are retained exclusively when voices sound simultaneously.
++ v1.9.3-beta: Engraving Rest Generation & Multi-Measure Note Segmentation:
+  - Multi-Voice Rest Suppression: Inactive voices in polyphonic tracks no longer emit unwanted full-measure whole rests in measures where another voice is active, strictly adhering to Gould ('Behind Bars' p. 308).
+  - Cross-Measure Note Coverage: bar_has_notes correctly marks all measures spanned by sustained or tied notes across barlines.
+  - Multi-Measure Duration Snapping: Macro-grid target snapping in get_visual_notes extended to multi-measure lengths (4.5 to 16.0 QN), preventing unquantized sustained notes from fragmenting across bars.
+  - Legato Tolerance in Bar Decomposition: Widened duration tolerance (0.18 QN) for standard beat 1 note values (whole, dotted half, half) to prevent human legato playing from fracturing into micro-rests and stray 16th notes.
+  - Intra-Measure Subsegment Ties: score_canvas rendering now draws ties between subsegments belonging to the same note even within the same measure across metric pulses.
+  - Occupied Staff Rest Protection: Strict collision check suppresses any full-measure rest on a staff if notes exist in that measure on that staff.
 + v1.9.2: Classical Arpeggio Engraving & Duration-Adaptive Playback Strumming:
   - Vertical Visual Alignment: Arpeggiated chord notes are strictly aligned on the chord downbeat under a single unified stem in Canvas and System views in accordance with classical engraving standards.
   - Spurious Beam Prevention: Grouping and onset calculations treat arpeggio rolled notes as a single vertical chord downbeat block, preventing unwanted micro-beams between chord voices.

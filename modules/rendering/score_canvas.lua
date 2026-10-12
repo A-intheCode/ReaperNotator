@@ -352,7 +352,7 @@ local function sync_arrange_selection(state, project_tracks)
 end
 
 local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
-    local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil)
+    local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil, state and state.user_ties)
     
     -- Voice filtering and ghosting (MIDI channels 0-15)
     if filter_chan ~= nil then
@@ -445,6 +445,24 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         return a.pitch < b.pitch
     end)
     
+    -- Compute measure-local voice counts on each staff (Gould "Behind Bars" p. 301):
+    -- Stems split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist!
+    local measure_staff_voices = {}
+    for _, vn in ipairs(visual_notes) do
+        local m = math.floor((vn.start_qn + 0.001) / bpi)
+        local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
+        local key = string.format("%d_%s", m, st)
+        if not measure_staff_voices[key] then measure_staff_voices[key] = {} end
+        local v = (vn.orig and vn.orig.chan) or (vn.chan or 0)
+        measure_staff_voices[key][v] = true
+    end
+    local measure_staff_voice_counts = {}
+    for k, vset in pairs(measure_staff_voices) do
+        local cnt = 0
+        for _ in pairs(vset) do cnt = cnt + 1 end
+        measure_staff_voice_counts[k] = cnt
+    end
+
     -- Check whether polyphonic voices are active on this track
     local track_voices_set = {}
     for _, vn in ipairs(visual_notes) do
@@ -503,17 +521,24 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 chord_stem_down = (vn.dstep >= mid_step)
             end
         end
+        
+        local m = math.floor((cluster.start_qn + 0.001) / bpi)
+        local key = string.format("%d_%s", m, cluster.staff or (cluster.in_treble and "treble" or "bass"))
+        local m_voice_cnt = measure_staff_voice_counts[key] or 1
+
         if manual_stem_dir == "up" then
             cluster.stem_down = false
         elseif manual_stem_dir == "down" then
             cluster.stem_down = true
-        elseif is_polyphonic_track then
+        elseif m_voice_cnt > 1 then
+            -- Elaine Gould ("Behind Bars" p. 301): Stems split by voice ONLY when multiple voices share the measure!
             if (cluster.voice or 0) % 2 == 1 then
                 cluster.stem_down = true
             else
                 cluster.stem_down = false
             end
         else
+            -- Monophonic measure on this staff: standard pitch-based stem direction!
             cluster.stem_down = chord_stem_down
         end
         
@@ -780,8 +805,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                     local bar_eqn = (m_idx + 1) * bpi
                     for _, en in ipairs(bar_eff_notes) do
                         local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_tr))
-                        local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
-                        if matches_staff and matches_voice then
+                        if matches_staff then
                             local en_bar = math.floor((en.start_qn + 0.001) / bpi)
                             if en_bar == m_idx or (en.start_qn < bar_eqn - 0.001 and en.end_qn > bar_sqn + 0.001) then
                                 collision = true
@@ -821,6 +845,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         beam_groups = beam_groups,
         bar_ties = bar_ties,
         is_polyphonic_track = is_polyphonic_track,
+        measure_staff_voice_counts = measure_staff_voice_counts,
         rests = precomputed_rests
     }
 end
@@ -1665,8 +1690,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             local bar_eqn = (m_idx + 1) * bpi
                             for _, en in ipairs(bar_eff_notes) do
                                 local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_treble))
-                                local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
-                                if matches_staff and matches_voice then
+                                if matches_staff then
                                     local en_bar = math.floor((en.start_qn + 0.001) / bpi)
                                     if en_bar == m_idx or (en.start_qn < bar_eqn - 0.001 and en.end_qn > bar_sqn + 0.001) then
                                         collision = true break
@@ -1763,6 +1787,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             -- Fast screen position update & render registration for notes near/in visible window (Zero table allocation)
             for _, vn in ipairs(visual_notes) do
                 local is_sel = state:is_note_selected(vn.orig)
+                if not is_sel and vn.chain_notes then
+                    for _, cn in ipairs(vn.chain_notes) do
+                        if state:is_note_selected(cn) then is_sel = true break end
+                    end
+                end
                 local vn_start = vn.start_qn or 0
                 local vn_end = vn.end_qn or (vn_start + (vn.dur_qn or 1.0))
                 local in_range = not vis_min_qn or not vis_max_qn or (vn_end >= vis_min_qn - 8.0 and vn_start <= vis_max_qn + 8.0)
@@ -1837,7 +1866,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             beam_col = global_ghost_col
                         end
                     end
-                    local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, is_polyphonic_track)
+                    local bg_m = math.floor(((bgroup[1] and bgroup[1].start_qn or 0) + 0.001) / bpi)
+                    local bg_st = bgroup[1] and (bgroup[1].in_staff or (bgroup[1].in_treble and "treble" or "bass"))
+                    local bg_is_poly = cached_layout and cached_layout.measure_staff_voice_counts and ((cached_layout.measure_staff_voice_counts[string.format("%d_%s", bg_m, bg_st)] or 1) > 1)
+                    local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, bg_is_poly)
                     for k in pairs(bmap) do beamed_notes_map[k] = true end
                 end
             end
@@ -1857,7 +1889,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         else
             -- Fallback / Live Drag path: un-cached dynamic calculation
             local live_ties
-            visual_notes, live_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn)
+            visual_notes, live_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn, state and state.user_ties)
             for _, bt in ipairs(live_ties) do table.insert(all_bar_ties, bt) end
             
             if filter_chan ~= nil then
@@ -1929,6 +1961,22 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 return a.pitch < b.pitch
             end)
             
+            local live_measure_staff_voices = {}
+            for _, vn in ipairs(visual_notes) do
+                local m = math.floor((vn.start_qn + 0.001) / bpi)
+                local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
+                local key = string.format("%d_%s", m, st)
+                if not live_measure_staff_voices[key] then live_measure_staff_voices[key] = {} end
+                local v = (vn.orig and vn.orig.chan) or (vn.chan or 0)
+                live_measure_staff_voices[key][v] = true
+            end
+            local live_measure_staff_voice_counts = {}
+            for k, vset in pairs(live_measure_staff_voices) do
+                local cnt = 0
+                for _ in pairs(vset) do cnt = cnt + 1 end
+                live_measure_staff_voice_counts[k] = cnt
+            end
+
             local track_voices_set = {}
             for _, vn in ipairs(visual_notes) do
                 local v = (vn.orig and vn.orig.chan) or 0
@@ -1983,11 +2031,16 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         chord_stem_down = (vn.dstep >= mid_step)
                     end
                 end
+                
+                local m = math.floor((cluster.start_qn + 0.001) / bpi)
+                local key = string.format("%d_%s", m, cluster.staff or (cluster.in_treble and "treble" or "bass"))
+                local m_voice_cnt = live_measure_staff_voice_counts[key] or 1
+
                 if manual_stem_dir == "up" then
                     cluster.stem_down = false
                 elseif manual_stem_dir == "down" then
                     cluster.stem_down = true
-                elseif is_polyphonic_track then
+                elseif m_voice_cnt > 1 then
                     if (cluster.voice or 0) % 2 == 1 then
                         cluster.stem_down = true
                     else
@@ -2157,7 +2210,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         beam_col = global_ghost_col
                     end
                 end
-                local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, is_polyphonic_track)
+                local bg_m = math.floor(((bgroup[1] and bgroup[1].start_qn or 0) + 0.001) / bpi)
+                local bg_st = bgroup[1] and (bgroup[1].in_staff or (bgroup[1].in_treble and "treble" or "bass"))
+                local bg_is_poly = (live_measure_staff_voice_counts[string.format("%d_%s", bg_m, bg_st)] or 1) > 1
+                local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, bg_is_poly)
                 for k in pairs(bmap) do beamed_notes_map[k] = true end
             end
             
@@ -2203,6 +2259,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local ny = vn.vis_ny
             local n = vn.orig
             local is_sel = state:is_note_selected(n)
+            if not is_sel and vn.chain_notes then
+                for _, cn in ipairs(vn.chain_notes) do
+                    if state:is_note_selected(cn) then is_sel = true break end
+                end
+            end
             
             if is_sel or (nx >= cull_min_x and nx <= cull_max_x) then
                 local in_treble = vn.in_treble
@@ -2466,7 +2527,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     else
                         for _, cv in ipairs(cnotes) do
-                            if state:is_note_selected(cv.orig) then stem_col = Constants.COLORS.selection_gold break end
+                            local cv_sel = state:is_note_selected(cv.orig)
+                            if not cv_sel and cv.chain_notes then
+                                for _, cn in ipairs(cv.chain_notes) do
+                                    if state:is_note_selected(cn) then cv_sel = true break end
+                                end
+                            end
+                            if cv_sel then stem_col = Constants.COLORS.selection_gold break end
                         end
                         if stem_col == Constants.COLORS.notehead_black and (state.voice_color_mode ~= false) then
                             local c_v = (cnotes[1].orig and cnotes[1].orig.chan or 0) + 1
@@ -3604,49 +3671,58 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     
     -- Ties: ONLY for split segments of the EXACT same original MIDI note across barlines!
-    -- NO automatic chaining of different notes that simply lie sequentially!
-    -- Intra-measure ties are NEVER drawn automatically, only via SlurService.draw_user_ties!
+    -- Render ties generated by note segmentation (cross-barline or intra-measure across metric pulses):
+    -- Only segments belonging to the SAME original note are tied!
+    state.drawn_tie_signatures = {}
     local drawn_ties = {}
     for _, bt in ipairs(all_bar_ties) do
-        if bt.is_cross_barline ~= false then
-            local nd1 = all_note_render_by_key[bt.from_key]
-            local nd2 = all_note_render_by_key[bt.to_key]
-            if nd1 and nd2 and nd1.track == nd2.track then
-                local eff_bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
-                local bar1 = math.floor(((nd1.start_qn or 0.0) + 0.001) / eff_bpi)
-                local bar2 = math.floor(((nd2.start_qn or 0.0) + 0.001) / eff_bpi)
-                if bar1 ~= bar2 then
-                    local tie_min_x = math.min(nd1.nx, nd2.nx)
-                    local tie_max_x = math.max(nd1.nx, nd2.nx)
-                    if tie_max_x >= cull_min_x and tie_min_x <= cull_max_x and nd1.ny >= cull_min_y and nd1.ny <= cull_max_y then
-                        -- Strict: both segments must verifiably belong to the same original note (identical orig or take & idx)
-                        local is_same_note = false
-                        if bt.orig and (nd1.orig == bt.orig or nd2.orig == bt.orig) then
-                            is_same_note = true
-                        elseif nd1.orig and nd2.orig and nd1.orig == nd2.orig then
-                            is_same_note = true
-                        elseif nd1.take and nd2.take and nd1.take == nd2.take and nd1.idx and nd2.idx and nd1.idx == nd2.idx then
-                            is_same_note = true
+        local nd1 = all_note_render_by_key[bt.from_key]
+        local nd2 = all_note_render_by_key[bt.to_key]
+        if nd1 and nd2 and nd1.track == nd2.track then
+            local tie_min_x = math.min(nd1.nx, nd2.nx)
+            local tie_max_x = math.max(nd1.nx, nd2.nx)
+            if tie_max_x >= cull_min_x and tie_min_x <= cull_max_x and nd1.ny >= cull_min_y and nd1.ny <= cull_max_y then
+                -- Strict: both segments must verifiably belong to the same original note (identical orig or take & idx)
+                local is_same_note = false
+                if bt.orig and (nd1.orig == bt.orig or nd2.orig == bt.orig) then
+                    is_same_note = true
+                elseif nd1.orig and nd2.orig and nd1.orig == nd2.orig then
+                    is_same_note = true
+                elseif nd1.take and nd2.take and nd1.take == nd2.take and nd1.idx and nd2.idx and nd1.idx == nd2.idx then
+                    is_same_note = true
+                elseif bt.is_tied_chain or (nd1.is_tied_chain and nd2.is_tied_chain) then
+                    is_same_note = true
+                end
+                
+                if is_same_note and math.abs(nd1.ny - nd2.ny) <= 16*s then
+                    local tie_key = bt.from_key .. "->" .. bt.to_key
+                    if not drawn_ties[tie_key] then
+                        drawn_ties[tie_key] = true
+                        
+                        -- Elaine Gould Tie Deduplication Registry:
+                        -- Record spatial coordinates & logical keys so SlurService.draw_user_ties never draws duplicates!
+                        local trk_id = tostring(nd1.track or (nd1.orig and nd1.orig.track) or "0")
+                        local x1_r = math.floor(math.min(nd1.nx, nd2.nx) + 0.5)
+                        local x2_r = math.floor(math.max(nd1.nx, nd2.nx) + 0.5)
+                        local coord_sig = string.format("%s_%d_%d_%d", trk_id, nd1.pitch or 0, x1_r, x2_r)
+                        state.drawn_tie_signatures[coord_sig] = true
+                        state.drawn_tie_signatures[tie_key] = true
+                        if nd1.key and nd2.key then
+                            state.drawn_tie_signatures[nd1.key .. "->" .. nd2.key] = true
                         end
                         
-                        if is_same_note and math.abs(nd1.ny - nd2.ny) <= 16*s then
-                            local tie_key = bt.from_key .. "->" .. bt.to_key
-                            if not drawn_ties[tie_key] then
-                                drawn_ties[tie_key] = true
-                                local is_ghost_tie = (nd1.is_ghost_voice == true) or (nd2.is_ghost_voice == true)
-                                local tie_col = Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
-                                if is_ghost_tie then
-                                    local t_v = (nd1.orig and nd1.orig.chan or 0) + 1
-                                    if (state.voice_color_mode ~= false) and t_v > 1 then
-                                        tie_col = (Constants.get_voice_color(t_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
-                                    else
-                                        tie_col = global_ghost_col
-                                    end
-                                end
-                                local tie_above = (nd1.stem_down == true) or (nd1.dstep and nd1.dstep >= 4)
-                                Engraver.draw_tie(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, tie_col, tie_above)
+                        local is_ghost_tie = (nd1.is_ghost_voice == true) or (nd2.is_ghost_voice == true)
+                        local tie_col = Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
+                        if is_ghost_tie then
+                            local t_v = (nd1.orig and nd1.orig.chan or 0) + 1
+                            if (state.voice_color_mode ~= false) and t_v > 1 then
+                                tie_col = (Constants.get_voice_color(t_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                            else
+                                tie_col = global_ghost_col
                             end
                         end
+                        local tie_above = (nd1.stem_down == true) or (nd1.dstep and nd1.dstep >= 4)
+                        Engraver.draw_tie(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, tie_col, tie_above)
                     end
                 end
             end
@@ -3657,6 +3733,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- SLURS & TIES (Legato Phrase Marks & Ties via SlurService)
     -- ======================================================================
     if SlurService then
+        state.active_bar_ties = all_bar_ties
         if SlurService.draw_slurs then
             SlurService.draw_slurs(ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered_this_frame)
         end

@@ -152,6 +152,7 @@ end
 local function find_next_chronological_note(n1, active_tracks_data, require_same_pitch)
     if not n1 then return nil end
     local n1_sqn = n1.start_qn or 0
+    local n1_eqn = n1.end_qn or (n1_sqn + (n1.dur_qn or 1.0))
     local n1_chan = n1.chan or 0
     local n1_guid = get_track_guid_from_note(n1)
     local n1_trk = get_track_from_note(n1)
@@ -174,15 +175,22 @@ local function find_next_chronological_note(n1, active_tracks_data, require_same
                 for _, cand in ipairs(td.notes) do
                     local cand_sqn = cand.start_qn or 0
                     local dt = cand_sqn - n1_sqn
-                    if dt > 0.005 and (cand.chan or 0) == n1_chan then
-                        if not require_same_pitch or cand.pitch == n1.pitch then
-                            if dt < min_dt then
-                                min_dt = dt
-                                best_note = cand
-                            elseif math.abs(dt - min_dt) < 0.005 and best_note then
-                                -- In chord: pick note with closest pitch
-                                if math.abs(cand.pitch - n1.pitch) < math.abs(best_note.pitch - n1.pitch) then
+                    if dt > 0.005 then
+                        -- For ties (require_same_pitch): cand must be immediately contiguous (no intervening rests)!
+                        local is_contiguous = not require_same_pitch or (cand_sqn <= n1_eqn + 0.06 and math.abs(cand_sqn - n1_eqn) <= 0.15)
+                        if is_contiguous then
+                            local chan_match = ((cand.chan or 0) == n1_chan) or require_same_pitch
+                            if chan_match and (not require_same_pitch or cand.pitch == n1.pitch) then
+                                if dt < min_dt then
+                                    min_dt = dt
                                     best_note = cand
+                                elseif math.abs(dt - min_dt) < 0.005 and best_note then
+                                    -- In chord: pick note with matching channel or closest pitch
+                                    if (cand.chan or 0) == n1_chan and (best_note.chan or 0) ~= n1_chan then
+                                        best_note = cand
+                                    elseif math.abs(cand.pitch - n1.pitch) < math.abs(best_note.pitch - n1.pitch) then
+                                        best_note = cand
+                                    end
                                 end
                             end
                         end
@@ -200,26 +208,30 @@ local function find_next_chronological_note(n1, active_tracks_data, require_same
         local _, notecnt = reaper.MIDI_CountEvts(take)
         for i = 0, notecnt - 1 do
             local ok, _, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
-            if ok and not muted and chan == n1_chan then
+            if ok and not muted then
                 local cand_sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
                 local cand_eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
                 local dt = cand_sqn - n1_sqn
                 if dt > 0.005 then
-                    if not require_same_pitch or pitch == n1.pitch then
-                        if dt < min_dt then
-                            min_dt = dt
-                            best_note = MidiNote.new({
-                                idx = i,
-                                take = take,
-                                item = item,
-                                track = n1.track,
-                                chan = chan,
-                                pitch = pitch,
-                                vel = vel,
-                                start_qn = cand_sqn,
-                                end_qn = cand_eqn,
-                                dur_qn = cand_eqn - cand_sqn
-                            })
+                    local is_contiguous = not require_same_pitch or (cand_sqn <= n1_eqn + 0.06 and math.abs(cand_sqn - n1_eqn) <= 0.15)
+                    if is_contiguous then
+                        local chan_match = (chan == n1_chan) or require_same_pitch
+                        if chan_match and (not require_same_pitch or pitch == n1.pitch) then
+                            if dt < min_dt then
+                                min_dt = dt
+                                best_note = MidiNote.new({
+                                    idx = i,
+                                    take = take,
+                                    item = item,
+                                    track = n1.track,
+                                    chan = chan,
+                                    pitch = pitch,
+                                    vel = vel,
+                                    start_qn = cand_sqn,
+                                    end_qn = cand_eqn,
+                                    dur_qn = cand_eqn - cand_sqn
+                                })
+                            end
                         end
                     end
                 end
@@ -494,198 +506,257 @@ function SlurService.toggle_tie(state, active_tracks_data)
 
     local targets = get_target_notes(state)
     if #targets == 0 then
-        state.status_msg = "Select 1 note (to tie to next of same pitch) or 2 notes to tie."
+        state.status_msg = "Select 1 note (to tie to next of same pitch) or 2+ notes to tie."
         return
     end
     
-    -- Check if selected notes should trigger UNTIE:
-    local existing_tie_idx = nil
+    -- Strict Cross-Track & Same-Pitch Validation for multi-selection
     if #targets >= 2 then
-        -- 2+ notes: ONLY untie if targets[1] and targets[2] are already tied to EACH OTHER!
-        local tn1, tn2 = targets[1], targets[2]
-        local k1 = tn1.key or (tn1.get_key and tn1:get_key())
-        local k2 = tn2.key or (tn2.get_key and tn2:get_key())
-        for idx, tie in ipairs(state.user_ties) do
-            local key_match = (k1 and k2 and tie.n1_key == k1 and tie.n2_key == k2)
-            local pos_match = (tie.pitch == tn1.pitch and tie.pitch == tn2.pitch
-                and (tie.chan or 0) == (tn1.chan or 0) and (tie.chan or 0) == (tn2.chan or 0)
-                and math.abs(tie.n1_start_qn - (tn1.start_qn or 0)) < 0.10
-                and math.abs(tie.n2_start_qn - (tn2.start_qn or 0)) < 0.10)
-            if key_match or pos_match then
-                existing_tie_idx = idx
-                break
+        for i = 2, #targets do
+            if not notes_share_same_track(targets[1], targets[i]) then
+                state.status_msg = "⚠️ Ties can only connect notes within the same instrument."
+                return
+            end
+            if targets[i].pitch ~= targets[1].pitch then
+                state.status_msg = "⚠️ Tie requires notes of the same pitch! Use Slur [S] for melodic phrases."
+                return
+            end
+            local prev_eqn = targets[i - 1].end_qn or ((targets[i - 1].start_qn or 0) + (targets[i - 1].dur_qn or 1.0))
+            local cur_sqn = targets[i].start_qn or 0
+            if cur_sqn > prev_eqn + 0.06 or (cur_sqn - prev_eqn) < -0.06 then
+                state.status_msg = "⚠️ Ties can only connect immediately adjacent notes without intervening rests."
+                return
+            end
+        end
+    end
+    
+    -- Elaine Gould Adjacency Rule (Behind Bars p. 60):
+    -- Build complete adjacent chain (expand any unselected intermediate notes on same track/voice)
+    local chain_notes = {}
+    if #targets >= 2 then
+        local min_sqn = targets[1].start_qn or 0
+        local max_sqn = targets[#targets].start_qn or 0
+        local p = targets[1].pitch
+        local ch = targets[1].chan or 0
+        local trk_g = get_track_guid_from_note(targets[1])
+        local trk = get_track_from_note(targets[1])
+        
+        local all_cands = {}
+        if eff_tracks_data then
+            for _, td in ipairs(eff_tracks_data) do
+                local is_match = false
+                if trk and td.track and td.track == trk then is_match = true
+                elseif trk_g and td.guid and normalize_guid(td.guid) == normalize_guid(trk_g) then is_match = true
+                end
+                if is_match and td.notes then
+                    for _, cand in ipairs(td.notes) do
+                        if cand.pitch == p and (cand.chan or 0) == ch then
+                            local c_sqn = cand.start_qn or 0
+                            if c_sqn >= min_sqn - 0.01 and c_sqn <= max_sqn + 0.01 then
+                                table.insert(all_cands, cand)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        
+        if #all_cands > #targets then
+            table.sort(all_cands, function(a, b) return (a.start_qn or 0) < (b.start_qn or 0) end)
+            local last_s = -999
+            for _, c in ipairs(all_cands) do
+                if math.abs((c.start_qn or 0) - last_s) > 0.01 then
+                    table.insert(chain_notes, c)
+                    last_s = c.start_qn or 0
+                end
+            end
+        else
+            chain_notes = targets
+        end
+    else
+        table.insert(chain_notes, targets[1])
+    end
+    
+    -- Check if selected notes should trigger UNTIE:
+    local ties_to_untie = {}
+    if #chain_notes >= 2 then
+        for i = 1, #chain_notes - 1 do
+            local tn1, tn2 = chain_notes[i], chain_notes[i + 1]
+            local k1 = tn1.key or (tn1.get_key and tn1:get_key())
+            local k2 = tn2.key or (tn2.get_key and tn2:get_key())
+            for idx, tie in ipairs(state.user_ties) do
+                local key_match = (k1 and k2 and tie.n1_key == k1 and tie.n2_key == k2)
+                local pos_match = (tie.pitch == tn1.pitch
+                    and (tie.chan or 0) == (tn1.chan or 0) and (tie.chan or 0) == (tn2.chan or 0)
+                    and math.abs(tie.n1_start_qn - (tn1.start_qn or 0)) < 0.10
+                    and math.abs(tie.n2_start_qn - (tn2.start_qn or 0)) < 0.10)
+                if key_match or pos_match then
+                    table.insert(ties_to_untie, tie)
+                    break
+                end
             end
         end
     else
         -- 1 note: ONLY untie if the selected note is the origin/head (n1) of an existing tie!
-        -- If it is an arrival note (n2), chaining priority: connect forward to n3 without deleting n1->n2!
-        local tn = targets[1]
+        local tn = chain_notes[1]
         local tn_k = tn.key or (tn.get_key and tn:get_key())
         for idx, tie in ipairs(state.user_ties) do
             local match_key = (tn_k and tie.n1_key == tn_k)
             local match_pos1 = (tie.pitch == tn.pitch and (tie.chan or 0) == (tn.chan or 0) and math.abs(tie.n1_start_qn - (tn.start_qn or 0)) < 0.10)
             if match_key or match_pos1 then
-                existing_tie_idx = idx
+                table.insert(ties_to_untie, tie)
                 break
             end
         end
     end
     
-    if existing_tie_idx then
+    if #ties_to_untie > 0 then
         -- UNTIE / TOGGLE OFF
-        local tie = state.user_ties[existing_tie_idx]
-        SlurService.delete_tie(state, tie, MidiService, eff_tracks_data)
+        for _, tie in ipairs(ties_to_untie) do
+            SlurService.delete_tie(state, tie, MidiService, eff_tracks_data)
+        end
         return
     end
     
-    -- TIE CREATION: Find pair of notes to tie
-    local n1, n2
-    if #targets >= 2 then
-        n1 = targets[1]
-        n2 = targets[2]
-        if not notes_share_same_track(n1, n2) then
-            state.status_msg = "⚠️ Ties can only connect notes within the same instrument."
-            return
-        end
-        if n1.pitch ~= n2.pitch then
-            state.status_msg = "⚠️ Tie requires notes of the same pitch! Use Slur [S] for melodic phrases."
-            return
-        end
-    else
-        n1 = targets[1]
-        n2 = find_next_chronological_note(n1, eff_tracks_data, true)
+    -- TIE CREATION: Connect adjacent notes
+    if #chain_notes == 1 then
+        local n2 = find_next_chronological_note(chain_notes[1], eff_tracks_data, true)
         if not n2 then
             state.status_msg = "⚠️ No subsequent note with the same pitch found to tie."
             return
         end
+        table.insert(chain_notes, n2)
     end
     
-    local take = n1.take or (n2 and n2.take) or MidiService.get_active_midi_take()
+    local take = chain_notes[1].take or (chain_notes[2] and chain_notes[2].take) or MidiService.get_active_midi_take()
     if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then
         state.status_msg = "⚠️ Active MIDI take not found."
         return
     end
     
-    local n1_k = n1.key or (n1.get_key and n1:get_key()) or string.format("%d_%.4f_%d", n1.pitch, n1.start_qn, n1.chan or 0)
-    local n2_k = n2.key or (n2.get_key and n2:get_key()) or string.format("%d_%.4f_%d", n2.pitch, n2.start_qn, n2.chan or 0)
-    
     reaper.Undo_BeginBlock2(0)
     reaper.MIDI_DisableSort(take)
     
-    local tie_id = "tie_" .. tostring(reaper.time_precise()):gsub("%.", "")
-    local n1_dur = n1.dur_qn or ((n1.end_qn or (n1.start_qn + 1.0)) - n1.start_qn)
-    local n2_dur = n2.dur_qn or ((n2.end_qn or (n2.start_qn + 1.0)) - n2.start_qn)
-    local n2_vel = n2.vel or 96
-    
-    local n1_idx, n1_data
-    if n1.idx and n1.idx >= 0 then
-        local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, n1.idx)
-        if ok and p == n1.pitch then
-            n1_idx = n1.idx
-            n1_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
+    local base_time_str = tostring(reaper.time_precise()):gsub("%.", "")
+    for i = 1, #chain_notes - 1 do
+        local n1 = chain_notes[i]
+        local n2 = chain_notes[i + 1]
+        local tie_id = "tie_" .. base_time_str .. "_" .. tostring(i)
+        
+        local n1_k = n1.key or (n1.get_key and n1:get_key()) or string.format("%d_%.4f_%d", n1.pitch, n1.start_qn, n1.chan or 0)
+        local n2_k = n2.key or (n2.get_key and n2:get_key()) or string.format("%d_%.4f_%d", n2.pitch, n2.start_qn, n2.chan or 0)
+        local n1_dur = n1.dur_qn or ((n1.end_qn or (n1.start_qn + 1.0)) - n1.start_qn)
+        local n2_dur = n2.dur_qn or ((n2.end_qn or (n2.start_qn + 1.0)) - n2.start_qn)
+        local n2_vel = n2.vel or 96
+        
+        local n1_idx, n1_data
+        if n1.idx and n1.idx >= 0 then
+            local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, n1.idx)
+            if ok and p == n1.pitch then
+                n1_idx = n1.idx
+                n1_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
+            end
         end
-    end
-    if not n1_idx then
-        n1_idx, n1_data = find_take_note_by_pos(take, n1.pitch, n1.chan or 0, n1.start_qn, 0.35)
-    end
-    -- Coverage fallback: if n1 is a tied slave note (deleted from take), find physical master note covering n1.start_qn
-    if not n1_idx then
-        local target_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
-        local _, notecnt = reaper.MIDI_CountEvts(take)
-        for i = 0, notecnt - 1 do
-            local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, i)
-            if ok and p == n1.pitch and (n1.chan == nil or ch == (n1.chan or 0)) then
-                if sppq <= target_ppq + 50 and eppq >= target_ppq - 50 then
-                    n1_idx = i
-                    n1_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
-                    break
+        if not n1_idx then
+            n1_idx, n1_data = find_take_note_by_pos(take, n1.pitch, n1.chan or 0, n1.start_qn, 0.35)
+        end
+        if not n1_idx then
+            local target_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
+            local _, notecnt = reaper.MIDI_CountEvts(take)
+            for ni = 0, notecnt - 1 do
+                local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, ni)
+                if ok and p == n1.pitch and (n1.chan == nil or ch == (n1.chan or 0)) then
+                    if sppq <= target_ppq + 50 and eppq >= target_ppq - 50 then
+                        n1_idx = ni
+                        n1_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
+                        break
+                    end
                 end
             end
         end
-    end
-    
-    local n2_idx, n2_data
-    if n2.idx and n2.idx >= 0 then
-        local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, n2.idx)
-        if ok and p == n2.pitch then
-            n2_idx = n2.idx
-            n2_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
+        
+        local n2_idx, n2_data
+        if n2.idx and n2.idx >= 0 then
+            local ok, sel, muted, sppq, eppq, ch, p, vel = reaper.MIDI_GetNote(take, n2.idx)
+            if ok and p == n2.pitch then
+                n2_idx = n2.idx
+                n2_data = { sel = sel, muted = muted, sppq = sppq, eppq = eppq, chan = ch, pitch = p, vel = vel }
+            end
         end
-    end
-    if not n2_idx then
-        n2_idx, n2_data = find_take_note_by_pos(take, n2.pitch, n2.chan or 0, n2.start_qn, 0.35)
-    end
-    
-    local n1_sppq = n1_data and n1_data.sppq or math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
-    local n2_sppq = n2_data and n2_data.sppq or math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n2.start_qn) + 0.5)
-    local n2_eppq = n2_data and n2_data.eppq or math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n2.end_qn or (n2.start_qn + n2_dur)) + 0.5)
-    
-    -- 1. Safely delete Note 2 from the MIDI take so audio playback never re-strikes
-    -- (The visual Note 2 is seamlessly synthesized on the score canvas from NOTATOR_TIE!)
-    local eff_n1_idx = n1_idx
-    if n2_idx and n2_data then
-        reaper.MIDI_DeleteNote(take, n2_idx)
-        if eff_n1_idx and eff_n1_idx > n2_idx then
-            eff_n1_idx = eff_n1_idx - 1
+        if not n2_idx then
+            n2_idx, n2_data = find_take_note_by_pos(take, n2.pitch, n2.chan or 0, n2.start_qn, 0.35)
         end
-    end
-    
-    -- 2. Extend Note 1 to cover Note 2's end so REAPER holds audio sustain continuously
-    if eff_n1_idx then
-        local ok, sel, muted, sppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, eff_n1_idx)
-        if ok then
-            reaper.MIDI_SetNote(take, eff_n1_idx, sel, false, sppq, n2_eppq, chan, pitch, vel, false)
+        
+        local n1_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
+        local n2_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n2.start_qn) + 0.5)
+        local n2_eppq = n2_data and n2_data.eppq or math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n2.end_qn or (n2.start_qn + n2_dur)) + 0.5)
+        
+        -- 1. Safely delete Note 2 from the MIDI take so audio playback never re-strikes
+        local eff_n1_idx = n1_idx
+        if n2_idx and n2_data then
+            reaper.MIDI_DeleteNote(take, n2_idx)
+            if eff_n1_idx and eff_n1_idx > n2_idx then
+                eff_n1_idx = eff_n1_idx - 1
+            end
         end
-    else
-        local cur_n1_idx = find_take_note_by_pos(take, n1.pitch, n1.chan or 0, n1.start_qn, 0.35)
-        if cur_n1_idx then
-            local ok, sel, muted, sppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, cur_n1_idx)
+        
+        -- 2. Extend Note 1 to cover Note 2's end so REAPER holds audio sustain continuously
+        if eff_n1_idx then
+            local ok, sel, muted, sppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, eff_n1_idx)
             if ok then
-                reaper.MIDI_SetNote(take, cur_n1_idx, sel, false, sppq, n2_eppq, chan, pitch, vel, false)
+                reaper.MIDI_SetNote(take, eff_n1_idx, sel, false, sppq, n2_eppq, chan, pitch, vel, false)
+            end
+        else
+            local cur_n1_idx = find_take_note_by_pos(take, n1.pitch, n1.chan or 0, n1.start_qn, 0.35)
+            if cur_n1_idx then
+                local ok, sel, muted, sppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, cur_n1_idx)
+                if ok then
+                    reaper.MIDI_SetNote(take, cur_n1_idx, sel, false, sppq, n2_eppq, chan, pitch, vel, false)
+                end
             end
         end
-    end
-    
-    -- 3. Save Type 15 Tie Tags for master and slave
-    reaper.MIDI_InsertTextSysexEvt(take, false, false, n1_sppq, 15, string.format("NOTATOR_TIE %s %d %d %.4f %.4f %.4f %.4f %d",
-        tie_id, n1.chan or 0, n1.pitch, n1.start_qn, n1_dur, n2.start_qn, n2_dur, n2_vel))
-    reaper.MIDI_InsertTextSysexEvt(take, false, false, n2_sppq, 15, string.format("NOTATOR_TIE_SLAVE %s %d %d %.4f %.4f",
-        tie_id, n1.chan or 0, n1.pitch, n2.start_qn, n2_dur))
-    
-    -- 4. Store in state
-    local trk = get_track_from_note(n1) or (take and get_track_from_take(take))
-    local trk_guid = get_track_guid_from_note(n1) or (trk and reaper.GetTrackGUID(trk)) or ""
-    local tie_obj = {
-        id = tie_id,
-        track_guid = trk_guid,
-        chan = n1.chan or 0,
-        pitch = n1.pitch,
-        n1_start_qn = n1.start_qn,
-        n1_dur = n1_dur,
-        n2_start_qn = n2.start_qn,
-        n2_dur = n2_dur,
-        n2_vel = n2_vel,
-        n1_key = n1_k,
-        n2_key = n2_k
-    }
-    table.insert(state.user_ties, tie_obj)
-    
-    -- If Note 1 has an existing portamento, shift it to start at Note 2!
-    if state.portamento_marks then
-        local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
-        local changed_port = false
-        for _, pm in ipairs(state.portamento_marks) do
-            if pm.pitch1 == n1.pitch and math.abs(pm.start_qn1 - n1.start_qn) < 0.05 then
-                pm.start_qn1 = n2.start_qn
-                pm.dur_qn1   = n2_dur
-                pm.n1_key    = n2_k
-                pm:recalculate_timing()
-                PortamentoService.apply_cc(state, pm, active_tracks_data)
-                changed_port = true
+        
+        -- 3. Save Type 15 Tie Tags for master and slave
+        reaper.MIDI_InsertTextSysexEvt(take, false, false, n1_sppq, 15, string.format("NOTATOR_TIE %s %d %d %.4f %.4f %.4f %.4f %d",
+            tie_id, n1.chan or 0, n1.pitch, n1.start_qn, n1_dur, n2.start_qn, n2_dur, n2_vel))
+        reaper.MIDI_InsertTextSysexEvt(take, false, false, n2_sppq, 15, string.format("NOTATOR_TIE_SLAVE %s %d %d %.4f %.4f",
+            tie_id, n1.chan or 0, n1.pitch, n2.start_qn, n2_dur))
+        
+        -- 4. Store in state
+        local trk = get_track_from_note(n1) or (take and get_track_from_take(take))
+        local trk_guid = get_track_guid_from_note(n1) or (trk and reaper.GetTrackGUID(trk)) or ""
+        local tie_obj = {
+            id = tie_id,
+            track_guid = trk_guid,
+            chan = n1.chan or 0,
+            pitch = n1.pitch,
+            n1_start_qn = n1.start_qn,
+            n1_dur = n1_dur,
+            n2_start_qn = n2.start_qn,
+            n2_dur = n2_dur,
+            n2_vel = n2_vel,
+            n1_key = n1_k,
+            n2_key = n2_k
+        }
+        table.insert(state.user_ties, tie_obj)
+        
+        -- If Note 1 has an existing portamento, shift it to start at Note 2!
+        if state.portamento_marks then
+            local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+            local changed_port = false
+            for _, pm in ipairs(state.portamento_marks) do
+                if pm.pitch1 == n1.pitch and math.abs(pm.start_qn1 - n1.start_qn) < 0.05 then
+                    pm.start_qn1 = n2.start_qn
+                    pm.dur_qn1   = n2_dur
+                    pm.n1_key    = n2_k
+                    pm:recalculate_timing()
+                    PortamentoService.apply_cc(state, pm, active_tracks_data)
+                    changed_port = true
+                end
             end
-        end
-        if changed_port then
-            PortamentoService.save_portamentos(state)
+            if changed_port then
+                PortamentoService.save_portamentos(state)
+            end
         end
     end
     
@@ -709,16 +780,17 @@ function SlurService.toggle_tie(state, active_tracks_data)
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
 
-    -- Auto-advance selection focus to tied note (n2)
-    if n2 then
+    -- Auto-advance selection focus to the arrival note of the chain
+    local last_n = chain_notes[#chain_notes]
+    if last_n then
         state:clear_selection()
-        state:select_note(n2)
+        state:select_note(last_n)
         if MidiService and MidiService.sync_selection_to_reaper then
             MidiService.sync_selection_to_reaper(state, eff_tracks_data)
         end
     end
 
-    state.status_msg = string.format("Tied notes [T] (%s, visual separate notes preserved, held audio)", pitch_to_name(n1.pitch))
+    state.status_msg = string.format("Tied notes [T] (%s, %d notes chained, visual separate notes preserved, held audio)", pitch_to_name(chain_notes[1].pitch), #chain_notes)
 end
 
 -- ------------------------------------------------------------------------------
@@ -1247,7 +1319,9 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
                 end
                 if not nd2 and nd.pitch == tie.pitch and (tie.chan == nil or nd_ch == tie.chan) then
                     local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
-                    if d <= 0.12 and d < best_d2 then
+                    local eqn = nd.end_qn or (nd.orig and nd.orig.end_qn) or (sqn + (nd.dur_qn or 1.0))
+                    local in_span = (sqn <= (tie.n2_start_qn or 1.0) + 0.05) and (eqn >= (tie.n2_start_qn or 1.0) - 0.05)
+                    if (d <= 0.12 or in_span) and d < best_d2 then
                         best_d2 = d
                         nd2 = nd
                     end
@@ -1268,7 +1342,9 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
                     end
                     if not nd2 and nd.pitch == tie.pitch then
                         local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
-                        if d <= 0.12 and d < best_d2 then
+                        local eqn = nd.end_qn or (nd.orig and nd.orig.end_qn) or (sqn + (nd.dur_qn or 1.0))
+                        local in_span = (sqn <= (tie.n2_start_qn or 1.0) + 0.05) and (eqn >= (tie.n2_start_qn or 1.0) - 0.05)
+                        if (d <= 0.12 or in_span) and d < best_d2 then
                             best_d2 = d
                             nd2 = nd
                         end
@@ -1293,6 +1369,29 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
         return nil, nil
     end
 
+    -- If nd1 is segmented (e.g. cross-barline or metric pulse splits), resolve to its LAST segment before nd2
+    local target_s2 = nd2.start_qn or (nd2.orig and nd2.orig.start_qn) or tie.n2_start_qn or 999999
+    if nd1.orig and nd1.is_segment then
+        local last_seg = nd1
+        local last_sqn = nd1.start_qn or -999999
+        for _, nd in pairs(all_note_render_by_key) do
+            if notes_share_same_track(nd, nd1) then
+                local is_same_note = (nd.orig and nd1.orig and nd.orig == nd1.orig)
+                if not is_same_note and nd1.orig and nd.orig and nd1.orig.take and nd.orig.take and nd1.orig.take == nd.orig.take and nd1.orig.idx and nd.orig.idx and nd1.orig.idx >= 0 and nd.orig.idx >= 0 and nd1.orig.idx == nd.orig.idx then
+                    is_same_note = true
+                end
+                if is_same_note and nd.is_segment then
+                    local sqn = nd.start_qn or 0
+                    if sqn > last_sqn and sqn < (target_s2 - 0.01) then
+                        last_sqn = sqn
+                        last_seg = nd
+                    end
+                end
+            end
+        end
+        nd1 = last_seg
+    end
+
     local base_sqn1 = nd1.start_qn or (nd1.orig and nd1.orig.start_qn) or tie.n1_start_qn or 0
     if nd2.orig and nd2.is_segment then
         local first_seg = nd2
@@ -1300,7 +1399,7 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
         for _, nd in pairs(all_note_render_by_key) do
             if notes_share_same_track(nd, nd2) then
                 local is_same_note = (nd.orig and nd2.orig and nd.orig == nd2.orig)
-                if not is_same_note and nd2.orig and nd.orig and nd2.orig.take and nd.orig.take and nd2.orig.take == nd.orig.take and nd2.orig.idx and nd.orig.idx and nd2.orig.idx == nd.orig.idx then
+                if not is_same_note and nd2.orig and nd.orig and nd2.orig.take and nd.orig.take and nd2.orig.take == nd.orig.take and nd2.orig.idx and nd.orig.idx and nd2.orig.idx >= 0 and nd.orig.idx >= 0 and nd2.orig.idx == nd.orig.idx then
                     is_same_note = true
                 end
                 if is_same_note and nd.is_segment then
@@ -1402,6 +1501,58 @@ function SlurService.is_note_slurred(n, state, trk_guid)
     return false
 end
 
+local function has_tie_on_same_side(state, nd1, nd2, slur_above, all_note_render_by_key)
+    local min_x = math.min(nd1.nx, nd2.nx) - 2
+    local max_x = math.max(nd1.nx, nd2.nx) + 2
+    
+    -- Check user ties
+    if state and state.user_ties then
+        for _, tie in ipairs(state.user_ties) do
+            local t_nd1, t_nd2 = resolve_effective_tie_notes(state, tie, all_note_render_by_key)
+            if t_nd1 and t_nd2 and t_nd1.nx and t_nd2.nx then
+                local t_min_x = math.min(t_nd1.nx, t_nd2.nx)
+                local t_max_x = math.max(t_nd1.nx, t_nd2.nx)
+                if t_max_x >= min_x and t_min_x <= max_x then
+                    local tie_above = true
+                    if t_nd1.stem_down == false and t_nd2.stem_down == false then
+                        tie_above = false
+                    elseif t_nd1.stem_down == false then
+                        tie_above = false
+                    end
+                    if tie_above == slur_above then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Check automatic barline / segmentation ties
+    if state and state.active_bar_ties then
+        for _, bt in ipairs(state.active_bar_ties) do
+            local b_nd1 = all_note_render_by_key and all_note_render_by_key[bt.from_key]
+            local b_nd2 = all_note_render_by_key and all_note_render_by_key[bt.to_key]
+            if b_nd1 and b_nd2 and b_nd1.nx and b_nd2.nx then
+                local b_min_x = math.min(b_nd1.nx, b_nd2.nx)
+                local b_max_x = math.max(b_nd1.nx, b_nd2.nx)
+                if b_max_x >= min_x and b_min_x <= max_x then
+                    local tie_above = (b_nd1.stem_down == true) or (b_nd1.dstep and b_nd1.dstep >= 4)
+                    if tie_above == slur_above then
+                        return true
+                    end
+                end
+            end
+        end
+    end
+    
+    -- Also check if nd1 or nd2 is a tied segment of the same note
+    if nd1.orig and nd2.orig and nd1.orig == nd2.orig then
+        return true
+    end
+    
+    return false
+end
+
 function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, all_notes_or_s, s_or_cminx, cminx_or_cmaxx, cmaxx_or_cminy, cminy_or_cmaxy, cmaxy_or_hov, opt_hov, opt_mx, opt_my, opt_note_hovered)
     local ctx, draw_list, state, all_note_render_by_key, s, cull_min_x, cull_max_x, cull_min_y, cull_max_y, is_hovered, mouse_x, mouse_y, note_hovered
     if reaper.APIExists("ImGui_ValidatePtr") and reaper.ImGui_ValidatePtr(ctx_or_dl, "ImGui_Context*") then
@@ -1459,16 +1610,28 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                     above = false
                 end
                 
+                local has_tie = has_tie_on_same_side(state, nd1, nd2, above, all_note_render_by_key)
+                local extra_offset_y = 0
+                local extra_arc = 0
+                if has_tie then
+                    -- Elaine Gould ("Behind Bars" p. 60-63, 110-115):
+                    -- Slur must clear and enclose the tie on the outside with at least 1 staff space separation!
+                    extra_offset_y = 6.5 * s   -- (base 6.5 * s + 6.5 * s = 13.0 * s, well outside the tie at 3.8 * s)
+                    extra_arc = 12.0 * s       -- (deep, wide arch clearing the tie's peak completely)
+                end
+                
                 local dist_x = nd2.nx - nd1.nx
                 local dy = nd2.ny - nd1.ny
                 local chord_len = math.sqrt(dist_x * dist_x + dy * dy)
-                local arc_h = math.min(26 * s, math.max(8 * s, chord_len * 0.12))
+                local base_arc_h = math.min(32.0 * s, math.max(10.0 * s, chord_len * 0.15))
+                local arc_h = base_arc_h + extra_arc
                 local dir = above and -1 or 1
                 
-                local start_x = nd1.nx + 5.0 * s
-                local end_x   = nd2.nx - 5.0 * s
-                local start_y = nd1.ny + dir * 6.0 * s
-                local end_y   = nd2.ny + dir * 6.0 * s
+                local start_x = nd1.nx + 4.5 * s
+                local end_x   = nd2.nx - 4.5 * s
+                local base_offset_y = 6.5 * s
+                local start_y = nd1.ny + dir * (base_offset_y + extra_offset_y)
+                local end_y   = nd2.ny + dir * (base_offset_y + extra_offset_y)
                 
                 local cp_dist = math.abs(start_x - end_x) * 0.28
                 local cp1_x = start_x + cp_dist
@@ -1517,7 +1680,7 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                     col = (col & 0xFFFFFF00) | alpha
                 end
                 
-                Engraver.draw_slur(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, col, above, thickness)
+                Engraver.draw_slur(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, col, above, thickness, extra_offset_y, extra_arc)
             end
         end
     end
@@ -1569,6 +1732,29 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
                 drawn_tie_pairs[pair_key] = true
             local x_min = math.min(nd1.nx, nd2.nx)
             local x_max = math.max(nd1.nx, nd2.nx)
+            
+            -- Elaine Gould Adjacency Rule (Behind Bars p. 60):
+            -- A tie connects ONLY two immediately adjacent notes of the same pitch.
+            -- It NEVER connects across an intervening note of the same pitch!
+            local has_intermediate_note = false
+            if all_note_render_by_key then
+                local nd1_sqn = nd1.start_qn or (nd1.orig and nd1.orig.start_qn) or tie.n1_start_qn or 0
+                local nd2_sqn = nd2.start_qn or (nd2.orig and nd2.orig.start_qn) or tie.n2_start_qn or 0
+                local min_sqn = math.min(nd1_sqn, nd2_sqn)
+                local max_sqn = math.max(nd1_sqn, nd2_sqn)
+                for _, cand in pairs(all_note_render_by_key) do
+                    if cand ~= nd1 and cand ~= nd2 and cand.pitch == tie.pitch and cand.nx and notes_share_same_track(cand, nd1) then
+                        local c_sqn = cand.start_qn or (cand.orig and cand.orig.start_qn) or 0
+                        local cx = cand.nx
+                        if c_sqn > (min_sqn + 0.05) and c_sqn < (max_sqn - 0.05) and cx > (x_min + 8.0 * s) and cx < (x_max - 8.0 * s) then
+                            has_intermediate_note = true
+                            break
+                        end
+                    end
+                end
+            end
+            
+            if not has_intermediate_note then
             local y_min = math.min(nd1.ny, nd2.ny) - 30 * s
             local y_max = math.max(nd1.ny, nd2.ny) + 30 * s
             if x_max >= cull_min_x and x_min <= cull_max_x and (not cull_min_y or (y_max >= cull_min_y and y_min <= cull_max_y)) then
@@ -1584,15 +1770,15 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
                 end
                 
                 local dist = math.abs(nd2.nx - nd1.nx)
-                local arc_h = math.min(16 * s, math.max(6 * s, dist * 0.10))
+                local arc_h = math.min(10.0 * s, math.max(4.0 * s, dist * 0.075))
                 local dir = above and -1 or 1
                 local offset_y = dir * arc_h
-                local cp_offset = dist * 0.28
+                local cp_offset = dist * 0.25
                 
-                local start_x = nd1.nx + 4 * s
-                local end_x   = nd2.nx - 4 * s
-                local start_y = nd1.ny + dir * 5.0 * s
-                local end_y   = nd2.ny + dir * 5.0 * s
+                local start_x = nd1.nx + 6.0 * s
+                local end_x   = nd2.nx - 6.0 * s
+                local start_y = nd1.ny + dir * 3.8 * s
+                local end_y   = nd2.ny + dir * 3.8 * s
                 local cp1_x = start_x + cp_offset
                 local cp1_y = start_y + offset_y
                 local cp2_x = end_x - cp_offset
@@ -1639,7 +1825,24 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
                     col = (col & 0xFFFFFF00) | alpha
                 end
                 
-                Engraver.draw_tie(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, col, above, thickness)
+                -- Elaine Gould Tie Deduplication:
+                -- Check if all_bar_ties already rendered this exact tie segment
+                local trk_id = tostring(nd1.track or (nd1.orig and nd1.orig.track) or "0")
+                local x1_r = math.floor(x_min + 0.5)
+                local x2_r = math.floor(x_max + 0.5)
+                local coord_sig = string.format("%s_%d_%d_%d", trk_id, nd1.pitch or 0, x1_r, x2_r)
+                local is_already_drawn = state and state.drawn_tie_signatures and (
+                    state.drawn_tie_signatures[coord_sig] or
+                    state.drawn_tie_signatures[pair_key] or
+                    (k1 and k2 and state.drawn_tie_signatures[k1 .. "->" .. k2])
+                )
+                
+                if is_sel then
+                    Engraver.draw_tie(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, col, above, thickness)
+                elseif not is_already_drawn then
+                    Engraver.draw_tie(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, col, above, thickness)
+                end
+            end
             end
         end
     end
@@ -1870,6 +2073,7 @@ function SlurService.load_slurs(state)
     if duplicates_pruned then
         SlurService.save_slurs(state)
     end
+    SlurService.heal_slurs_and_ties(state)
 end
 
 function SlurService.heal_slurs_and_ties(state)
@@ -1925,7 +2129,40 @@ function SlurService.heal_slurs_and_ties(state)
             table.insert(clean_ties, tie)
         end
     end
-    state.user_ties = clean_ties
+    
+    -- Elaine Gould Adjacency Rule (Behind Bars p. 60):
+    -- A tie connects ONLY two adjacent notes. Prune any leaping tie that spans across an intermediate tie endpoint!
+    local non_leaping_ties = {}
+    for i, t1 in ipairs(clean_ties) do
+        local is_leap = false
+        local t1_min = math.min(t1.n1_start_qn or 0, t1.n2_start_qn or 0)
+        local t1_max = math.max(t1.n1_start_qn or 0, t1.n2_start_qn or 0)
+        local t1_norm_tg = normalize_guid(t1.track_guid)
+        for j, t2 in ipairs(clean_ties) do
+            if i ~= j and t1.pitch == t2.pitch and normalize_guid(t2.track_guid) == t1_norm_tg then
+                local s1 = math.min(t2.n1_start_qn or 0, t2.n2_start_qn or 0)
+                local s2 = math.max(t2.n1_start_qn or 0, t2.n2_start_qn or 0)
+                -- If t1 and t2 touch at an endpoint, they form a valid chain:
+                local touches = math.abs(s1 - t1_max) <= 0.06 or math.abs(s2 - t1_min) <= 0.06 or math.abs(s1 - t1_min) <= 0.06 or math.abs(s2 - t1_max) <= 0.06
+                if not touches then
+                    if (s1 > t1_min + 0.05 and s1 < t1_max - 0.05) or (s2 > t1_min + 0.05 and s2 < t1_max - 0.05) then
+                        is_leap = true
+                        break
+                    end
+                else
+                    -- If they touch at one end, but the other end of t2 is strictly inside t1, then t1 is a leap over t2!
+                    if (s1 > t1_min + 0.06 and s1 < t1_max - 0.06) or (s2 > t1_min + 0.06 and s2 < t1_max - 0.06) then
+                        is_leap = true
+                        break
+                    end
+                end
+            end
+        end
+        if not is_leap then
+            table.insert(non_leaping_ties, t1)
+        end
+    end
+    state.user_ties = non_leaping_ties
     
     SlurService.save_slurs(state)
 end
