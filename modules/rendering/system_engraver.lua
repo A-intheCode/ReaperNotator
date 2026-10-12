@@ -358,7 +358,7 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
         end
     end
 
-    local visual_notes, bar_ties = Engraver.get_visual_notes(raw_notes_in_range, bpi, start_qn_page, end_qn_page)
+    local visual_notes, bar_ties = Engraver.get_visual_notes(raw_notes_in_range, bpi, start_qn_page, end_qn_page, state and state.user_ties)
 
     -- Filter out repeated bars
     local display_notes = {}

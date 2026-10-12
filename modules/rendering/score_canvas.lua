@@ -352,7 +352,7 @@ local function sync_arrange_selection(state, project_tracks)
 end
 
 local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
-    local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil)
+    local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil, state and state.user_ties)
     
     -- Voice filtering and ghosting (MIDI channels 0-15)
     if filter_chan ~= nil then
@@ -1787,6 +1787,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             -- Fast screen position update & render registration for notes near/in visible window (Zero table allocation)
             for _, vn in ipairs(visual_notes) do
                 local is_sel = state:is_note_selected(vn.orig)
+                if not is_sel and vn.chain_notes then
+                    for _, cn in ipairs(vn.chain_notes) do
+                        if state:is_note_selected(cn) then is_sel = true break end
+                    end
+                end
                 local vn_start = vn.start_qn or 0
                 local vn_end = vn.end_qn or (vn_start + (vn.dur_qn or 1.0))
                 local in_range = not vis_min_qn or not vis_max_qn or (vn_end >= vis_min_qn - 8.0 and vn_start <= vis_max_qn + 8.0)
@@ -1884,7 +1889,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         else
             -- Fallback / Live Drag path: un-cached dynamic calculation
             local live_ties
-            visual_notes, live_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn)
+            visual_notes, live_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn, state and state.user_ties)
             for _, bt in ipairs(live_ties) do table.insert(all_bar_ties, bt) end
             
             if filter_chan ~= nil then
@@ -2254,6 +2259,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local ny = vn.vis_ny
             local n = vn.orig
             local is_sel = state:is_note_selected(n)
+            if not is_sel and vn.chain_notes then
+                for _, cn in ipairs(vn.chain_notes) do
+                    if state:is_note_selected(cn) then is_sel = true break end
+                end
+            end
             
             if is_sel or (nx >= cull_min_x and nx <= cull_max_x) then
                 local in_treble = vn.in_treble
@@ -2517,7 +2527,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     else
                         for _, cv in ipairs(cnotes) do
-                            if state:is_note_selected(cv.orig) then stem_col = Constants.COLORS.selection_gold break end
+                            local cv_sel = state:is_note_selected(cv.orig)
+                            if not cv_sel and cv.chain_notes then
+                                for _, cn in ipairs(cv.chain_notes) do
+                                    if state:is_note_selected(cn) then cv_sel = true break end
+                                end
+                            end
+                            if cv_sel then stem_col = Constants.COLORS.selection_gold break end
                         end
                         if stem_col == Constants.COLORS.notehead_black and (state.voice_color_mode ~= false) then
                             local c_v = (cnotes[1].orig and cnotes[1].orig.chan or 0) + 1
@@ -3673,6 +3689,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 elseif nd1.orig and nd2.orig and nd1.orig == nd2.orig then
                     is_same_note = true
                 elseif nd1.take and nd2.take and nd1.take == nd2.take and nd1.idx and nd2.idx and nd1.idx == nd2.idx then
+                    is_same_note = true
+                elseif bt.is_tied_chain or (nd1.is_tied_chain and nd2.is_tied_chain) then
                     is_same_note = true
                 end
                 

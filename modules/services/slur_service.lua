@@ -1319,7 +1319,9 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
                 end
                 if not nd2 and nd.pitch == tie.pitch and (tie.chan == nil or nd_ch == tie.chan) then
                     local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
-                    if d <= 0.12 and d < best_d2 then
+                    local eqn = nd.end_qn or (nd.orig and nd.orig.end_qn) or (sqn + (nd.dur_qn or 1.0))
+                    local in_span = (sqn <= (tie.n2_start_qn or 1.0) + 0.05) and (eqn >= (tie.n2_start_qn or 1.0) - 0.05)
+                    if (d <= 0.12 or in_span) and d < best_d2 then
                         best_d2 = d
                         nd2 = nd
                     end
@@ -1340,7 +1342,9 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
                     end
                     if not nd2 and nd.pitch == tie.pitch then
                         local d = math.abs(sqn - (tie.n2_start_qn or 1.0))
-                        if d <= 0.12 and d < best_d2 then
+                        local eqn = nd.end_qn or (nd.orig and nd.orig.end_qn) or (sqn + (nd.dur_qn or 1.0))
+                        local in_span = (sqn <= (tie.n2_start_qn or 1.0) + 0.05) and (eqn >= (tie.n2_start_qn or 1.0) - 0.05)
+                        if (d <= 0.12 or in_span) and d < best_d2 then
                             best_d2 = d
                             nd2 = nd
                         end
@@ -1363,6 +1367,29 @@ local function resolve_effective_tie_notes(state, tie, all_note_render_by_key)
     end
     if nd1.pitch ~= nd2.pitch then
         return nil, nil
+    end
+
+    -- If nd1 is segmented (e.g. cross-barline or metric pulse splits), resolve to its LAST segment before nd2
+    local target_s2 = nd2.start_qn or (nd2.orig and nd2.orig.start_qn) or tie.n2_start_qn or 999999
+    if nd1.orig and nd1.is_segment then
+        local last_seg = nd1
+        local last_sqn = nd1.start_qn or -999999
+        for _, nd in pairs(all_note_render_by_key) do
+            if notes_share_same_track(nd, nd1) then
+                local is_same_note = (nd.orig and nd1.orig and nd.orig == nd1.orig)
+                if not is_same_note and nd1.orig and nd.orig and nd1.orig.take and nd.orig.take and nd1.orig.take == nd.orig.take and nd1.orig.idx and nd.orig.idx and nd1.orig.idx >= 0 and nd.orig.idx >= 0 and nd1.orig.idx == nd.orig.idx then
+                    is_same_note = true
+                end
+                if is_same_note and nd.is_segment then
+                    local sqn = nd.start_qn or 0
+                    if sqn > last_sqn and sqn < (target_s2 - 0.01) then
+                        last_sqn = sqn
+                        last_seg = nd
+                    end
+                end
+            end
+        end
+        nd1 = last_seg
     end
 
     local base_sqn1 = nd1.start_qn or (nd1.orig and nd1.orig.start_qn) or tie.n1_start_qn or 0

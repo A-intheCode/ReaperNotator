@@ -1469,18 +1469,96 @@ function Engraver.decompose_bar_segment(start_in_bar, raw_dur, bpi, depth, allow
     return segments
 end
 
-function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn)
+function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn, user_ties)
     local visual_notes = {}
     local bar_ties = {}
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
     if not notes then return visual_notes, bar_ties end
     
+    -- Step 1: Sort notes chronologically to build contiguous chains
+    local sorted_notes = {}
     for _, n in ipairs(notes) do
-        local n_sqn = n.start_qn or n.sqn or 0
+        table.insert(sorted_notes, n)
+    end
+    table.sort(sorted_notes, function(a, b)
+        local s1 = a.start_qn or a.sqn or 0
+        local s2 = b.start_qn or b.sqn or 0
+        if math.abs(s1 - s2) > 0.001 then return s1 < s2 end
+        return (a.pitch or 0) < (b.pitch or 0)
+    end)
+    
+    -- Step 2: Consolidate contiguous tied chains (Elaine Gould "Behind Bars" p. 166)
+    -- When notes of the same pitch and channel are tied and contiguous without intervening rests,
+    -- they form a single sustained musical event across measures (e.g. a full measure becomes a whole note).
+    local visited = {}
+    local chains = {}
+    for i, n in ipairs(sorted_notes) do
+        if not visited[n] then
+            visited[n] = true
+            local chain = { n }
+            local search_forward = true
+            while search_forward do
+                local cur_tail = chain[#chain]
+                local tail_pitch = cur_tail.pitch
+                local tail_chan = cur_tail.chan or 0
+                local tail_s = cur_tail.start_qn or cur_tail.sqn or 0
+                local tail_e = cur_tail.end_qn or cur_tail.eqn or (tail_s + (cur_tail.dur_qn or 1.0))
+                local next_cand = nil
+                
+                for j = 1, #sorted_notes do
+                    local cand = sorted_notes[j]
+                    if not visited[cand] and cand.pitch == tail_pitch and (cand.chan or 0) == tail_chan then
+                        local cand_s = cand.start_qn or cand.sqn or 0
+                        -- Contiguity check: cand must start at or very near tail_e (tolerance 0.08 QN)
+                        if cand_s >= (tail_s - 0.01) and math.abs(cand_s - tail_e) <= 0.08 then
+                            local is_connected = false
+                            if cur_tail.tie_id and cand.tie_id and cur_tail.tie_id == cand.tie_id then
+                                is_connected = true
+                            elseif cur_tail.is_tied_master and (cand.is_tied_slave or (cand.idx and cand.idx == -1)) then
+                                is_connected = true
+                            elseif cur_tail.is_tied_master and cand.is_tied_slave then
+                                is_connected = true
+                            elseif user_ties and #user_ties > 0 then
+                                for _, ut in ipairs(user_ties) do
+                                    if ut.pitch == tail_pitch and (ut.chan == nil or ut.chan == tail_chan) then
+                                        local ut_s1 = ut.n1_start_qn or 0
+                                        local ut_s2 = ut.n2_start_qn or 0
+                                        if math.abs(ut_s1 - tail_s) <= 0.10 and math.abs(ut_s2 - cand_s) <= 0.10 then
+                                            is_connected = true
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                            
+                            if is_connected then
+                                next_cand = cand
+                                break
+                            end
+                        end
+                    end
+                end
+                
+                if next_cand then
+                    visited[next_cand] = true
+                    table.insert(chain, next_cand)
+                else
+                    search_forward = false
+                end
+            end
+            table.insert(chains, chain)
+        end
+    end
+    
+    -- Step 3: Decompose each note or consolidated tied chain into measure-specific visual notes
+    for _, chain in ipairs(chains) do
+        local first_n = chain[1]
+        local last_n = chain[#chain]
+        local n_sqn = first_n.start_qn or first_n.sqn or 0
         if vis_max_qn and n_sqn > vis_max_qn + 1.0 then
             break
         end
-        local n_eqn = n.end_qn or n.eqn or (n_sqn + (n.dur_qn or 1.0))
+        local n_eqn = last_n.end_qn or last_n.eqn or (n_sqn + (last_n.dur_qn or 1.0))
         
         if not vis_min_qn or n_eqn >= vis_min_qn - 2.0 then
             -- Metric smoothing of unquantized REAPER MIDI notes (1/64 grid = 0.0625 QN)
@@ -1547,18 +1625,47 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                         local start_in_bar = seg_sqn - bar_sqn
                         local sub_segs = Engraver.decompose_bar_segment(start_in_bar, seg_dur, bpi)
                         
-                        local it_str = tostring(n.item or "0")
-                        local tk_str = tostring(n.take or "0")
-                        
                         for sub_i, sub in ipairs(sub_segs) do
                             local sub_sqn = bar_sqn + sub.start_in_bar
                             local sub_eqn = sub_sqn + sub.dur_qn
-                            local seg_key = string.format("%s_%s_%.3f_%d_%d_b%d_s%d", it_str, tk_str, sub_sqn, n.pitch, n.chan or 0, bar, sub_i)
                             
-                            local is_segmented = (start_bar ~= end_bar) or (#sub_segs > 1)
+                            -- Find corresponding note in chain for this segment's onset
+                            local active_n = nil
+                            for _, cn in ipairs(chain) do
+                                local c_s = cn.start_qn or cn.sqn or 0
+                                local c_e = cn.end_qn or cn.eqn or (c_s + (cn.dur_qn or 1.0))
+                                if sub_sqn >= (c_s - 0.02) and sub_sqn < (c_e - 0.02) then
+                                    active_n = cn
+                                    break
+                                end
+                            end
+                            if not active_n then
+                                local min_dist = 999999
+                                for _, cn in ipairs(chain) do
+                                    local c_s = cn.start_qn or cn.sqn or 0
+                                    local dist = math.abs(sub_sqn - c_s)
+                                    if dist < min_dist then
+                                        min_dist = dist
+                                        active_n = cn
+                                    end
+                                end
+                            end
+                            if not active_n then active_n = first_n end
+                            
+                            local target_orig = active_n
+                            if target_orig.idx and target_orig.idx < 0 then
+                                -- Synthetic slave note (not in REAPER take): route selection/audition to real take master note
+                                target_orig = first_n
+                            end
+                            
+                            local it_str = tostring(active_n.item or first_n.item or "0")
+                            local tk_str = tostring(active_n.take or first_n.take or "0")
+                            local seg_key = string.format("%s_%s_%.3f_%d_%d_b%d_s%d", it_str, tk_str, sub_sqn, first_n.pitch, first_n.chan or 0, bar, sub_i)
+                            
+                            local is_segmented = (start_bar ~= end_bar) or (#sub_segs > 1) or (#chain > 1)
                             local seg = {
-                                orig = n,
-                                pitch = n.pitch,
+                                orig = target_orig,
+                                pitch = first_n.pitch,
                                 start_qn = sub_sqn,
                                 end_qn = sub_eqn,
                                 dur_qn = sub.dur_qn,
@@ -1566,10 +1673,12 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 seg_idx = sub_i,
                                 key = seg_key,
                                 bar = bar,
-                                item = n.item,
-                                item_obj = n.item_obj,
-                                take = n.take,
-                                track = n.track
+                                item = active_n.item or first_n.item,
+                                item_obj = active_n.item_obj or first_n.item_obj,
+                                take = active_n.take or first_n.take,
+                                track = active_n.track or first_n.track,
+                                is_tied_chain = (#chain > 1),
+                                chain_notes = (#chain > 1) and chain or nil
                             }
                             table.insert(visual_notes, seg)
                             
@@ -1578,11 +1687,12 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 table.insert(bar_ties, {
                                     from_key = prev_seg_key,
                                     to_key = seg_key,
-                                    pitch = n.pitch,
-                                    orig = n,
+                                    pitch = first_n.pitch,
+                                    orig = target_orig,
                                     is_cross_barline = is_cross,
                                     from_bar = prev_seg_bar,
-                                    to_bar = bar
+                                    to_bar = bar,
+                                    is_tied_chain = (#chain > 1)
                                 })
                             end
                             prev_seg_key = seg_key

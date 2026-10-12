@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.7-beta
+-- @version 1.9.8-beta
 -- @changelog
 --   + v1.9.5-beta: Tie & Slur Engraving Hierarchy (Elaine Gould compliant):
 --             - Tie Geometry Refinement: Ties connect directly adjacent noteheads with compact, shallow deflections (starting at 3.8 * s, arc height factor 0.075) hugging notehead contours snuggly.
