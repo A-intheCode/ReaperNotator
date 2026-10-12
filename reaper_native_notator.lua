@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.4-beta
+-- @version 1.9.4-beta.1
 -- @changelog
 --   + v1.9.4-beta: Measure-Local Polyphonic Stem Direction & Consecutive Voice Rest Suppression:
 --             - Measure-Local Stem Direction: Stem directions split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist on the staff (Gould 'Behind Bars' p. 301). In monophonic measures (where only Voice 1 or only Voice 2 is active), notes follow standard single-voice pitch-based stem directions (middle-line rule). A single Voice 2 note in later measures no longer forces earlier Voice 1 note stems upwards.

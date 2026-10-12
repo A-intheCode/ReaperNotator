@@ -1,10 +1,10 @@
-# REAPER-Notator v1.9.4-beta — Codebase & Library Statistics
+# REAPER-Notator v1.9.4-beta.1 — Codebase & Library Statistics
 
-**Generated:** 2026-10-13 00:11
+**Generated:** 2026-10-13 00:13
 
 ## Executive Summary
 
-- **Version:** v1.9.4-beta
+- **Version:** v1.9.4-beta.1
 - **Total Source Files:** 75 Lua files
 - **Total Line Count:** 56,410
 - **Executable Code Lines:** 47,497 (84.2%)
