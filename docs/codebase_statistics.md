@@ -1,14 +1,14 @@
-# REAPER-Notator v1.9.2 — Codebase & Library Statistics
+# REAPER-Notator v1.9.3-beta — Codebase & Library Statistics
 
-**Generated:** 2026-10-12 19:36
+**Generated:** 2026-10-12 23:51
 
 ## Executive Summary
 
-- **Version:** v1.9.2
+- **Version:** v1.9.3-beta
 - **Total Source Files:** 75 Lua files
-- **Total Line Count:** 56,202
-- **Executable Code Lines:** 47,325 (84.2%)
-- **Comments & Documentation:** 4,095 (7.3%)
+- **Total Line Count:** 56,208
+- **Executable Code Lines:** 47,330 (84.2%)
+- **Comments & Documentation:** 4,096 (7.3%)
 - **Blank / Formatting Lines:** 5,303 (9.4%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
@@ -18,21 +18,21 @@
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | `modules/services` | 28 | 29,218 | 24,931 | 1,788 | 2,630 | 85.3% |
-| `modules/rendering` | 7 | 11,709 | 9,956 | 723 | 1,082 | 85.0% |
+| `modules/rendering` | 7 | 11,715 | 9,961 | 724 | 1,082 | 85.0% |
 | `modules/ui` | 19 | 9,337 | 7,539 | 718 | 1,106 | 80.7% |
 | `modules` | 3 | 2,186 | 1,908 | 417 | 138 | 87.3% |
 | `modules/input` | 2 | 2,002 | 1,740 | 91 | 173 | 86.9% |
 | `Root` | 1 | 976 | 654 | 248 | 78 | 67.0% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **75** | **56,202** | **47,325** | **4,095** | **5,303** | **84.2%** |
+| **TOTAL** | **75** | **56,208** | **47,330** | **4,096** | **5,303** | **84.2%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
 | File | Module | Lines | Code | Comments |
 | :--- | :--- | :---: | :---: | :---: |
 | `modules/services/midi_service.lua` | modules/services | 5,994 | 5,226 | 241 |
-| `modules/rendering/score_canvas.lua` | modules/rendering | 4,434 | 3,844 | 210 |
-| `modules/rendering/engraver.lua` | modules/rendering | 2,789 | 2,375 | 213 |
+| `modules/rendering/score_canvas.lua` | modules/rendering | 4,425 | 3,835 | 210 |
+| `modules/rendering/engraver.lua` | modules/rendering | 2,804 | 2,389 | 214 |
 | `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,204 | 1,913 | 105 |
 | `modules/services/slur_service.lua` | modules/services | 2,120 | 1,830 | 102 |
 | `modules/services/musicxml_import_service.lua` | modules/services | 2,118 | 1,839 | 124 |

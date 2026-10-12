@@ -6,8 +6,15 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
+      <version name="1.9.3-beta" author="A-intheCode" time="2026-10-12T21:50:32Z">
         <changelog><![CDATA[
++ v1.9.3-beta: Engraving Rest Generation & Multi-Measure Note Segmentation:
+  - Multi-Voice Rest Suppression: Inactive voices in polyphonic tracks no longer emit unwanted full-measure whole rests in measures where another voice is active, strictly adhering to Gould ('Behind Bars' p. 308).
+  - Cross-Measure Note Coverage: bar_has_notes correctly marks all measures spanned by sustained or tied notes across barlines.
+  - Multi-Measure Duration Snapping: Macro-grid target snapping in get_visual_notes extended to multi-measure lengths (4.5 to 16.0 QN), preventing unquantized sustained notes from fragmenting across bars.
+  - Legato Tolerance in Bar Decomposition: Widened duration tolerance (0.18 QN) for standard beat 1 note values (whole, dotted half, half) to prevent human legato playing from fracturing into micro-rests and stray 16th notes.
+  - Intra-Measure Subsegment Ties: score_canvas rendering now draws ties between subsegments belonging to the same note even within the same measure across metric pulses.
+  - Occupied Staff Rest Protection: Strict collision check suppresses any full-measure rest on a staff if notes exist in that measure on that staff.
 + v1.9.2: Classical Arpeggio Engraving & Duration-Adaptive Playback Strumming:
   - Vertical Visual Alignment: Arpeggiated chord notes are strictly aligned on the chord downbeat under a single unified stem in Canvas and System views in accordance with classical engraving standards.
   - Spurious Beam Prevention: Grouping and onset calculations treat arpeggio rolled notes as a single vertical chord downbeat block, preventing unwanted micro-beams between chord voices.

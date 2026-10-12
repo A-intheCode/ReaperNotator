@@ -1006,9 +1006,12 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
             local distinct_onsets = {}
             for _, n in ipairs(bar_notes) do
                 local snap_grid = dq or 0.125
-                local rel_s = n.start_qn - bar_start_qn
+                local eff_n_start = math.max(bar_start_qn, n.start_qn)
+                local eff_n_end = math.min(bar_end_qn, n.end_qn or (n.start_qn + (n.dur_qn or (n.end_qn and (n.end_qn - n.start_qn) or 1.0))))
+                local eff_n_dur = math.max(0, eff_n_end - eff_n_start)
+                local rel_s = eff_n_start - bar_start_qn
                 local snapped_s = bar_start_qn + (math.floor((rel_s / snap_grid) + 0.5) * snap_grid)
-                local raw_dur = n.dur_qn or (n.end_qn - n.start_qn)
+                local raw_dur = eff_n_dur
                 local nom_dur = dq and (math.max(dq, math.floor((raw_dur / dq) + 0.5) * dq)) or Engraver.get_nominal_rhythmic_duration(raw_dur)
                 
                 local found = false
@@ -1016,7 +1019,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
                 for _, slot in ipairs(distinct_onsets) do
                     if math.abs(slot.s - snapped_s) < tol then
                         slot.dur = math.max(slot.dur, nom_dur)
-                        slot.actual_end = math.max(slot.actual_end, n.end_qn)
+                        slot.actual_end = math.max(slot.actual_end, eff_n_end)
                         found = true
                         break
                     end
@@ -1025,7 +1028,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
                     table.insert(distinct_onsets, {
                         s = snapped_s,
                         dur = nom_dur,
-                        actual_end = n.end_qn
+                        actual_end = eff_n_end
                     })
                 end
             end
@@ -1143,13 +1146,19 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
     local start_m = math.max(0, min_m or 0)
     local stop_m = math.min(total_measures - 1, max_m or (total_measures - 1))
     
-    -- Determine measure occupancy across all voices
+    -- Determine measure occupancy across all voices (including notes spanning across measure barlines)
     local bar_has_notes = {}
     for m = start_m, stop_m do bar_has_notes[m] = false end
     for _, n in ipairs(track_notes or {}) do
-        local m = math.floor((n.start_qn + 0.001) / bpi)
-        if bar_has_notes[m] ~= nil then
-            bar_has_notes[m] = true
+        local n_sqn = n.start_qn or 0
+        local n_dur = n.dur_qn or (n.end_qn and (n.end_qn - n_sqn)) or 0
+        local n_eqn = n.end_qn or (n_sqn + n_dur)
+        local m_start = math.max(start_m, math.floor((n_sqn + 0.001) / bpi))
+        local m_end = math.min(stop_m, math.floor(math.max(n_sqn, n_eqn - 0.001) / bpi))
+        for m = m_start, m_end do
+            if bar_has_notes[m] ~= nil then
+                bar_has_notes[m] = true
+            end
         end
     end
     
@@ -1166,12 +1175,15 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
             for _, r in ipairs(v_rests) do
                 r.voice = v
                 local m = r.measure_idx or math.floor(r.start_qn / bpi)
-                -- If measure is completely empty (no notes in any voice):
-                -- Only voice 1 emits the centered whole measure rest (Gould standard).
-                if r.is_full_measure and not bar_has_notes[m] then
-                    if v == 1 then
-                        r.voice = nil -- Standard centered
-                        table.insert(all_rests, r)
+                -- Elaine Gould ("Behind Bars" p. 308):
+                -- If measure is completely empty across ALL voices: only voice 1 emits the centered whole measure rest.
+                -- If measure has notes in another voice: an inactive voice NEVER emits a whole-measure rest!
+                if r.is_full_measure then
+                    if not bar_has_notes[m] then
+                        if v == 1 then
+                            r.voice = nil -- Standard centered
+                            table.insert(all_rests, r)
+                        end
                     end
                 else
                     table.insert(all_rests, r)
@@ -1219,7 +1231,7 @@ function Engraver.decompose_bar_segment(start_in_bar, raw_dur, bpi, depth, allow
     local dur = raw_dur
     local std_vals = { 4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625 }
     for _, sv in ipairs(std_vals) do
-        local tol = math.min(0.08, sv * 0.25)
+        local tol = (sv >= 2.0) and 0.18 or math.min(0.10, math.max(0.03, sv * 0.20))
         if math.abs(dur - sv) <= tol then
             dur = sv
             break
@@ -1249,21 +1261,21 @@ function Engraver.decompose_bar_segment(start_in_bar, raw_dur, bpi, depth, allow
     
     -- 3. Notes starting on beat 1 (0.0):
     if start_in_bar < 0.05 then
-        if math.abs(dur - 3.5) <= 0.08 then
+        if math.abs(dur - 3.5) <= 0.12 then
             -- 3.5 quarters: Dotted half (3.0) tied to eighth (0.5)
             table.insert(segments, { start_in_bar = 0.0, dur_qn = 3.0 })
             table.insert(segments, { start_in_bar = 3.0, dur_qn = 0.5 })
             return segments
-        elseif math.abs(dur - 3.0) <= 0.08 then
+        elseif math.abs(dur - 3.0) <= 0.18 then
             -- 3.0 quarters: Dotted half
             table.insert(segments, { start_in_bar = 0.0, dur_qn = 3.0 })
             return segments
-        elseif math.abs(dur - 2.5) <= 0.08 then
+        elseif math.abs(dur - 2.5) <= 0.12 then
             -- 2.5 quarters: Half note (2.0) tied to eighth (0.5)
             table.insert(segments, { start_in_bar = 0.0, dur_qn = 2.0 })
             table.insert(segments, { start_in_bar = 2.0, dur_qn = 0.5 })
             return segments
-        elseif math.abs(dur - 2.0) <= 0.08 then
+        elseif math.abs(dur - 2.0) <= 0.18 then
             -- 2.0 quarters: Half note
             table.insert(segments, { start_in_bar = 0.0, dur_qn = 2.0 })
             return segments
@@ -1361,9 +1373,12 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                 -- Legato snap: When raw duration is very close to full quarters/eighths (e.g. 0.88 -> 1.0, 1.88 -> 2.0, 2.88 -> 3.0, 3.85 -> 4.0)
                 snapped_dur = math.floor((raw_dur / grid) + 0.5) * grid
                 if snapped_dur < grid then snapped_dur = grid end
-                local close_targets = { 4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625 }
+                local close_targets = {
+                    16.0, 15.0, 14.0, 12.0, 10.0, 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5,
+                    4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625
+                }
                 for _, ct in ipairs(close_targets) do
-                    local tol = math.min(0.14, math.max(0.025, ct * 0.25))
+                    local tol = (ct >= 4.0) and 0.18 or math.min(0.14, math.max(0.025, ct * 0.25))
                     if math.abs(raw_dur - ct) <= tol then
                         snapped_dur = ct
                         break
