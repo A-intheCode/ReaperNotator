@@ -1,12 +1,14 @@
 #!/usr/bin/env python3
 """
-REAPER-Notator - Automated Version Bumper
+REAPER-Notator - Automated Version Bumper & ReaPack Release Manager
 Usage:
     python tools/bump_version.py            # Show current version
-    python tools/bump_version.py patch      # 1.0.0 -> 1.0.1
-    python tools/bump_version.py minor      # 1.0.0 -> 1.1.0
-    python tools/bump_version.py major      # 1.0.0 -> 2.0.0
-    python tools/bump_version.py 1.2.0      # Explicit version
+    python tools/bump_version.py patch      # 1.0.0 -> 1.0.1 (stable release)
+    python tools/bump_version.py minor      # 1.0.0 -> 1.1.0 (stable release)
+    python tools/bump_version.py major      # 1.0.0 -> 2.0.0 (stable release)
+    python tools/bump_version.py beta       # 1.0.0 -> 1.0.1-beta (pre-release channel)
+    python tools/bump_version.py 1.9.9-beta # Explicit pre-release version
+    python tools/bump_version.py 1.9.9      # Explicit stable release version
 """
 
 import sys
@@ -45,13 +47,23 @@ def compute_new_version(action, major, minor, patch, suffix):
         return major, minor + 1, 0, ""
     elif action == "major":
         return major + 1, 0, 0, ""
+    elif action == "beta":
+        if suffix.startswith("-beta"):
+            m_b = re.match(r"^-beta\.?(\d+)?$", suffix)
+            if m_b and m_b.group(1):
+                num = int(m_b.group(1)) + 1
+                return major, minor, patch, f"-beta.{num}"
+            else:
+                return major, minor, patch, "-beta.1"
+        else:
+            return major, minor, patch + 1, "-beta"
     else:
-        # Explicit version string like 1.2.3 or 1.2.3-rc1
+        # Explicit version string like 1.2.3 or 1.2.3-beta
         m = re.match(r"^(\d+)\.(\d+)\.(\d+)(.*)$", action)
         if m:
             return int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4)
         else:
-            raise ValueError(f"Invalid version argument: '{action}'. Use patch, minor, major, or X.Y.Z")
+            raise ValueError(f"Invalid version argument: '{action}'. Use patch, minor, major, beta, or X.Y.Z")
 
 def update_version_lua(major, minor, patch, suffix):
     with open(VERSION_LUA, "r", encoding="utf-8") as f:
@@ -82,18 +94,56 @@ def update_index_xml(semver, changelog_note=None):
         content = f.read()
     
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-    
-    # Update version name and time in <version name="..." ... time="..."> (ONLY FIRST / LATEST)
-    content = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
-                     f'<version name="{semver}" author="\\1" time="{now}">',
-                     content,
-                     count=1)
-    
-    if changelog_note:
-        # Prepend to changelog (ONLY FIRST / LATEST)
-        note_str = f"+ v{semver}: {changelog_note}\n"
-        content = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', content, count=1)
-    
+    is_beta = ("-" in semver and "deprecated" not in semver.lower()) or ("beta" in semver.lower()) or ("rc" in semver.lower())
+
+    # Match first <version ...> ... </version> block
+    m = re.search(r'([ \t]*<version name="([^"]+)" author="([^"]+)" time="[^"]+">.*?</version>)', content, re.DOTALL)
+    if not m:
+        print("Warning: Could not find <version> block in index.xml")
+        return
+
+    top_block = m.group(1)
+    top_name = m.group(2)
+    top_is_beta = ("-" in top_name and "deprecated" not in top_name.lower()) or ("beta" in top_name.lower()) or ("rc" in top_name.lower())
+
+    if is_beta and not top_is_beta:
+        # Prepending a new beta block on top of a stable version
+        new_block = top_block
+        new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
+                           f'<version name="{semver}" author="\\1" time="{now}">',
+                           new_block, count=1)
+        # Point all sources for beta to testing branch
+        new_block = re.sub(r'/ReaperNotator/main/', r'/ReaperNotator/testing/', new_block)
+        note_str = f"+ v{semver}: {changelog_note}\n" if changelog_note else f"+ v{semver}: Beta pre-release\n"
+        new_block = re.sub(r'<changelog><!\[CDATA\[.*?\]\]></changelog>',
+                           f'<changelog><![CDATA[\n{note_str}        ]]></changelog>',
+                           new_block, flags=re.DOTALL)
+        content = content[:m.start(1)] + new_block + "\n" + content[m.start(1):]
+
+    elif is_beta and top_is_beta:
+        # Updating an existing beta block in-place
+        new_block = top_block
+        new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
+                           f'<version name="{semver}" author="\\1" time="{now}">',
+                           new_block, count=1)
+        new_block = re.sub(r'/ReaperNotator/main/', r'/ReaperNotator/testing/', new_block)
+        if changelog_note:
+            note_str = f"+ v{semver}: {changelog_note}\n"
+            new_block = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', new_block, count=1)
+        content = content[:m.start(1)] + new_block + content[m.end(1):]
+
+    else:
+        # Stable release! If top was a beta, replace it with stable pointing to main
+        new_block = top_block
+        new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
+                           f'<version name="{semver}" author="\\1" time="{now}">',
+                           new_block, count=1)
+        new_block = re.sub(r'/ReaperNotator/testing/', r'/ReaperNotator/main/', new_block)
+        if changelog_note:
+            note_str = f"+ v{semver}: {changelog_note}\n"
+            new_block = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', new_block, count=1)
+        content = content[:m.start(1)] + new_block + content[m.end(1):]
+
     with open(INDEX_XML, "w", encoding="utf-8") as f:
         f.write(content)
 
@@ -104,10 +154,12 @@ def main():
     if len(sys.argv) < 2:
         print(f"Current REAPER-Notator version: v{current_semver}")
         print("To bump version, run:")
-        print("  python tools/bump_version.py patch   # e.g. bug fixes, minor tweaks")
-        print("  python tools/bump_version.py minor   # e.g. new features, UI additions")
-        print("  python tools/bump_version.py major   # e.g. breaking architectural release")
-        print("  python tools/bump_version.py 1.1.0   # explicit semantic version")
+        print("  python tools/bump_version.py patch          # e.g. bug fixes, minor tweaks (stable)")
+        print("  python tools/bump_version.py minor          # e.g. new features, UI additions (stable)")
+        print("  python tools/bump_version.py major          # e.g. breaking architectural release (stable)")
+        print("  python tools/bump_version.py beta           # bumps patch and sets -beta suffix (pre-release)")
+        print("  python tools/bump_version.py 1.9.9-beta     # explicit semantic pre-release version")
+        print("  python tools/bump_version.py 1.9.9          # explicit semantic stable version")
         return
     
     action = sys.argv[1].lower()
@@ -126,8 +178,16 @@ def main():
     print(f"  - {os.path.relpath(VERSION_LUA, REPO_ROOT)}")
     print(f"  - {os.path.relpath(MAIN_LUA, REPO_ROOT)}")
     print(f"  - {os.path.relpath(INDEX_XML, REPO_ROOT)}")
-    print("\nNext steps:")
-    print(f'  git add . && git commit -m "Bump version to v{new_semver}" && git push')
+    
+    is_beta = ("-" in new_semver and "deprecated" not in new_semver.lower()) or ("beta" in new_semver.lower())
+    if is_beta:
+        print("\nPre-Release (Beta) next steps:")
+        print(f'  1. Commit on testing:  git add . && git commit -m "chore(release): v{new_semver}" && git push origin testing')
+        print(f'  2. Publish to ReaPack: python tools/publish_beta.py')
+    else:
+        print("\nStable Release next steps:")
+        print(f'  1. Commit on main:     git add . && git commit -m "chore(release): v{new_semver}" && git push origin main')
+        print(f'  2. Sync to testing:    git checkout testing && git merge main && git push origin testing')
 
 if __name__ == "__main__":
     main()
