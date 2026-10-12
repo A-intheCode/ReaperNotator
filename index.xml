@@ -6,8 +6,14 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.9.1" author="A-intheCode" time="2026-10-12T16:43:41Z">
+      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
         <changelog><![CDATA[
++ v1.9.2: Classical Arpeggio Engraving & Duration-Adaptive Playback Strumming:
+  - Vertical Visual Alignment: Arpeggiated chord notes are strictly aligned on the chord downbeat under a single unified stem in Canvas and System views in accordance with classical engraving standards.
+  - Spurious Beam Prevention: Grouping and onset calculations treat arpeggio rolled notes as a single vertical chord downbeat block, preventing unwanted micro-beams between chord voices.
+  - Adaptive Strumming Duration: Playback arpeggio strum step adaptively scales with chord note length (e.g. 8-16 ticks for 16th notes up to 30 ticks for sustained quarter/half/whole notes) to eliminate beat spillover.
+  - Robust Cleanup & Snapping: Search window in toggle_arpeggio_on_selected expanded to cleanly find and snap chords with 5+ voices back to the downbeat.
+  - Accidental Clearance: Arpeggio wavy line rendering dynamically accounts for note accidental bounding boxes.
 + v1.9.1: Divisio Vocum (Voice Division) tooltip refinement & documentation sync
 + v1.9.0: Divisio Vocum (Voice Distribution) Suite, Live Item Scaling & Grid Shortcuts:
   - Divisio Vocum Feature: Distributes multi-voice chords from a single track vertically across the visible score tracks in the viewport below.
@@ -97,8 +103,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="1.9.1" author="A-intheCode" time="2026-10-12T16:43:41Z">
+      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
         <changelog><![CDATA[
++ v1.9.2: Release vpatch
 + v1.9.1: Release vpatch
 + v1.8.0: Major Production Release: Integrated MIDI Editor Suite, Performance Overhaul & Modernized Settings:
   - Integrated Multi-Lane MIDI Editor: Interactive bottom drawer with live bidirectional synchronization between the score notation canvas and REAPER's active MIDI takes.
@@ -189,8 +196,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="1.9.1" author="A-intheCode" time="2026-10-12T16:43:41Z">
+      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
         <changelog><![CDATA[
++ v1.9.2: Release vpatch
 + v1.9.1: Release vpatch
 + v1.7.1: Hotfix: Resolved nil global normalize_guid in PortamentoService.
         ]]></changelog>
@@ -269,8 +277,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="1.9.1" author="A-intheCode" time="2026-10-12T16:43:41Z">
+      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
         <changelog><![CDATA[
++ v1.9.2: Release vpatch
 + v1.9.1: Release vpatch
 + v1.7.0: Major Release: Elaine Gould Slurs, Glissandi, Portamento & Bidirectional MusicXML 4.0:
           - Elaine Gould Phrasing & Slurs: True acoustic legato playback (+2 PPQ micro-overlap), voice-isolated multi-voice pairing, Reaticulate keyswitch integration, and automatic chase.
@@ -354,8 +363,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="1.9.1" author="A-intheCode" time="2026-10-12T16:43:41Z">
+      <version name="1.9.2" author="A-intheCode" time="2026-10-12T16:56:38Z">
         <changelog><![CDATA[
++ v1.9.2: Release vpatch
 + v1.9.1: Release vpatch
 + v1.6.5: PreviewPlayback Hotfix: Track isolation, arm settling buffer & audition duration tuning:
           - Track Isolation: Temporarily disarms other armed tracks during score note click preview to strictly prevent foreign instruments from sounding via Virtual MIDI Keyboard.

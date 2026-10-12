@@ -1456,9 +1456,10 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
     
     local function has_multiple_onsets(notes_grp)
         if not notes_grp or #notes_grp < 2 then return false end
-        local first_qn = notes_grp[1].start_qn
+        local first_qn = notes_grp[1].display_qn or notes_grp[1].start_qn
         for i = 2, #notes_grp do
-            if math.abs(notes_grp[i].start_qn - first_qn) > 0.02 then
+            local cur_qn = notes_grp[i].display_qn or notes_grp[i].start_qn
+            if math.abs(cur_qn - first_qn) > 0.04 then
                 return true
             end
         end
@@ -1473,7 +1474,9 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
             end
         end
         table.sort(beamable, function(a, b)
-            if math.abs(a.start_qn - b.start_qn) > 0.02 then return a.start_qn < b.start_qn end
+            local a_qn = a.display_qn or a.start_qn
+            local b_qn = b.display_qn or b.start_qn
+            if math.abs(a_qn - b_qn) > 0.04 then return a_qn < b_qn end
             return a.pitch < b.pitch
         end)
         
@@ -1520,7 +1523,8 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
         local cur_group = {}
         local cur_group_start = nil
         for _, vn in ipairs(beamable) do
-            local g_idx = tuplet_assigned[vn] or math.floor(vn.start_qn / group_size)
+            local vn_qn = vn.display_qn or vn.start_qn
+            local g_idx = tuplet_assigned[vn] or math.floor(vn_qn / group_size)
             if cur_group_start == nil or g_idx ~= cur_group_start then
                 if has_multiple_onsets(cur_group) then
                     table.insert(groups, cur_group)

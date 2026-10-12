@@ -396,10 +396,21 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
     local chord_clusters = {}
     local cur_cluster = nil
     for _, vn in ipairs(display_notes) do
-        local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < 0.03)
+        local is_arp = (vn.orig and (vn.orig.arpeggio or vn.orig.articulation == "arpeggio"))
+        local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.30 or 0.03
+        local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < time_tol)
         if not same_time then
-            cur_cluster = { start_qn = vn.start_qn, notes = {} }
+            cur_cluster = {
+                start_qn     = vn.start_qn,
+                notes        = {},
+                is_arpeggio  = (is_arp == true or is_arp == "up" or is_arp == "down"),
+                arpeggio_dir = (vn.orig and vn.orig.arpeggio) or "up"
+            }
             table.insert(chord_clusters, cur_cluster)
+        end
+        if is_arp then
+            cur_cluster.is_arpeggio = true
+            if vn.orig and vn.orig.arpeggio then cur_cluster.arpeggio_dir = vn.orig.arpeggio end
         end
         table.insert(cur_cluster.notes, vn)
         vn.chord_cluster = cur_cluster
@@ -418,6 +429,17 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
                 end
             end
             cluster.stem_down = stem_down
+
+            if cluster.is_arpeggio and #cnotes >= 2 then
+                table.sort(cnotes, function(a, b) return (a.eff_pitch or a.pitch or 60) < (b.eff_pitch or b.pitch or 60) end)
+                local base_display_qn = cluster.start_qn
+                local base_nominal_nx = cnotes[1].nominal_nx
+                for _, cvn in ipairs(cnotes) do
+                    cvn.display_qn = base_display_qn
+                    cvn.nominal_nx = base_nominal_nx
+                    cvn.vis_nx = base_nominal_nx
+                end
+            end
 
             for i = 2, #cnotes do
                 local prev = cnotes[i-1]
@@ -508,7 +530,7 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
         end
 
         -- Articulation
-        if vn.orig and vn.orig.articulation then
+        if vn.orig and vn.orig.articulation and vn.orig.articulation ~= "arpeggio" then
             local note_is_slurred = SlurService and SlurService.is_note_slurred(vn.orig, state, track_guid)
             local art_type = tostring(vn.orig.articulation):lower()
             local is_stacc = (art_type == "staccato" or art_type == "stacc" or art_type == "staccatissimo" or art_type == "staccatiss" or art_type == "wedge" or art_type == "spiccato")
@@ -536,6 +558,23 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
     -- 5. Stems & Flags for Clusters
     for _, cluster in ipairs(chord_clusters) do
         local cnotes = cluster.notes
+        if cluster.is_arpeggio and #cnotes >= 2 then
+            local arp_min_y = cnotes[1].vis_ny
+            local arp_max_y = cnotes[1].vis_ny
+            local arp_min_x = cnotes[1].vis_nx
+            for _, vn in ipairs(cnotes) do
+                if vn.vis_ny < arp_min_y then arp_min_y = vn.vis_ny end
+                if vn.vis_ny > arp_max_y then arp_max_y = vn.vis_ny end
+                local nx_left = vn.vis_nx
+                if vn.acc and vn.acc ~= 0 then
+                    nx_left = vn.vis_nx - 10 * eng_s
+                end
+                if nx_left < arp_min_x then arp_min_x = nx_left end
+            end
+            local arp_x = arp_min_x - 11 * eng_s
+            Engraver.draw_arpeggio(dl, arp_x, arp_min_y, arp_max_y, eng_s, 0x111111FF, font_music, cluster.arpeggio_dir or "up")
+        end
+
         local all_whole = true
         for _, vn in ipairs(cnotes) do
             if math.abs(vn.dur_qn - 4.0) >= 0.15 then all_whole = false break end

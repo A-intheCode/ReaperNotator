@@ -3374,14 +3374,22 @@ function MidiService.toggle_arpeggio_on_selected(state, direction)
     reaper.MIDI_DisableSort(take)
 
     local min_ppq = 999999999
+    local min_chord_len = 999999999
     for _, sn in ipairs(targets) do
         local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn) + 0.5)
+        local eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn + (sn.dur_qn or 1.0)) + 0.5)
         if sn.idx and sn.idx >= 0 then
-            local ok, _, _, s_ppq = reaper.MIDI_GetNote(take, sn.idx)
-            if ok then sppq = s_ppq end
+            local ok, _, _, s_ppq, e_ppq = reaper.MIDI_GetNote(take, sn.idx)
+            if ok then
+                sppq = s_ppq
+                eppq = e_ppq
+            end
         end
         if sppq < min_ppq then min_ppq = sppq end
+        local dur = eppq - sppq
+        if dur > 10 and dur < min_chord_len then min_chord_len = dur end
     end
+    if min_chord_len > 900000000 then min_chord_len = 960 end
 
     -- Sort targets by pitch
     table.sort(targets, function(a, b)
@@ -3392,18 +3400,22 @@ function MidiService.toggle_arpeggio_on_selected(state, direction)
         end
     end)
 
+    local search_window = math.max(240, math.floor(min_chord_len * 0.6))
+
     -- Clean existing NOTATOR_ARPEGGIO events near min_ppq
     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
     for text_i = text_cnt - 1, 0, -1 do
         local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
         if ok and ev_type == 15 and (msg:match("^NOTATOR_ARPEGGIO") or msg:match("a%s+arpeggio")) then
-            if math.abs(ppq - min_ppq) < 80 then
+            if math.abs(ppq - min_ppq) < search_window then
                 reaper.MIDI_DeleteTextSysexEvt(take, text_i)
             end
         end
     end
 
-    local spread_ticks = 18 -- ~15ms strum step at 120 BPM
+    local note_steps = math.max(1, #targets - 1)
+    local ideal_step = math.floor((min_chord_len * 0.28) / note_steps)
+    local spread_ticks = math.max(8, math.min(30, ideal_step))
 
     for i, sn in ipairs(targets) do
         local target_sppq = has_arp and min_ppq or (min_ppq + (i - 1) * spread_ticks)
@@ -3411,7 +3423,7 @@ function MidiService.toggle_arpeggio_on_selected(state, direction)
         local _, notecnt = reaper.MIDI_CountEvts(take)
         for ni = 0, notecnt - 1 do
             local ok, sel, muted, s_ppq, e_ppq, chan, pitch, vel = reaper.MIDI_GetNote(take, ni)
-            if ok and pitch == sn.pitch and math.abs(s_ppq - min_ppq) < 80 then
+            if ok and pitch == sn.pitch and math.abs(s_ppq - min_ppq) < search_window then
                 local new_sppq = target_sppq
                 local new_eppq = math.max(new_sppq + 40, e_ppq)
                 reaper.MIDI_SetNote(take, ni, sel, muted, new_sppq, new_eppq, chan, pitch, vel, false)

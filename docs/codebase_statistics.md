@@ -1,15 +1,15 @@
-# REAPER-Notator v1.9.1 — Codebase & Library Statistics
+# REAPER-Notator v1.9.2 — Codebase & Library Statistics
 
-**Generated:** 2026-10-12 18:43
+**Generated:** 2026-10-12 18:56
 
 ## Executive Summary
 
-- **Version:** v1.9.1
+- **Version:** v1.9.2
 - **Total Source Files:** 75 Lua files
-- **Total Line Count:** 56,112
-- **Executable Code Lines:** 47,238 (84.2%)
-- **Comments & Documentation:** 4,096 (7.3%)
-- **Blank / Formatting Lines:** 5,300 (9.4%)
+- **Total Line Count:** 56,202
+- **Executable Code Lines:** 47,325 (84.2%)
+- **Comments & Documentation:** 4,095 (7.3%)
+- **Blank / Formatting Lines:** 5,303 (9.4%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
@@ -17,25 +17,25 @@
 
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `modules/services` | 28 | 29,195 | 24,909 | 1,789 | 2,629 | 85.3% |
-| `modules/rendering` | 7 | 11,642 | 9,891 | 723 | 1,080 | 85.0% |
+| `modules/services` | 28 | 29,218 | 24,931 | 1,788 | 2,630 | 85.3% |
+| `modules/rendering` | 7 | 11,709 | 9,956 | 723 | 1,082 | 85.0% |
 | `modules/ui` | 19 | 9,337 | 7,539 | 718 | 1,106 | 80.7% |
 | `modules` | 3 | 2,186 | 1,908 | 417 | 138 | 87.3% |
 | `modules/input` | 2 | 2,002 | 1,740 | 91 | 173 | 86.9% |
 | `Root` | 1 | 976 | 654 | 248 | 78 | 67.0% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **75** | **56,112** | **47,238** | **4,096** | **5,300** | **84.2%** |
+| **TOTAL** | **75** | **56,202** | **47,325** | **4,095** | **5,303** | **84.2%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
 | File | Module | Lines | Code | Comments |
 | :--- | :--- | :---: | :---: | :---: |
-| `modules/services/midi_service.lua` | modules/services | 5,982 | 5,215 | 242 |
-| `modules/rendering/score_canvas.lua` | modules/rendering | 4,410 | 3,820 | 210 |
-| `modules/rendering/engraver.lua` | modules/rendering | 2,785 | 2,371 | 213 |
+| `modules/services/midi_service.lua` | modules/services | 5,994 | 5,226 | 241 |
+| `modules/rendering/score_canvas.lua` | modules/rendering | 4,434 | 3,844 | 210 |
+| `modules/rendering/engraver.lua` | modules/rendering | 2,789 | 2,375 | 213 |
 | `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,204 | 1,913 | 105 |
 | `modules/services/slur_service.lua` | modules/services | 2,120 | 1,830 | 102 |
-| `modules/services/musicxml_import_service.lua` | modules/services | 2,107 | 1,828 | 124 |
+| `modules/services/musicxml_import_service.lua` | modules/services | 2,118 | 1,839 | 124 |
 | `modules/services/musicxml_export_service.lua` | modules/services | 1,698 | 1,435 | 145 |
 | `modules/services/portamento_service.lua` | modules/services | 1,549 | 1,312 | 88 |
 | `modules/services/glissando_service.lua` | modules/services | 1,474 | 1,245 | 79 |
@@ -53,9 +53,9 @@
 | `modules/services/divisio_vocum_service.lua` | Divisio Vocum - Orchestral Voice Division across tracks | 308 |
 | `modules/services/dynamics_engine.lua` | Orchestral Dynamics Engine - Bezier/Linear CC automation shaping | 1,128 |
 | `modules/services/glissando_service.lua` | Glissando Engine - Smooth chromatic / diatonic slide generation | 1,245 |
-| `modules/services/midi_service.lua` | Core MIDI Engine - Low-latency take I/O and event synchronization | 5,215 |
+| `modules/services/midi_service.lua` | Core MIDI Engine - Low-latency take I/O and event synchronization | 5,226 |
 | `modules/services/musicxml_export_service.lua` | MusicXML 4.0 Exporter - Standard score interchange file generation | 1,435 |
-| `modules/services/musicxml_import_service.lua` | MusicXML 4.0 Importer - Orchestral part loading and articulation mapping | 1,828 |
+| `modules/services/musicxml_import_service.lua` | MusicXML 4.0 Importer - Orchestral part loading and articulation mapping | 1,839 |
 | `modules/services/audio_preview.lua` | Audition Preview Engine - Non-destructive note click playback chasing | 805 |
 | `modules/services/reaticulate_parser.lua` | Reaticulate Bridge - Bank parsing and articulation keyswitch management | 376 |
 | `modules/services/scale_service.lua` | Scale & Harmony Service - Chord Track harmonic transformations | 835 |

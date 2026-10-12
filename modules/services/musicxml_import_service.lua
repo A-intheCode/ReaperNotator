@@ -1534,8 +1534,19 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                     return a.pitch < b.pitch
                                 end
                             end)
+                            local note_steps = math.max(1, #grp - 1)
+                            local min_dur_qn = 999999
+                            for _, n in ipairs(grp) do
+                                if n.dur_qn and n.dur_qn > 0.05 and n.dur_qn < min_dur_qn then
+                                    min_dur_qn = n.dur_qn
+                                end
+                            end
+                            if min_dur_qn > 900000 then min_dur_qn = 1.0 end
+                            local min_ppq_len = min_dur_qn * 960
+                            local ideal_step = math.floor((min_ppq_len * 0.28) / note_steps)
+                            local spread_ticks = math.max(8, math.min(30, ideal_step))
                             for i, n in ipairs(grp) do
-                                n.strum_offset_ppq = (i - 1) * 18
+                                n.strum_offset_ppq = (i - 1) * spread_ticks
                             end
                         end
                     end

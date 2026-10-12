@@ -462,7 +462,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         local vn_v = (vn.orig and vn.orig.chan) or 0
         local vn_staff = vn.in_staff or (vn.in_treble and "treble" or "bass")
         local is_arp = (vn.orig and (vn.orig.arpeggio or vn.orig.articulation == "arpeggio"))
-        local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.08 or 0.03
+        local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.30 or 0.03
         local same_staff = cur_cluster and (cur_cluster.staff == vn_staff)
         local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < time_tol)
         local same_voice = cur_cluster and (cur_cluster.voice == vn_v)
@@ -518,6 +518,15 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         end
         
         local note_w = 10.8 * s
+        if cluster.is_arpeggio and #cnotes >= 2 then
+            table.sort(cnotes, function(a, b) return a.pitch < b.pitch end)
+            local base_display_qn = cluster.start_qn
+            local base_nominal_nx = Engraver.qn_to_canvas_x(base_display_qn, margin_left, s, qn_per_measure, measure_map)
+            for _, cvn in ipairs(cnotes) do
+                cvn.display_qn = base_display_qn
+                cvn.nominal_nx = base_nominal_nx
+            end
+        end
         for i = 1, #cnotes do
             local vn = cnotes[i]
             if i > 1 then
@@ -534,6 +543,8 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 end
             end
             vn.vis_nx = vn.nominal_nx + vn.head_x_offset
+            vn.nx = vn.vis_nx
+            vn.stem_x = vn.vis_nx
         end
         
         local acc_notes = {}
@@ -1933,7 +1944,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local vn_v = (vn.orig and vn.orig.chan) or 0
                 local vn_staff = vn.in_staff or (vn.in_treble and "treble" or "bass")
                 local is_arp = (vn.orig and (vn.orig.arpeggio or vn.orig.articulation == "arpeggio"))
-                local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.08 or 0.03
+                local time_tol = (is_arp or (cur_cluster and cur_cluster.is_arpeggio)) and 0.30 or 0.03
                 local same_staff = cur_cluster and (cur_cluster.staff == vn_staff)
                 local same_time = cur_cluster and (math.abs(vn.start_qn - cur_cluster.start_qn) < time_tol)
                 local same_voice = cur_cluster and (cur_cluster.voice == vn_v)
@@ -1987,6 +1998,15 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
                 
                 local note_w = 10.8 * s
+                if cluster.is_arpeggio and #cnotes >= 2 then
+                    table.sort(cnotes, function(a, b) return a.pitch < b.pitch end)
+                    local base_display_qn = cluster.start_qn
+                    local base_nominal_nx = Engraver.qn_to_canvas_x(base_display_qn, margin_left, s, qn_per_measure, measure_map)
+                    for _, cvn in ipairs(cnotes) do
+                        cvn.display_qn = base_display_qn
+                        cvn.nominal_nx = base_nominal_nx
+                    end
+                end
                 for i = 1, #cnotes do
                     local vn = cnotes[i]
                     if i > 1 then
@@ -2003,6 +2023,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                     vn.vis_nx = vn.nominal_nx + vn.head_x_offset
+                    vn.nx = vn.vis_nx
+                    vn.stem_x = vn.vis_nx
                 end
                 
                 local acc_notes = {}
@@ -2415,7 +2437,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         if vn.vis_ny < arp_min_y then arp_min_y = vn.vis_ny end
                         if vn.vis_ny > arp_max_y then arp_max_y = vn.vis_ny end
                         local nx_left = vn.vis_nx
-                        if vn.acc_nx and vn.acc_nx < arp_min_x then nx_left = vn.acc_nx end
+                        if vn.acc and vn.acc ~= 0 and (not vn.is_unpitched) then
+                            nx_left = vn.vis_nx - 11.5 * s + (vn.acc_x_offset or 0)
+                        end
                         if nx_left < arp_min_x then arp_min_x = nx_left end
                     end
                     local arp_x = arp_min_x - 12 * s
