@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.9.9-beta.1" author="A-intheCode" time="2026-10-13T15:50:09Z">
+      <version name="1.9.9-beta.2" author="A-intheCode" time="2026-10-13T16:13:17Z">
         <changelog><![CDATA[
++ v1.9.9-beta.2: Polyphonic rest consolidation, inactive voice rest suppression and cross-voice note collision avoidance
 + v1.9.9-beta.1: Strict check for Reaticulate script in Scripts/Reaticulate
 + v1.9.9-beta: Laptop HiDPI Window Geometry Fix, Startup Freeze Prevention & Reaticulate Dependency Verification:
   - Laptop HiDPI Window Placement: Replaced raw physical pixel desktop work area queries with ReaImGui logical coordinates (ImGui_GetWindowViewport / ImGui_GetMainViewport). Eliminates coordinate blowout and window sliding halfway down the display on laptops with HiDPI display scaling.

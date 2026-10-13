@@ -1320,15 +1320,111 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
                     end
                     -- If covered >= bpi - fill_tol: completely full consecutively, 0 rests!
                 else
-                    -- Overlapping voices: true polyphony in this measure.
-                    -- Each voice gets its independent rest stream tagged with r.voice = v.
+                    -- Overlapping voices: true polyphony in this measure (Elaine Gould "Behind Bars" p. 308-310).
+                    -- 1. Analyze voice activity spans in this measure
+                    local v_stats = {}
+                    for _, v in ipairs(voices_in_bar) do
+                        local v_notes = notes_by_v[v] or {}
+                        local min_s = 999999
+                        local max_e = -999999
+                        for _, n in ipairs(v_notes) do
+                            local ns = math.max(bar_sqn, n.start_qn)
+                            local ne = math.min(bar_eqn, n.end_qn or (n.start_qn + (n.dur_qn or 1.0)))
+                            if ns < min_s then min_s = ns end
+                            if ne > max_e then max_e = ne end
+                        end
+                        v_stats[v] = { min_s = min_s, max_e = max_e }
+                    end
+
+                    -- 2. Generate rests per voice with subordinate entry/exit suppression
+                    local raw_poly_rests = {}
                     for _, v in ipairs(voices_in_bar) do
                         local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m)
+                        local stats = v_stats[v]
                         for _, r in ipairs(v_rests) do
                             if not r.is_full_measure then
-                                r.voice = v
-                                table.insert(all_rests, r)
+                                local r_s = r.start_qn
+                                local r_e = r_s + r.dur_qn
+                                local is_leading_rest = (stats and r_e <= stats.min_s + 0.05)
+                                local is_trailing_rest = (stats and r_s >= stats.max_e - 0.05)
+
+                                -- Check if another voice is actively sounding during this leading/trailing rest:
+                                local other_voice_playing = false
+                                for other_v, other_stat in pairs(v_stats) do
+                                    if other_v ~= v then
+                                        for _, on in ipairs(notes_by_v[other_v] or {}) do
+                                            local ons = math.max(bar_sqn, on.start_qn)
+                                            local one = math.min(bar_eqn, on.end_qn or (on.start_qn + (on.dur_qn or 1.0)))
+                                            if not (r_e <= ons + 0.05 or r_s >= one - 0.05) then
+                                                other_voice_playing = true
+                                                break
+                                            end
+                                        end
+                                    end
+                                    if other_voice_playing then break end
+                                end
+
+                                -- Gould p. 308: Do not crowd stave with rests for a secondary voice before entry or after exit
+                                if not ((is_leading_rest or is_trailing_rest) and other_voice_playing) then
+                                    r.voice = v
+                                    table.insert(raw_poly_rests, r)
+                                end
                             end
+                        end
+                    end
+
+                    -- 3. Sort tentative rests chronologically
+                    table.sort(raw_poly_rests, function(a, b)
+                        if math.abs(a.start_qn - b.start_qn) > 0.01 then
+                            return a.start_qn < b.start_qn
+                        end
+                        return (a.voice or 0) < (b.voice or 0)
+                    end)
+
+                    -- 4. Coincident Rest Fusion (Gould p. 308):
+                    -- When both voices rest simultaneously, combine into a single rest centered on staff
+                    local fused_rests = {}
+                    local skip_rest = {}
+                    for i = 1, #raw_poly_rests do
+                        if not skip_rest[i] then
+                            local ra = raw_poly_rests[i]
+                            for j = i + 1, #raw_poly_rests do
+                                if not skip_rest[j] then
+                                    local rb = raw_poly_rests[j]
+                                    if math.abs(ra.start_qn - rb.start_qn) < 0.08 then
+                                        -- Both voices rest at the same time -> single centered rest!
+                                        ra.voice = nil
+                                        ra.dur_qn = math.min(ra.dur_qn, rb.dur_qn)
+                                        ra.type = (ra.dur_qn >= 4.0 and "whole") or
+                                                  (ra.dur_qn >= 2.0 and "half") or
+                                                  (ra.dur_qn >= 1.0 and "quarter") or
+                                                  (ra.dur_qn >= 0.5 and "8th") or
+                                                  (ra.dur_qn >= 0.25 and "16th") or "32nd"
+                                        skip_rest[j] = true
+                                    end
+                                end
+                            end
+                            table.insert(fused_rests, ra)
+                        end
+                    end
+
+                    -- 5. Cross-Voice Sounding Note Collision Avoidance (Gould p. 309):
+                    -- A rest must NEVER obscure or touch a notehead of another voice.
+                    for _, r in ipairs(fused_rests) do
+                        local r_s = r.start_qn
+                        local r_e = r_s + r.dur_qn
+                        local collides_with_note = false
+                        for _, n in ipairs(bar_notes) do
+                            local ns = math.max(bar_sqn, n.start_qn)
+                            local ne = math.min(bar_eqn, n.end_qn or (n.start_qn + (n.dur_qn or 1.0)))
+                            local tol = dq and (dq * 0.3) or 0.05
+                            if not (r_e <= ns + tol or r_s >= ne - tol) or math.abs(ns - r_s) < (dq and (dq * 0.7) or 0.22) then
+                                collides_with_note = true
+                                break
+                            end
+                        end
+                        if not collides_with_note then
+                            table.insert(all_rests, r)
                         end
                     end
                 end

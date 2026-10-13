@@ -816,8 +816,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 else
                     for _, en in ipairs(bar_eff_notes) do
                         local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_tr))
-                        local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
-                        if matches_staff and matches_voice then
+                        if matches_staff then
                             local n_start = en.start_qn
                             local n_end = en.end_qn
                             local tol = dq and (dq * 0.3) or 0.05
@@ -1564,9 +1563,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         
         -- Render rests: Ultra-fast O(1) path from cached_layout (ZERO note scans, ZERO table sorts)
         if cached_layout and cached_layout.rests then
-            local min_rest_gap = 22.0 * s
+            local min_rest_gap = 16.0 * s
             local prev_rx = nil
             local prev_m = nil
+            local prev_r_sqn = nil
             for _, r in ipairs(cached_layout.rests) do
                 if r.start_qn > vis_max_qn + qn_per_measure then
                     break
@@ -1599,13 +1599,14 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                     
                     local cur_m = r.measure_idx or math.floor(r.start_qn / bpi)
-                    if prev_rx and prev_m == cur_m and not r.is_full_measure then
+                    if prev_rx and prev_m == cur_m and not r.is_full_measure and prev_r_sqn and (r.start_qn >= prev_r_sqn + 0.18) then
                         if rx < prev_rx + min_rest_gap then
                             rx = prev_rx + min_rest_gap
                         end
                     end
                     prev_rx = rx
                     prev_m = cur_m
+                    prev_r_sqn = r.start_qn
                     
                     if rx >= cull_min_x - 30 * s and rx <= cull_max_x + 30 * s then
                         local rest_col = Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
@@ -1700,8 +1701,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         else
                             for _, en in ipairs(bar_eff_notes) do
                                 local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_treble))
-                                local matches_voice = (not r.voice) or (((en.chan or 0) + 1) == r.voice)
-                                if matches_staff and matches_voice then
+                                if matches_staff then
                                     local n_start = en.start_qn
                                     local n_end = en.end_qn
                                     local tol = dq and (dq * 0.3) or 0.05
@@ -1715,9 +1715,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
                 table.sort(visible_rests, function(a, b) return a.start_qn < b.start_qn end)
-                local min_rest_gap = 22.0 * s
+                local min_rest_gap = 16.0 * s
                 local prev_rx = nil
                 local prev_m = nil
+                local prev_r_sqn = nil
                 for _, r in ipairs(visible_rests) do
                     local rx
                     if r.is_full_measure then
@@ -1735,11 +1736,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         rx = Engraver.qn_to_canvas_x(r.start_qn, margin_left, s, qn_per_measure, measure_map)
                     end
                     local cur_m = r.measure_idx or math.floor(r.start_qn / bpi)
-                    if prev_rx and prev_m == cur_m and not r.is_full_measure then
+                    if prev_rx and prev_m == cur_m and not r.is_full_measure and prev_r_sqn and (r.start_qn >= prev_r_sqn + 0.18) then
                         if rx < prev_rx + min_rest_gap then rx = prev_rx + min_rest_gap end
                     end
                     prev_rx = rx
                     prev_m = cur_m
+                    prev_r_sqn = r.start_qn
                     if rx >= cull_min_x - 30 * s and rx <= cull_max_x + 30 * s then
                         local rest_col = Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
                         Engraver.draw_rest(draw_list, r, staff_bot, line_spacing, margin_left, s, qn_per_measure, rest_col, font_music, measure_map, rx)

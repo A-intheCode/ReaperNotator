@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.9-beta.1
+-- @version 1.9.9-beta.2
 -- @changelog
+--   + v1.9.9-beta.2: Polyphonic Rest Consolidation & Cross-Voice Note Collision Prevention (Elaine Gould compliant):
+--             - Coincident Rest Fusion: When both voices rest simultaneously in polyphonic measures, tentative duplicate rests are fused into a single centered rest on the staff per Gould ('Behind Bars' p. 308).
+--             - Cross-Voice Note Collision Prevention: Rests strictly avoid collisions with all sounding notes across all voices on the staff. Rest signs are never drawn on top of or through active noteheads of secondary voices.
+--             - Inactive & Subordinate Voice Rest Suppression: Brief voice entries no longer clutter preceding or trailing active beats with redundant rests when another voice carries the measure.
+--             - Rest Horizontal Displacement Fix: Removed artificial 22-pixel lateral offset on coincident rest beats in ScoreCanvas, eliminating staggered rest overlap.
 --   + v1.9.9-beta.1: Reaticulate Script-Folder Installation Check Fix:
 --             - Strict Script Directory Verification: detect_status now strictly checks for the presence of the Reaticulate script files in Scripts/Reaticulate (reaticulate.lua, Reaticulate-factory.reabank, or actions/Reaticulate_Main.lua). Leftover user bank files in Data/Reaticulate.reabank no longer falsely report Reaticulate as installed when the script folder has been removed.
 --   + v1.9.9-beta: Laptop HiDPI Window Geometry Fix, Startup Freeze Prevention & Reaticulate Dependency Verification:
