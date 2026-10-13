@@ -141,6 +141,7 @@ function BottomBar.render(ctx, state, h, child_border, bottom_flags)
         reaper.ImGui_SameLine(ctx, 0, 8)
         if toggle_btn(ctx, "🎼 MusicXML...", state.show_musicxml_modal, 120, 24, 0x16A085FF) then
             state.show_musicxml_modal = not state.show_musicxml_modal
+            if state.show_musicxml_modal then state.focus_musicxml_modal = true end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "MusicXML Import & Export:\nLossless interchange of notes, transformed chord-track pitches, <harmony> tags, text items, dynamics, hairpins, and key signatures.")
@@ -149,6 +150,7 @@ function BottomBar.render(ctx, state, h, child_border, bottom_flags)
         reaper.ImGui_SameLine(ctx, 0, 8)
         if toggle_btn(ctx, "⚙ Settings & Shortcuts", state.show_settings, 180, 24, 0x3498DBFF) then
             state.show_settings = not state.show_settings
+            if state.show_settings then state.focus_settings_modal = true end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Settings & Keyboard Shortcuts")

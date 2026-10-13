@@ -471,6 +471,7 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
     reaper.ImGui_Spacing(ctx)
     if reaper.ImGui_Button(ctx, "🎹 Scale...", -1, 26) then
         state.show_scale_modal = true
+        state.focus_scale_modal = true
     end
     if reaper.ImGui_IsItemHovered(ctx) then
         reaper.ImGui_SetTooltip(ctx, "Scale Transpose: Snap/transpose selected notes to any scale or mode.")

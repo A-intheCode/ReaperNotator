@@ -21,6 +21,16 @@ function BankPickerModal.render(ctx, state, cur_track, active_tracks_data)
     reaper.ImGui_SetNextWindowSize(ctx, 920, 640, reaper.ImGui_Cond_FirstUseEver())
     
     local flags = reaper.ImGui_WindowFlags_NoCollapse()
+    if reaper.APIExists("ImGui_WindowFlags_TopMost") then
+        flags = flags | reaper.ImGui_WindowFlags_TopMost()
+    end
+    if state.focus_bank_picker_modal then
+        if reaper.APIExists("ImGui_SetNextWindowFocus") then
+            reaper.ImGui_SetNextWindowFocus(ctx)
+        end
+        state.focus_bank_picker_modal = nil
+    end
+
     local s_vis, s_open = reaper.ImGui_Begin(ctx, "🏛 Select Articulation Bank###BankPickerModalWindow", true, flags)
     
     if not s_open then

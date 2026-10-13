@@ -58,6 +58,16 @@ function MusicXmlModal.render(ctx, state, project_tracks)
 
     reaper.ImGui_SetNextWindowSize(ctx, 680, 520, reaper.ImGui_Cond_FirstUseEver())
     local win_flags = reaper.ImGui_WindowFlags_NoCollapse()
+    if reaper.APIExists("ImGui_WindowFlags_TopMost") then
+        win_flags = win_flags | reaper.ImGui_WindowFlags_TopMost()
+    end
+    if state.focus_musicxml_modal then
+        if reaper.APIExists("ImGui_SetNextWindowFocus") then
+            reaper.ImGui_SetNextWindowFocus(ctx)
+        end
+        state.focus_musicxml_modal = nil
+    end
+
     local is_vis, is_open = reaper.ImGui_Begin(ctx, "🎼 MusicXML Import & Export###MusicXmlModal", true, win_flags)
 
     if not is_open then

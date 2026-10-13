@@ -8,8 +8,19 @@ local HelpModal = {}
 function HelpModal.render(ctx, state)
     if not state.show_help then return end
     
+    local flags = reaper.ImGui_WindowFlags_NoCollapse()
+    if reaper.APIExists("ImGui_WindowFlags_TopMost") then
+        flags = flags | reaper.ImGui_WindowFlags_TopMost()
+    end
+    if state.focus_help_modal then
+        if reaper.APIExists("ImGui_SetNextWindowFocus") then
+            reaper.ImGui_SetNextWindowFocus(ctx)
+        end
+        state.focus_help_modal = nil
+    end
+
     reaper.ImGui_SetNextWindowSize(ctx, 580, 520, reaper.ImGui_Cond_Appearing())
-    local h_vis, h_open = reaper.ImGui_Begin(ctx, "REAPER Notator - Shortcuts & Help", true)
+    local h_vis, h_open = reaper.ImGui_Begin(ctx, "REAPER Notator - Shortcuts & Help", true, flags)
     if not h_open then
         state.show_help = false
     end

@@ -432,6 +432,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
         reaper.ImGui_SameLine(ctx, 0, 6)
         if reaper.ImGui_Button(ctx, "⚙##SettingsBtn", 26, 26) then
             state.show_settings = not state.show_settings
+            if state.show_settings then state.focus_settings_modal = true end
         end
         
         -- Maximize / Restore Button

@@ -48,8 +48,19 @@ end
 function SettingsModal.render(ctx, state, shortcut_manager)
     if not state.show_settings then return end
     
+    local flags = reaper.ImGui_WindowFlags_NoCollapse()
+    if reaper.APIExists("ImGui_WindowFlags_TopMost") then
+        flags = flags | reaper.ImGui_WindowFlags_TopMost()
+    end
+    if state.focus_settings_modal then
+        if reaper.APIExists("ImGui_SetNextWindowFocus") then
+            reaper.ImGui_SetNextWindowFocus(ctx)
+        end
+        state.focus_settings_modal = nil
+    end
+
     reaper.ImGui_SetNextWindowSize(ctx, 680, 560, reaper.ImGui_Cond_FirstUseEver())
-    local s_vis, s_open = reaper.ImGui_Begin(ctx, "⚙ Settings & Keyboard Shortcuts###SettingsWindow", true)
+    local s_vis, s_open = reaper.ImGui_Begin(ctx, "⚙ Settings & Keyboard Shortcuts###SettingsWindow", true, flags)
     
     if not s_open then
         state.show_settings = false

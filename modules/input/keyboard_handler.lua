@@ -187,6 +187,9 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
 
     if is_action_pressed("quantize") then
         state.show_quantize_modal = not state.show_quantize_modal
+        if state.show_quantize_modal then
+            state.focus_quantize_modal = true
+        end
         return
     end
 

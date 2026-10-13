@@ -296,3 +296,4 @@ function FilterNotesService.apply(state, opts, active_tracks_data)
 end
 
 return FilterNotesService
+

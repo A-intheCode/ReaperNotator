@@ -1,7 +1,10 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.9-beta.3
+-- @version 1.9.9-beta.4
 -- @changelog
+--   + v1.9.9-beta.4: Maximize Screen Bounds Fix & Modals Always-On-Top Layering:
+--             - Window Maximize & Center Restore Fix: Eliminated viewport self-reference shrinking loop in get_screen_work_area. Maximize now cleanly expands to the full display work area using ImGui_GetMainViewport and reaper.my_getViewport with PointConvertNative. Restoring now accurately centers the window in the middle of the display.
+--             - Modals Always-On-Top Layering (TopMost): All utility and tools dialogs (Quantize, Filter Irregular Notes, Divisio Vocum, Scale Transposition, MusicXML, Articulation Banks, Settings, and Help) now render with ImGui_WindowFlags_TopMost and active window focus, ensuring they strictly stay in the foreground in front of the score canvas even when clicking notes or timeline.
 --   + v1.9.9-beta.3: Filter Irregular Notes Feature & Dedicated Dialog:
 --             - Filter Irregular Notes: New dedicated button in the Tools Drawer directly beneath Auto Voice opening an interactive configuration modal.
 --             - Metric Grid Irregularity Detection: Mathematically scans notes for onset alignment against regular subdivisions (1/1 down to 1/32) relative to measure barlines across project time signature changes.
@@ -432,40 +435,46 @@ local function loop()
     
     -- Determine multi-monitor work area (excluding taskbars) for window positioning in ReaImGui logical coordinates
     local function get_screen_work_area(wx, wy, ww, wh)
-        -- 1. ReaImGui GetWindowViewport (returns logical coordinates for current window)
-        if reaper.APIExists("ImGui_GetWindowViewport") then
-            local ok, wvp = pcall(reaper.ImGui_GetWindowViewport, ctx)
-            if ok and wvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
-                local x, y = reaper.ImGui_Viewport_GetWorkPos(wvp)
-                local w, h = reaper.ImGui_Viewport_GetWorkSize(wvp)
-                if w and w > 300 and h and h > 300 then
-                    return x, y, w, h
-                end
-            end
-        end
-        
-        -- 2. Fallback: GetMainViewport (returns logical coordinates for primary monitor/viewport)
+        -- 1. Query ReaImGui GetMainViewport (returns exact logical screen work area for primary display)
+        local mvp_x, mvp_y, mvp_w, mvp_h = nil, nil, nil, nil
         if reaper.APIExists("ImGui_GetMainViewport") then
-            local mvp = reaper.ImGui_GetMainViewport(ctx)
-            if mvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
-                local x, y = reaper.ImGui_Viewport_GetWorkPos(mvp)
-                local w, h = reaper.ImGui_Viewport_GetWorkSize(mvp)
-                if w and w > 300 and h and h > 300 then
-                    return x, y, w, h
-                end
+            local ok, mvp = pcall(reaper.ImGui_GetMainViewport, ctx)
+            if ok and mvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
+                mvp_x, mvp_y = reaper.ImGui_Viewport_GetWorkPos(mvp)
+                mvp_w, mvp_h = reaper.ImGui_Viewport_GetWorkSize(mvp)
             end
         end
 
-        -- 3. Fallback: REAPER native my_getViewport (physical pixels fallback)
+        -- 2. Multi-monitor / secondary display check via REAPER native my_getViewport
         if reaper.my_getViewport and wx and wy and ww and wh then
             local cx = wx + math.floor(ww / 2)
             local cy = wy + math.floor(wh / 2)
+            
+            -- If window center is within the main display, return exact ReaImGui MainViewport metrics
+            if mvp_x and mvp_w and cx >= mvp_x and cx < (mvp_x + mvp_w) and cy >= mvp_y and cy < (mvp_y + mvp_h) then
+                if mvp_w > 300 and mvp_h > 300 then
+                    return mvp_x, mvp_y, mvp_w, mvp_h
+                end
+            end
+
+            -- Otherwise, window center is on a secondary monitor: query native viewport
             local l, t, r, b = reaper.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, 1)
             if l and t and r and b and (r - l) > 300 and (b - t) > 300 then
+                if reaper.APIExists("ImGui_PointConvertNative") then
+                    local ok1, cl, ct = pcall(reaper.ImGui_PointConvertNative, ctx, l, t)
+                    local ok2, cr, cb = pcall(reaper.ImGui_PointConvertNative, ctx, r, b)
+                    if ok1 and ok2 and cr and cl and (cr - cl) > 300 and cb and ct and (cb - ct) > 300 then
+                        return cl, ct, (cr - cl), (cb - ct)
+                    end
+                end
                 return l, t, (r - l), (b - t)
             end
         end
-        
+
+        if mvp_w and mvp_w > 300 and mvp_h and mvp_h > 300 then
+            return mvp_x, mvp_y, mvp_w, mvp_h
+        end
+
         return 0, 0, 1920, 1080
     end
     
@@ -516,17 +525,9 @@ local function loop()
             local rw = math.max(min_w, math.min(vw, target_rw))
             local rh = math.max(min_h, math.min(vh, target_rh))
             
+            -- Center cleanly in the screen middle ("bild mitte")
             local rx = vx + math.floor((vw - rw) / 2)
             local ry = vy + math.floor((vh - rh) / 2)
-            
-            -- If previous position was on this monitor and valid, preserve it
-            if state.prev_win_x and state.prev_win_y then
-                if state.prev_win_x >= vx and (state.prev_win_x + rw) <= (vx + vw) and
-                   state.prev_win_y >= vy and (state.prev_win_y + rh) <= (vy + vh) then
-                    rx = state.prev_win_x
-                    ry = state.prev_win_y
-                end
-            end
             
             if rx < vx then rx = vx end
             if ry < vy then ry = vy end
@@ -590,7 +591,7 @@ local function loop()
         
         -- Remember current unmaximized window size (for clean restoration)
         if not state.is_maximized then
-            if win_w >= 1000 and win_h >= 600 and (win_w < (vw - 10) or win_h < (vh - 10)) then
+            if win_w >= 640 and win_h >= 400 and (win_w < (vw - 10) or win_h < (vh - 10)) then
                 state.prev_win_w = win_w
                 state.prev_win_h = win_h
                 state.prev_win_x = win_x

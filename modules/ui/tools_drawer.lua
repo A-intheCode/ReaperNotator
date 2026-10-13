@@ -80,6 +80,7 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x5D4037FF)
         if reaper.ImGui_Button(ctx, "🔍 Filter irregular Notes...", width - 24, 26) then
             state.show_filter_irregular_modal = true
+            state.focus_filter_irregular_modal = true
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
         if reaper.ImGui_IsItemHovered(ctx) then
@@ -93,6 +94,7 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2980B9FF)
         if reaper.ImGui_Button(ctx, "🎼 Divisio Vocum...", width - 24, 26) then
             state.show_divisio_vocum_modal = true
+            state.focus_divisio_vocum_modal = true
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
         if reaper.ImGui_IsItemHovered(ctx) then

@@ -10,8 +10,19 @@ local ScaleModal = {}
 function ScaleModal.render(ctx, state)
     if not state.show_scale_modal then return end
 
+    local flags = reaper.ImGui_WindowFlags_NoCollapse()
+    if reaper.APIExists("ImGui_WindowFlags_TopMost") then
+        flags = flags | reaper.ImGui_WindowFlags_TopMost()
+    end
+    if state.focus_scale_modal then
+        if reaper.APIExists("ImGui_SetNextWindowFocus") then
+            reaper.ImGui_SetNextWindowFocus(ctx)
+        end
+        state.focus_scale_modal = nil
+    end
+
     reaper.ImGui_SetNextWindowSize(ctx, 460, 420, reaper.ImGui_Cond_FirstUseEver())
-    local s_vis, s_open = reaper.ImGui_Begin(ctx, "🎹 Scale Transpose###ScaleModalWindow", true)
+    local s_vis, s_open = reaper.ImGui_Begin(ctx, "🎹 Scale Transpose###ScaleModalWindow", true, flags)
 
     if not s_open then
         state.show_scale_modal = false

@@ -21,8 +21,19 @@ local VOICE_DESCRIPTIONS = {
 function DivisioVocumModal.render(ctx, state, midi_service, active_tracks_data)
     if not (state.show_divisio_vocum_modal or state.show_explode_chords_modal) then return end
 
+    local flags = reaper.ImGui_WindowFlags_NoCollapse()
+    if reaper.APIExists("ImGui_WindowFlags_TopMost") then
+        flags = flags | reaper.ImGui_WindowFlags_TopMost()
+    end
+    if state.focus_divisio_vocum_modal then
+        if reaper.APIExists("ImGui_SetNextWindowFocus") then
+            reaper.ImGui_SetNextWindowFocus(ctx)
+        end
+        state.focus_divisio_vocum_modal = nil
+    end
+
     reaper.ImGui_SetNextWindowSize(ctx, 520, 530, reaper.ImGui_Cond_FirstUseEver())
-    local s_vis, s_open = reaper.ImGui_Begin(ctx, "🎼 Divisio Vocum (Voice Distribution)###DivisioVocumModalWindow", true, reaper.ImGui_WindowFlags_NoCollapse())
+    local s_vis, s_open = reaper.ImGui_Begin(ctx, "🎼 Divisio Vocum (Voice Distribution)###DivisioVocumModalWindow", true, flags)
 
     if not s_open then
         state.show_divisio_vocum_modal = false
