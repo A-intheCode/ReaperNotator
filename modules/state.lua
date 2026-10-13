@@ -220,10 +220,11 @@ function State.new()
         prev_win_y = 60,
         prev_win_w = 1280,
         prev_win_h = 720,
-        cur_win_x = 100,
-        cur_win_y = 60,
-        cur_win_w = 1280,
-        cur_win_h = 720,
+        cur_win_x = nil,
+        cur_win_y = nil,
+        cur_win_w = nil,
+        cur_win_h = nil,
+        _window_pos_initialized = false,
         request_maximize_toggle = false,
         just_restored = false,
         show_help = false,
@@ -743,11 +744,29 @@ function State:load_settings()
     self.nav_zoom_mouse     = load_str("nav_zoom_mouse", "wheel_v")
     self.scroll_invert_h    = load_bool("scroll_invert_h", false)
     self.scroll_invert_v    = load_bool("scroll_invert_v", false)
-    self.is_maximized       = load_bool("is_maximized", false)
-    self.prev_win_x         = load_num("prev_win_x", 100)
-    self.prev_win_y         = load_num("prev_win_y", 60)
-    self.prev_win_w         = load_num("prev_win_w", 1280)
-    self.prev_win_h         = load_num("prev_win_h", 720)
+    local loaded_max    = load_bool("is_maximized", nil)
+    local loaded_cur_x  = load_num("cur_win_x", nil) or load_num("win_x", nil)
+    local loaded_cur_y  = load_num("cur_win_y", nil) or load_num("win_y", nil)
+    local loaded_cur_w  = load_num("cur_win_w", nil) or load_num("win_w", nil)
+    local loaded_cur_h  = load_num("cur_win_h", nil) or load_num("win_h", nil)
+    local loaded_prev_x = load_num("prev_win_x", nil)
+    local loaded_prev_y = load_num("prev_win_y", nil)
+    local loaded_prev_w = load_num("prev_win_w", nil)
+    local loaded_prev_h = load_num("prev_win_h", nil)
+
+    if not self._window_pos_initialized then
+        if loaded_max ~= nil then
+            self.is_maximized = loaded_max
+        end
+        self.cur_win_x  = loaded_cur_x or loaded_prev_x or 100
+        self.cur_win_y  = loaded_cur_y or loaded_prev_y or 60
+        self.cur_win_w  = loaded_cur_w or loaded_prev_w or 1280
+        self.cur_win_h  = loaded_cur_h or loaded_prev_h or 720
+        self.prev_win_x = loaded_prev_x or self.cur_win_x or 100
+        self.prev_win_y = loaded_prev_y or self.cur_win_y or 60
+        self.prev_win_w = loaded_prev_w or self.cur_win_w or 1280
+        self.prev_win_h = loaded_prev_h or self.cur_win_h or 720
+    end
     -- Backward compatibility aliases
     self.scroll_factor         = self.scroll_factor_h
     self.scroll_mod_horizontal = self.nav_scroll_h_key
@@ -938,10 +957,18 @@ function State.save_settings(self)
     save_val("scroll_invert_h", self.scroll_invert_h == true)
     save_val("scroll_invert_v", self.scroll_invert_v == true)
     save_val("is_maximized", self.is_maximized == true)
-    save_val("prev_win_x", math.floor(self.prev_win_x or 100))
-    save_val("prev_win_y", math.floor(self.prev_win_y or 60))
-    save_val("prev_win_w", math.floor(self.prev_win_w or 1280))
-    save_val("prev_win_h", math.floor(self.prev_win_h or 720))
+    save_val("cur_win_x", math.floor(self.cur_win_x or self.prev_win_x or 100))
+    save_val("cur_win_y", math.floor(self.cur_win_y or self.prev_win_y or 60))
+    save_val("cur_win_w", math.floor(self.cur_win_w or self.prev_win_w or 1280))
+    save_val("cur_win_h", math.floor(self.cur_win_h or self.prev_win_h or 720))
+    save_val("prev_win_x", math.floor(self.prev_win_x or self.cur_win_x or 100))
+    save_val("prev_win_y", math.floor(self.prev_win_y or self.cur_win_y or 60))
+    save_val("prev_win_w", math.floor(self.prev_win_w or self.cur_win_w or 1280))
+    save_val("prev_win_h", math.floor(self.prev_win_h or self.cur_win_h or 720))
+    save_val("win_x", math.floor(self.cur_win_x or self.prev_win_x or 100))
+    save_val("win_y", math.floor(self.cur_win_y or self.prev_win_y or 60))
+    save_val("win_w", math.floor(self.cur_win_w or self.prev_win_w or 1280))
+    save_val("win_h", math.floor(self.cur_win_h or self.prev_win_h or 720))
     -- Backward compatibility saves
     save_val("scroll_mod_horizontal", self.nav_scroll_h_key or "shift")
     save_val("scroll_mod_vertical", self.nav_scroll_v_key or "none")

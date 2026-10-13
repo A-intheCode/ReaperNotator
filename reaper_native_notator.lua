@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.9-beta.7
+-- @version 1.9.9-beta.8
 -- @changelog
+--   + v1.9.9-beta.8: Multi-Monitor Window Position & Maximization Persistence Across Sessions:
+--             - Multi-Monitor Coordinate & Screen Work Area Persistence: Window position, dimensions, and screen work area are now continuously tracked and persisted to REAPER ExtState (cur_win_x, cur_win_y, cur_win_w, cur_win_h, and is_maximized).
+--             - Reopen Placement on Target Screen: When closing Reaper Notator on a secondary monitor (e.g. right screen) either maximized or floating, reopening reliably restores to that exact monitor and bounds without jumping back to the primary display.
+--             - Robust HiDPI Multi-Monitor Translation: Screen queries convert logical ImGui coordinates to native OS coordinates before querying reaper.my_getViewport, and back via ImGui_PointConvertNative, properly handling different display scalings.
+--             - Real-Time Debounced ExtState Sync: Window geometry is saved as soon as window dragging or resizing ceases, guaranteeing persistent placement even after sudden project switches or restarts.
 --   + v1.9.9-beta.4: Maximize Screen Bounds Fix & Modals Always-On-Top Layering:
 --             - Window Maximize & Center Restore Fix: Eliminated viewport self-reference shrinking loop in get_screen_work_area. Maximize now cleanly expands to the full display work area using ImGui_GetMainViewport and reaper.my_getViewport with PointConvertNative. Restoring now accurately centers the window in the middle of the display.
 --             - Modals Always-On-Top Layering (TopMost): All utility and tools dialogs (Quantize, Filter Irregular Notes, Divisio Vocum, Scale Transposition, MusicXML, Articulation Banks, Settings, and Help) now render with ImGui_WindowFlags_TopMost and active window focus, ensuring they strictly stay in the foreground in front of the score canvas even when clicking notes or timeline.
@@ -458,11 +463,18 @@ local function loop()
             end
 
             -- Otherwise, window center is on a secondary monitor: query native viewport
-            local l, t, r, b = reaper.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, 1)
+            local n_cx, n_cy = cx, cy
+            if reaper.APIExists("ImGui_PointConvertNative") then
+                local ok_cnv, nx, ny = pcall(reaper.ImGui_PointConvertNative, ctx, cx, cy, true)
+                if ok_cnv and nx and ny then
+                    n_cx, n_cy = nx, ny
+                end
+            end
+            local l, t, r, b = reaper.my_getViewport(0, 0, 0, 0, n_cx, n_cy, n_cx, n_cy, 1)
             if l and t and r and b and (r - l) > 300 and (b - t) > 300 then
                 if reaper.APIExists("ImGui_PointConvertNative") then
-                    local ok1, cl, ct = pcall(reaper.ImGui_PointConvertNative, ctx, l, t)
-                    local ok2, cr, cb = pcall(reaper.ImGui_PointConvertNative, ctx, r, b)
+                    local ok1, cl, ct = pcall(reaper.ImGui_PointConvertNative, ctx, l, t, false)
+                    local ok2, cr, cb = pcall(reaper.ImGui_PointConvertNative, ctx, r, b, false)
                     if ok1 and ok2 and cr and cl and (cr - cl) > 300 and cb and ct and (cb - ct) > 300 then
                         return cl, ct, (cr - cl), (cb - ct)
                     end
@@ -490,6 +502,10 @@ local function loop()
     
     if not vx or not vw then
         vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
+        state.screen_work_x = vx
+        state.screen_work_y = vy
+        state.screen_work_w = vw
+        state.screen_work_h = vh
     end
     
     if state.request_maximize_toggle then
@@ -501,11 +517,14 @@ local function loop()
             state.status_msg = "Window size restored"
         end
         state.request_maximize_toggle = false
+        reaper.SetExtState("REAPER_Notator", "is_maximized", tostring(state.is_maximized), true)
+        reaper.SetProjExtState(0, "REAPER_Notator", "is_maximized", tostring(state.is_maximized))
     end
     
     if state.is_maximized then
         reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
         reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
+        state._window_pos_initialized = true
     else
         -- Enforce responsive minimum size: at least 640x480, bounded by screen work area
         local min_w = math.min(1280, math.max(640, vw - 20))
@@ -537,6 +556,27 @@ local function loop()
             reaper.ImGui_SetNextWindowPos(ctx, rx, ry, reaper.ImGui_Cond_Always())
             reaper.ImGui_SetNextWindowSize(ctx, rw, rh, reaper.ImGui_Cond_Always())
             state.just_restored = false
+            state._window_pos_initialized = true
+        elseif not state._window_pos_initialized then
+            -- Restore saved floating window position & dimensions on its monitor
+            local target_w = state.cur_win_w or state.prev_win_w or 1280
+            local target_h = state.cur_win_h or state.prev_win_h or 720
+            local target_x = state.cur_win_x or state.prev_win_x or 100
+            local target_y = state.cur_win_y or state.prev_win_y or 60
+            
+            local rw = math.max(min_w, math.min(vw, target_w))
+            local rh = math.max(min_h, math.min(vh, target_h))
+            local rx = target_x
+            local ry = target_y
+            
+            -- Ensure window fits inside current screen work area
+            if rx < vx then rx = vx end
+            if ry < vy then ry = vy end
+            if rx + rw > vx + vw then rx = math.max(vx, vx + vw - rw) end
+            if ry + rh > vy + vh then ry = math.max(vy, vy + vh - rh) end
+            
+            reaper.ImGui_SetNextWindowPos(ctx, rx, ry, reaper.ImGui_Cond_Always())
+            reaper.ImGui_SetNextWindowSize(ctx, rw, rh, reaper.ImGui_Cond_Always())
         else
             reaper.ImGui_SetNextWindowSize(ctx, min_w, min_h, reaper.ImGui_Cond_FirstUseEver())
         end
@@ -571,6 +611,7 @@ local function loop()
     state.is_open = open
     
     if visible then
+        state._window_pos_initialized = true
         reaper.ImGui_SetScrollY(ctx, 0)
         reaper.ImGui_SetScrollX(ctx, 0)
         local win_x, win_y = reaper.ImGui_GetWindowPos(ctx)
@@ -591,11 +632,39 @@ local function loop()
         
         -- Remember current unmaximized window size (for clean restoration)
         if not state.is_maximized then
-            if win_w >= 640 and win_h >= 400 and (win_w < (vw - 10) or win_h < (vh - 10)) then
+            if win_w >= 640 and win_h >= 400 and (win_w < (svw - 10) or win_h < (svh - 10)) then
                 state.prev_win_w = win_w
                 state.prev_win_h = win_h
                 state.prev_win_x = win_x
                 state.prev_win_y = win_y
+            end
+        end
+
+        -- Periodically persist window position to ExtState when moved or resized and mouse is released
+        if win_x ~= state._last_saved_win_x or win_y ~= state._last_saved_win_y or win_w ~= state._last_saved_win_w or win_h ~= state._last_saved_win_h then
+            local is_mouse_down = reaper.ImGui_IsMouseDown(ctx, 0)
+            local now = reaper.time_precise()
+            if not is_mouse_down or (now - (state._last_win_save_time or 0)) > 2.0 then
+                state._last_saved_win_x = win_x
+                state._last_saved_win_y = win_y
+                state._last_saved_win_w = win_w
+                state._last_saved_win_h = win_h
+                state._last_win_save_time = now
+                reaper.SetExtState("REAPER_Notator", "cur_win_x", tostring(math.floor(win_x)), true)
+                reaper.SetExtState("REAPER_Notator", "cur_win_y", tostring(math.floor(win_y)), true)
+                reaper.SetExtState("REAPER_Notator", "cur_win_w", tostring(math.floor(win_w)), true)
+                reaper.SetExtState("REAPER_Notator", "cur_win_h", tostring(math.floor(win_h)), true)
+                reaper.SetExtState("REAPER_Notator", "win_x", tostring(math.floor(win_x)), true)
+                reaper.SetExtState("REAPER_Notator", "win_y", tostring(math.floor(win_y)), true)
+                reaper.SetExtState("REAPER_Notator", "win_w", tostring(math.floor(win_w)), true)
+                reaper.SetExtState("REAPER_Notator", "win_h", tostring(math.floor(win_h)), true)
+                reaper.SetExtState("REAPER_Notator", "is_maximized", tostring(state.is_maximized), true)
+                if not state.is_maximized and state.prev_win_x then
+                    reaper.SetExtState("REAPER_Notator", "prev_win_x", tostring(math.floor(state.prev_win_x)), true)
+                    reaper.SetExtState("REAPER_Notator", "prev_win_y", tostring(math.floor(state.prev_win_y)), true)
+                    reaper.SetExtState("REAPER_Notator", "prev_win_w", tostring(math.floor(state.prev_win_w)), true)
+                    reaper.SetExtState("REAPER_Notator", "prev_win_h", tostring(math.floor(state.prev_win_h)), true)
+                end
             end
         end
         

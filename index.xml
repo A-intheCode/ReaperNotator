@@ -6,11 +6,16 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.9.9-beta.7" author="A-intheCode" time="2026-10-13T18:38:45Z">
+      <version name="1.9.9-beta.8" author="A-intheCode" time="2026-10-13T18:55:00Z">
         <changelog><![CDATA[
-+ v1.9.9-beta.7: Release vbeta
-+ v1.9.9-beta.6: Release vbeta
-+ v1.9.9-beta.5: Release vbeta
++ v1.9.9-beta.8: Multi-Monitor Window Position & Maximization Persistence Across Sessions:
+  - Multi-Monitor Coordinate & Screen Work Area Persistence: Window position, dimensions, and screen work area are now continuously tracked and persisted to REAPER ExtState (cur_win_x, cur_win_y, cur_win_w, cur_win_h, and is_maximized).
+  - Reopen Placement on Target Screen: When closing Reaper Notator on a secondary monitor (e.g. right screen) either maximized or floating, reopening reliably restores to that exact monitor and bounds without jumping back to the primary display.
+  - Robust HiDPI Multi-Monitor Translation: Screen queries convert logical ImGui coordinates to native OS coordinates before querying reaper.my_getViewport, and back via ImGui_PointConvertNative, properly handling different display scalings.
+  - Real-Time Debounced ExtState Sync: Window geometry is saved as soon as window dragging or resizing ceases, guaranteeing persistent placement even after sudden project switches or restarts.
++ v1.9.9-beta.7: Tolerance float epsilon and dedicated Select vs Reassign action buttons
++ v1.9.9-beta.6: Regular note dim/hide option in Filter irregular Notes modal
++ v1.9.9-beta.5: Score canvas live yellow preview for Filter irregular Notes
 + v1.9.9-beta.4: Maximize Screen Bounds Fix & Modals Always-On-Top Layering:
   - Window Maximize & Center Restore Fix: Eliminated viewport self-reference shrinking loop in get_screen_work_area. Maximize now cleanly expands to the full display work area using ImGui_GetMainViewport and reaper.my_getViewport with PointConvertNative. Restoring now accurately centers the window in the middle of the display.
   - Modals Always-On-Top Layering (TopMost): All utility and tools dialogs (Quantize, Filter Irregular Notes, Divisio Vocum, Scale Transposition, MusicXML, Articulation Banks, Settings, and Help) now render with ImGui_WindowFlags_TopMost and active window focus, ensuring they strictly stay in the foreground in front of the score canvas even when clicking notes or timeline.
