@@ -245,14 +245,14 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         reaper.ImGui_Spacing(ctx)
 
         -- ======================================================================
-        -- SECTION 3: AUTO-QUANTIZE ON RECORD STOP
+        -- SECTION 3: REAL-TIME AUTO-QUANTIZE (LIVE DURING RECORDING)
         -- ======================================================================
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0xFF9F1CFF)
-        reaper.ImGui_Text(ctx, "3. Auto-Quantize on Record Stop:")
+        reaper.ImGui_Text(ctx, "3. Real-Time Auto-Quantize (Live during Recording):")
         reaper.ImGui_PopStyleColor(ctx)
         reaper.ImGui_Spacing(ctx)
 
-        local chk_aq, new_aq = reaper.ImGui_Checkbox(ctx, "Enable Auto-Quantize on Record Stop##MasterAQ", state.rec_auto_quantize ~= false)
+        local chk_aq, new_aq = reaper.ImGui_Checkbox(ctx, "Enable Real-Time Auto-Quantize##MasterAQ", state.rec_auto_quantize ~= false)
         if chk_aq then
             state.rec_auto_quantize = new_aq
             require("state").save_settings(state)
@@ -482,10 +482,12 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), rec_btn_col)
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0xE74C3CFF)
         if reaper.ImGui_Button(ctx, rec_btn_text .. "##ModalRecBtn", 190, 32) then
-            if not is_recording then
+            if is_recording then
+                reaper.CSurf_OnStop()
+            else
                 RecordQuantizeService.on_record_start(state)
+                reaper.CSurf_OnRecord()
             end
-            reaper.CSurf_OnRecord()
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
 

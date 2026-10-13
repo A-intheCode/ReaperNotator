@@ -6,9 +6,11 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.0.0-beta.2" author="A-intheCode" time="2026-10-13T20:25:00Z">
+      <version name="2.0.0-beta.3" author="A-intheCode" time="2026-10-13T20:40:00Z">
         <changelog><![CDATA[
-+ v2.0.0-beta.2: Transport Recording Suite, MIDI Input Device Routing, Bidirectional Track Arming & Live Note Preview:
++ v2.0.0-beta.3: Real-Time Auto-Quantize During Direct Recording & Complete Transport Stop on Record Stop:
+  - Real-Time Auto-Quantize During Direct Recording (v2.0.0-beta.3): Auto-Quantize now operates live in real time during MIDI recording (both on the live score preview and directly on active MIDI takes in MIDI Overdub mode). Note onsets and durations snap to the selected grid within the tick tolerance radius, keyboard bounces (<15 ticks) and same-pitch overlaps are cleaned immediately, and outliers outside the tick tolerance are deleted or moved to Voice 16 on the fly.
+  - Complete Transport Stop When Stopping Recording (v2.0.0-beta.3): Clicking the red Record button ('🔴 REC') in the top bar or '⏹ Stop Recording' in the Record Modal while recording is active now calls CSurf_OnStop(), stopping both Recording and Playback completely instead of punching out into continued playback.
   - Bidirectional REAPER Track Arming & Auto-MIDI Routing (v2.0.0-beta.2): All REAPER project tracks (including empty tracks without existing MIDI items) are listed in the Record Modal. Arming a track immediately synchronizes REAPER's native TCP/MCP Record-Arm button, enables Input Monitoring (I_RECMON), sets MIDI Input & MIDI Overdub (I_RECMODE = 7) to prevent unwanted Audio '.wav' Save prompts, and makes the track visible in the score canvas.
   - MIDI Input Device & Channel Selector (v2.0.0-beta.2): Select any connected hardware MIDI keyboard, Virtual MIDI Keyboard, or All MIDI Inputs plus MIDI Channel (All or 1-16) globally or per-track directly in the right-click Record Modal.
   - Real-Time Live Note Preview During Recording (v2.0.0-beta.2): Polls incoming MIDI Note-On/Note-Off events in real time via MIDI_GetRecentInputEvent and renders played notes live on the score canvas at the red playhead with glowing red/coral noteheads and dynamically growing note durations while keys are held.

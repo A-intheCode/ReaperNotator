@@ -70,11 +70,13 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), is_recording and 0xFFFFFFFF or 0xE74C3CFF)
 
     if reaper.ImGui_Button(ctx, rec_text .. "##TopBarRecord", 72, 28) then
-        if not is_recording then
+        if is_recording then
+            reaper.CSurf_OnStop()
+        else
             local RecordQuantizeService = package.loaded["services.record_quantize_service"] or require("services.record_quantize_service")
             RecordQuantizeService.on_record_start(state)
+            reaper.CSurf_OnRecord()
         end
-        reaper.CSurf_OnRecord()
     end
     reaper.ImGui_PopStyleColor(ctx, 4)
 
