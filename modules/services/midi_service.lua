@@ -115,6 +115,12 @@ function MidiService.get_project_midi_tracks()
             sel_sig = sel_sig .. "_" .. tostring(reaper.GetSelectedTrack(0, st))
         end
     end
+    for t = 0, num_tracks - 1 do
+        local trk = reaper.GetTrack(0, t)
+        if trk and reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1 then
+            sel_sig = sel_sig .. "_arm" .. tostring(t)
+        end
+    end
     
     if MidiService._project_tracks_cache and
        MidiService._last_proj_change_cnt == proj_change_cnt and
@@ -129,6 +135,7 @@ function MidiService.get_project_midi_tracks()
         local guid = reaper.GetTrackGUID(track)
         local _, name = reaper.GetTrackName(track)
         local col = reaper.GetTrackColor(track)
+        local is_armed = (reaper.GetMediaTrackInfo_Value(track, "I_RECARM") == 1)
         
         local num_items = reaper.CountTrackMediaItems(track)
         local midi_item_cnt = 0
@@ -140,7 +147,7 @@ function MidiService.get_project_midi_tracks()
             end
         end
         
-        if midi_item_cnt > 0 or reaper.IsTrackSelected(track) then
+        if midi_item_cnt > 0 or reaper.IsTrackSelected(track) or is_armed then
             table.insert(tracks, {
                 track = track,
                 guid = guid,
@@ -956,10 +963,11 @@ function MidiService.get_track_items_and_notes(track)
     
     local cached = MidiService._track_cache[track_guid]
     local is_dirty = false
+    local is_rec_armed = ((reaper.GetPlayState() & 4) == 4) and (reaper.GetMediaTrackInfo_Value(track, "I_RECARM") == 1)
     
     if not cached or cached.num_items ~= num_items or cached.track_col ~= track_col then
         is_dirty = true
-    elseif cached.proj_change_cnt == proj_change_cnt then
+    elseif not is_rec_armed and cached.proj_change_cnt == proj_change_cnt then
         -- Fast Path O(1): Entire REAPER project state is identical, zero modifications occurred.
         -- Return cached track data immediately without inspecting any items!
         if not cached.rests_cache then cached.rests_cache = {} end

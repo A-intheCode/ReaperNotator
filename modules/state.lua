@@ -472,6 +472,11 @@ function State.new()
         rec_clean_overlaps = true,         -- Remove overlapping and duplicate notes on same pitch
         rec_outlier_mode = "keep",         -- "keep" (leave unquantized) | "delete" | "voice16"
         rec_preroll_bars = 1,              -- Pre-roll bars (1, 2, 4)
+        rec_midi_device = 63,              -- 63 = All MIDI Inputs, 62 = Virtual MIDI Keyboard, 0..61 = Hardware Device
+        rec_midi_channel = 0,              -- 0 = All Channels, 1..16 = MIDI Channel 1..16
+        rec_mode = 7,                      -- 7 = MIDI Overdub (no Save prompt, direct live MIDI), 0 = Standard Input
+        rec_auto_monitor = true,           -- Automatically enable Record Monitoring (I_RECMON = 1) when arming
+        rec_live_preview = true,           -- Show live notes on canvas in real time while recording
         _was_recording = false,            -- Internal edge detector for record stop
         _rec_start_time = 0,
         
@@ -847,6 +852,11 @@ function State:load_settings()
     self.rec_clean_overlaps = load_bool("rec_clean_overlaps", true)
     self.rec_outlier_mode = load_str("rec_outlier_mode", "keep")
     self.rec_preroll_bars = load_num("rec_preroll_bars", 1)
+    self.rec_midi_device = load_num("rec_midi_device", 63)
+    self.rec_midi_channel = load_num("rec_midi_channel", 0)
+    self.rec_mode = load_num("rec_mode", 7)
+    self.rec_auto_monitor = load_bool("rec_auto_monitor", true)
+    self.rec_live_preview = load_bool("rec_live_preview", true)
     self.beam_grouping = load_str("beam_grouping", "beat")
     self.dyn_cc_a = load_num("dyn_cc_a", 1)
     self.dyn_cc_b = load_num("dyn_cc_b", 11)
@@ -1052,6 +1062,11 @@ function State.save_settings(self)
     save_val("rec_clean_overlaps", self.rec_clean_overlaps ~= false)
     save_val("rec_outlier_mode", self.rec_outlier_mode or "keep")
     save_val("rec_preroll_bars", math.floor(self.rec_preroll_bars or 1))
+    save_val("rec_midi_device", math.floor(self.rec_midi_device or 63))
+    save_val("rec_midi_channel", math.floor(self.rec_midi_channel or 0))
+    save_val("rec_mode", math.floor(self.rec_mode or 7))
+    save_val("rec_auto_monitor", self.rec_auto_monitor ~= false)
+    save_val("rec_live_preview", self.rec_live_preview ~= false)
     save_val("beam_grouping", self.beam_grouping or "beat")
     save_val("dyn_cc_a", self.dyn_cc_a or 1)
     save_val("dyn_cc_b", self.dyn_cc_b or 11)

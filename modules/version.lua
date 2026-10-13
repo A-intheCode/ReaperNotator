@@ -7,7 +7,7 @@ local Version = {
     major = 2,
     minor = 0,
     patch = 0,
-    suffix = "-beta.1", -- beta release for record & auto-quantize suite
+    suffix = "-beta.2", -- beta release for record, MIDI input routing & live preview suite
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

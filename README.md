@@ -24,11 +24,12 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
-- **Transport Recording Suite, Pre-roll & Auto-Quantize Engine (v2.0.0-beta)**:
+- **Transport Recording Suite, MIDI Input Routing, Live Note Preview & Auto-Quantize Engine (v2.0.0-beta.2)**:
   - **Native Record Button**: Dedicated transport Record button located between Play and Stop in the top toolbar with live glowing red recording status (`🔴 REC`) and idle state (`⏺ Rec`).
-  - **Right-Click Configuration Modal**: Right-clicking the Record button opens a dedicated dialog for Pre-roll, Metronome Count-in, Track Record-Arming, and Auto-Quantize settings.
-  - **Live Canvas Recording Playhead**: Real-time signal-red playhead line with red triangular cap sweeping across all staves at 60 FPS with continuous auto-scroll during recording.
-  - **Track Record-Arming & Red Canvas Badges**: Checkboxes in the modal toggle track recording arming (`I_RECARM`); armed tracks are highlighted in the score canvas with red-tinted headers, red borders, and high-contrast `● REC` badges.
+  - **Right-Click Configuration Modal**: Right-clicking the Record button opens a dedicated dialog for Pre-roll, Metronome Count-in, MIDI Input Device selection, Track Record-Arming, Live Preview, and Auto-Quantize settings.
+  - **MIDI Input Device & Channel Selector**: Choose from all connected hardware MIDI keyboards, REAPER's Virtual MIDI Keyboard, or All MIDI Inputs plus MIDI Channel (`All` or `1–16`). Automatically enables Input Monitoring (`I_RECMON`) and MIDI Overdub (`I_RECMODE = 7`) so REAPER records directly into MIDI score items without popping up Audio `.wav` Save prompts.
+  - **Real-Time Live Note Preview & Recording Playhead**: Captures incoming MIDI Note-On/Note-Off events in real time via `MIDI_GetRecentInputEvent` and renders played notes live on the score canvas at the red playhead (with glowing red noteheads and dynamically growing durations while keys are held).
+  - **Bidirectional Track Record-Arming & Red Canvas Badges**: Lists all REAPER project tracks (including empty tracks) in the modal; arming a track immediately updates REAPER's native TCP/MCP Record-Arm button and highlights the track in the score canvas with red-tinted headers, red borders, and `● REC` badges.
   - **Pre-roll & Metronome Count-in Sync**: Integrated with REAPER's native Pre-roll (Action 41818), adjustable bar length (1, 2, 4 bars), Count-in (Action 40364), and quick-access button to REAPER's native Metronome/pre-roll settings dialog.
   - **Auto-Quantize on Record Stop**: Automatically cleans and quantizes newly recorded takes upon stopping recording. Eliminates keyboard pre-bounces ($<15$ ticks), trims same-pitch overlaps, snaps onsets within configurable tick tolerance (default: 1/8 note @ 25 ticks), and provides flexible outlier handling (keep natural, delete outliers, or move to Voice 16).
 

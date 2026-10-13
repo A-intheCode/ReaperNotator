@@ -342,7 +342,10 @@ local function sync_arrange_selection(state, project_tracks)
     local has_any_sel = false
     if project_tracks then
         for _, t in ipairs(project_tracks) do
-            if state.selected_tracks[t.guid] then has_any_sel = true break end
+            if t.track and reaper.ValidatePtr(t.track, "MediaTrack*") and reaper.GetMediaTrackInfo_Value(t.track, "I_RECARM") == 1 then
+                state.selected_tracks[t.guid] = true
+            end
+            if state.selected_tracks[t.guid] then has_any_sel = true end
         end
         if not has_any_sel and #project_tracks > 0 then
             state.selected_tracks[project_tracks[1].guid] = true
@@ -937,9 +940,24 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local bpi = qn_per_measure
     local proj_change_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
     
+    local RecordQuantizeService = package.loaded["services.record_quantize_service"] or require("services.record_quantize_service")
+    if is_recording then
+        local play_qn_head = reaper.TimeMap2_timeToQN(0, time_pos) + 8.0
+        if play_qn_head > max_proj_qn then
+            max_proj_qn = play_qn_head
+        end
+    end
+
     for _, t in ipairs(project_tracks) do
         if state.selected_tracks[t.guid] then
             local items, trk_notes, dyns, arts, trk_max_qn, r_cache, l_cache = midi_service.get_track_items_and_notes(t.track)
+            if is_recording and t.track and reaper.ValidatePtr(t.track, "MediaTrack*") and reaper.GetMediaTrackInfo_Value(t.track, "I_RECARM") == 1 then
+                local merged_notes, live_max_qn = RecordQuantizeService.get_merged_live_notes_for_track(state, { track = t.track, notes = trk_notes })
+                trk_notes = merged_notes
+                if live_max_qn and live_max_qn > max_proj_qn then
+                    max_proj_qn = live_max_qn
+                end
+            end
             if trk_max_qn and trk_max_qn > max_proj_qn then
                 max_proj_qn = trk_max_qn
             end
@@ -1017,9 +1035,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- Dynamic measure width calculation (cached across frames)
     local measure_map = nil
     do
-        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%s",
+        local live_note_cnt = is_recording and #(RecordQuantizeService._live_notes or {}) or 0
+        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%s_%d",
             s, total_measures, qn_per_measure, proj_change_cnt, #active_tracks_data,
-            (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid))
+            (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid), live_note_cnt)
         if state.cached_measure_map and state.cached_measure_map_sig == mmap_sig then
             measure_map = state.cached_measure_map
             Engraver.reanchor_measure_map(measure_map, margin_left)
@@ -1581,7 +1600,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         local visual_notes, chord_clusters, beam_groups, is_polyphonic_track
         local cached_layout = nil
         local layout_key = nil
-        if not is_dragging_notes and tdata.layout_cache then
+        local is_trk_rec_live = is_recording and tdata.track and reaper.ValidatePtr(tdata.track, "MediaTrack*") and (reaper.GetMediaTrackInfo_Value(tdata.track, "I_RECARM") == 1)
+        if is_trk_rec_live then
+            cached_layout = build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
+        elseif not is_dragging_notes and tdata.layout_cache then
             local dq_sig = string.format("%s_%.3f", tostring(state.display_quantize), tonumber(state.display_quantize_grid) or 0)
             local rep_cnt = state.repeat_marks and #state.repeat_marks or 0
             layout_key = string.format("%.3f_%s_%s_%s_%.3f_%s_%s_%d_%d_%d",
@@ -2399,10 +2421,16 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local note_v = (n.chan or 0) + 1
                 
                 local is_irregular_preview = is_note_irregular_preview(n, vn, state)
+                local is_live_rec_note = (n and n.is_live_recording) or (vn and vn.orig and vn.orig.is_live_recording)
+                local is_live_held = (n and n.is_held) or (vn and vn.orig and vn.orig.is_held)
                 local is_ghost = vn.is_ghost_voice or (dim_regular_active and not is_irregular_preview)
 
                 if hide_regular_active and not is_irregular_preview then
                     head_col = 0x00000000
+                elseif is_live_rec_note then
+                    head_col = is_live_held and 0xFF4D4DFF or 0xE74C3CFF
+                    reaper.ImGui_DrawList_AddCircleFilled(draw_list, nx, ny, (is_live_held and 11.0 or 9.0)*s, is_live_held and 0xFF4D4D66 or 0xE74C3C44)
+                    reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, (is_live_held and 9.5 or 8.0)*s, 0xFF5252EE, 0, 2.0*s)
                 elseif is_sel then
                     head_col = state.is_dragging and 0x88888855 or Constants.COLORS.selection_gold
                     if not state.is_dragging then

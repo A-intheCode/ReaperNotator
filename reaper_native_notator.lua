@@ -1,11 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.0.0-beta.1
+-- @version 2.0.0-beta.2
 -- @changelog
---   + v2.0.0-beta.1: Transport Recording Suite, Pre-roll & Metronome Count-in, Live Canvas Recording Playhead & Auto-Quantize:
---             - Hotfix (v2.0.0-beta.1): Fixed SWS 'reaper.SNM_GetDoubleConfigVar' missing 2nd default argument error when opening the Record Settings Modal (prerollmeas read/write now passes required fallback and is safely wrapped in pcall).
+--   + v2.0.0-beta.2: Transport Recording Suite, MIDI Input Device Routing, Bidirectional Track Arming & Live Note Preview:
+--             - Bidirectional REAPER Track Arming & Auto-MIDI Routing (v2.0.0-beta.2): All REAPER project tracks (including empty tracks without existing MIDI items) are listed in the Record Modal. Arming a track immediately synchronizes REAPER's native TCP/MCP Record-Arm button, enables Input Monitoring (I_RECMON), sets MIDI Input & MIDI Overdub (I_RECMODE = 7) to prevent unwanted Audio '.wav' Save prompts, and makes the track visible in the score canvas.
+--             - MIDI Input Device & Channel Selector (v2.0.0-beta.2): Select any connected hardware MIDI keyboard, Virtual MIDI Keyboard, or All MIDI Inputs plus MIDI Channel (All or 1-16) globally or per-track directly in the right-click Record Modal.
+--             - Real-Time Live Note Preview During Recording (v2.0.0-beta.2): Polls incoming MIDI Note-On/Note-Off events in real time via MIDI_GetRecentInputEvent and renders played notes live on the score canvas at the red playhead with glowing red/coral noteheads and dynamically growing note durations while keys are held.
+--             - Hotfix (v2.0.0-beta.1): Fixed SWS 'reaper.SNM_GetDoubleConfigVar' 2nd default argument and ImGui_BeginChild border flag.
 --             - Native Record Button: Dedicated Transport Record button located between Play and Stop in the top toolbar with live glowing red recording status ('🔴 REC') and idle mode ('⏺ Rec').
---             - Right-Click Record Settings Modal: Right-clicking the Record button opens a comprehensive dialog for Pre-roll, Count-in, Track Arming, and Auto-Quantize options.
+--             - Right-Click Record Settings Modal: Right-clicking the Record button opens a comprehensive dialog for Pre-roll, Count-in, MIDI Input, Track Arming, and Auto-Quantize options.
 --             - Live Canvas Recording Playhead: Eliminates recording playhead freeze. Renders a vibrant signal-red playhead line with red triangle cap sweeping across all staves in real time with continuous auto-scroll during recording.
 --             - Track Arming & Red Canvas Badges: Checkboxes in the Record modal arm/disarm tracks for recording; armed tracks are visually highlighted in the score canvas with red background tint, red borders, and high-visibility '● REC' header badges.
 --             - Pre-roll & Count-in Integration: Synchronized directly with REAPER's native Pre-roll (Action 41818), adjustable bar length (1, 2, 4 bars via prerollmeas), Metronome Count-in (Action 40364), and quick-access to REAPER's Metronome settings dialog.
@@ -437,18 +440,20 @@ local function loop()
         state:clear_selection()
     end
     
-    -- Recording state monitoring & Auto-Quantize trigger
+    -- Recording state monitoring, Live Note Preview & Auto-Quantize trigger
     local play_state = reaper.GetPlayState()
     local is_recording = (play_state & 4) == 4
     if is_recording and not state._was_recording then
         state._was_recording = true
         state._rec_start_time = reaper.GetPlayPosition()
+        RecordQuantizeService.on_record_start(state)
     elseif not is_recording and state._was_recording then
         state._was_recording = false
         local rec_stop_time = reaper.GetPlayPosition()
-        if state.rec_auto_quantize ~= false then
-            RecordQuantizeService.process_recording(state, state._rec_start_time, rec_stop_time)
-        end
+        RecordQuantizeService.process_recording(state, state._rec_start_time, rec_stop_time)
+    end
+    if is_recording then
+        RecordQuantizeService.update_live_recording(state)
     end
     
     -- Authentic dark pro color theme
