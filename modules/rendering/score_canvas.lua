@@ -3969,30 +3969,58 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local stripe_col = is_rec_armed and 0xE74C3CFF or reaper_color_to_rgba(tdata.col, 0xFF)
                 reaper.ImGui_DrawList_AddRectFilled(draw_list, cur_hdr_x0, hdr_y0, cur_hdr_x0 + stripe_w, hdr_y1, stripe_col, 2)
                 
-                -- Track title with track number [1] Track Name (high-contrast & clean legibility)
+                -- Track title with track number [1] Track Name & Armed [● REC] pill badge
                 local title_col = state.invert_mode and (is_focused and 0xFFFFFFFF or 0xEEEEEEFF) or (is_focused and 0x111111FF or 0x222222FF)
+                local title_x = cur_hdr_x0 + stripe_w + 5 * s
+                local title_y = hdr_y0 + 4 * s
+
+                local bx0, by0, bx1, by1, rec_tx, rec_ty, dot_cx, dot_cy, dot_r
+                if is_rec_armed then
+                    local rtw, rth = FontManager.calc_text_size(ctx, "REC")
+                    if not rtw or rtw <= 0 then rtw = 24 * s end
+                    if not rth or rth <= 0 then rth = 14 * s end
+                    dot_r = math.max(3.0, 3.2 * s)
+                    local dot_gap = math.max(4.0, 4.5 * s)
+                    local pad_x = math.max(6.0, 6.5 * s)
+                    local pad_y = math.max(2.5, 2.5 * s)
+                    local bw = pad_x * 2 + (dot_r * 2) + dot_gap + rtw
+                    local bh = rth + pad_y * 2
+                    bx1 = cur_hdr_x1 - math.max(4.0, 5.0 * s)
+                    bx0 = bx1 - bw
+                    by0 = math.max(hdr_y0 + 2.0, title_y - pad_y + 0.5)
+                    by1 = by0 + bh
+                    rec_tx = bx0 + pad_x + (dot_r * 2) + dot_gap
+                    rec_ty = by0 + pad_y - 0.5
+                    dot_cx = bx0 + pad_x + dot_r
+                    dot_cy = by0 + bh * 0.5
+                end
+
                 local d_name = tdata.name or "Track"
                 if #d_name > 15 then d_name = d_name:sub(1, 13) .. ".." end
                 local trk_lbl = string.format("[%d] %s", tdata.idx, d_name)
-                reaper.ImGui_DrawList_AddText(draw_list, cur_hdr_x0 + stripe_w + 5 * s, hdr_y0 + 5 * s, title_col, trk_lbl)
+                if bx0 then
+                    local max_title_w = bx0 - title_x - 5 * s
+                    while #d_name > 3 do
+                        local tw = FontManager.calc_text_size(ctx, trk_lbl)
+                        if not tw or tw <= max_title_w then break end
+                        d_name = d_name:sub(1, #d_name - 1)
+                        trk_lbl = string.format("[%d] %s..", tdata.idx, d_name)
+                    end
+                end
+                reaper.ImGui_DrawList_AddText(draw_list, title_x, title_y, title_col, trk_lbl)
 
                 -- Armed recording indicator pill badge [● REC]
-                if is_rec_armed then
-                    local badge_txt = "● REC"
-                    local bw, bh = 42 * s, 14 * s
-                    local bx1 = cur_hdr_x1 - 6 * s
-                    local bx0 = bx1 - bw
-                    local by0 = hdr_y0 + 5 * s
-                    local by1 = by0 + bh
-                    reaper.ImGui_DrawList_AddRectFilled(draw_list, bx0, by0, bx1, by1, 0xE74C3CEE, 3.0 * s)
-                    reaper.ImGui_DrawList_AddText(draw_list, bx0 + 4 * s, by0 + 1 * s, 0xFFFFFFFF, badge_txt)
+                if is_rec_armed and bx0 then
+                    reaper.ImGui_DrawList_AddRectFilled(draw_list, bx0, by0, bx1, by1, 0xE74C3CF2, 4.0)
+                    reaper.ImGui_DrawList_AddCircleFilled(draw_list, dot_cx, dot_cy, dot_r, 0xFFFFFFFF)
+                    reaper.ImGui_DrawList_AddText(draw_list, rec_tx, rec_ty, 0xFFFFFFFF, "REC")
                 end
                 
                 -- Subtitle: item count & clefs (muted gray)
                 local clef_lbl = (tdata.clef == "grand") and "Grand" or ((tdata.clef == "bass") and "Bass" or ((tdata.clef == "harp_3staff") and "Harp" or "Treble"))
                 local sub_lbl = string.format("%d Items • %s", tdata.items and #tdata.items or 0, clef_lbl)
                 local sub_col = state.invert_mode and 0xAAAAAAFF or 0x666666FF
-                reaper.ImGui_DrawList_AddText(draw_list, cur_hdr_x0 + stripe_w + 5 * s, hdr_y0 + 20 * s, sub_col, sub_lbl)
+                reaper.ImGui_DrawList_AddText(draw_list, cur_hdr_x0 + stripe_w + 5 * s, hdr_y0 + 21 * s, sub_col, sub_lbl)
                 
                 -- Clicking track header selects & focuses the track (dynamically sized tooltip without clipping)
                 local is_hdr_hov = is_hovered and (mouse_x >= cur_hdr_x0 and mouse_x <= cur_hdr_x1 and mouse_y >= hdr_y0 and mouse_y <= hdr_y1)

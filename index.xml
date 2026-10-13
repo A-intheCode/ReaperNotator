@@ -6,9 +6,10 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.0.0-beta.5" author="A-intheCode" time="2026-10-13T21:14:00Z">
+      <version name="2.0.0-beta.6" author="A-intheCode" time="2026-10-13T21:24:00Z">
         <changelog><![CDATA[
-+ v2.0.0-beta.5: Snap to Grid Outlier Mode & Live/Post-Record Auto-Quantize Reliability:
++ v2.0.0-beta.6: Track Header REC Badge Polish, Snap to Grid Outlier Mode & Auto-Quantize Reliability:
+  - Track Header 'REC' Pill Badge Alignment & Sizing Fix (v2.0.0-beta.6): Replaced the Unicode '●' symbol (which triggered a taller fallback font ascent in DirectWrite and pushed 'REC' downward out of the red pill box) with a crisp vector circle ('ImGui_DrawList_AddCircleFilled') and dynamically sized the red pill background around 'REC' with automatic track title truncation so the badge and track name never overlap.
   - 'Snap to Grid' Option for Notes Outside Tick Range (v2.0.0-beta.5): Added '🧲 Snap to Grid' ('snap', now default) alongside 'Keep natural', 'Delete outliers', and 'Move to Voice 16' under 'Notes outside tolerance:' in the Record Modal. Notes played outside the strict tick tolerance window are now cleanly magnetized onto the nearest rhythmic grid division during both live ScoreCanvas preview and post-record quantization.
   - Live & Post-Record Auto-Quantize Reliability Fix (v2.0.0-beta.5): Prevented double initialization of on_record_start() that previously snapshotted Beat 1 notes as pre-existing, and improved duplicate/overlap deduplication when multiple notes snap to the same grid slot.
   - Infinite Note Duration Fix (v2.0.0-beta.4): Fixed a bug in v2.0.0-beta.3 where calling MIDI_SetNote/MIDI_Sort on an actively recording MIDI Overdub take while a key was still held down baked REAPER's temporary end-of-item Note-Off position permanently into the take, causing recorded notes to tie infinitely across all remaining bars. Live recording now performs real-time auto-quantize non-destructively on the ScoreCanvas (strictly clamping held notes to the red playhead), and commits the quantization + stop-position clamping to the REAPER take cleanly the instant recording stops.
