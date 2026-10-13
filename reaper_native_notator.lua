@@ -1,8 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.0.0-beta.6
+-- @version 2.0.0-beta.7
 -- @changelog
---   + v2.0.0-beta.6: Track Header REC Badge Polish, Snap to Grid Outlier Mode & Auto-Quantize Reliability:
+--   + v2.0.0-beta.7: Custom Rehearsal Marks Drag Preservation, Inline Renaming & Live Playback Shortcut:
+--             - Custom & Navigation Rehearsal Mark Drag-and-Drop Fix (v2.0.0-beta.7): Fixed a bug where dragging or double-clicking wider Custom Markers or Navigation Marks (e.g. 'D.C.', 'D.C. al Fine') could overwrite them into auto-letter marks ('A', 'B'). Custom and navigation marks now permanently retain their name across moves, with dynamic badge hitboxes and grid-snapped dragging.
+--             - Inline Double-Click Renaming & Auto-Sequence Exclusion (v2.0.0-beta.7): Double-clicking any Rehearsal Mark on the score canvas (or using '✏ Rename Mark' in the right-click menu / Tools Drawer) opens an inline rename box. Renaming any mark locks it as a Custom Marker and automatically excludes it from the A, B, C... / 1, 2, 3... counting sequence.
+--             - Custom Marker Shortcut ('Ctrl+M') During Live Playback & Stopped (v2.0.0-beta.7): Added configurable shortcut 'Add Custom Rehearsal Marker' (default: Ctrl+M) that places sequential default markers ('Marker 1', 'Marker 2', 'Marker 3'...) both when stopped (at Edit Cursor) and live during Playback/Recording at the exact Playhead position snapped to the active Notation Grid.
 --             - Track Header 'REC' Pill Badge Alignment & Sizing Fix (v2.0.0-beta.6): Replaced the Unicode '●' symbol (which triggered a taller fallback font ascent in DirectWrite and pushed 'REC' downward out of the red pill box) with a crisp vector circle ('ImGui_DrawList_AddCircleFilled') and dynamically sized the red pill background around 'REC' with automatic track title truncation so the badge and track name never overlap.
 --             - 'Snap to Grid' Option for Notes Outside Tick Range (v2.0.0-beta.5): Added '🧲 Snap to Grid' ('snap', now default) alongside 'Keep natural', 'Delete outliers', and 'Move to Voice 16' under 'Notes outside tolerance:' in the Record Modal. Notes played outside the strict tick tolerance window are now cleanly magnetized onto the nearest rhythmic grid division during both live ScoreCanvas preview and post-record quantization.
 --             - Live & Post-Record Auto-Quantize Reliability Fix (v2.0.0-beta.5): Prevented double initialization of on_record_start() that previously snapshotted Beat 1 notes as pre-existing, and improved duplicate/overlap deduplication when multiple notes snap to the same grid slot.

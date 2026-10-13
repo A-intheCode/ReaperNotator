@@ -339,17 +339,21 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
 
         reaper.ImGui_Spacing(ctx)
 
-        -- Custom Mark Input
+        --Custom Mark Input & Quick Default Custom Marker (Marker 1, 2...)
+        local next_default_marker = RehearsalMarkService.get_next_default_custom_name(state)
+        reaper.ImGui_Text(ctx, "Custom Marker (Ctrl+M):")
         reaper.ImGui_PushItemWidth(ctx, width - 90)
-        local txt_chg, new_txt = reaper.ImGui_InputTextWithHint(ctx, "##CustomRehText", "Custom text...", ToolsDrawer.custom_rehearsal_text)
+        local txt_chg, new_txt = reaper.ImGui_InputTextWithHint(ctx, "##CustomRehText", next_default_marker .. " (or custom)...", ToolsDrawer.custom_rehearsal_text)
         if txt_chg then ToolsDrawer.custom_rehearsal_text = new_txt end
         reaper.ImGui_PopItemWidth(ctx)
         reaper.ImGui_SameLine(ctx)
         if reaper.ImGui_Button(ctx, "Add##cust", 60, 22) then
-            if ToolsDrawer.custom_rehearsal_text ~= "" then
-                RehearsalMarkService.add_mark(state, target_m_idx, "custom", ToolsDrawer.custom_rehearsal_text)
-                ToolsDrawer.custom_rehearsal_text = ""
-            end
+            local cust_lbl = (ToolsDrawer.custom_rehearsal_text ~= "") and ToolsDrawer.custom_rehearsal_text or next_default_marker
+            RehearsalMarkService.add_custom_marker_at_current_pos(state, cust_lbl)
+            ToolsDrawer.custom_rehearsal_text = ""
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, string.format("Places Custom Marker '%s' at the current Playhead (during playback) or Edit Cursor, snapped to the active Grid.\nCustom markers keep their name permanently when moved and are not counted in A, B, C...", (ToolsDrawer.custom_rehearsal_text ~= "") and ToolsDrawer.custom_rehearsal_text or next_default_marker))
         end
 
         reaper.ImGui_Spacing(ctx)
@@ -364,7 +368,7 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
 
         if reaper.ImGui_BeginChild(ctx, "RehearsalListChild", width - 24, 0, 1) then
             if marks_cnt == 0 then
-                reaper.ImGui_TextColored(ctx, 0x888888FF, "No rehearsal marks in score yet.\nUse buttons above to add.")
+                reaper.ImGui_TextColored(ctx, 0x888888FF, "No rehearsal marks in score yet.\nUse buttons above or Ctrl+M to add.")
             else
                 for idx, rm in ipairs(state.rehearsal_marks) do
                     local is_rm_sel = (state.selected_rehearsal_mark and state.selected_rehearsal_mark.id == rm.id)
@@ -378,13 +382,23 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
                         reaper.ImGui_PopStyleColor(ctx)
                     end
 
-                    reaper.ImGui_SameLine(ctx, width - 90)
+                    reaper.ImGui_SameLine(ctx, width - 116)
+                    if reaper.ImGui_SmallButton(ctx, "✏##ren_" .. tostring(rm.id)) then
+                        state.selected_rehearsal_mark = rm
+                        state.editing_rehearsal_mark = rm
+                        state.editing_rehearsal_str = (rm.custom_text and rm.custom_text ~= "") and rm.custom_text or (rm.label or "")
+                        state.editing_rehearsal_just_opened = true
+                    end
+                    if reaper.ImGui_IsItemHovered(ctx) then
+                        reaper.ImGui_SetTooltip(ctx, "Rename Mark on Score (locks as Custom Marker & excludes from auto-counting)")
+                    end
+                    reaper.ImGui_SameLine(ctx, 0, 3)
                     if reaper.ImGui_SmallButton(ctx, "Jump##rm_" .. tostring(rm.id)) then
                         state.selected_rehearsal_mark = rm
-                        local tpos = reaper.TimeMap2_beatsToTime(0, 0, rm.measure)
+                        local tpos = rm.qn and reaper.TimeMap2_QNToTime(0, rm.qn) or reaper.TimeMap2_beatsToTime(0, 0, rm.measure)
                         reaper.SetEditCurPos(tpos, true, false)
                     end
-                    reaper.ImGui_SameLine(ctx)
+                    reaper.ImGui_SameLine(ctx, 0, 3)
                     if reaper.ImGui_SmallButton(ctx, "🗑##rm_" .. tostring(rm.id)) then
                         RehearsalMarkService.remove_mark(state, rm.id)
                         if state.selected_rehearsal_mark and state.selected_rehearsal_mark.id == rm.id then

@@ -433,6 +433,15 @@ ShortcutManager.DEFAULT_SHORTCUTS = {
         shift = false,
         alt  = false
     },
+    add_custom_marker = {
+        name = "Add Custom Rehearsal Marker (Marker 1, 2...)",
+        cat  = "Edit & Selection",
+        key  = "M",
+        ctrl = true,
+        shift = false,
+        alt  = false,
+        desc = "Places a grid-snapped Custom Marker ('Marker 1', 'Marker 2', ...) at the live Playhead during playback or at the Edit Cursor when stopped."
+    },
     select_mode = {
         name = "Selection Mode / Exit Draw Mode",
         cat  = "Edit & Selection",

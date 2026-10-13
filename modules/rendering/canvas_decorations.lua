@@ -785,6 +785,7 @@ function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, 
     local rm_hovered_this_frame = nil
 
     if (state.show_rehearsal_lane ~= false) then
+        local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
         local chord_h = (state.show_chord_lane ~= false) and (42 * s) or 0
         local rm_off_y = (state.rehearsal_mark_offset_y or -44.0) * s
         local lane_y0 = canvas_p0_y + 40 * s + chord_h + rm_off_y
@@ -801,24 +802,42 @@ function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, 
 
         local in_lane = is_hovered and (mouse_x >= system_start_x and mouse_x <= staff_end_x and mouse_y >= lane_y0 and mouse_y <= lane_y1)
 
-        -- 1. Check hover over existing marks (before drag/clicks)
+        -- 1. Check hover over existing marks using dynamic badge width (before drag/clicks)
         for _, rm in ipairs(state.rehearsal_marks or {}) do
             local rx = Engraver.cursor_qn_to_canvas_x(rm.qn, margin_left, s, qn_per_measure, measure_map)
-            if math.abs(mouse_x - rx) <= 16 * s and math.abs(mouse_y - lane_mid_y) <= 12 * s then
+            local lbl = rm.label or "A"
+            local box_w = math.max(26 * s, (#lbl * 11 * s) + 14 * s)
+            local half_w = math.max(16 * s, (box_w * 0.5) + 4 * s)
+            if math.abs(mouse_x - rx) <= half_w and math.abs(mouse_y - lane_mid_y) <= 13 * s then
                 rm_hovered_this_frame = rm
                 break
             end
         end
 
-        -- 2. Mouse Left-Click on Rehearsal Mark: Prepare Drag
-        if is_hovered and rm_hovered_this_frame and reaper.ImGui_IsMouseClicked(ctx, 0) and not state.is_resizing_item then
+        local is_editing_any = (state.editing_rehearsal_mark ~= nil)
+
+        -- 2. Double-Click on Rehearsal Mark: Open Inline Rename Input
+        if is_hovered and rm_hovered_this_frame and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) and not state.is_resizing_item then
+            local rm = rm_hovered_this_frame
+            state:clear_selection()
+            state.selected_rehearsal_mark = rm
+            state.editing_rehearsal_mark = rm
+            state.editing_rehearsal_str = (rm.custom_text and rm.custom_text ~= "") and rm.custom_text or (rm.label or "")
+            state.editing_rehearsal_just_opened = true
+            state.is_dragging_rehearsal_mark = false
+            state.drag_rehearsal_mark = nil
+            is_editing_any = true
+        -- Mouse Left-Click on Rehearsal Mark: Prepare Drag
+        elseif is_hovered and rm_hovered_this_frame and reaper.ImGui_IsMouseClicked(ctx, 0) and not state.is_resizing_item and not is_editing_any then
             local rm = rm_hovered_this_frame
             state:clear_selection()
             state.selected_rehearsal_mark = rm
             state.drag_rehearsal_mark = rm
             state.drag_rehearsal_start_m = rm.measure
+            state.drag_rehearsal_start_qn = rm.qn
             state.drag_rehearsal_start_x = mouse_x
             state.drag_rehearsal_target_m = rm.measure
+            state.drag_rehearsal_target_qn = rm.qn
             state.is_dragging_rehearsal_mark = false
             state.marquee_potential = false
             state.marquee_active = false
@@ -835,71 +854,109 @@ function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, 
             reaper.ImGui_OpenPopup(ctx, "rehearsal_mark_item_context_popup")
         end
 
-        -- 3. Live Dragging Movement
-        if state.drag_rehearsal_mark and reaper.ImGui_IsMouseDragging(ctx, 0, 2.0) and not state.is_resizing_item then
+        -- 3. Live Dragging Movement (Snaps to active Notation Grid!)
+        if state.drag_rehearsal_mark and reaper.ImGui_IsMouseDragging(ctx, 0, 2.0) and not state.is_resizing_item and not is_editing_any then
             state.is_dragging_rehearsal_mark = true
             state.marquee_potential = false
             state.marquee_active = false
             rm_hovered_this_frame = state.drag_rehearsal_mark
 
-            local drag_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, 1.0, measure_map)
-            local drag_time = reaper.TimeMap2_QNToTime(0, math.max(0, drag_qn))
-            local _, target_m = reaper.TimeMap2_timeToBeats(0, drag_time)
+            local snap_grid = (state.grid_qn and state.grid_qn > 0.001) and state.grid_qn or 0.001
+            local drag_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, snap_grid, measure_map)
+            drag_qn = math.max(0.0, drag_qn)
+            local drag_time = reaper.TimeMap2_QNToTime(0, drag_qn)
+            local beats_in_m, target_m = reaper.TimeMap2_timeToBeats(0, drag_time)
             target_m = math.max(0, target_m or 0)
             state.drag_rehearsal_target_m = target_m
+            state.drag_rehearsal_target_qn = drag_qn
 
             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_ResizeAll())
-            reaper.ImGui_SetTooltip(ctx, string.format("Move Rehearsal Mark %s -> Bar %d (Release to place)", state.drag_rehearsal_mark.label or "", target_m + 1))
-        elseif rm_hovered_this_frame and not state.is_dragging_rehearsal_mark then
+            reaper.ImGui_SetTooltip(ctx, string.format("Move Rehearsal Mark [%s] -> Bar %d, Beat %.2f (Release to place)", state.drag_rehearsal_mark.label or "", target_m + 1, (beats_in_m or 0) + 1.0))
+        elseif rm_hovered_this_frame and not state.is_dragging_rehearsal_mark and not is_editing_any then
             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
-            reaper.ImGui_SetTooltip(ctx, string.format("Rehearsal Mark: %s (Bar %d)\nDrag to move | Click to select | Delete to remove\nRight-click for options", rm_hovered_this_frame.label or "", rm_hovered_this_frame.measure + 1))
+            reaper.ImGui_SetTooltip(ctx, string.format("Rehearsal Mark: %s (Bar %d)\nDrag to move (Grid Snap) | Double-click to rename\nClick to select | Delete to remove | Right-click for options", rm_hovered_this_frame.label or "", rm_hovered_this_frame.measure + 1))
         end
 
-        -- 4. Empty lane interactions (only if no mark is hovered and not dragging)
-        if in_lane and not rm_hovered_this_frame and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark then
-            -- Double click in lane to create rehearsal mark
+        -- 4. Empty lane interactions (only if no mark is hovered, not editing, and not dragging)
+        if in_lane and not rm_hovered_this_frame and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark and not is_editing_any then
+            local snap_grid = (state.grid_qn and state.grid_qn > 0.001) and state.grid_qn or 1.0
+            -- Double click in empty lane to create rehearsal mark
             if reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
-                local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, 1.0, measure_map)
-                local target_time = reaper.TimeMap2_QNToTime(0, math.max(0, target_qn))
+                local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, snap_grid, measure_map)
+                target_qn = math.max(0.0, target_qn)
+                local target_time = reaper.TimeMap2_QNToTime(0, target_qn)
                 local _, target_m = reaper.TimeMap2_timeToBeats(0, target_time)
                 target_m = math.max(0, target_m or 0)
-                local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
-                RehearsalMarkService.add_mark(state, target_m, "letter")
+                RehearsalMarkService.add_mark(state, target_m, "letter", nil, target_qn)
             end
             -- Right click in lane for context menu
             if reaper.ImGui_IsMouseClicked(ctx, 1) then
-                local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, 1.0, measure_map)
-                local target_time = reaper.TimeMap2_QNToTime(0, math.max(0, target_qn))
+                local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, snap_grid, measure_map)
+                target_qn = math.max(0.0, target_qn)
+                local target_time = reaper.TimeMap2_QNToTime(0, target_qn)
                 local _, target_m = reaper.TimeMap2_timeToBeats(0, target_time)
                 state.context_rehearsal_measure = math.max(0, target_m or 0)
+                state.context_rehearsal_qn = target_qn
                 reaper.ImGui_OpenPopup(ctx, "rehearsal_lane_context_popup")
             end
         end
 
         -- 5. Render Snap Target Guide Line during Drag
-        if state.is_dragging_rehearsal_mark and state.drag_rehearsal_target_m then
-            local snap_time = reaper.TimeMap2_beatsToTime(0, 0, state.drag_rehearsal_target_m)
-            local snap_qn = reaper.TimeMap2_timeToQN(0, snap_time)
+        if state.is_dragging_rehearsal_mark and state.drag_rehearsal_target_qn then
+            local snap_qn = state.drag_rehearsal_target_qn
             local snap_x = Engraver.cursor_qn_to_canvas_x(snap_qn, margin_left, s, qn_per_measure, measure_map)
+            local snap_time = reaper.TimeMap2_QNToTime(0, snap_qn)
+            local beats_in_m, target_m = reaper.TimeMap2_timeToBeats(0, snap_time)
 
             -- Vertical snap guide line down through staves
             reaper.ImGui_DrawList_AddLine(draw_list, snap_x, lane_y0 - 2 * s, snap_x, lane_y1 + 180 * s, 0x5BC0DE88, 1.5 * s)
             -- Snap target outline preview
-            reaper.ImGui_DrawList_AddRect(draw_list, snap_x - 12 * s, lane_mid_y - 10 * s, snap_x + 12 * s, lane_mid_y + 10 * s, 0x5BC0DE55, 3.0, 0, 1.2 * s)
-            reaper.ImGui_DrawList_AddText(draw_list, snap_x + 3 * s, lane_y0 - 2 * s, 0x5BC0DEEE, string.format("Bar %d", state.drag_rehearsal_target_m + 1))
+            reaper.ImGui_DrawList_AddRect(draw_list, snap_x - 14 * s, lane_mid_y - 10 * s, snap_x + 14 * s, lane_mid_y + 10 * s, 0x5BC0DE55, 3.0, 0, 1.2 * s)
+            reaper.ImGui_DrawList_AddText(draw_list, snap_x + 4 * s, lane_y0 - 2 * s, 0x5BC0DEEE, string.format("Bar %d.%d", (target_m or 0) + 1, math.floor((beats_in_m or 0) + 1.05)))
         end
 
-        -- 6. Render rehearsal marks
+        -- 6. Render rehearsal marks (or inline rename input)
         local font_bold = fonts and fonts.bold
         for _, rm in ipairs(state.rehearsal_marks or {}) do
             local is_being_dragged = (state.is_dragging_rehearsal_mark and state.drag_rehearsal_mark and state.drag_rehearsal_mark.id == rm.id)
             local rx = is_being_dragged and mouse_x or Engraver.cursor_qn_to_canvas_x(rm.qn, margin_left, s, qn_per_measure, measure_map)
+            local is_editing = (state.editing_rehearsal_mark and state.editing_rehearsal_mark.id == rm.id)
 
-            if rx >= cull_min_x - 40 * s and rx <= cull_max_x + 40 * s then
-                local is_selected = (state.selected_rehearsal_mark and state.selected_rehearsal_mark.id == rm.id)
-                local is_mark_hov = is_being_dragged or (rm_hovered_this_frame == rm)
+            if rx >= cull_min_x - 80 * s and rx <= cull_max_x + 80 * s then
+                if is_editing then
+                    local cur_txt = state.editing_rehearsal_str or rm.label or ""
+                    local box_w = math.max(90 * s, (#cur_txt * 9 * s) + 32 * s)
+                    local edit_x0 = rx - (box_w * 0.5)
+                    local edit_y0 = lane_mid_y - 11 * s
+                    reaper.ImGui_SetCursorScreenPos(ctx, edit_x0, edit_y0)
+                    reaper.ImGui_SetNextItemWidth(ctx, box_w)
+                    if state.editing_rehearsal_just_opened then
+                        reaper.ImGui_SetKeyboardFocusHere(ctx)
+                        state.editing_rehearsal_just_opened = false
+                    end
+                    local enter_pressed, new_txt = reaper.ImGui_InputText(ctx, "##inline_rm_" .. tostring(rm.id), cur_txt, reaper.ImGui_InputTextFlags_EnterReturnsTrue() | reaper.ImGui_InputTextFlags_AutoSelectAll())
+                    if new_txt ~= nil then
+                        state.editing_rehearsal_str = new_txt
+                    end
+                    local in_edit_box = (mouse_x >= edit_x0 and mouse_x <= edit_x0 + box_w and mouse_y >= edit_y0 and mouse_y <= edit_y0 + 22 * s)
+                    if enter_pressed then
+                        RehearsalMarkService.rename_mark(state, rm.id, state.editing_rehearsal_str)
+                        state.editing_rehearsal_mark = nil
+                        state.editing_rehearsal_str = nil
+                    elseif reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape()) then
+                        state.editing_rehearsal_mark = nil
+                        state.editing_rehearsal_str = nil
+                    elseif (reaper.APIExists("ImGui_IsItemDeactivated") and reaper.ImGui_IsItemDeactivated(ctx)) or (reaper.ImGui_IsMouseClicked(ctx, 0) and not in_edit_box and not reaper.ImGui_IsItemActive(ctx)) then
+                        RehearsalMarkService.rename_mark(state, rm.id, state.editing_rehearsal_str)
+                        state.editing_rehearsal_mark = nil
+                        state.editing_rehearsal_str = nil
+                    end
+                else
+                    local is_selected = (state.selected_rehearsal_mark and state.selected_rehearsal_mark.id == rm.id)
+                    local is_mark_hov = is_being_dragged or (rm_hovered_this_frame == rm)
 
-                Engraver.draw_rehearsal_mark(draw_list, rx, lane_mid_y, s, rm.label, is_selected, is_mark_hov, font_bold, rm.type)
+                    Engraver.draw_rehearsal_mark(draw_list, rx, lane_mid_y, s, rm.label, is_selected, is_mark_hov, font_bold, rm.type)
+                end
             end
         end
 
@@ -907,18 +964,23 @@ function CanvasDecorations.draw_rehearsal_lane(ctx, draw_list, state, fonts, s, 
         if reaper.ImGui_IsMouseReleased(ctx, 0) then
             if state.is_dragging_rehearsal_mark and state.drag_rehearsal_mark then
                 local rm = state.drag_rehearsal_mark
-                local target_m = state.drag_rehearsal_target_m or state.drag_rehearsal_start_m
-                if target_m and target_m ~= state.drag_rehearsal_start_m then
-                    local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
-                    RehearsalMarkService.move_mark(state, rm.id, target_m)
+                local target_qn = state.drag_rehearsal_target_qn or state.drag_rehearsal_start_qn or rm.qn
+                local start_qn = state.drag_rehearsal_start_qn or rm.qn
+                local target_m = state.drag_rehearsal_target_m or state.drag_rehearsal_start_m or rm.measure
+                if target_qn and math.abs(target_qn - start_qn) > 0.005 then
+                    RehearsalMarkService.move_mark(state, rm.id, target_m, target_qn)
                     reaper.Undo_OnStateChange2(0, "Notator: Move Rehearsal Mark")
-                    state.status_msg = string.format("Moved Rehearsal Mark %s to Bar %d", rm.label or "", target_m + 1)
+                    local snap_time = reaper.TimeMap2_QNToTime(0, target_qn)
+                    local beats_in_m, m_idx = reaper.TimeMap2_timeToBeats(0, snap_time)
+                    state.status_msg = string.format("Moved Rehearsal Mark [%s] to Bar %d, Beat %.2f", rm.label or "", (m_idx or target_m) + 1, (beats_in_m or 0) + 1.0)
                 end
             end
             state.is_dragging_rehearsal_mark = false
             state.drag_rehearsal_mark = nil
             state.drag_rehearsal_target_m = nil
+            state.drag_rehearsal_target_qn = nil
             state.drag_rehearsal_start_m = nil
+            state.drag_rehearsal_start_qn = nil
             state.drag_rehearsal_start_x = nil
         end
     end

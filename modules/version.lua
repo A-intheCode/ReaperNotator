@@ -7,7 +7,7 @@ local Version = {
     major = 2,
     minor = 0,
     patch = 0,
-    suffix = "-beta.6", -- REC track header pill badge alignment & dynamic sizing
+    suffix = "-beta.7", -- Custom & navigation rehearsal marks drag fix, rename exclusion, and live Ctrl+M shortcut
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

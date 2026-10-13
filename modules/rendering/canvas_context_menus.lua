@@ -1426,6 +1426,10 @@ function CanvasContextMenus.render_measure_header_popup(ctx, state, active_track
 
             if reaper.ImGui_BeginMenu(ctx, "🔖 Rehearsal & Navigation Marks") then
                 local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+                local next_cust = RehearsalMarkService.get_next_default_custom_name(state)
+                if reaper.ImGui_MenuItem(ctx, string.format("🔖 Add Custom Marker (%s) [Ctrl+M]", next_cust)) then
+                    RehearsalMarkService.add_mark(state, cm, "custom", next_cust)
+                end
                 if reaper.ImGui_MenuItem(ctx, "🔤 Add Letter Mark [A], [B]... (Auto)") then
                     RehearsalMarkService.add_mark(state, cm, "letter")
                 end
@@ -1531,11 +1535,19 @@ function CanvasContextMenus.render_rehearsal_mark_popup(ctx, state)
         local rm = state.context_rehearsal_mark or state.selected_rehearsal_mark
         if rm then
             local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
-            reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("🔖 Rehearsal Mark: %s (Bar %d)", rm.label, rm.measure + 1))
+            reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("🔖 Rehearsal Mark: %s (Bar %d)", rm.label or "", rm.measure + 1))
             reaper.ImGui_Separator(ctx)
+
+            if reaper.ImGui_MenuItem(ctx, "✏ Rename Mark (Locks as Custom)") then
+                state.editing_rehearsal_mark = rm
+                state.editing_rehearsal_str = (rm.custom_text and rm.custom_text ~= "") and rm.custom_text or (rm.label or "")
+                state.editing_rehearsal_just_opened = true
+                reaper.ImGui_CloseCurrentPopup(ctx)
+            end
 
             if reaper.ImGui_BeginMenu(ctx, "Change Type") then
                 local types = {
+                    { id = "custom",     label = "Custom Marker (Locked Name)" },
                     { id = "letter",     label = "Auto Letter [A], [B], [C]..." },
                     { id = "number",     label = "Auto Number [1], [2], [3]..." },
                     { id = "dc",         label = "Da Capo (D.C.)" },
@@ -1551,6 +1563,13 @@ function CanvasContextMenus.render_rehearsal_mark_popup(ctx, state)
                     local pfx = is_cur and "✓ " or "   "
                     if reaper.ImGui_MenuItem(ctx, pfx .. t.label) then
                         rm.type = t.id
+                        if t.id == "custom" then
+                            if not rm.custom_text or rm.custom_text == "" then
+                                rm.custom_text = (rm.label and rm.label ~= "") and rm.label or RehearsalMarkService.get_next_default_custom_name(state)
+                            end
+                        else
+                            rm.custom_text = ""
+                        end
                         RehearsalMarkService.recompute_labels(state)
                         RehearsalMarkService.save_marks(state)
                         RehearsalMarkService.sync_takes(state)
@@ -1573,37 +1592,42 @@ end
 function CanvasContextMenus.render_rehearsal_lane_popup(ctx, state)
     if reaper.ImGui_BeginPopup(ctx, "rehearsal_lane_context_popup") then
         local target_m = state.context_rehearsal_measure or 0
+        local target_qn = state.context_rehearsal_qn
         local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+        local next_cust = RehearsalMarkService.get_next_default_custom_name(state)
         reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("Add Mark at Bar %d", target_m + 1))
         reaper.ImGui_Separator(ctx)
 
+        if reaper.ImGui_MenuItem(ctx, string.format("🔖 Add Custom Marker (%s) [Ctrl+M]", next_cust)) then
+            RehearsalMarkService.add_mark(state, target_m, "custom", next_cust, target_qn)
+        end
         if reaper.ImGui_MenuItem(ctx, "🔤 Add Letter Mark [A], [B]... (Auto)") then
-            RehearsalMarkService.add_mark(state, target_m, "letter")
+            RehearsalMarkService.add_mark(state, target_m, "letter", nil, target_qn)
         end
         if reaper.ImGui_MenuItem(ctx, "🔢 Add Number Mark [1], [2]... (Auto)") then
-            RehearsalMarkService.add_mark(state, target_m, "number")
+            RehearsalMarkService.add_mark(state, target_m, "number", nil, target_qn)
         end
         reaper.ImGui_Separator(ctx)
         if reaper.ImGui_MenuItem(ctx, "Da Capo (D.C.)") then
-            RehearsalMarkService.add_mark(state, target_m, "dc")
+            RehearsalMarkService.add_mark(state, target_m, "dc", nil, target_qn)
         end
         if reaper.ImGui_MenuItem(ctx, "D.C. al Fine") then
-            RehearsalMarkService.add_mark(state, target_m, "dc_al_fine")
+            RehearsalMarkService.add_mark(state, target_m, "dc_al_fine", nil, target_qn)
         end
         if reaper.ImGui_MenuItem(ctx, "Dal Segno (D.S.)") then
-            RehearsalMarkService.add_mark(state, target_m, "ds")
+            RehearsalMarkService.add_mark(state, target_m, "ds", nil, target_qn)
         end
         if reaper.ImGui_MenuItem(ctx, "D.S. al Coda") then
-            RehearsalMarkService.add_mark(state, target_m, "ds_al_coda")
+            RehearsalMarkService.add_mark(state, target_m, "ds_al_coda", nil, target_qn)
         end
         if reaper.ImGui_MenuItem(ctx, "Segno (𝄋)") then
-            RehearsalMarkService.add_mark(state, target_m, "segno")
+            RehearsalMarkService.add_mark(state, target_m, "segno", nil, target_qn)
         end
         if reaper.ImGui_MenuItem(ctx, "Coda (𝄌)") then
-            RehearsalMarkService.add_mark(state, target_m, "coda")
+            RehearsalMarkService.add_mark(state, target_m, "coda", nil, target_qn)
         end
         if reaper.ImGui_MenuItem(ctx, "Fine") then
-            RehearsalMarkService.add_mark(state, target_m, "fine")
+            RehearsalMarkService.add_mark(state, target_m, "fine", nil, target_qn)
         end
         reaper.ImGui_EndPopup(ctx)
     end

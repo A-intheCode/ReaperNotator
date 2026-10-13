@@ -7,8 +7,8 @@ local KeyboardHandler = {}
 local ShortcutManager = require("services.shortcut_manager")
 
 function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dynamics_engine, active_tracks_data)
-    -- When a shortcut is being captured in settings, or a text/chord item is being edited, do not execute shortcuts!
-    if state.capturing_action or state.editing_text_item or state.editing_chord_item then return end
+    -- When a shortcut is being captured in settings, or a text/chord/rehearsal item is being edited, do not execute shortcuts!
+    if state.capturing_action or state.editing_text_item or state.editing_chord_item or state.editing_rehearsal_mark then return end
     
     -- Modifier key detection (Ctrl, Shift, Alt)
     local is_ctrl = false
@@ -55,15 +55,25 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     local play_state = reaper.GetPlayState()
     local is_playing = (play_state & 1) == 1 or (play_state & 4) == 4
     if is_playing then
-        -- Playback Fast-Path: Only allow transport commands (Play/Pause, Escape) to execute.
-        -- Prevents accidental pitch transpositions, note deletions, or tool toggles while listening.
-        if is_action_pressed("play_pause") or (reaper.APIExists("ImGui_Key_Space") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Space(), false)) then
+        -- Playback Fast-Path: Allow transport commands (Play/Pause, Escape) and Live Custom Marker insertion!
+        if is_action_pressed("add_custom_marker") then
+            local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+            RehearsalMarkService.add_custom_marker_at_current_pos(state)
+            return
+        elseif is_action_pressed("play_pause") or (reaper.APIExists("ImGui_Key_Space") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Space(), false)) then
             reaper.OnStopButton()
             state.status_msg = "Playback stopped"
             state.status_time = reaper.time_precise()
         elseif reaper.APIExists("ImGui_Key_Escape") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape(), false) then
             state:clear_selection()
         end
+        return
+    end
+
+    -- Add Custom Marker at Edit Cursor when stopped (Ctrl+M default)
+    if is_action_pressed("add_custom_marker") then
+        local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+        RehearsalMarkService.add_custom_marker_at_current_pos(state)
         return
     end
 
