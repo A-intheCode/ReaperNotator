@@ -4,10 +4,10 @@
 -- ==============================================================================
 
 local Version = {
-    major = 1,
-    minor = 9,
-    patch = 9,
-    suffix = "", -- official production release
+    major = 2,
+    minor = 0,
+    patch = 0,
+    suffix = "-beta", -- beta release for record & auto-quantize suite
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

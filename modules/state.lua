@@ -460,6 +460,20 @@ function State.new()
         quantize_strength = 100,         -- 0 .. 100 %
         quantize_swing = 0,              -- 0 .. 100 %
         quantize_scope = "selected",     -- "selected" | "all"
+
+        -- Recording & Auto-Quantize Suite (v2.0.0-beta)
+        show_record_modal = false,
+        focus_record_modal = nil,
+        rec_auto_quantize = true,          -- Automatically quantize when recording stops
+        rec_quantize_grid_qn = 0.5,        -- Default 1/8 (0.5 QN) per user specification
+        rec_quantize_grid_label = "1/8",
+        rec_quantize_grid_type = "straight", -- "straight" | "triplet" | "dotted"
+        rec_tolerance_ticks = 25,          -- Default 25 ticks tolerance radius
+        rec_clean_overlaps = true,         -- Remove overlapping and duplicate notes on same pitch
+        rec_outlier_mode = "keep",         -- "keep" (leave unquantized) | "delete" | "voice16"
+        rec_preroll_bars = 1,              -- Pre-roll bars (1, 2, 4)
+        _was_recording = false,            -- Internal edge detector for record stop
+        _rec_start_time = 0,
         
         -- Notation & Beaming Engine
         beam_grouping = "beat",   -- "beat" (1 QN), "half_bar", "bar", "none"
@@ -825,6 +839,14 @@ function State:load_settings()
     self.display_quantize = load_bool("display_quantize", false)
     self.display_quantize_grid = load_num("display_quantize_grid", 1.0)
     self.display_quantize_label = load_str("display_quantize_label", "1/4")
+    self.rec_auto_quantize = load_bool("rec_auto_quantize", true)
+    self.rec_quantize_grid_qn = load_num("rec_quantize_grid_qn", 0.5)
+    self.rec_quantize_grid_label = load_str("rec_quantize_grid_label", "1/8")
+    self.rec_quantize_grid_type = load_str("rec_quantize_grid_type", "straight")
+    self.rec_tolerance_ticks = load_num("rec_tolerance_ticks", 25)
+    self.rec_clean_overlaps = load_bool("rec_clean_overlaps", true)
+    self.rec_outlier_mode = load_str("rec_outlier_mode", "keep")
+    self.rec_preroll_bars = load_num("rec_preroll_bars", 1)
     self.beam_grouping = load_str("beam_grouping", "beat")
     self.dyn_cc_a = load_num("dyn_cc_a", 1)
     self.dyn_cc_b = load_num("dyn_cc_b", 11)
@@ -1022,6 +1044,14 @@ function State.save_settings(self)
     save_val("display_quantize", self.display_quantize == true)
     save_val("display_quantize_grid", self.display_quantize_grid or 1.0)
     save_val("display_quantize_label", self.display_quantize_label or "1/4")
+    save_val("rec_auto_quantize", self.rec_auto_quantize ~= false)
+    save_val("rec_quantize_grid_qn", self.rec_quantize_grid_qn or 0.5)
+    save_val("rec_quantize_grid_label", self.rec_quantize_grid_label or "1/8")
+    save_val("rec_quantize_grid_type", self.rec_quantize_grid_type or "straight")
+    save_val("rec_tolerance_ticks", math.floor(self.rec_tolerance_ticks or 25))
+    save_val("rec_clean_overlaps", self.rec_clean_overlaps ~= false)
+    save_val("rec_outlier_mode", self.rec_outlier_mode or "keep")
+    save_val("rec_preroll_bars", math.floor(self.rec_preroll_bars or 1))
     save_val("beam_grouping", self.beam_grouping or "beat")
     save_val("dyn_cc_a", self.dyn_cc_a or 1)
     save_val("dyn_cc_b", self.dyn_cc_b or 11)

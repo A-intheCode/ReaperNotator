@@ -1,7 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.9
+-- @version 2.0.0-beta
 -- @changelog
+--   + v2.0.0-beta: Transport Recording Suite, Pre-roll & Metronome Count-in, Live Canvas Recording Playhead & Auto-Quantize:
+--             - Native Record Button: Dedicated Transport Record button located between Play and Stop in the top toolbar with live glowing red recording status ('🔴 REC') and idle mode ('⏺ Rec').
+--             - Right-Click Record Settings Modal: Right-clicking the Record button opens a comprehensive dialog for Pre-roll, Count-in, Track Arming, and Auto-Quantize options.
+--             - Live Canvas Recording Playhead: Eliminates recording playhead freeze. Renders a vibrant signal-red playhead line with red triangle cap sweeping across all staves in real time with continuous auto-scroll during recording.
+--             - Track Arming & Red Canvas Badges: Checkboxes in the Record modal arm/disarm tracks for recording; armed tracks are visually highlighted in the score canvas with red background tint, red borders, and high-visibility '● REC' header badges.
+--             - Pre-roll & Count-in Integration: Synchronized directly with REAPER's native Pre-roll (Action 41818), adjustable bar length (1, 2, 4 bars via prerollmeas), Metronome Count-in (Action 40364), and quick-access to REAPER's Metronome settings dialog.
+--             - Auto-Quantize on Record Stop Engine: Automatically processes newly recorded MIDI takes upon stopping recording. Features keyboard bounce elimination (<15 ticks), same-pitch overlap trimming, metric grid snapping within configurable tick tolerance (default: 1/8 @ 25 ticks), and flexible outlier handling (keep natural, delete outliers, or move to Voice 16).
 --   + v1.9.9: Official Production Release - Irregular Note Filtering, Multi-Monitor Window Management & Polyphonic Rests:
 --             - Multi-Monitor Window Position & Maximization Persistence: Automatically saves and restores exact window coordinates, dimensions, monitor target, and maximization state across sessions. Supports secondary/right monitors and mixed HiDPI display scalings.
 --             - Filter Irregular Notes Feature: Dedicated modal dialog under Tools Drawer to detect and isolate unquantized/humanized recorded MIDI notes with adjustable tolerance (0-50 ticks), triplet detection, yellow score canvas highlight preview, and regular note ghosting.
@@ -325,6 +332,8 @@ local MidiEditorDrawer     = require("ui.midi_editor_drawer")
 local DivisioVocumModal    = require("ui.divisio_vocum_modal")
 local ExplodeChordsModal   = DivisioVocumModal
 local FilterIrregularModal = require("ui.filter_irregular_modal")
+local RecordModal          = require("ui.record_modal")
+local RecordQuantizeService = require("services.record_quantize_service")
 
 -- 4. Initialization of State & Fonts
 local state = State.new()
@@ -425,6 +434,20 @@ local function loop()
         GlissandoService.load_glissandos(state)
         MidiService.cleanup_orphaned_score_elements(state)
         state:clear_selection()
+    end
+    
+    -- Recording state monitoring & Auto-Quantize trigger
+    local play_state = reaper.GetPlayState()
+    local is_recording = (play_state & 4) == 4
+    if is_recording and not state._was_recording then
+        state._was_recording = true
+        state._rec_start_time = reaper.GetPlayPosition()
+    elseif not is_recording and state._was_recording then
+        state._was_recording = false
+        local rec_stop_time = reaper.GetPlayPosition()
+        if state.rec_auto_quantize ~= false then
+            RecordQuantizeService.process_recording(state, state._rec_start_time, rec_stop_time)
+        end
     end
     
     -- Authentic dark pro color theme
@@ -700,6 +723,7 @@ local function loop()
         MusicXmlModal.render(ctx, state, project_tracks)
         DivisioVocumModal.render(ctx, state, MidiService, state.active_tracks_cache)
         FilterIrregularModal.render(ctx, state, MidiService, state.active_tracks_cache)
+        RecordModal.render(ctx, state, MidiService, project_tracks, state.active_tracks_cache)
         ArticulationsDrawer.render_last_resort_modal(ctx, state, state.active_tracks_cache)
         
         -- ======================================================================

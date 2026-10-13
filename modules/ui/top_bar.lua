@@ -30,8 +30,10 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     
     local cur_time = reaper.GetCursorPosition()
     local play_time = reaper.GetPlayPosition()
-    local is_playing = (reaper.GetPlayState() == 1)
-    local time_pos = is_playing and play_time or cur_time
+    local play_state = reaper.GetPlayState()
+    local is_recording = (play_state & 4) == 4
+    local is_playing = (play_state & 1) == 1
+    local time_pos = (is_playing or is_recording) and play_time or cur_time
     
     local timesig_num, timesig_denom, bpm = reaper.TimeMap_GetTimeSigAtTime(0, time_pos)
     timesig_num = (timesig_num and timesig_num > 0) and timesig_num or 4
@@ -57,6 +59,33 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
         if is_playing then reaper.CSurf_OnStop() else reaper.CSurf_OnPlay() end
     end
     reaper.ImGui_SameLine(ctx)
+
+    -- Record button (between Play and Stop)
+    local rec_text = is_recording and "🔴 REC" or "⏺ Rec"
+    local rec_col = is_recording and 0xE74C3CFF or 0x8E281EFF
+    local rec_hover = is_recording and 0xFF5252FF or 0xC0392BFF
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), is_recording and rec_col or 0x24272EFF)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), rec_hover)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(), 0xFF1744FF)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), is_recording and 0xFFFFFFFF or 0xE74C3CFF)
+
+    if reaper.ImGui_Button(ctx, rec_text .. "##TopBarRecord", 72, 28) then
+        reaper.CSurf_OnRecord()
+    end
+    reaper.ImGui_PopStyleColor(ctx, 4)
+
+    -- Right-click on Record button opens Record & Auto-Quantize Settings modal
+    if reaper.ImGui_IsItemClicked(ctx, 1) then
+        state.show_record_modal = true
+        state.focus_record_modal = true
+    end
+
+    if reaper.ImGui_IsItemHovered(ctx) then
+        local aq_status = (state.rec_auto_quantize ~= false) and ("Auto-Quantize: ON (" .. (state.rec_quantize_grid_label or "1/8") .. ")") or "Auto-Quantize: OFF"
+        reaper.ImGui_SetTooltip(ctx, string.format("REAPER Record Transport (%s)\n• Left-Click: Start / Stop Recording\n• Right-Click: Recording & Auto-Quantize Settings", aq_status))
+    end
+    reaper.ImGui_SameLine(ctx)
+
     if reaper.ImGui_Button(ctx, "⏹ Stop", 65, 28) then
         reaper.CSurf_OnStop()
     end

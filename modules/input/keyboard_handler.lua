@@ -52,7 +52,8 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         return ShortcutManager.is_action_pressed(ctx, action_id, is_ctrl, is_shift, is_alt)
     end
 
-    local is_playing = (reaper.GetPlayState() == 1)
+    local play_state = reaper.GetPlayState()
+    local is_playing = (play_state & 1) == 1 or (play_state & 4) == 4
     if is_playing then
         -- Playback Fast-Path: Only allow transport commands (Play/Pause, Escape) to execute.
         -- Prevents accidental pitch transpositions, note deletions, or tool toggles while listening.

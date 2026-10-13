@@ -35,7 +35,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     if not canvas_info then return end
     if state._is_canvas_panning then return end
     
-    local is_playing = (reaper.GetPlayState() == 1)
+    local play_state = reaper.GetPlayState()
+    local is_playing = (play_state & 1) == 1 or (play_state & 4) == 4
     if is_playing then
         -- Playback Fast-Path: Bypasses all editing, note manipulation, dragging, marquee & hit-testing.
         -- Repositions the edit cursor if user clicks on the canvas during playback:

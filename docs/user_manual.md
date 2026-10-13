@@ -1,6 +1,6 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
-**Version:** 1.9.9  
+**Version:** 2.0.0-beta  
 **Date:** 2026-10-13  
 **License:** GNU General Public License v3.0  
 
@@ -64,17 +64,48 @@ REAPER-Notator can run as a floating window or docked directly into any REAPER d
 
 ### 2.1 Title & Version Indicator
 
-Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v1.9.9). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
+Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.0.0-beta). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
 
 ### 2.2 Transport & Playhead Controls
 
 Functions:
 - Rewind (|<): Instantly returns REAPER's edit cursor to measure 1.0 (time 0.0s).
 - Play / Pause (> / ||): Starts timeline playback or pauses at the current cursor position. Key shortcut: Space.
-- Stop: Halts playback and resets playhead according to REAPER's project settings.
-DAW Effect: Calls REAPER's CSurf_OnPlay, CSurf_OnStop, and SetEditCurPos directly, maintaining sample-accurate alignment with REAPER's master audio engine.
+- Record (⏺ Rec / 🔴 REC): Dedicated transport recording control situated between Play and Stop.
+  - Left-Click: Toggles REAPER recording (`CSurf_OnRecord` / Action 1013). When active, glows in vivid signal red (`🔴 REC`); when idle, shows a subtle dark-red accent (`⏺ Rec`).
+  - Right-Click: Opens the **Recording & Auto-Quantize Settings** configuration dialog.
+- Stop: Halts playback or recording, triggers the Auto-Quantize engine (if enabled), and resets playhead according to REAPER's project settings.
+DAW Effect: Calls REAPER's CSurf_OnPlay, CSurf_OnRecord, CSurf_OnStop, and SetEditCurPos directly, maintaining sample-accurate alignment with REAPER's master audio engine.
 
-### 2.3 Timeline & Meter Displays
+### 2.3 Live Canvas Recording Playhead (v2.0.0-beta)
+
+Functions:
+- Signal-Red Playhead: During active recording, the score canvas displays a prominent **vivid red vertical sweep line** (`0xE74C3CFF`) capped with a red triangular pointer (`▼`) moving in real time across all staves.
+- Real-Time Auto-Scroll: The score canvas smoothly follows the live recording playhead position at 60 FPS, keeping upcoming measures and downbeats in view.
+- Real-Time Counter Tracking: The top bar measure/beat counter and elapsed time displays update continuously during recording.
+
+### 2.4 Pre-roll, Metronome Count-in & Track Arming (v2.0.0-beta)
+
+Functions:
+- Pre-roll on Record (Action 41818): Configurable toggle to audition preceding measures before recording punches in.
+- Pre-roll Bar Length: Select 1, 2, or 4 bars of pre-roll (synchronized with REAPER's `prerollmeas` configuration).
+- Count-in before Record (Action 40364): Audible metronome lead-in clicks before recording commences.
+- Metronome Quick-Settings: Instant button opening REAPER's native Metronome/Pre-roll Settings dialog (Action 40049).
+- Armed Track Red Badges: Tracks armed for recording in REAPER (`I_RECARM == 1`) display a red background tint, red outer border, red left stripe, and a high-visibility `● REC` badge in the score canvas.
+
+### 2.5 Auto-Quantize on Record Stop Engine (v2.0.0-beta)
+
+Functions:
+- Automatic Processing on Stop: Intercepts newly recorded MIDI takes on armed tracks the moment recording stops.
+- Key Bounce & Overlap Cleaning: Detects fast keyboard pre-bounces (< 15 ticks on identical pitch) and clamps overlapping note tails to 1 tick prior to the next onset.
+- Metric Grid Snapping within Tolerance: Snaps note onsets that land within a configurable tick tolerance (default: 1/8 note @ 25 ticks) mathematically onto the musical grid.
+- Outlier Handling: Choose how to handle notes deviating outside the tolerance radius:
+  - *Keep natural (unquantized)*: Preserves played micro-timing for organic expressive phrasing.
+  - *Delete outlier notes*: Removes accidental micro-notes or missed strikes outside the tolerance window.
+  - *Move to Voice 16*: Routes irregular notes to Voice 16 (MIDI channel 15) to keep the primary notation voice pristine.
+- Transactional Undo Safety: The entire operation is enclosed within a single REAPER undo transaction (`Undo_BeginBlock2`), allowing complete rollback with Ctrl+Z.
+
+### 2.6 Timeline & Meter Displays
 
 Functions:
 - Measure.Beat Display: Real-time read-out of playhead position in musical bars, beats, and quarter-note ticks (e.g. '004.01.00').
@@ -82,7 +113,7 @@ Functions:
 - BPM Indicator: Project master tempo at the current playhead position.
 DAW Effect: Evaluates TimeMap_GetTimeSigAtTime on every frame to mirror timeline accelerandos, ritardandos, and time signature changes.
 
-### 2.4 Audition Preview (Note Audio on Click)
+### 2.7 Audition Preview (Note Audio on Click)
 
 Functions:
 - Single-Note Audition: Clicking or vertically dragging any note on the canvas triggers an immediate acoustic preview sound, arbitrated to audition strictly the single hovered note even in dense chords or adjacent systems.
@@ -92,11 +123,11 @@ Functions:
 - Musical Minimum Duration: Short clicks sound for a minimum of 650 ms so that instrument attack transients, body, and acoustic room release tails ring out cleanly before Note-Off is dispatched.
 DAW Effect: Dispatches synchronized Bank Select, Program Change, CC controllers, and instantaneous MIDI Note-On / scheduled Note-Off events to the active track's virtual instrument synth without altering REAPER track record arming.
 
-### 2.5 Follow Playhead (Auto-Scroll)
+### 2.8 Follow Playhead (Auto-Scroll)
 
 Function: When active, the score canvas scrolls horizontally in real time to keep the active playback cursor centered in the viewport.
 
-### 2.6 View Mode Selector
+### 2.9 View Mode Selector
 
 Functions:
 - Auto: Automatically detects instrument clef based on track naming heuristics and pitch registers.
@@ -104,18 +135,18 @@ Functions:
 - Bass Only: Forces single F-clef staff rendering.
 - Grand Staff: Renders classic piano/harp grand staff (Treble upper, Bass lower) connected by curly brace.
 
-### 2.7 Track Picker & Visibility Filters
+### 2.10 Track Picker & Visibility Filters
 
 Function: Opens a multi-track routing popover allowing the user to select which REAPER tracks are currently visible, focused, or edited on the score canvas.
 
-### 2.8 Multi-Voice System & Auto-Voice Overlap Splitting
+### 2.11 Multi-Voice System & Auto-Voice Overlap Splitting
 
 Functions:
 - 16 Polyphonic Voices: Maps MIDI channels 0-15 to 16 distinct engraving colors with configurable ghost voice opacity (5% to 100%).
 - Auto-Voice: Intelligently analyzes the entire track for polyphonic overlaps and distributes them to channels 1-16.
 - Auto-Split on Selection: Splits selected chordal intervals across independent voices with automatic opposite stem orientations.
 
-### 2.9 Settings Modal & Unified Dark Mode Inversion
+### 2.12 Settings Modal & Unified Dark Mode Inversion
 
 Functions:
 - Collapsible Categorization: Settings are structured into 5 collapsible category headers (Theme & Appearance, Engraving & Notation, Audition & Playback, Shortcuts, and Advanced).

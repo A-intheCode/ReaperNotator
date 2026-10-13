@@ -24,6 +24,14 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
+- **Transport Recording Suite, Pre-roll & Auto-Quantize Engine (v2.0.0-beta)**:
+  - **Native Record Button**: Dedicated transport Record button located between Play and Stop in the top toolbar with live glowing red recording status (`🔴 REC`) and idle state (`⏺ Rec`).
+  - **Right-Click Configuration Modal**: Right-clicking the Record button opens a dedicated dialog for Pre-roll, Metronome Count-in, Track Record-Arming, and Auto-Quantize settings.
+  - **Live Canvas Recording Playhead**: Real-time signal-red playhead line with red triangular cap sweeping across all staves at 60 FPS with continuous auto-scroll during recording.
+  - **Track Record-Arming & Red Canvas Badges**: Checkboxes in the modal toggle track recording arming (`I_RECARM`); armed tracks are highlighted in the score canvas with red-tinted headers, red borders, and high-contrast `● REC` badges.
+  - **Pre-roll & Metronome Count-in Sync**: Integrated with REAPER's native Pre-roll (Action 41818), adjustable bar length (1, 2, 4 bars), Count-in (Action 40364), and quick-access button to REAPER's native Metronome/pre-roll settings dialog.
+  - **Auto-Quantize on Record Stop**: Automatically cleans and quantizes newly recorded takes upon stopping recording. Eliminates keyboard pre-bounces ($<15$ ticks), trims same-pitch overlaps, snaps onsets within configurable tick tolerance (default: 1/8 note @ 25 ticks), and provides flexible outlier handling (keep natural, delete outliers, or move to Voice 16).
+
 - **Filter Irregular Notes & Rhythmic Clean-Up (v1.9.9)**:
   - **Live-Recorded & Humanized MIDI Cleaner**: Detects micro-timing deviations that cause fractional rests and tied fragments in classical engraving.
   - **Subdivision & Triplet Metric Engine**: Tests note onsets against 1/1 through 1/32 subdivisions (and optional 1/12, 1/24, 1/48 triplets) across all time signature changes.

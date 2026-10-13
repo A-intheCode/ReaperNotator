@@ -880,7 +880,9 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
 end
 
 function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
-    local is_playing = (reaper.GetPlayState() == 1)
+    local play_state = reaper.GetPlayState()
+    local is_recording = (play_state & 4) == 4
+    local is_playing = (play_state & 1) == 1 or is_recording
     local draw_list = reaper.ImGui_GetWindowDrawList(ctx)
     if reaper.APIExists("ImGui_DrawList_GetFlags") and reaper.APIExists("ImGui_DrawList_SetFlags") then
         local dl_flags = reaper.ImGui_DrawList_GetFlags(draw_list)
@@ -926,7 +928,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local active_tracks_data = {}
     local max_proj_qn = 16 * 4.0
     local cur_time = reaper.GetCursorPosition()
-    local time_pos = is_playing and reaper.GetPlayPosition() or cur_time
+    local time_pos = (is_playing or is_recording) and reaper.GetPlayPosition() or cur_time
     
     local timesig_num, timesig_denom = reaper.TimeMap_GetTimeSigAtTime(0, time_pos)
     timesig_num = (timesig_num and timesig_num > 0) and timesig_num or 4
@@ -3909,18 +3911,35 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
                 
+                local is_rec_armed = tdata.track and reaper.ValidatePtr(tdata.track, "MediaTrack*") and (reaper.GetMediaTrackInfo_Value(tdata.track, "I_RECARM") == 1)
                 local is_focused = (state.focused_track == tdata.track)
-                local hdr_bg = is_focused and 0xFF9F1C28 or reaper_color_to_rgba(tdata.col, 0x24)
-                local border_col = is_focused and 0xFF9F1CFF or reaper_color_to_rgba(tdata.col, 0x88)
-                local border_thick = is_focused and (2.2 * s) or (1.2 * s)
+
+                local hdr_bg
+                local border_col
+                local border_thick
+
+                if is_rec_armed then
+                    hdr_bg = 0xE74C3C30
+                    border_col = 0xE74C3CFF
+                    border_thick = 2.4 * s
+                elseif is_focused then
+                    hdr_bg = 0xFF9F1C28
+                    border_col = 0xFF9F1CFF
+                    border_thick = 2.2 * s
+                else
+                    hdr_bg = reaper_color_to_rgba(tdata.col, 0x24)
+                    border_col = reaper_color_to_rgba(tdata.col, 0x88)
+                    border_thick = 1.2 * s
+                end
                 
                 -- Header background & border
                 reaper.ImGui_DrawList_AddRectFilled(draw_list, cur_hdr_x0, hdr_y0, cur_hdr_x1, hdr_y1, hdr_bg, 4)
                 reaper.ImGui_DrawList_AddRect(draw_list, cur_hdr_x0, hdr_y0, cur_hdr_x1, hdr_y1, border_col, 4, 0, border_thick)
                 
-                -- Left color bar (track color accent strip)
-                local stripe_w = is_focused and (6 * s) or (4 * s)
-                reaper.ImGui_DrawList_AddRectFilled(draw_list, cur_hdr_x0, hdr_y0, cur_hdr_x0 + stripe_w, hdr_y1, reaper_color_to_rgba(tdata.col, 0xFF), 2)
+                -- Left color bar (track color accent strip or Red when armed)
+                local stripe_w = (is_focused or is_rec_armed) and (6 * s) or (4 * s)
+                local stripe_col = is_rec_armed and 0xE74C3CFF or reaper_color_to_rgba(tdata.col, 0xFF)
+                reaper.ImGui_DrawList_AddRectFilled(draw_list, cur_hdr_x0, hdr_y0, cur_hdr_x0 + stripe_w, hdr_y1, stripe_col, 2)
                 
                 -- Track title with track number [1] Track Name (high-contrast & clean legibility)
                 local title_col = state.invert_mode and (is_focused and 0xFFFFFFFF or 0xEEEEEEFF) or (is_focused and 0x111111FF or 0x222222FF)
@@ -3928,6 +3947,18 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 if #d_name > 15 then d_name = d_name:sub(1, 13) .. ".." end
                 local trk_lbl = string.format("[%d] %s", tdata.idx, d_name)
                 reaper.ImGui_DrawList_AddText(draw_list, cur_hdr_x0 + stripe_w + 5 * s, hdr_y0 + 5 * s, title_col, trk_lbl)
+
+                -- Armed recording indicator pill badge [● REC]
+                if is_rec_armed then
+                    local badge_txt = "● REC"
+                    local bw, bh = 42 * s, 14 * s
+                    local bx1 = cur_hdr_x1 - 6 * s
+                    local bx0 = bx1 - bw
+                    local by0 = hdr_y0 + 5 * s
+                    local by1 = by0 + bh
+                    reaper.ImGui_DrawList_AddRectFilled(draw_list, bx0, by0, bx1, by1, 0xE74C3CEE, 3.0 * s)
+                    reaper.ImGui_DrawList_AddText(draw_list, bx0 + 4 * s, by0 + 1 * s, 0xFFFFFFFF, badge_txt)
+                end
                 
                 -- Subtitle: item count & clefs (muted gray)
                 local clef_lbl = (tdata.clef == "grand") and "Grand" or ((tdata.clef == "bass") and "Bass" or ((tdata.clef == "harp_3staff") and "Harp" or "Treble"))
@@ -4316,12 +4347,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     -- Vertical cursor line through all staves
     reaper.ImGui_DrawList_AddLine(draw_list, cur_cx, top_cap_y + tri_h - 1*s, cur_cx, bar_btm_y + 10 * s, cursor_col, 2.0 * s)
     
-    if is_playing then
+    if is_playing or is_recording then
         local play_time = reaper.GetPlayPosition()
         local play_qn = reaper.TimeMap2_timeToQN(0, play_time)
         local play_cx = Engraver.cursor_qn_to_canvas_x(play_qn, margin_left, s, qn_per_measure, measure_map)
-        local play_col = 0x2ECC71FF
-        local play_border = 0x27AE60FF
+        local play_col = is_recording and 0xE74C3CFF or 0x2ECC71FF
+        local play_border = is_recording and 0xC0392BFF or 0x27AE60FF
         reaper.ImGui_DrawList_AddTriangleFilled(draw_list, play_cx - tri_w, top_cap_y - 2*s, play_cx + tri_w, top_cap_y - 2*s, play_cx, top_cap_y - 2*s + tri_h, play_col)
         reaper.ImGui_DrawList_AddTriangle(draw_list, play_cx - tri_w, top_cap_y - 2*s, play_cx + tri_w, top_cap_y - 2*s, play_cx, top_cap_y - 2*s + tri_h, play_border, 1.2 * s)
         reaper.ImGui_DrawList_AddLine(draw_list, play_cx, top_cap_y - 2*s + tri_h - 1*s, play_cx, bar_btm_y + 12 * s, play_col, 2.2 * s)

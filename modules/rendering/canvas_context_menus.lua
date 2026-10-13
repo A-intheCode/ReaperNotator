@@ -28,7 +28,8 @@ local function get_qn_per_measure(state, qn_per_measure)
     end
     local cur_time = reaper.GetCursorPosition()
     local play_time = reaper.GetPlayPosition()
-    local is_playing = (reaper.GetPlayState() == 1)
+    local play_state = reaper.GetPlayState()
+    local is_playing = (play_state & 1) == 1 or (play_state & 4) == 4
     local time_pos = is_playing and play_time or cur_time
     local timesig_num, timesig_denom = reaper.TimeMap_GetTimeSigAtTime(0, time_pos)
     timesig_num = (timesig_num and timesig_num > 0) and timesig_num or 4
