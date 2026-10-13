@@ -1,15 +1,15 @@
-# REAPER-Notator v1.9.8 — Codebase & Library Statistics
+# REAPER-Notator v1.9.9-beta — Codebase & Library Statistics
 
-**Generated:** 2026-10-13 01:24
+**Generated:** 2026-10-13 17:43
 
 ## Executive Summary
 
-- **Version:** v1.9.8
+- **Version:** v1.9.9-beta
 - **Total Source Files:** 75 Lua files
-- **Total Line Count:** 56,807
-- **Executable Code Lines:** 47,832 (84.2%)
-- **Comments & Documentation:** 4,157 (7.3%)
-- **Blank / Formatting Lines:** 5,341 (9.4%)
+- **Total Line Count:** 56,946
+- **Executable Code Lines:** 47,944 (84.2%)
+- **Comments & Documentation:** 4,168 (7.3%)
+- **Blank / Formatting Lines:** 5,357 (9.4%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
@@ -20,11 +20,11 @@
 | `modules/services` | 28 | 29,455 | 25,138 | 1,805 | 2,645 | 85.3% |
 | `modules/rendering` | 7 | 12,062 | 10,256 | 753 | 1,105 | 85.0% |
 | `modules/ui` | 19 | 9,337 | 7,539 | 718 | 1,106 | 80.7% |
-| `modules` | 3 | 2,186 | 1,908 | 417 | 138 | 87.3% |
+| `modules` | 3 | 2,196 | 1,918 | 417 | 138 | 87.3% |
 | `modules/input` | 2 | 2,002 | 1,740 | 91 | 173 | 86.9% |
-| `Root` | 1 | 991 | 654 | 263 | 78 | 66.0% |
+| `Root` | 1 | 1,120 | 756 | 274 | 94 | 67.5% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **75** | **56,807** | **47,832** | **4,157** | **5,341** | **84.2%** |
+| **TOTAL** | **75** | **56,946** | **47,944** | **4,168** | **5,357** | **84.2%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
@@ -43,8 +43,8 @@
 | `modules/ui/settings_modal.lua` | modules/ui | 1,409 | 1,144 | 96 |
 | `modules/input/mouse_handler.lua` | modules/input | 1,319 | 1,157 | 50 |
 | `modules/services/dynamics_engine.lua` | modules/services | 1,275 | 1,128 | 45 |
-| `modules/state.lua` | modules | 1,132 | 980 | 199 |
-| `modules/services/clipboard_service.lua` | modules/services | 1,044 | 890 | 58 |
+| `modules/state.lua` | modules | 1,142 | 990 | 199 |
+| `reaper_native_notator.lua` | Root | 1,120 | 756 | 274 |
 
 ## 3. Specialized Orchestral & Engraving Services (`modules/services`)
 

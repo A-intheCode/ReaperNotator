@@ -728,6 +728,11 @@ function State:load_settings()
     self.nav_zoom_mouse     = load_str("nav_zoom_mouse", "wheel_v")
     self.scroll_invert_h    = load_bool("scroll_invert_h", false)
     self.scroll_invert_v    = load_bool("scroll_invert_v", false)
+    self.is_maximized       = load_bool("is_maximized", false)
+    self.prev_win_x         = load_num("prev_win_x", 100)
+    self.prev_win_y         = load_num("prev_win_y", 60)
+    self.prev_win_w         = load_num("prev_win_w", 1280)
+    self.prev_win_h         = load_num("prev_win_h", 720)
     -- Backward compatibility aliases
     self.scroll_factor         = self.scroll_factor_h
     self.scroll_mod_horizontal = self.nav_scroll_h_key
@@ -917,6 +922,11 @@ function State.save_settings(self)
     save_val("nav_zoom_mouse", self.nav_zoom_mouse or "wheel_v")
     save_val("scroll_invert_h", self.scroll_invert_h == true)
     save_val("scroll_invert_v", self.scroll_invert_v == true)
+    save_val("is_maximized", self.is_maximized == true)
+    save_val("prev_win_x", math.floor(self.prev_win_x or 100))
+    save_val("prev_win_y", math.floor(self.prev_win_y or 60))
+    save_val("prev_win_w", math.floor(self.prev_win_w or 1280))
+    save_val("prev_win_h", math.floor(self.prev_win_h or 720))
     -- Backward compatibility saves
     save_val("scroll_mod_horizontal", self.nav_scroll_h_key or "shift")
     save_val("scroll_mod_vertical", self.nav_scroll_v_key or "none")

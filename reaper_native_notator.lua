@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.8
+-- @version 1.9.9-beta
 -- @changelog
+--   + v1.9.9-beta: Laptop HiDPI Window Geometry Fix, Startup Freeze Prevention & Reaticulate Dependency Verification:
+--             - Laptop HiDPI Window Placement: Replaced raw physical pixel desktop work area queries (reaper.my_getViewport) with ReaImGui logical coordinates (ImGui_GetWindowViewport / ImGui_GetMainViewport). Eliminates 1.25x-1.5x coordinate blowout and window sliding halfway down the display on laptops with HiDPI display scaling.
+--             - Responsive Laptop Bounds: Dynamically clamps window minimum size to display work area (math.min(1280, math.max(640, vw - 20))), preventing oversized minimum constraints from overflowing sub-720p screens.
+--             - Window Maximization & Restore Persistence: Window maximization state (is_maximized) and previous non-maximized bounds (prev_win_x/y/w/h) are now saved and loaded via ExtState, keeping Lua state 100% synchronized with imgui.ini and eliminating the double-F11 requirement.
+--             - Startup Freeze Prevention: Fixed missing reaper.ImGui_End(ctx) when the window opened minimized, collapsed, or off-screen (visible == false). ImGui_End is now strictly called on every frame, preserving the ImGui context stack and preventing startup freezes.
+--             - Startup Dependency Check System: Automatically verifies ReaImGui and Reaticulate before entering the main notation loop. If Reaticulate is missing, an authentic dark-mode modal displays repository details, a 1-click clipboard copy button (https://reaticulate.com/index.xml), step-by-step ReaPack installation instructions, and an interactive 'Check Again & Launch' button.
 --   + v1.9.8: Official Production Release - Metric Consolidation of Tied Chains & Full-Measure Engraving (Elaine Gould compliant):
 --             - Tied-Chain Pre-Consolidation: Notes connected by ties across multiple measures are consolidated prior to visual decomposition. Full measures (e.g. 4.0 QN in 4/4) automatically engrave as Whole Notes (Semibreves) per Behind Bars p. 166, eliminating fragmented tied half notes inside the measure.
 --             - Seamless Barline Ties: Automatic generation of cross-barline tie arcs entering and exiting whole notes across adjacent measures.
@@ -226,12 +232,15 @@ end
 
 -- 2. ReaImGui initialization & version check
 if not reaper.APIExists("ImGui_CreateContext") then
-    reaper.MB(
-        "ReaImGui is not installed or not loaded!\n\n" ..
-        "Please install ReaImGui via ReaPack:\n" ..
-        "Extensions -> ReaPack -> Browse packages -> search and install 'ReaImGui'.",
-        "REAPER Native Notator - Error", 0
-    )
+    local err_msg = "ReaImGui is required for REAPER Notator to run!\n\n" ..
+        "How to install ReaImGui:\n" ..
+        "1. Open REAPER: Extensions -> ReaPack -> Browse packages\n" ..
+        "2. Search for 'ReaImGui' (by cfillion)\n" ..
+        "3. Right-click 'ReaImGui: Dear ImGui for Cockos REAPER' -> Install\n" ..
+        "4. Click 'Apply' in the bottom right corner of ReaPack and restart REAPER.\n\n" ..
+        "Official ReaPack Repository URL:\n" ..
+        "https://github.com/cfillion/reapack-index/raw/master/index.xml"
+    reaper.MB(err_msg, "REAPER Notator - Missing Dependency: ReaImGui", 0)
     return
 end
 
@@ -246,6 +255,7 @@ end
 -- 3. Load modules
 local Constants           = require("constants")
 local State               = require("state")
+local PathService         = require("services.path_service")
 local MidiService         = require("services.midi_service")
 local ClipboardService    = require("services.clipboard_service")
 local DynamicsEngine      = require("services.dynamics_engine")
@@ -312,6 +322,8 @@ GlissandoService.load_glissandos(state)
 MidiService.cleanup_orphaned_score_elements(state)
 PatternService.init()
 local fonts = FontManager.init(ctx, state)
+local initial_dep_status = PathService.detect_status(state)
+local reaticulate_installed = initial_dep_status.reaticulate_found
 
 reaper.atexit(function()
     AudioPreview.stop_all(state)
@@ -404,22 +416,12 @@ local function loop()
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FrameRounding(),  4.0)
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(),    8.0, 6.0)
     
-    -- Determine multi-monitor work area (excluding taskbars) for window positioning
+    -- Determine multi-monitor work area (excluding taskbars) for window positioning in ReaImGui logical coordinates
     local function get_screen_work_area(wx, wy, ww, wh)
-        -- 1. REAPER native my_getViewport (reliably detects all OS monitors via window center)
-        if reaper.my_getViewport and wx and wy and ww and wh then
-            local cx = wx + math.floor(ww / 2)
-            local cy = wy + math.floor(wh / 2)
-            local l, t, r, b = reaper.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, 1)
-            if l and t and r and b and (r - l) > 300 and (b - t) > 300 then
-                return l, t, (r - l), (b - t)
-            end
-        end
-        
-        -- 2. ReaImGui GetWindowViewport
+        -- 1. ReaImGui GetWindowViewport (returns logical coordinates for current window)
         if reaper.APIExists("ImGui_GetWindowViewport") then
-            local wvp = reaper.ImGui_GetWindowViewport(ctx)
-            if wvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
+            local ok, wvp = pcall(reaper.ImGui_GetWindowViewport, ctx)
+            if ok and wvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
                 local x, y = reaper.ImGui_Viewport_GetWorkPos(wvp)
                 local w, h = reaper.ImGui_Viewport_GetWorkSize(wvp)
                 if w and w > 300 and h and h > 300 then
@@ -428,7 +430,7 @@ local function loop()
             end
         end
         
-        -- 3. Fallback: GetMainViewport
+        -- 2. Fallback: GetMainViewport (returns logical coordinates for primary monitor/viewport)
         if reaper.APIExists("ImGui_GetMainViewport") then
             local mvp = reaper.ImGui_GetMainViewport(ctx)
             if mvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
@@ -437,6 +439,16 @@ local function loop()
                 if w and w > 300 and h and h > 300 then
                     return x, y, w, h
                 end
+            end
+        end
+
+        -- 3. Fallback: REAPER native my_getViewport (physical pixels fallback)
+        if reaper.my_getViewport and wx and wy and ww and wh then
+            local cx = wx + math.floor(ww / 2)
+            local cy = wy + math.floor(wh / 2)
+            local l, t, r, b = reaper.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, 1)
+            if l and t and r and b and (r - l) > 300 and (b - t) > 300 then
+                return l, t, (r - l), (b - t)
             end
         end
         
@@ -463,7 +475,7 @@ local function loop()
             state.status_msg = "Window maximized on current display"
         else
             state.just_restored = true
-            state.status_msg = "Window size restored (16:9)"
+            state.status_msg = "Window size restored"
         end
         state.request_maximize_toggle = false
     end
@@ -472,24 +484,31 @@ local function loop()
         reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
         reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
     else
-        -- Enforce minimum size of at least 1280x720 (if not maximized)
+        -- Enforce responsive minimum size: at least 640x480, bounded by screen work area
+        local min_w = math.min(1280, math.max(640, vw - 20))
+        local min_h = math.min(720, math.max(480, vh - 20))
         if reaper.APIExists("ImGui_SetNextWindowSizeConstraints") then
-            reaper.ImGui_SetNextWindowSizeConstraints(ctx, 1280, 720, 16384, 16384)
+            reaper.ImGui_SetNextWindowSizeConstraints(ctx, min_w, min_h, 16384, 16384)
         end
         
         if state.just_restored then
-            local rw = math.max(1280, state.prev_win_w or 1280)
-            local rh = math.max(720, math.floor(rw * 9 / 16 + 0.5))
-            if rw > vw then rw = vw; rh = math.floor(rw * 9 / 16 + 0.5) end
-            if rh > vh then rh = vh; rw = math.floor(rh * 16 / 9 + 0.5) end
+            local target_rw = state.prev_win_w or 1280
+            local target_rh = state.prev_win_h or 720
+            if target_rw >= (vw - 20) or target_rh >= (vh - 20) then
+                -- Window was nearly maximized or bigger than available screen, scale to 85% of screen
+                target_rw = math.floor(vw * 0.85 + 0.5)
+                target_rh = math.floor(vh * 0.85 + 0.5)
+            end
+            local rw = math.max(min_w, math.min(vw, target_rw))
+            local rh = math.max(min_h, math.min(vh, target_rh))
             
             local rx = vx + math.floor((vw - rw) / 2)
             local ry = vy + math.floor((vh - rh) / 2)
             
-            -- If previous position was on this monitor, preserve this position
+            -- If previous position was on this monitor and valid, preserve it
             if state.prev_win_x and state.prev_win_y then
-                if state.prev_win_x >= vx and state.prev_win_x < (vx + vw - 100) and
-                   state.prev_win_y >= vy and state.prev_win_y < (vy + vh - 100) then
+                if state.prev_win_x >= vx and (state.prev_win_x + rw) <= (vx + vw) and
+                   state.prev_win_y >= vy and (state.prev_win_y + rh) <= (vy + vh) then
                     rx = state.prev_win_x
                     ry = state.prev_win_y
                 end
@@ -504,7 +523,7 @@ local function loop()
             reaper.ImGui_SetNextWindowSize(ctx, rw, rh, reaper.ImGui_Cond_Always())
             state.just_restored = false
         else
-            reaper.ImGui_SetNextWindowSize(ctx, 1280, 720, reaper.ImGui_Cond_FirstUseEver())
+            reaper.ImGui_SetNextWindowSize(ctx, min_w, min_h, reaper.ImGui_Cond_FirstUseEver())
         end
     end
     
@@ -564,24 +583,6 @@ local function loop()
                 state.prev_win_y = win_y
             end
         end
-        
-        -- Maximize/Restore Button [🗖] / [🗗] directly in titlebar left of [X]
-        local cur_scr_x, cur_scr_y = reaper.ImGui_GetCursorScreenPos(ctx)
-        reaper.ImGui_SetCursorScreenPos(ctx, win_x + win_w - 52, win_y + 3)
-        reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FramePadding(), 2.0, 1.0)
-        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x00000000)
-        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0xFFFFFF22)
-        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(), 0xFFFFFF44)
-        local title_btn_lbl = state.is_maximized and "🗗##TitleMax" or "🗖##TitleMax"
-        if reaper.ImGui_Button(ctx, title_btn_lbl, 22, 18) then
-            state.request_maximize_toggle = true
-        end
-        if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, state.is_maximized and "Restore (F11)" or "Maximize (F11)")
-        end
-        reaper.ImGui_PopStyleColor(ctx, 3)
-        reaper.ImGui_PopStyleVar(ctx, 1)
-        reaper.ImGui_SetCursorScreenPos(ctx, cur_scr_x, cur_scr_y)
         
         -- Double click title bar toggles maximize
         if reaper.ImGui_IsMouseDoubleClicked(ctx, 0) and my >= win_y and my <= (win_y + 26) and mx >= win_x and mx <= (win_x + win_w - 60) then
@@ -970,9 +971,9 @@ local function loop()
             bottom_flags = bottom_flags | reaper.ImGui_WindowFlags_NoMove()
         end
         BottomBar.render(ctx, state, bottom_bar_h, child_border, bottom_flags)
-        
-        reaper.ImGui_End(ctx)
     end
+    
+    reaper.ImGui_End(ctx)
     
     reaper.ImGui_PopStyleVar(ctx, 3)
     reaper.ImGui_PopStyleColor(ctx, 7)
@@ -987,5 +988,133 @@ local function loop()
     end
 end
 
--- Start application
-reaper.defer(loop)
+-- ==============================================================================
+-- 6. Dependency Check Loop (Reaticulate Verification before Full Launch)
+-- ==============================================================================
+local function dependency_check_loop()
+    if not state.is_open then return end
+    if reaper.APIExists("ImGui_ValidatePtr") and not reaper.ImGui_ValidatePtr(ctx, "ImGui_Context*") then return end
+
+    -- Authentic dark pro styling for setup modal
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_WindowBg(),       0x151619FF)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ChildBg(),        0x1E2025FF)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Border(),         0x2A2D35FF)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(),         0x282B33FF)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(),  0xE67E22FF)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(),   0xFF9F1CFF)
+    reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(),           0xF0F0F0FF)
+    
+    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_WindowRounding(), 6.0)
+    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FrameRounding(),  4.0)
+    reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(),    8.0, 6.0)
+
+    -- Center window on main viewport
+    local mvp = reaper.APIExists("ImGui_GetMainViewport") and reaper.ImGui_GetMainViewport(ctx)
+    if mvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
+        local vx, vy = reaper.ImGui_Viewport_GetWorkPos(mvp)
+        local vw, vh = reaper.ImGui_Viewport_GetWorkSize(mvp)
+        local win_w, win_h = 620, 420
+        local win_x = vx + math.floor((vw - win_w) / 2)
+        local win_y = vy + math.floor((vh - win_h) / 2)
+        reaper.ImGui_SetNextWindowPos(ctx, win_x, win_y, reaper.ImGui_Cond_Appearing())
+        reaper.ImGui_SetNextWindowSize(ctx, win_w, win_h, reaper.ImGui_Cond_Appearing())
+    end
+
+    local dep_flags = reaper.ImGui_WindowFlags_NoCollapse()
+    if reaper.APIExists("ImGui_WindowFlags_NoDocking") then
+        dep_flags = dep_flags | reaper.ImGui_WindowFlags_NoDocking()
+    end
+
+    local visible, open = reaper.ImGui_Begin(ctx, "REAPER Notator - Missing Dependency: Reaticulate###DepCheck", true, dep_flags)
+    state.is_open = open
+
+    if visible then
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0xFF9F1CFF)
+        reaper.ImGui_Text(ctx, "⚠ MISSING REQUIRED DEPENDENCY: REATICULATE")
+        reaper.ImGui_PopStyleColor(ctx)
+        reaper.ImGui_Separator(ctx)
+        reaper.ImGui_Spacing(ctx)
+
+        reaper.ImGui_TextWrapped(ctx, 
+            "REAPER Notator requires 'Reaticulate' to handle orchestral articulation banks, " ..
+            "keyswitches, and playback performance. Reaticulate was not found in your REAPER " ..
+            "installation directory (Data/Reaticulate.reabank or Scripts/Reaticulate)."
+        )
+        reaper.ImGui_Spacing(ctx)
+        reaper.ImGui_Separator(ctx)
+        reaper.ImGui_Spacing(ctx)
+
+        reaper.ImGui_Text(ctx, "Required ReaPack Repository URL:")
+        local reat_repo_url = "https://reaticulate.com/index.xml"
+        reaper.ImGui_PushItemWidth(ctx, 420)
+        reaper.ImGui_InputText(ctx, "##repo_url", reat_repo_url, reaper.ImGui_InputTextFlags_ReadOnly())
+        reaper.ImGui_PopItemWidth(ctx)
+        reaper.ImGui_SameLine(ctx, 0, 8)
+
+        if reaper.ImGui_Button(ctx, "📋 Copy Repository URL", 160, 24) then
+            if reaper.APIExists("ImGui_SetClipboardText") then
+                reaper.ImGui_SetClipboardText(ctx, reat_repo_url)
+            elseif reaper.CF_SetClipboard then
+                reaper.CF_SetClipboard(reat_repo_url)
+            end
+            state._dep_copied_time = reaper.time_precise()
+        end
+
+        if state._dep_copied_time and (reaper.time_precise() - state._dep_copied_time) < 4.0 then
+            reaper.ImGui_TextColored(ctx, 0x2ECC71FF, "✓ Repository URL copied to clipboard! Paste it into ReaPack.")
+        else
+            reaper.ImGui_Spacing(ctx)
+        end
+
+        reaper.ImGui_Spacing(ctx)
+        reaper.ImGui_Text(ctx, "Installation steps:")
+        reaper.ImGui_BulletText(ctx, "1. Open REAPER menu: Extensions -> ReaPack -> Manage repositories...")
+        reaper.ImGui_BulletText(ctx, "2. Click 'Import/commit repository...' and paste the URL (Ctrl+V).")
+        reaper.ImGui_BulletText(ctx, "3. In REAPER: Extensions -> ReaPack -> Browse packages...")
+        reaper.ImGui_BulletText(ctx, "4. Search for 'Reaticulate', right-click -> Install, then click 'Apply'.")
+        
+        reaper.ImGui_Spacing(ctx)
+        reaper.ImGui_Separator(ctx)
+        reaper.ImGui_Spacing(ctx)
+
+        if reaper.ImGui_Button(ctx, "🔄 Check Again & Launch", 200, 32) then
+            local check_stat = PathService.detect_status(state)
+            if check_stat.reaticulate_found then
+                local ReaticulateParser = require("services.reaticulate_parser")
+                ReaticulateParser.reload_all_banks(state)
+                reaticulate_installed = true
+                reaper.ImGui_End(ctx)
+                reaper.ImGui_PopStyleVar(ctx, 3)
+                reaper.ImGui_PopStyleColor(ctx, 7)
+                reaper.defer(loop)
+                return
+            else
+                state._dep_not_found_time = reaper.time_precise()
+            end
+        end
+
+        if state._dep_not_found_time and (reaper.time_precise() - state._dep_not_found_time) < 4.0 then
+            reaper.ImGui_SameLine(ctx, 0, 10)
+            reaper.ImGui_TextColored(ctx, 0xE74C3CFF, "✗ Still not detected. Please verify 'Apply' was clicked in ReaPack.")
+        end
+
+        reaper.ImGui_SameLine(ctx, 0, 14)
+        if reaper.ImGui_Button(ctx, "Exit", 80, 32) then
+            state.is_open = false
+        end
+    end
+    reaper.ImGui_End(ctx)
+    reaper.ImGui_PopStyleVar(ctx, 3)
+    reaper.ImGui_PopStyleColor(ctx, 7)
+
+    if state.is_open then
+        reaper.defer(dependency_check_loop)
+    end
+end
+
+-- Start application: verify dependencies first
+if reaticulate_installed then
+    reaper.defer(loop)
+else
+    reaper.defer(dependency_check_loop)
+end
