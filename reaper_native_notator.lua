@@ -1,12 +1,14 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.9-beta.8
+-- @version 1.9.9
 -- @changelog
---   + v1.9.9-beta.8: Multi-Monitor Window Position & Maximization Persistence Across Sessions:
---             - Multi-Monitor Coordinate & Screen Work Area Persistence: Window position, dimensions, and screen work area are now continuously tracked and persisted to REAPER ExtState (cur_win_x, cur_win_y, cur_win_w, cur_win_h, and is_maximized).
---             - Reopen Placement on Target Screen: When closing Reaper Notator on a secondary monitor (e.g. right screen) either maximized or floating, reopening reliably restores to that exact monitor and bounds without jumping back to the primary display.
---             - Robust HiDPI Multi-Monitor Translation: Screen queries convert logical ImGui coordinates to native OS coordinates before querying reaper.my_getViewport, and back via ImGui_PointConvertNative, properly handling different display scalings.
---             - Real-Time Debounced ExtState Sync: Window geometry is saved as soon as window dragging or resizing ceases, guaranteeing persistent placement even after sudden project switches or restarts.
+--   + v1.9.9: Official Production Release - Irregular Note Filtering, Multi-Monitor Window Management & Polyphonic Rests:
+--             - Multi-Monitor Window Position & Maximization Persistence: Automatically saves and restores exact window coordinates, dimensions, monitor target, and maximization state across sessions. Supports secondary/right monitors and mixed HiDPI display scalings.
+--             - Filter Irregular Notes Feature: Dedicated modal dialog under Tools Drawer to detect and isolate unquantized/humanized recorded MIDI notes with adjustable tolerance (0-50 ticks), triplet detection, yellow score canvas highlight preview, and regular note ghosting.
+--             - Dedicated Action Buttons: Distinct 'Select Notes' (visual inspection without voice changes) and 'Reassign to Voice' (batch voice assignment to Voice 16 / custom voice).
+--             - Polyphonic Rest Consolidation & Gould Compliance: Centered shared rests for simultaneous rests across voices, inactive voice rest suppression, and strict cross-voice note collision prevention.
+--             - Laptop HiDPI Window Placement & Startup Freeze Prevention: Clamped minimum constraints and strict ImGui_End context handling.
+--             - Startup Dependency Check: Automatic verification of ReaImGui and Reaticulate with 1-click installer dialog.
 --   + v1.9.9-beta.4: Maximize Screen Bounds Fix & Modals Always-On-Top Layering:
 --             - Window Maximize & Center Restore Fix: Eliminated viewport self-reference shrinking loop in get_screen_work_area. Maximize now cleanly expands to the full display work area using ImGui_GetMainViewport and reaper.my_getViewport with PointConvertNative. Restoring now accurately centers the window in the middle of the display.
 --             - Modals Always-On-Top Layering (TopMost): All utility and tools dialogs (Quantize, Filter Irregular Notes, Divisio Vocum, Scale Transposition, MusicXML, Articulation Banks, Settings, and Help) now render with ImGui_WindowFlags_TopMost and active window focus, ensuring they strictly stay in the foreground in front of the score canvas even when clicking notes or timeline.
