@@ -71,6 +71,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
 
     if reaper.ImGui_Button(ctx, rec_text .. "##TopBarRecord", 72, 28) then
         if is_recording then
+            state._last_rec_play_pos = reaper.GetPlayPosition()
             reaper.CSurf_OnStop()
         else
             local RecordQuantizeService = package.loaded["services.record_quantize_service"] or require("services.record_quantize_service")
@@ -93,6 +94,9 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     reaper.ImGui_SameLine(ctx)
 
     if reaper.ImGui_Button(ctx, "⏹ Stop", 65, 28) then
+        if is_recording then
+            state._last_rec_play_pos = reaper.GetPlayPosition()
+        end
         reaper.CSurf_OnStop()
     end
 

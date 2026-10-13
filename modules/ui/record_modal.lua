@@ -483,6 +483,7 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0xE74C3CFF)
         if reaper.ImGui_Button(ctx, rec_btn_text .. "##ModalRecBtn", 190, 32) then
             if is_recording then
+                state._last_rec_play_pos = reaper.GetPlayPosition()
                 reaper.CSurf_OnStop()
             else
                 RecordQuantizeService.on_record_start(state)

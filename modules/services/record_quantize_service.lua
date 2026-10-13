@@ -166,12 +166,15 @@ function RecordQuantizeService.set_track_armed(state, trk, armed)
     end
 end
 
---- Prepares all armed tracks right when recording starts
+RecordQuantizeService._pre_existing_notes = {}
+
+--- Prepares all armed tracks right when recording starts and snapshots existing notes
 --- @param state table
 function RecordQuantizeService.on_record_start(state)
     RecordQuantizeService.clear_live_recording()
     RecordQuantizeService._realtime_take_counts = {}
     RecordQuantizeService._processed_note_sigs = {}
+    RecordQuantizeService._pre_existing_notes = {}
 
     if reaper.APIExists("MIDI_GetRecentInputEvent") then
         local seq = reaper.MIDI_GetRecentInputEvent(0)
@@ -198,6 +201,33 @@ function RecordQuantizeService.on_record_start(state)
         local fallback_trk = (state and state.focused_track) or reaper.GetSelectedTrack(0, 0) or reaper.GetTrack(0, 0)
         if fallback_trk and reaper.ValidatePtr(fallback_trk, "MediaTrack*") then
             RecordQuantizeService.set_track_armed(state, fallback_trk, true)
+        end
+    end
+
+    -- Snapshot pre-existing notes on all armed tracks so we only quantize newly recorded notes
+    for ti = 0, trk_cnt - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1 then
+            local it_cnt = reaper.CountTrackMediaItems(trk)
+            for ii = 0, it_cnt - 1 do
+                local it = reaper.GetTrackMediaItem(trk, ii)
+                local take = it and reaper.GetActiveTake(it)
+                if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+                    local tk_key = tostring(take)
+                    local pre_map = {}
+                    local _, notecnt = reaper.MIDI_CountEvts(take)
+                    for ni = 0, notecnt - 1 do
+                        local ok, _, _, sppq, eppq, chan, pitch = reaper.MIDI_GetNote(take, ni)
+                        if ok then
+                            local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+                            local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
+                            local sig = string.format("%d_%d_%d", pitch, math.floor(sqn * 960 + 0.5), chan)
+                            pre_map[sig] = eqn
+                        end
+                    end
+                    RecordQuantizeService._pre_existing_notes[tk_key] = pre_map
+                end
+            end
         end
     end
 
@@ -276,7 +306,9 @@ local function evaluate_note_quantization(state, raw_sqn, raw_dur_qn)
     end
 end
 
---- Polls incoming MIDI events in real time AND quantizes active takes live during Direct Recording
+--- Polls incoming MIDI events in real time for non-destructive live quantization preview on ScoreCanvas.
+--- NOTE: Never calls MIDI_SetNote/MIDI_Sort on REAPER takes while recording is active, because mutating
+--- a take while keys are held down in MIDI Overdub mode bakes unclosed Note-Ons to the end of the item!
 --- @param state table
 function RecordQuantizeService.update_live_recording(state)
     local play_state = reaper.GetPlayState()
@@ -332,7 +364,10 @@ function RecordQuantizeService.update_live_recording(state)
 
                 local ev_qn = play_qn
                 if ev.proj_pos and ev.proj_pos > 0 then
-                    ev_qn = math.max(0, reaper.TimeMap2_timeToQN(0, ev.proj_pos))
+                    local pqn = reaper.TimeMap2_timeToQN(0, ev.proj_pos)
+                    if pqn and pqn >= 0 and math.abs(pqn - play_qn) <= 4.0 then
+                        ev_qn = pqn
+                    end
                 end
 
                 if status == 0x90 and vel > 0 then
@@ -340,7 +375,8 @@ function RecordQuantizeService.update_live_recording(state)
                     local prev_held = RecordQuantizeService._held_notes[pitch]
                     if prev_held then
                         prev_held.is_held = false
-                        local raw_d = math.max(0.125, ev_qn - prev_held.start_qn)
+                        local clamped_end = math.min(play_qn, math.max(prev_held.raw_start_qn + 0.05, ev_qn))
+                        local raw_d = math.max(0.125, clamped_end - prev_held.start_qn)
                         if prev_held.is_snapped and state and state.rec_auto_quantize ~= false then
                             raw_d = math.max(eff_grid, math.floor((raw_d / eff_grid) + 0.5) * eff_grid)
                         end
@@ -410,7 +446,8 @@ function RecordQuantizeService.update_live_recording(state)
                     local held = RecordQuantizeService._held_notes[pitch]
                     if held then
                         held.is_held = false
-                        local raw_d = math.max(0.125, ev_qn - held.start_qn)
+                        local clamped_end = math.min(play_qn + 0.05, math.max(held.raw_start_qn + 0.05, ev_qn))
+                        local raw_d = math.max(0.125, clamped_end - held.start_qn)
                         if held.is_snapped and state and state.rec_auto_quantize ~= false then
                             raw_d = math.max(eff_grid, math.floor((raw_d / eff_grid) + 0.5) * eff_grid)
                         end
@@ -423,7 +460,7 @@ function RecordQuantizeService.update_live_recording(state)
         end
     end
 
-    -- Dynamically extend currently held notes up to the live recording playhead
+    -- Dynamically extend currently held notes up to the live recording playhead (strictly bounded by play_qn)
     for _, held in pairs(RecordQuantizeService._held_notes) do
         if held and held.is_held then
             local raw_d = math.max(min_step_qn, play_qn - held.start_qn)
@@ -434,20 +471,35 @@ function RecordQuantizeService.update_live_recording(state)
             held.end_qn = held.start_qn + raw_d
         end
     end
-
-    -- Real-time quantization of notes already flushed into active MIDI takes by REAPER (MIDI Overdub)
-    if state and state.rec_auto_quantize ~= false then
-        RecordQuantizeService.quantize_takes_realtime(state, play_pos)
-    end
 end
 
---- Returns merged note list (existing take notes + live preview notes) for a track during recording
+local function is_note_pre_existing(take, pitch, sqn, chan, min_rec_qn)
+    if take then
+        local pre_map = RecordQuantizeService._pre_existing_notes[tostring(take)]
+        if pre_map then
+            local tick_key = math.floor(sqn * 960 + 0.5)
+            for dt = -2, 2 do
+                local sig = string.format("%d_%d_%d", pitch, tick_key + dt, chan or 0)
+                if pre_map[sig] ~= nil then
+                    return true
+                end
+            end
+            return false
+        end
+    end
+    if min_rec_qn and sqn < (min_rec_qn - 0.15) then
+        return true
+    end
+    return false
+end
+
+--- Returns merged note list (pre-existing take notes + real-time quantized session notes) for a track during recording
 --- @param state table
 --- @param tdata table Track data entry in ScoreCanvas
 --- @return table merged_notes, number max_live_qn
 function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
     local base_notes = (tdata and tdata.notes) or {}
-    if not state or state.rec_live_preview == false then
+    if not state then
         return base_notes, 0
     end
     if (reaper.GetPlayState() & 4) ~= 4 then
@@ -459,54 +511,158 @@ function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
     if reaper.GetMediaTrackInfo_Value(tdata.track, "I_RECARM") ~= 1 then
         return base_notes, 0
     end
-    if #RecordQuantizeService._live_notes == 0 then
-        return base_notes, 0
-    end
+
+    local play_pos = reaper.GetPlayPosition()
+    local play_qn = math.max(0, reaper.TimeMap2_timeToQN(0, play_pos))
+    local start_time = (state and state._rec_start_time) or 0
+    local min_rec_qn = reaper.TimeMap2_timeToQN(0, start_time)
+    local eff_grid = get_effective_grid_qn(state)
+    local min_step_qn = (state and state.rec_auto_quantize ~= false) and eff_grid or math.min(0.25, eff_grid)
+    local clean_overlaps = (not state) or (state.rec_clean_overlaps ~= false)
 
     local is_midi, trk_dev, trk_chan = RecordQuantizeService.decode_midi_recinput(
         reaper.GetMediaTrackInfo_Value(tdata.track, "I_RECINPUT")
     )
 
     local merged = {}
-    for _, n in ipairs(base_notes) do
-        table.insert(merged, n)
-    end
-
+    local session_notes = {}
     local max_live_qn = 0
-    for idx, ln in ipairs(RecordQuantizeService._live_notes) do
-        local dev_ok = (not is_midi) or (trk_dev == 63) or (trk_dev == 62) or (ln.dev_idx == nil) or (ln.dev_idx == trk_dev)
-        local chan_ok = (not is_midi) or (trk_chan == 0) or ((ln.chan + 1) == trk_chan) or (ln.chan == 15)
 
-        if dev_ok and chan_ok then
-            local already_in_take = false
-            for _, tn in ipairs(base_notes) do
-                if tn.pitch == ln.pitch and (math.abs(tn.start_qn - ln.start_qn) < 0.20 or math.abs(tn.start_qn - ln.raw_start_qn) < 0.20) then
-                    tn.is_live_recording = true
-                    already_in_take = true
-                    break
+    -- 1. Separate pre-existing notes from newly recorded session notes in base_notes (MIDI Overdub)
+    for idx, n in ipairs(base_notes) do
+        if is_note_pre_existing(n.take, n.pitch, n.start_qn, n.chan, min_rec_qn) then
+            table.insert(merged, n)
+        else
+            -- This note was added into the take by REAPER during the current recording session!
+            -- While a key is still held down in MIDI Overdub mode, REAPER temporarily sets n.end_qn
+            -- to the end of the entire MIDI item. Strictly clamp its live end to play_qn!
+            local is_still_held = (n.end_qn > play_qn + 0.08)
+            if not is_still_held then
+                -- REAPER has already closed this note with a Note-Off; make sure _held_notes is also closed
+                local held = RecordQuantizeService._held_notes[n.pitch]
+                if held and math.abs(held.raw_start_qn - n.start_qn) < 0.25 then
+                    held.is_held = false
+                    RecordQuantizeService._held_notes[n.pitch] = nil
                 end
             end
 
-            if not already_in_take then
-                local preview_note = MidiNote.new({
-                    idx = -1000 - idx,
-                    pitch = ln.pitch,
-                    start_qn = ln.start_qn,
-                    end_qn = ln.end_qn,
-                    dur_qn = ln.dur_qn,
-                    vel = ln.vel or 96,
-                    chan = ln.chan or 0,
-                    take = nil,
-                    item = nil,
+            local raw_eqn = is_still_held and math.max(n.start_qn + min_step_qn, play_qn) or math.min(n.end_qn, play_qn + 0.05)
+            local raw_dur = math.max(0.05, raw_eqn - n.start_qn)
+            local q_res = evaluate_note_quantization(state, n.start_qn, raw_dur)
+
+            if q_res.action ~= "delete" then
+                local q_sqn = q_res.sqn
+                local q_dur = q_res.dur_qn
+                local q_eqn = q_sqn + q_dur
+                local q_chan = q_res.chan_override or n.chan or 0
+
+                local live_copy = MidiNote.new({
+                    idx = n.idx or (-2000 - idx),
+                    pitch = n.pitch,
+                    start_qn = q_sqn,
+                    end_qn = q_eqn,
+                    dur_qn = q_dur,
+                    vel = n.vel or 96,
+                    chan = q_chan,
+                    take = n.take,
+                    item = n.item,
                     track = tdata.track
                 })
-                preview_note.is_live_recording = true
-                preview_note.is_held = ln.is_held
-                table.insert(merged, preview_note)
-                if ln.end_qn > max_live_qn then
-                    max_live_qn = ln.end_qn
+                live_copy.raw_start_qn = n.start_qn
+                live_copy.is_live_recording = true
+                live_copy.is_held = is_still_held
+                table.insert(session_notes, live_copy)
+                if q_eqn > max_live_qn then
+                    max_live_qn = q_eqn
                 end
             end
+        end
+    end
+
+    -- 2. Include live input preview notes that haven't been flushed to base_notes yet
+    if state.rec_live_preview ~= false then
+        for idx, ln in ipairs(RecordQuantizeService._live_notes) do
+            local dev_ok = (not is_midi) or (trk_dev == 63) or (trk_dev == 62) or (ln.dev_idx == nil) or (ln.dev_idx == trk_dev)
+            local chan_ok = (not is_midi) or (trk_chan == 0) or ((ln.chan + 1) == trk_chan) or (ln.chan == 15)
+
+            if dev_ok and chan_ok then
+                local already_in_take = false
+                for _, bn in ipairs(base_notes) do
+                    if bn.pitch == ln.pitch and (math.abs(bn.start_qn - ln.start_qn) < 0.22 or math.abs(bn.start_qn - ln.raw_start_qn) < 0.22) then
+                        already_in_take = true
+                        break
+                    end
+                end
+
+                if not already_in_take then
+                    local clamped_eqn = math.min(ln.end_qn, math.max(ln.start_qn + min_step_qn, play_qn + eff_grid))
+                    local clamped_dur = math.max(min_step_qn, clamped_eqn - ln.start_qn)
+                    local preview_note = MidiNote.new({
+                        idx = -1000 - idx,
+                        pitch = ln.pitch,
+                        start_qn = ln.start_qn,
+                        end_qn = clamped_eqn,
+                        dur_qn = clamped_dur,
+                        vel = ln.vel or 96,
+                        chan = ln.chan or 0,
+                        take = nil,
+                        item = nil,
+                        track = tdata.track
+                    })
+                    preview_note.raw_start_qn = ln.raw_start_qn
+                    preview_note.is_live_recording = true
+                    preview_note.is_held = ln.is_held
+                    table.insert(session_notes, preview_note)
+                    if clamped_eqn > max_live_qn then
+                        max_live_qn = clamped_eqn
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3. Clean bounces (<15 ticks) and same-pitch overlaps on session_notes
+    if clean_overlaps and #session_notes > 1 then
+        table.sort(session_notes, function(a, b)
+            local as = a.raw_start_qn or a.start_qn or 0
+            local bs = b.raw_start_qn or b.start_qn or 0
+            if math.abs(as - bs) > 0.001 then return as < bs end
+            return (a.pitch or 0) < (b.pitch or 0)
+        end)
+        local by_pitch = {}
+        for _, sn in ipairs(session_notes) do
+            by_pitch[sn.pitch] = by_pitch[sn.pitch] or {}
+            table.insert(by_pitch[sn.pitch], sn)
+        end
+        for _, p_list in pairs(by_pitch) do
+            for k = 1, #p_list - 1 do
+                local n1 = p_list[k]
+                local n2 = p_list[k + 1]
+                if not n1._drop and not n2._drop then
+                    local raw_s1 = n1.raw_start_qn or n1.start_qn
+                    local raw_s2 = n2.raw_start_qn or n2.start_qn
+                    if math.abs(raw_s2 - raw_s1) * 960.0 < 15.0 then
+                        if (n2.vel or 96) > (n1.vel or 96) then
+                            n1._drop = true
+                        else
+                            n2._drop = true
+                        end
+                    elseif n1.end_qn > n2.start_qn then
+                        if n2.start_qn <= n1.start_qn + 0.02 then
+                            n1._drop = true
+                        else
+                            n1.end_qn = n2.start_qn
+                            n1.dur_qn = n1.end_qn - n1.start_qn
+                        end
+                    end
+                end
+            end
+        end
+    end
+
+    for _, sn in ipairs(session_notes) do
+        if not sn._drop then
+            table.insert(merged, sn)
         end
     end
 
@@ -521,7 +677,7 @@ function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
 end
 
 -- ==============================================================================
--- 3. REAL-TIME & POST-RECORD TAKE QUANTIZATION ENGINE
+-- 3. POST-RECORD TAKE QUANTIZATION & INFINITE-NOTE CLAMPING ENGINE
 -- ==============================================================================
 
 --- Resolves all MIDI takes recorded during the session on armed tracks
@@ -572,26 +728,23 @@ function RecordQuantizeService.get_recorded_takes(state, start_time, stop_time)
     return takes
 end
 
---- Core quantization pass on a single take (used both live during Direct Recording and on Record Stop)
+--- Core quantization pass on a single take when recording stops
 --- @param state table
 --- @param take userdata MediaItem_Take*
 --- @param min_rec_qn number Minimum QN where current recording started
---- @param is_realtime boolean True when running live during recording
+--- @param max_rec_qn number Maximum QN where current recording stopped
 --- @return number notecnt, number snapped, number cleaned, number outliers, boolean modified
-local function quantize_single_take(state, take, min_rec_qn, is_realtime)
+local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
     local eff_grid = get_effective_grid_qn(state)
-    local tolerance_ticks = state.rec_tolerance_ticks or 25
-    local clean_overlaps = (state.rec_clean_overlaps ~= false)
-    local outlier_mode = state.rec_outlier_mode or "keep"
+    local do_quantize = (not state) or (state.rec_auto_quantize ~= false)
+    local tolerance_ticks = (state and state.rec_tolerance_ticks) or 25
+    local clean_overlaps = (not state) or (state.rec_clean_overlaps ~= false)
+    local outlier_mode = (state and state.rec_outlier_mode) or "keep"
 
     local _, notecnt = reaper.MIDI_CountEvts(take)
     if notecnt == 0 then
         return 0, 0, 0, 0, false
     end
-
-    local tk_key = tostring(take)
-    RecordQuantizeService._processed_note_sigs[tk_key] = RecordQuantizeService._processed_note_sigs[tk_key] or {}
-    local proc_map = RecordQuantizeService._processed_note_sigs[tk_key]
 
     local notes = {}
     for i = 0, notecnt - 1 do
@@ -599,8 +752,8 @@ local function quantize_single_take(state, take, min_rec_qn, is_realtime)
         if ok then
             local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
             local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
-            local in_session = (not min_rec_qn) or (sqn >= min_rec_qn - 0.25)
-            local sig = string.format("%d_%d_%d", pitch, sppq, chan)
+            local pre_existing = is_note_pre_existing(take, pitch, sqn, chan, min_rec_qn)
+            local in_session = (not pre_existing) and ((not min_rec_qn) or (sqn >= min_rec_qn - 0.25)) and ((not max_rec_qn) or (sqn <= max_rec_qn + 0.5))
             table.insert(notes, {
                 idx = i,
                 sel = sel,
@@ -613,7 +766,6 @@ local function quantize_single_take(state, take, min_rec_qn, is_realtime)
                 pitch = pitch,
                 vel = vel,
                 in_session = in_session,
-                already_processed = (is_realtime and proc_map[sig] == true) or false,
                 action = "keep"
             })
         end
@@ -624,56 +776,65 @@ local function quantize_single_take(state, take, min_rec_qn, is_realtime)
     local outlier_cnt = 0
     local any_modified = false
 
-    -- 1. Metric Grid Snapping & Outlier Handling (for notes in current recording session)
+    -- 1. Clamp any unclosed/infinite session notes to max_rec_qn & apply Metric Grid Snapping + Outlier Handling
     for _, n in ipairs(notes) do
-        if n.in_session and not n.already_processed and n.action ~= "delete" then
-            local orig_dur_qn = math.max(0.05, n.eqn - n.sqn)
-            local _, qn_measure_start, _ = reaper.TimeMap_QNToMeasures(0, n.sqn)
-            local rel_qn = n.sqn - qn_measure_start
-            local nearest_k = math.floor((rel_qn / eff_grid) + 0.5)
-            local nearest_grid_qn = qn_measure_start + (nearest_k * eff_grid)
-            local diff_ticks = math.abs(n.sqn - nearest_grid_qn) * 960.0
-            if diff_ticks < 0.05 then diff_ticks = 0.0 end
+        if n.in_session and n.action ~= "delete" then
+            -- Strict guard: a note recorded in this session can NEVER end past max_rec_qn (where recording stopped)!
+            if max_rec_qn and n.eqn > max_rec_qn + 0.10 then
+                n.eqn = math.max(n.sqn + eff_grid, max_rec_qn)
+                n.eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n.eqn) + 0.5)
+                n.action = "modify"
+                any_modified = true
+            end
 
-            if diff_ticks <= (tolerance_ticks + 0.05) then
-                local new_sqn = math.max(0, nearest_grid_qn)
-                local snapped_dur = math.max(eff_grid, math.floor((orig_dur_qn / eff_grid) + 0.5) * eff_grid)
-                local new_eqn = new_sqn + snapped_dur
-                local new_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_sqn) + 0.5)
-                local new_eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_eqn) + 0.5)
+            if do_quantize then
+                local orig_dur_qn = math.max(0.05, n.eqn - n.sqn)
+                local _, qn_measure_start, _ = reaper.TimeMap_QNToMeasures(0, n.sqn)
+                local rel_qn = n.sqn - qn_measure_start
+                local nearest_k = math.floor((rel_qn / eff_grid) + 0.5)
+                local nearest_grid_qn = qn_measure_start + (nearest_k * eff_grid)
+                local diff_ticks = math.abs(n.sqn - nearest_grid_qn) * 960.0
+                if diff_ticks < 0.05 then diff_ticks = 0.0 end
 
-                if new_sppq ~= n.sppq or new_eppq ~= n.eppq then
-                    n.sppq = new_sppq
-                    n.eppq = new_eppq
-                    n.sqn = new_sqn
-                    n.eqn = new_eqn
-                    n.action = "modify"
-                    any_modified = true
-                end
-                snapped_cnt = snapped_cnt + 1
-                proc_map[string.format("%d_%d_%d", n.pitch, n.sppq, n.chan)] = true
-            else
-                if outlier_mode == "delete" then
-                    n.action = "delete"
-                    any_modified = true
-                    outlier_cnt = outlier_cnt + 1
-                elseif outlier_mode == "voice16" then
-                    if n.chan ~= 15 then
-                        n.chan = 15
+                if diff_ticks <= (tolerance_ticks + 0.05) then
+                    local new_sqn = math.max(0, nearest_grid_qn)
+                    local snapped_dur = math.max(eff_grid, math.floor((orig_dur_qn / eff_grid) + 0.5) * eff_grid)
+                    local new_eqn = new_sqn + snapped_dur
+                    if max_rec_qn and new_eqn > max_rec_qn + eff_grid then
+                        new_eqn = math.max(new_sqn + eff_grid, math.floor((max_rec_qn / eff_grid) + 0.5) * eff_grid)
+                    end
+                    local new_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_sqn) + 0.5)
+                    local new_eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_eqn) + 0.5)
+
+                    if new_sppq ~= n.sppq or new_eppq ~= n.eppq then
+                        n.sppq = new_sppq
+                        n.eppq = new_eppq
+                        n.sqn = new_sqn
+                        n.eqn = new_eqn
                         n.action = "modify"
                         any_modified = true
                     end
-                    outlier_cnt = outlier_cnt + 1
-                    proc_map[string.format("%d_%d_%d", n.pitch, n.sppq, n.chan)] = true
+                    snapped_cnt = snapped_cnt + 1
                 else
-                    proc_map[string.format("%d_%d_%d", n.pitch, n.sppq, n.chan)] = true
+                    if outlier_mode == "delete" then
+                        n.action = "delete"
+                        any_modified = true
+                        outlier_cnt = outlier_cnt + 1
+                    elseif outlier_mode == "voice16" then
+                        if n.chan ~= 15 then
+                            n.chan = 15
+                            n.action = "modify"
+                            any_modified = true
+                        end
+                        outlier_cnt = outlier_cnt + 1
+                    end
                 end
             end
         end
     end
 
     -- 2. Group notes by pitch to resolve keyboard bounce (<15 ticks) & same-pitch overlaps
-    if clean_overlaps then
+    if do_quantize and clean_overlaps then
         local by_pitch = {}
         for _, n in ipairs(notes) do
             if n.in_session and n.action ~= "delete" then
@@ -726,32 +887,7 @@ local function quantize_single_take(state, take, min_rec_qn, is_realtime)
     return notecnt, snapped_cnt, cleaned_cnt, outlier_cnt, any_modified
 end
 
---- Runs real-time quantization on active MIDI takes whenever REAPER writes new notes during Direct Recording
-function RecordQuantizeService.quantize_takes_realtime(state, play_pos)
-    local start_time = (state and state._rec_start_time) or 0
-    local min_rec_qn = reaper.TimeMap2_timeToQN(0, start_time)
-    local takes = RecordQuantizeService.get_recorded_takes(state, start_time, (play_pos or reaper.GetPlayPosition()) + 2.0)
-
-    local any_take_changed = false
-    for _, take in ipairs(takes) do
-        local _, notecnt = reaper.MIDI_CountEvts(take)
-        local prev_cnt = RecordQuantizeService._realtime_take_counts[take]
-        if prev_cnt ~= notecnt then
-            local _, _, _, _, modified = quantize_single_take(state, take, min_rec_qn, true)
-            local _, after_cnt = reaper.MIDI_CountEvts(take)
-            RecordQuantizeService._realtime_take_counts[take] = after_cnt
-            if modified then
-                any_take_changed = true
-            end
-        end
-    end
-
-    if any_take_changed then
-        MidiService.invalidate_cache()
-    end
-end
-
---- Final quantization pass when recording stops
+--- Final quantization & note-end clamping pass when recording stops
 --- @param state table
 --- @param start_time number
 --- @param stop_time number
@@ -760,11 +896,6 @@ function RecordQuantizeService.process_recording(state, start_time, stop_time)
     RecordQuantizeService.clear_live_recording()
     RecordQuantizeService._realtime_take_counts = {}
     RecordQuantizeService._processed_note_sigs = {}
-
-    if state.rec_auto_quantize == false then
-        MidiService.invalidate_cache()
-        return { total_notes = 0, snapped = 0, cleaned = 0, outliers_handled = 0 }
-    end
 
     local takes = RecordQuantizeService.get_recorded_takes(state, start_time, stop_time)
     if #takes == 0 then
@@ -775,11 +906,16 @@ function RecordQuantizeService.process_recording(state, start_time, stop_time)
     end
 
     if #takes == 0 then
+        RecordQuantizeService._pre_existing_notes = {}
         MidiService.invalidate_cache()
         return { total_notes = 0, snapped = 0, cleaned = 0, outliers_handled = 0 }
     end
 
     local min_rec_qn = start_time and reaper.TimeMap2_timeToQN(0, start_time) or 0
+    local max_rec_qn = stop_time and reaper.TimeMap2_timeToQN(0, stop_time) or nil
+    if max_rec_qn and max_rec_qn < min_rec_qn then
+        max_rec_qn = nil
+    end
 
     reaper.Undo_BeginBlock2(0)
 
@@ -789,7 +925,7 @@ function RecordQuantizeService.process_recording(state, start_time, stop_time)
     local total_outliers = 0
 
     for _, take in ipairs(takes) do
-        local n_cnt, s_cnt, c_cnt, o_cnt = quantize_single_take(state, take, min_rec_qn, false)
+        local n_cnt, s_cnt, c_cnt, o_cnt = quantize_single_take(state, take, min_rec_qn, max_rec_qn)
         total_notes = total_notes + n_cnt
         total_snapped = total_snapped + s_cnt
         total_cleaned = total_cleaned + c_cnt
@@ -798,6 +934,7 @@ function RecordQuantizeService.process_recording(state, start_time, stop_time)
 
     reaper.Undo_EndBlock2(0, "Real-Time Auto-Quantize Recorded MIDI", -1)
 
+    RecordQuantizeService._pre_existing_notes = {}
     MidiService.invalidate_cache()
 
     local stats = {
@@ -807,7 +944,7 @@ function RecordQuantizeService.process_recording(state, start_time, stop_time)
         outliers_handled = total_outliers
     }
 
-    if total_notes > 0 then
+    if state and state.rec_auto_quantize ~= false and total_notes > 0 then
         state.status_msg = string.format("⚡ Real-Time Auto-Quantize: %d notes processed (%d snapped to %s, %d overlaps cleaned)",
             total_notes, total_snapped, state.rec_quantize_grid_label or "1/8", total_cleaned)
     end
