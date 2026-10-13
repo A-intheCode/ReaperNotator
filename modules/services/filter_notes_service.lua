@@ -163,7 +163,8 @@ function FilterNotesService.scan(state, opts, active_tracks_data)
         irregular_count = 0,
         already_in_target_voice = 0,
         notes_by_take = {},
-        irregular_notes = {}
+        irregular_notes = {},
+        lookup = {}
     }
 
     local is_sel_scope = (scope == "selection")
@@ -216,6 +217,15 @@ function FilterNotesService.scan(state, opts, active_tracks_data)
                                 stats.notes_by_take[take] = { track = tgt.track, notes = {} }
                             end
                             table.insert(stats.notes_by_take[take].notes, note_info)
+
+                            local tk_str = tostring(take)
+                            stats.lookup[tk_str .. "_" .. ni] = true
+                            stats.lookup[tk_str .. "_" .. ni .. "_" .. pitch] = true
+                            local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+                            stats.lookup[tk_str .. "_" .. pitch .. "_" .. string.format("%.2f", sqn)] = true
+                            stats.lookup[tk_str .. "_" .. pitch .. "_" .. string.format("%.3f", sqn)] = true
+                            stats.lookup["any_" .. pitch .. "_" .. string.format("%.2f", sqn)] = true
+                            stats.lookup["any_" .. pitch .. "_" .. string.format("%.3f", sqn)] = true
                         end
                     end
                 end

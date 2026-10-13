@@ -434,6 +434,8 @@ function State.new()
         filter_irregular_include_triplets = false,
         filter_irregular_also_mute = false,
         filter_irregular_also_select = false,
+        filter_irregular_preview = true,          -- Live yellow highlight preview on score canvas
+        filter_irregular_preview_map = nil,
 
         -- Measure repeat marks (Simile %, repeat1Bar)
         repeat_marks = {},

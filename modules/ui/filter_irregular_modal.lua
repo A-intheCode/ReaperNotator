@@ -24,6 +24,7 @@ end
 function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_data)
     if not state.show_filter_irregular_modal then
         cached_stats = nil
+        state.filter_irregular_preview_map = nil
         return
     end
 
@@ -38,12 +39,13 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         state.focus_filter_irregular_modal = nil
     end
 
-    reaper.ImGui_SetNextWindowSize(ctx, 500, 520, reaper.ImGui_Cond_FirstUseEver())
+    reaper.ImGui_SetNextWindowSize(ctx, 500, 540, reaper.ImGui_Cond_FirstUseEver())
     local s_vis, s_open = reaper.ImGui_Begin(ctx, "🔍 Filter irregular Notes###FilterIrregularModalWindow", true, flags)
 
     if not s_open then
         state.show_filter_irregular_modal = false
         cached_stats = nil
+        state.filter_irregular_preview_map = nil
     end
 
     if s_vis then
@@ -55,6 +57,13 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
 
         local stats = cached_stats or { total_items = 0, total_notes = 0, irregular_count = 0, already_in_target_voice = 0 }
         local target_voice = state.filter_irregular_target_voice or 16
+
+        -- Synchronize live yellow preview map on score canvas
+        if state.filter_irregular_preview ~= false and stats and stats.lookup then
+            state.filter_irregular_preview_map = stats.lookup
+        else
+            state.filter_irregular_preview_map = nil
+        end
 
         -- ------------------------------------------------------------------
         -- 1. LIVE STATUS HEADER
@@ -71,6 +80,11 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         if reaper.ImGui_SmallButton(ctx, "↻ Refresh##RefreshScan") then
             cached_stats = FilterNotesService.scan(state, nil, active_tracks_data)
             last_scan_sig = make_scan_signature(state)
+            if state.filter_irregular_preview ~= false and cached_stats and cached_stats.lookup then
+                state.filter_irregular_preview_map = cached_stats.lookup
+            else
+                state.filter_irregular_preview_map = nil
+            end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Rescan MIDI takes in scope.")
@@ -210,8 +224,22 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         reaper.ImGui_Spacing(ctx)
 
         -- ------------------------------------------------------------------
-        -- 6. ADDITIONAL OPTIONS
+        -- 6. ADDITIONAL OPTIONS & PREVIEW
         -- ------------------------------------------------------------------
+        local prev_active = (state.filter_irregular_preview ~= false)
+        local chg_prev, new_prev = reaper.ImGui_Checkbox(ctx, "Preview irregular notes in yellow on canvas##PrevCb", prev_active)
+        if chg_prev then
+            state.filter_irregular_preview = new_prev
+            if new_prev and stats and stats.lookup then
+                state.filter_irregular_preview_map = stats.lookup
+            else
+                state.filter_irregular_preview_map = nil
+            end
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Highlights all detected irregular notes with a vivid yellow notehead and glow directly on the score canvas before reassigning.")
+        end
+
         local mute_opt = state.filter_irregular_also_mute or false
         local chg_mute, new_mute = reaper.ImGui_Checkbox(ctx, "Mute irregular notes after moving##MuteCb", mute_opt)
         if chg_mute then state.filter_irregular_also_mute = new_mute end
@@ -240,6 +268,11 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
             local moved = FilterNotesService.apply(state, nil, active_tracks_data)
             cached_stats = FilterNotesService.scan(state, nil, active_tracks_data)
             last_scan_sig = make_scan_signature(state)
+            if state.filter_irregular_preview ~= false and cached_stats and cached_stats.lookup then
+                state.filter_irregular_preview_map = cached_stats.lookup
+            else
+                state.filter_irregular_preview_map = nil
+            end
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
 
@@ -251,6 +284,7 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         if reaper.ImGui_Button(ctx, "Close##CloseFilterModal", 100, 32) then
             state.show_filter_irregular_modal = false
             cached_stats = nil
+            state.filter_irregular_preview_map = nil
         end
     end
 

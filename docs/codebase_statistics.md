@@ -1,15 +1,15 @@
-# REAPER-Notator v1.9.9-beta.4 — Codebase & Library Statistics
+# REAPER-Notator v1.9.9-beta.5 — Codebase & Library Statistics
 
-**Generated:** 2026-10-13 19:52
+**Generated:** 2026-10-13 20:02
 
 ## Executive Summary
 
-- **Version:** v1.9.9-beta.4
+- **Version:** v1.9.9-beta.5
 - **Total Source Files:** 77 Lua files
-- **Total Line Count:** 57,741
-- **Executable Code Lines:** 48,555 (84.1%)
-- **Comments & Documentation:** 4,264 (7.4%)
-- **Blank / Formatting Lines:** 5,450 (9.4%)
+- **Total Line Count:** 57,818
+- **Executable Code Lines:** 48,627 (84.1%)
+- **Comments & Documentation:** 4,266 (7.4%)
+- **Blank / Formatting Lines:** 5,454 (9.4%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
@@ -17,21 +17,21 @@
 
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `modules/services` | 29 | 29,767 | 25,379 | 1,842 | 2,679 | 85.3% |
-| `modules/rendering` | 7 | 12,160 | 10,339 | 762 | 1,111 | 85.0% |
-| `modules/ui` | 20 | 9,692 | 7,816 | 745 | 1,157 | 80.6% |
-| `modules` | 3 | 2,207 | 1,927 | 423 | 139 | 87.3% |
+| `modules/services` | 29 | 29,777 | 25,388 | 1,842 | 2,680 | 85.3% |
+| `modules/rendering` | 7 | 12,191 | 10,369 | 762 | 1,112 | 85.1% |
+| `modules/ui` | 20 | 9,726 | 7,847 | 746 | 1,159 | 80.7% |
+| `modules` | 3 | 2,209 | 1,929 | 424 | 139 | 87.3% |
 | `modules/input` | 2 | 2,005 | 1,743 | 91 | 173 | 86.9% |
 | `Root` | 1 | 1,136 | 754 | 291 | 95 | 66.4% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **77** | **57,741** | **48,555** | **4,264** | **5,450** | **84.1%** |
+| **TOTAL** | **77** | **57,818** | **48,627** | **4,266** | **5,454** | **84.1%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
 | File | Module | Lines | Code | Comments |
 | :--- | :--- | :---: | :---: | :---: |
 | `modules/services/midi_service.lua` | modules/services | 5,994 | 5,226 | 241 |
-| `modules/rendering/score_canvas.lua` | modules/rendering | 4,513 | 3,909 | 216 |
+| `modules/rendering/score_canvas.lua` | modules/rendering | 4,544 | 3,939 | 216 |
 | `modules/rendering/engraver.lua` | modules/rendering | 3,161 | 2,693 | 246 |
 | `modules/services/slur_service.lua` | modules/services | 2,357 | 2,037 | 119 |
 | `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,204 | 1,913 | 105 |
@@ -43,7 +43,7 @@
 | `modules/ui/settings_modal.lua` | modules/ui | 1,420 | 1,154 | 96 |
 | `modules/input/mouse_handler.lua` | modules/input | 1,319 | 1,157 | 50 |
 | `modules/services/dynamics_engine.lua` | modules/services | 1,275 | 1,128 | 45 |
-| `modules/state.lua` | modules | 1,153 | 999 | 205 |
+| `modules/state.lua` | modules | 1,155 | 1,001 | 206 |
 | `reaper_native_notator.lua` | Root | 1,136 | 754 | 291 |
 
 ## 3. Specialized Orchestral & Engraving Services (`modules/services`)

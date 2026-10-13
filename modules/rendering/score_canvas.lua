@@ -2353,19 +2353,50 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
                 local note_v = (n.chan or 0) + 1
                 
-                if vn.is_ghost_voice then
-                    if (state.voice_color_mode ~= false) and note_v > 1 then
-                        head_col = (Constants.get_voice_color(note_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
-                    else
-                        head_col = global_ghost_col
+                local is_irregular_preview = false
+                if state.filter_irregular_preview and state.filter_irregular_preview_map and n then
+                    local pmap = state.filter_irregular_preview_map
+                    local tk_str = tostring(n.take)
+                    if (n.idx and pmap[tk_str .. "_" .. n.idx]) or
+                       (n.idx and n.pitch and pmap[tk_str .. "_" .. n.idx .. "_" .. n.pitch]) or
+                       (n.pitch and n.start_qn and (pmap[tk_str .. "_" .. n.pitch .. "_" .. string.format("%.2f", n.start_qn)] or
+                                                   pmap[tk_str .. "_" .. n.pitch .. "_" .. string.format("%.3f", n.start_qn)] or
+                                                   pmap["any_" .. n.pitch .. "_" .. string.format("%.2f", n.start_qn)] or
+                                                   pmap["any_" .. n.pitch .. "_" .. string.format("%.3f", n.start_qn)])) then
+                        is_irregular_preview = true
+                    elseif vn.chain_notes then
+                        for _, cn in ipairs(vn.chain_notes) do
+                            local cn_tk_str = tostring(cn.take)
+                            if (cn.idx and pmap[cn_tk_str .. "_" .. cn.idx]) or
+                               (cn.idx and cn.pitch and pmap[cn_tk_str .. "_" .. cn.idx .. "_" .. cn.pitch]) or
+                               (cn.pitch and cn.start_qn and (pmap[cn_tk_str .. "_" .. cn.pitch .. "_" .. string.format("%.2f", cn.start_qn)] or
+                                                             pmap[cn_tk_str .. "_" .. cn.pitch .. "_" .. string.format("%.3f", cn.start_qn)] or
+                                                             pmap["any_" .. cn.pitch .. "_" .. string.format("%.2f", cn.start_qn)] or
+                                                             pmap["any_" .. cn.pitch .. "_" .. string.format("%.3f", cn.start_qn)])) then
+                                is_irregular_preview = true
+                                break
+                            end
+                        end
                     end
-                elseif is_sel then
+                end
+
+                if is_sel then
                     head_col = state.is_dragging and 0x88888855 or Constants.COLORS.selection_gold
                     if not state.is_dragging then
                         reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, 8.5*s, Constants.COLORS.selection_border, 0, 2.5*s)
                         if (state.voice_color_mode ~= false) and note_v > 1 then
                             reaper.ImGui_DrawList_AddCircleFilled(draw_list, nx, ny, 3.8*s, Constants.get_voice_color(note_v, state.invert_mode))
                         end
+                    end
+                elseif is_irregular_preview then
+                    head_col = is_hov and Constants.COLORS.hover_orange or 0xF1C40FFF
+                    reaper.ImGui_DrawList_AddCircleFilled(draw_list, nx, ny, 9.5*s, 0xF1C40F44)
+                    reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, 8.5*s, 0xD4AC0DFF, 0, 2.0*s)
+                elseif vn.is_ghost_voice then
+                    if (state.voice_color_mode ~= false) and note_v > 1 then
+                        head_col = (Constants.get_voice_color(note_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                    else
+                        head_col = global_ghost_col
                     end
                 elseif state.marquee_active and (nx >= mrx0 - 8*s and nx <= mrx1 + 8*s and ny >= mry0 - 8*s and ny <= mry1 + 8*s) then
                     head_col = 0xF39C12FF
