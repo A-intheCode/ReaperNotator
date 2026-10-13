@@ -24,6 +24,14 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
+- **Filter Irregular Notes & Rhythmic Clean-Up (v1.9.9)**:
+  - **Live-Recorded & Humanized MIDI Cleaner**: Detects micro-timing deviations that cause fractional rests and tied fragments in classical engraving.
+  - **Subdivision & Triplet Metric Engine**: Tests note onsets against 1/1 through 1/32 subdivisions (and optional 1/12, 1/24, 1/48 triplets) across all time signature changes.
+  - **Live Canvas Yellow Highlighting & Ghosting**: Real-time gold/yellow (`#FFD700`) preview on the score canvas with optional dimming/ghosting of regular notes for effortless visual inspection.
+  - **Dual Execution Modes**: Non-destructively select irregular notes (`🔍 Select Notes`) or reassign them cleanly to a secondary background voice (`⚡ Reassign to Voice`, default Voice 16 / MIDI Ch 15).
+  - **Multi-Monitor Window Geometry & Maximization Memory**: Relaunches seamlessly on secondary or ultra-wide monitors without coordinate drift, with top-level modal Z-ordering and instant maximize/restore state persistence.
+  - **Gould Polyphonic Rest Consolidation**: Automatically consolidates co-occurring identical rests across polyphonic voices into a single centered rest with vertical collision avoidance.
+
 - **Integrated Multi-Lane MIDI Editor Suite (v1.8.0)**:
   - **Synchronized Drawer Architecture**: Interactive bottom drawer with live bidirectional synchronization between the score notation canvas and REAPER's active MIDI takes.
   - **Velocity Stalks & Flag Handles**: Authentic REAPER-style velocity stalks with interactive flag handles (*"Fähnchen"*), realtime acoustic auditioning on vertical drag, and freehand pencil drawing (`✏ Draw`).

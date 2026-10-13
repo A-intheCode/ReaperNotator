@@ -1,6 +1,6 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
-**Version:** 1.9.9-beta.7  
+**Version:** 1.9.9  
 **Date:** 2026-10-13  
 **License:** GNU General Public License v3.0  
 
@@ -52,13 +52,19 @@ The user interface is designed around an ergonomic three-column layout:
 
 REAPER-Notator can run as a floating window or docked directly into any REAPER docker (bottom, top, left, right, or multi-tabbed). The score canvas dynamically scales according to the zoom factor (adjustable from 0.6x to 2.0x), preserving crisp vector typography at all DPI scaling factors.
 
+#### Multi-Monitor Window State Persistence (v1.9.9)
+- **Automatic Display Coordinate Memory**: REAPER-Notator automatically persists its exact window bounds $(X, Y, W, H)$ and maximization state (`wnd_maximized`) across sessions in global and project ExtState.
+- **Secondary Display Positioning**: When positioned on secondary, tertiary, or ultra-wide monitors (including negative or offset virtual screen coordinates, e.g. a second monitor placed to the left or right of the main display), REAPER-Notator restores its exact placement upon re-opening without jumping back to the primary display.
+- **One-Click Maximize / Restore**: The top toolbar features an integrated `Maximize` / `Restore` toggle button. Clicking `Maximize` expands the window cleanly to fill the active monitor's work area (respecting OS taskbars and scaling) without coordinate drift or window shrinkage. Clicking `Restore` brings the window back to its previous floating geometry.
+- **In-Front Modal Dialog Architecture**: All secondary dialogs and tools modals (Filter Irregular Notes, Quantize, Divisio Vocum, Fix of Last Resort) maintain top-level Z-order above the score canvas (`ImGui_WindowFlags_TopMost`), preventing background clicks on the score canvas from hiding active configuration dialogs.
+
 ---
 
 ## Chapter 2: Top Toolbar & Global Navigation
 
 ### 2.1 Title & Version Indicator
 
-Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v1.9.9-beta.7). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
+Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v1.9.9). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
 
 ### 2.2 Transport & Playhead Controls
 
@@ -520,6 +526,7 @@ Functions: Classical pause and hold articulation across all staves:
 Functions: Fast editing actions consolidated in the right-hand Tools drawer:
 - Make Notes Legato: Extends note durations to adjacent note downbeats for seamless cantabile phrasing.
 - Auto Voice & Auto Voice on Selection: Polyphonic splitting of selected chords into upper Voice 1 (stems up) and lower Voice 2 (stems down).
+- Filter Irregular Notes: Dedicated cleaning and reorganization tool for humanized and live-recorded MIDI tracks. Accurately identifies notes whose onset times deviate from standard metric divisions (whole to 32nd notes, with optional triplet support) outside a configurable tick tolerance. Includes real-time yellow canvas highlighting, regular-note dimming/ghosting, and dual actions: non-destructive note selection or reassignment to a target voice (e.g. Voice 16).
 - Divisio Vocum (Voice Distribution): Distributes multi-voice chords from a single track vertically across the visible tracks displayed below in the score viewport (e.g. from Violin 1 down through Contrabass). Features an interactive context modal with live routing preview, target voice count (2-16), chord detection tolerance (5-100 ms), and bass voice gap-filling.
 - Arpeggio Strums: Realistic harp, guitar, and piano roll simulation. In accordance with classical music engraving standards, noteheads remain strictly vertically aligned on the chord downbeat under a single unified stem, while a wavy arpeggio line is engraved to the left with automatic clearance for accidentals. Playback micro-strumming adaptively scales with note length (e.g. 8-16 ticks for 16th notes up to 30 ticks for sustained chords) to prevent beat spillover, and 'Snap to Grid / Remove Arpeggio' instantly restores notes to the chord downbeat.
 - Quantize Tools: Integrated triplet, swing, and 1/4 through 1/64 grid snapping directly inside the Tools drawer.
@@ -552,7 +559,55 @@ DAW Execution, Articulation & Sound Bank Bridging:
 - Intelligent Articulation & Reaticulate Bridging: Preserves SMuFL note-level articulations (Staccato, Accent, Tenuto, Marcato, etc.) and queries each destination track's Reaticulate sound bank to output the corresponding Bank Select (CC0/CC32) and Program Change events tailored to each instrument.
 - Transactional Undo Safety: The entire multi-track distribution operation is enclosed in a single REAPER undo transaction (Undo_BeginBlock2), ensuring immediate, complete rollback with Ctrl+Z.
 
-### 11.5 Floating Text Items & In-Place Editing
+### 11.5 Filter Irregular Notes (Humanized & Live-Recorded MIDI Cleaner)
+
+#### Musical Concept & Background
+Live-recorded MIDI keyboard performances and humanized takes inherently feature subtle micro-timing variations. While these nuances sound organic in audio playback, standard music notation engravers struggle to render them cleanly. Unquantized notes often result in severe visual clutter—generating microscopic 64th or 128th rests, fragmented split notes, and confusing ties across beats.
+
+**Filter Irregular Notes** provides an intelligent, non-destructive workflow to address this: it analyzes note onset positions relative to the musical meter, flags notes that deviate from standard metric subdivisions outside a user-defined tick tolerance, renders a live yellow preview on the score canvas, and allows you to either select them for manual inspection or reassign them cleanly into a separate polyphonic voice (such as Voice 16 / MIDI channel 15).
+
+#### How to Access the Tool
+- Open the right-hand **Tools** drawer.
+- Click the **Filter irregular Notes...** button, located directly below *Auto Voice*.
+
+#### Interactive Dialog Controls & Features
+- **Tolerance Slider (0 to 50 Ticks)**:
+  - Determines how many MIDI ticks of micro-timing deviation are permitted before a note is treated as irregular.
+  - At **0 Ticks**, the detection algorithm tests strict mathematical alignment with a sub-tick float epsilon ($< 0.05$ ticks). Notes that sit cleanly on a musical subdivision are never falsely flagged, even at zero tolerance.
+  - Raising the slider widens the acceptable boundary ($\pm \text{tolerance}$ ticks around each grid subdivision). Notes outside this boundary are flagged as irregular.
+- **Include Triplets Checkbox**:
+  - By default, the engine tests binary subdivisions: Whole ($1/1$), Half ($1/2$), Quarter ($1/4$), Eighth ($1/8$), 16th ($1/16$), and 32nd ($1/32$) notes relative to measure barlines and time signatures.
+  - When **Include Triplets** is enabled, the detection algorithm also tests compound/triplet subdivisions: 12th ($1/12$), 24th ($1/24$), and 48th ($1/48$) notes.
+- **Target Voice Selector (Voice 1 through Voice 16)**:
+  - Chooses the destination voice when reassigning irregular notes.
+  - Defaults to **Voice 16** (mapped to MIDI channel 15 in REAPER's multi-voice architecture), isolating irregular notes into their own voice layer without modifying pitch or performance timing.
+- **Processing Scope**:
+  - **Selected Notes Only**: Restricts detection and actions exclusively to currently highlighted notes in the score canvas.
+  - **All Notes on Track / Item**: Analyzes all MIDI notes across the active take/track.
+- **Live Canvas Preview (Yellow Note Highlighting)**:
+  - While the modal dialog is open, all matching irregular notes are dynamically highlighted in vivid **gold/yellow** (`#FFD700`) directly on the score notation canvas in real time.
+  - Moving the tolerance slider or toggling triplets immediately recalculates and refreshes the yellow highlight on the fly.
+- **Dim / Ghost Regular Notes Checkbox**:
+  - When checked, all regular (non-flagged) notes on the canvas are visually dimmed and rendered semi-transparent (matching the inactive voice visual hierarchy).
+  - This dims out the musical background, allowing irregular notes to stand out with instant clarity.
+- **Dynamic Irregular Note Counter**:
+  - An inline status badge continuously reports the number of detected irregular notes (e.g. `14 irregular notes detected`) matching the active parameters.
+
+#### Dual Execution Actions
+- **🔍 Select Notes**:
+  - Non-destructively selects the detected irregular notes in both the REAPER-Notator canvas and REAPER's underlying MIDI take.
+  - Does **not** modify note voices, channels, pitches, or timing.
+  - Ideal for inspecting notes, transposing, deleting, or applying custom quantization to specific problem notes.
+- **⚡ Reassign to Voice**:
+  - Moves all detected irregular notes into the configured **Target Voice** (Voice 16 by default).
+  - Shifts note MIDI channels accordingly while strictly preserving their exact pitch, duration, velocity, and micro-timing.
+  - Retains full audio playback while keeping Voice 1 (and primary engraving voices) visually clean and legible.
+
+#### Performance & Safety
+- **Batched O(N) Processing**: Implements `MIDI_DisableSort` and `MIDI_Sort` batching to process thousands of notes in milliseconds without UI stutter.
+- **Transactional Undo**: The entire operation is enclosed within a single REAPER undo transaction (`Undo_BeginBlock2`), guaranteeing full, immediate undo with `Ctrl+Z`.
+
+### 11.6 Floating Text Items & In-Place Editing
 
 Functions: Pressing Ctrl+T inserts a floating score text item at the cursor. Double-click any text item to open an in-place editing field. Configure font size, standard/italic/bold styling, and staff attachment anchor points.
 
