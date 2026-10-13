@@ -1,7 +1,9 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.9-beta
+-- @version 1.9.9-beta.1
 -- @changelog
+--   + v1.9.9-beta.1: Reaticulate Script-Folder Installation Check Fix:
+--             - Strict Script Directory Verification: detect_status now strictly checks for the presence of the Reaticulate script files in Scripts/Reaticulate (reaticulate.lua, Reaticulate-factory.reabank, or actions/Reaticulate_Main.lua). Leftover user bank files in Data/Reaticulate.reabank no longer falsely report Reaticulate as installed when the script folder has been removed.
 --   + v1.9.9-beta: Laptop HiDPI Window Geometry Fix, Startup Freeze Prevention & Reaticulate Dependency Verification:
 --             - Laptop HiDPI Window Placement: Replaced raw physical pixel desktop work area queries (reaper.my_getViewport) with ReaImGui logical coordinates (ImGui_GetWindowViewport / ImGui_GetMainViewport). Eliminates 1.25x-1.5x coordinate blowout and window sliding halfway down the display on laptops with HiDPI display scaling.
 --             - Responsive Laptop Bounds: Dynamically clamps window minimum size to display work area (math.min(1280, math.max(640, vw - 20))), preventing oversized minimum constraints from overflowing sub-720p screens.
@@ -1038,7 +1040,7 @@ local function dependency_check_loop()
         reaper.ImGui_TextWrapped(ctx, 
             "REAPER Notator requires 'Reaticulate' to handle orchestral articulation banks, " ..
             "keyswitches, and playback performance. Reaticulate was not found in your REAPER " ..
-            "installation directory (Data/Reaticulate.reabank or Scripts/Reaticulate)."
+            "Scripts directory (Scripts/Reaticulate)."
         )
         reaper.ImGui_Spacing(ctx)
         reaper.ImGui_Separator(ctx)

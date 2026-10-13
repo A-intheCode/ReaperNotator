@@ -242,7 +242,15 @@ end
 --- @return string
 function PathService.get_reaticulate_dir(state)
     local res_dir = PathService.get_reaper_resource_dir(state)
-    return res_dir .. "/Scripts/Reaticulate"
+    local default_p = res_dir .. "/Scripts/Reaticulate"
+    if PathService.dir_exists(default_p) then
+        return default_p
+    end
+    local alt_p = res_dir .. "/Scripts/reaticulate"
+    if PathService.dir_exists(alt_p) then
+        return alt_p
+    end
+    return default_p
 end
 
 --- Returns Data directory for ReaBanks
@@ -266,12 +274,17 @@ function PathService.detect_status(state)
     local patterns_dir = PathService.get_patterns_dir(state)
     local patterns_valid = PathService.dir_exists(patterns_dir)
 
-    -- Check Reaticulate & ReaBanks
+    -- Check Reaticulate script installation (must be present in Scripts folder)
     local reat_dir = PathService.get_reaticulate_dir(state)
-    local reat_user_bank = PathService.get_reabank_dir(state) .. "/Reaticulate.reabank"
+    local reat_main_script = reat_dir .. "/reaticulate.lua"
+    local reat_main_action = reat_dir .. "/actions/Reaticulate_Main.lua"
     local reat_factory_bank = reat_dir .. "/Reaticulate-factory.reabank"
+    local reat_user_bank = PathService.get_reabank_dir(state) .. "/Reaticulate.reabank"
 
-    local reaticulate_found = PathService.file_exists(reat_user_bank) or PathService.file_exists(reat_factory_bank) or PathService.dir_exists(reat_dir)
+    local reaticulate_found = PathService.file_exists(reat_main_script)
+                           or PathService.file_exists(reat_main_action)
+                           or PathService.file_exists(reat_factory_bank)
+                           or (PathService.dir_exists(reat_dir) and reaper.APIExists("EnumerateFiles") and reaper.EnumerateFiles(reat_dir, 0) ~= nil)
 
     -- Count ReaBank files
     local data_dir = PathService.get_reabank_dir(state)
