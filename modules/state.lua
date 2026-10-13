@@ -470,7 +470,7 @@ function State.new()
         rec_quantize_grid_type = "straight", -- "straight" | "triplet" | "dotted"
         rec_tolerance_ticks = 25,          -- Default 25 ticks tolerance radius
         rec_clean_overlaps = true,         -- Remove overlapping and duplicate notes on same pitch
-        rec_outlier_mode = "keep",         -- "keep" (leave unquantized) | "delete" | "voice16"
+        rec_outlier_mode = "snap",         -- "snap" (snap to grid) | "keep" | "delete" | "voice16"
         rec_preroll_bars = 1,              -- Pre-roll bars (1, 2, 4)
         rec_midi_device = 63,              -- 63 = All MIDI Inputs, 62 = Virtual MIDI Keyboard, 0..61 = Hardware Device
         rec_midi_channel = 0,              -- 0 = All Channels, 1..16 = MIDI Channel 1..16
@@ -850,7 +850,7 @@ function State:load_settings()
     self.rec_quantize_grid_type = load_str("rec_quantize_grid_type", "straight")
     self.rec_tolerance_ticks = load_num("rec_tolerance_ticks", 25)
     self.rec_clean_overlaps = load_bool("rec_clean_overlaps", true)
-    self.rec_outlier_mode = load_str("rec_outlier_mode", "keep")
+    self.rec_outlier_mode = load_str("rec_outlier_mode", "snap")
     self.rec_preroll_bars = load_num("rec_preroll_bars", 1)
     self.rec_midi_device = load_num("rec_midi_device", 63)
     self.rec_midi_channel = load_num("rec_midi_channel", 0)
@@ -1060,7 +1060,7 @@ function State.save_settings(self)
     save_val("rec_quantize_grid_type", self.rec_quantize_grid_type or "straight")
     save_val("rec_tolerance_ticks", math.floor(self.rec_tolerance_ticks or 25))
     save_val("rec_clean_overlaps", self.rec_clean_overlaps ~= false)
-    save_val("rec_outlier_mode", self.rec_outlier_mode or "keep")
+    save_val("rec_outlier_mode", self.rec_outlier_mode or "snap")
     save_val("rec_preroll_bars", math.floor(self.rec_preroll_bars or 1))
     save_val("rec_midi_device", math.floor(self.rec_midi_device or 63))
     save_val("rec_midi_channel", math.floor(self.rec_midi_channel or 0))

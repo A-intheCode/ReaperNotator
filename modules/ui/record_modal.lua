@@ -337,20 +337,37 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
             -- Outlier Handling Mode
             reaper.ImGui_Text(ctx, "Notes outside tolerance:")
             reaper.ImGui_SameLine(ctx, 0, 10)
-            local cur_outlier = state.rec_outlier_mode or "keep"
+            local cur_outlier = state.rec_outlier_mode or "snap"
+            if reaper.ImGui_RadioButton(ctx, "🧲 Snap to Grid##OutlierSnap", cur_outlier == "snap") then
+                state.rec_outlier_mode = "snap"
+                require("state").save_settings(state)
+            end
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Pulls and snaps notes outside the tick tolerance radius onto the nearest grid division.")
+            end
+            reaper.ImGui_SameLine(ctx, 0, 12)
             if reaper.ImGui_RadioButton(ctx, "Keep natural##OutlierKeep", cur_outlier == "keep") then
                 state.rec_outlier_mode = "keep"
                 require("state").save_settings(state)
+            end
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Leaves notes outside the tick tolerance radius at their natural unquantized timing.")
             end
             reaper.ImGui_SameLine(ctx, 0, 12)
             if reaper.ImGui_RadioButton(ctx, "Delete outliers##OutlierDel", cur_outlier == "delete") then
                 state.rec_outlier_mode = "delete"
                 require("state").save_settings(state)
             end
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Deletes notes that fall outside the tick tolerance radius.")
+            end
             reaper.ImGui_SameLine(ctx, 0, 12)
             if reaper.ImGui_RadioButton(ctx, "Move to Voice 16##OutlierV16", cur_outlier == "voice16") then
                 state.rec_outlier_mode = "voice16"
                 require("state").save_settings(state)
+            end
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Moves notes outside the tick tolerance radius to Voice 16 (MIDI Channel 16).")
             end
         end
 

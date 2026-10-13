@@ -176,6 +176,12 @@ function RecordQuantizeService.on_record_start(state)
     RecordQuantizeService._processed_note_sigs = {}
     RecordQuantizeService._pre_existing_notes = {}
 
+    if state then
+        state._was_recording = true
+        state._rec_start_time = math.min(reaper.GetCursorPosition(), reaper.GetPlayPosition())
+        state._last_rec_play_pos = state._rec_start_time
+    end
+
     if reaper.APIExists("MIDI_GetRecentInputEvent") then
         local seq = reaper.MIDI_GetRecentInputEvent(0)
         RecordQuantizeService._last_midi_seq = seq or 0
@@ -277,7 +283,7 @@ local function evaluate_note_quantization(state, raw_sqn, raw_dur_qn)
     end
 
     local tolerance_ticks = state.rec_tolerance_ticks or 25
-    local outlier_mode = state.rec_outlier_mode or "keep"
+    local outlier_mode = state.rec_outlier_mode or "snap"
 
     local _, qn_measure_start, _ = reaper.TimeMap_QNToMeasures(0, raw_sqn)
     local rel_qn = raw_sqn - qn_measure_start
@@ -286,7 +292,7 @@ local function evaluate_note_quantization(state, raw_sqn, raw_dur_qn)
     local diff_ticks = math.abs(raw_sqn - nearest_grid_qn) * 960.0
     if diff_ticks < 0.05 then diff_ticks = 0.0 end
 
-    if diff_ticks <= (tolerance_ticks + 0.05) then
+    if diff_ticks <= (tolerance_ticks + 0.05) or outlier_mode == "snap" then
         local snapped_sqn = math.max(0, nearest_grid_qn)
         local snapped_dur = math.max(eff_grid, math.floor(((raw_dur_qn or eff_grid) / eff_grid) + 0.5) * eff_grid)
         return {
@@ -621,12 +627,15 @@ function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
         end
     end
 
-    -- 3. Clean bounces (<15 ticks) and same-pitch overlaps on session_notes
+    -- 3. Clean bounces (<15 ticks), duplicate grid snaps, and same-pitch overlaps on session_notes
     if clean_overlaps and #session_notes > 1 then
         table.sort(session_notes, function(a, b)
-            local as = a.raw_start_qn or a.start_qn or 0
-            local bs = b.raw_start_qn or b.start_qn or 0
+            local as = a.start_qn or a.raw_start_qn or 0
+            local bs = b.start_qn or b.raw_start_qn or 0
             if math.abs(as - bs) > 0.001 then return as < bs end
+            local ras = a.raw_start_qn or as
+            local rbs = b.raw_start_qn or bs
+            if math.abs(ras - rbs) > 0.001 then return ras < rbs end
             return (a.pitch or 0) < (b.pitch or 0)
         end)
         local by_pitch = {}
@@ -635,24 +644,33 @@ function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
             table.insert(by_pitch[sn.pitch], sn)
         end
         for _, p_list in pairs(by_pitch) do
-            for k = 1, #p_list - 1 do
-                local n1 = p_list[k]
-                local n2 = p_list[k + 1]
-                if not n1._drop and not n2._drop then
-                    local raw_s1 = n1.raw_start_qn or n1.start_qn
-                    local raw_s2 = n2.raw_start_qn or n2.start_qn
-                    if math.abs(raw_s2 - raw_s1) * 960.0 < 15.0 then
-                        if (n2.vel or 96) > (n1.vel or 96) then
-                            n1._drop = true
+            local prev = nil
+            for k = 1, #p_list do
+                local cur = p_list[k]
+                if not cur._drop then
+                    if not prev then
+                        prev = cur
+                    else
+                        local raw_s1 = prev.raw_start_qn or prev.start_qn
+                        local raw_s2 = cur.raw_start_qn or cur.start_qn
+                        if math.abs(raw_s2 - raw_s1) * 960.0 < 15.0 or math.abs(cur.start_qn - prev.start_qn) * 960.0 < 15.0 then
+                            -- Hardware bounce or two notes snapped to the exact same grid slot
+                            if (cur.vel or 96) > (prev.vel or 96) then
+                                prev._drop = true
+                                prev = cur
+                            else
+                                if (cur.end_qn or 0) > (prev.end_qn or 0) then
+                                    prev.end_qn = cur.end_qn
+                                    prev.dur_qn = prev.end_qn - prev.start_qn
+                                end
+                                cur._drop = true
+                            end
+                        elseif prev.end_qn > cur.start_qn then
+                            prev.end_qn = cur.start_qn
+                            prev.dur_qn = prev.end_qn - prev.start_qn
+                            prev = cur
                         else
-                            n2._drop = true
-                        end
-                    elseif n1.end_qn > n2.start_qn then
-                        if n2.start_qn <= n1.start_qn + 0.02 then
-                            n1._drop = true
-                        else
-                            n1.end_qn = n2.start_qn
-                            n1.dur_qn = n1.end_qn - n1.start_qn
+                            prev = cur
                         end
                     end
                 end
@@ -739,7 +757,7 @@ local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
     local do_quantize = (not state) or (state.rec_auto_quantize ~= false)
     local tolerance_ticks = (state and state.rec_tolerance_ticks) or 25
     local clean_overlaps = (not state) or (state.rec_clean_overlaps ~= false)
-    local outlier_mode = (state and state.rec_outlier_mode) or "keep"
+    local outlier_mode = (state and state.rec_outlier_mode) or "snap"
 
     local _, notecnt = reaper.MIDI_CountEvts(take)
     if notecnt == 0 then
@@ -753,7 +771,7 @@ local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
             local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
             local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
             local pre_existing = is_note_pre_existing(take, pitch, sqn, chan, min_rec_qn)
-            local in_session = (not pre_existing) and ((not min_rec_qn) or (sqn >= min_rec_qn - 0.25)) and ((not max_rec_qn) or (sqn <= max_rec_qn + 0.5))
+            local in_session = not pre_existing
             table.insert(notes, {
                 idx = i,
                 sel = sel,
@@ -796,7 +814,7 @@ local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
                 local diff_ticks = math.abs(n.sqn - nearest_grid_qn) * 960.0
                 if diff_ticks < 0.05 then diff_ticks = 0.0 end
 
-                if diff_ticks <= (tolerance_ticks + 0.05) then
+                if diff_ticks <= (tolerance_ticks + 0.05) or outlier_mode == "snap" then
                     local new_sqn = math.max(0, nearest_grid_qn)
                     local snapped_dur = math.max(eff_grid, math.floor((orig_dur_qn / eff_grid) + 0.5) * eff_grid)
                     local new_eqn = new_sqn + snapped_dur
@@ -845,25 +863,37 @@ local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
 
         for _, p_notes in pairs(by_pitch) do
             table.sort(p_notes, function(a, b) return a.sppq < b.sppq end)
-            for k = 1, #p_notes - 1 do
-                local n1 = p_notes[k]
-                local n2 = p_notes[k + 1]
-                if n1.action ~= "delete" and n2.action ~= "delete" then
-                    if math.abs(n2.sppq - n1.sppq) < 15 then
-                        if n2.vel > n1.vel then
-                            n1.action = "delete"
-                        else
-                            n2.action = "delete"
-                        end
-                        any_modified = true
-                        cleaned_cnt = cleaned_cnt + 1
-                    elseif n1.eppq >= n2.sppq then
-                        local clamped_eppq = math.max(n1.sppq + 20, n2.sppq - 1)
-                        if clamped_eppq < n1.eppq then
-                            n1.eppq = clamped_eppq
-                            n1.action = "modify"
+            local prev = nil
+            for k = 1, #p_notes do
+                local cur = p_notes[k]
+                if cur.action ~= "delete" then
+                    if not prev then
+                        prev = cur
+                    else
+                        if math.abs(cur.sppq - prev.sppq) < 15 then
+                            if cur.vel > prev.vel then
+                                prev.action = "delete"
+                                prev = cur
+                            else
+                                if cur.eppq > prev.eppq then
+                                    prev.eppq = cur.eppq
+                                    prev.action = "modify"
+                                end
+                                cur.action = "delete"
+                            end
                             any_modified = true
                             cleaned_cnt = cleaned_cnt + 1
+                        elseif prev.eppq >= cur.sppq then
+                            local clamped_eppq = math.max(prev.sppq + 20, cur.sppq)
+                            if clamped_eppq < prev.eppq then
+                                prev.eppq = clamped_eppq
+                                prev.action = "modify"
+                                any_modified = true
+                                cleaned_cnt = cleaned_cnt + 1
+                            end
+                            prev = cur
+                        else
+                            prev = cur
                         end
                     end
                 end
