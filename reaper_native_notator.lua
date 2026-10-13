@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.9-beta.6
+-- @version 1.9.9-beta.7
 -- @changelog
 --   + v1.9.9-beta.4: Maximize Screen Bounds Fix & Modals Always-On-Top Layering:
 --             - Window Maximize & Center Restore Fix: Eliminated viewport self-reference shrinking loop in get_screen_work_area. Maximize now cleanly expands to the full display work area using ImGui_GetMainViewport and reaper.my_getViewport with PointConvertNative. Restoring now accurately centers the window in the middle of the display.

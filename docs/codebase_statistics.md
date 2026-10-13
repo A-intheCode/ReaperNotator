@@ -1,15 +1,15 @@
-# REAPER-Notator v1.9.9-beta.6 — Codebase & Library Statistics
+# REAPER-Notator v1.9.9-beta.7 — Codebase & Library Statistics
 
-**Generated:** 2026-10-13 20:14
+**Generated:** 2026-10-13 20:38
 
 ## Executive Summary
 
-- **Version:** v1.9.9-beta.6
+- **Version:** v1.9.9-beta.7
 - **Total Source Files:** 77 Lua files
-- **Total Line Count:** 57,884
-- **Executable Code Lines:** 48,690 (84.1%)
-- **Comments & Documentation:** 4,268 (7.4%)
-- **Blank / Formatting Lines:** 5,457 (9.4%)
+- **Total Line Count:** 58,000
+- **Executable Code Lines:** 48,781 (84.1%)
+- **Comments & Documentation:** 4,278 (7.4%)
+- **Blank / Formatting Lines:** 5,472 (9.4%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
@@ -17,14 +17,14 @@
 
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `modules/services` | 29 | 29,777 | 25,388 | 1,842 | 2,680 | 85.3% |
+| `modules/services` | 29 | 29,867 | 25,459 | 1,849 | 2,692 | 85.2% |
 | `modules/rendering` | 7 | 12,234 | 10,411 | 762 | 1,113 | 85.1% |
-| `modules/ui` | 20 | 9,747 | 7,866 | 746 | 1,161 | 80.7% |
+| `modules/ui` | 20 | 9,773 | 7,886 | 749 | 1,164 | 80.7% |
 | `modules` | 3 | 2,211 | 1,931 | 426 | 139 | 87.3% |
 | `modules/input` | 2 | 2,005 | 1,743 | 91 | 173 | 86.9% |
 | `Root` | 1 | 1,136 | 754 | 291 | 95 | 66.4% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **77** | **57,884** | **48,690** | **4,268** | **5,457** | **84.1%** |
+| **TOTAL** | **77** | **58,000** | **48,781** | **4,278** | **5,472** | **84.1%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 

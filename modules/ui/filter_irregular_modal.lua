@@ -39,7 +39,7 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         state.focus_filter_irregular_modal = nil
     end
 
-    reaper.ImGui_SetNextWindowSize(ctx, 500, 570, reaper.ImGui_Cond_FirstUseEver())
+    reaper.ImGui_SetNextWindowSize(ctx, 550, 580, reaper.ImGui_Cond_FirstUseEver())
     local s_vis, s_open = reaper.ImGui_Begin(ctx, "🔍 Filter irregular Notes###FilterIrregularModalWindow", true, flags)
 
     if not s_open then
@@ -179,23 +179,31 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         -- ------------------------------------------------------------------
         -- 4. TIMING TOLERANCE
         -- ------------------------------------------------------------------
-        reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "Tolerance Threshold:")
+        reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "Allowed Grid Timing Deviation (Tolerance):")
         local tol = state.filter_irregular_tolerance_ticks or 10
-        reaper.ImGui_SetNextItemWidth(ctx, 260)
+        reaper.ImGui_SetNextItemWidth(ctx, 230)
         local chg_tol, new_tol = reaper.ImGui_SliderInt(ctx, "##ToleranceSlider", tol, 0, 50, "%d Ticks")
         if chg_tol then
             state.filter_irregular_tolerance_ticks = new_tol
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Tolerance window in PPQ ticks (~960 ticks = 1 quarter note).\n0 = Exact mathematical snap required.\n10-15 = Natural humanization tolerance (recommended for live recordings).")
+            reaper.ImGui_SetTooltip(ctx, "Allowed human timing deviation from grid points in PPQ ticks (~960 ticks = 1 quarter note).\n• 0 Ticks = Exact mathematical snap (notes without deviation remain untouched).\n• 10-15 Ticks = Natural humanization tolerance (recommended for live recordings).\n• > 25 Ticks = Only flag notes that significantly miss the grid.")
         end
 
         reaper.ImGui_SameLine(ctx, 0, 8)
-        if reaper.ImGui_Button(ctx, "Strict (0)##Tol0", 65, 20) then state.filter_irregular_tolerance_ticks = 0 end
+        if reaper.ImGui_Button(ctx, "0 (Exact)##Tol0", 68, 20) then state.filter_irregular_tolerance_ticks = 0 end
         reaper.ImGui_SameLine(ctx, 0, 4)
-        if reaper.ImGui_Button(ctx, "10 Ticks##Tol10", 60, 20) then state.filter_irregular_tolerance_ticks = 10 end
+        if reaper.ImGui_Button(ctx, "10 (Human)##Tol10", 76, 20) then state.filter_irregular_tolerance_ticks = 10 end
         reaper.ImGui_SameLine(ctx, 0, 4)
         if reaper.ImGui_Button(ctx, "25 Ticks##Tol25", 60, 20) then state.filter_irregular_tolerance_ticks = 25 end
+        reaper.ImGui_SameLine(ctx, 0, 4)
+        if reaper.ImGui_Button(ctx, "40 Ticks##Tol40", 60, 20) then state.filter_irregular_tolerance_ticks = 40 end
+
+        if tol == 0 then
+            reaper.ImGui_TextDisabled(ctx, "Strict 0: Notes with 0 deviation are regular. Only off-grid notes are flagged.")
+        else
+            reaper.ImGui_TextDisabled(ctx, string.format("Flags notes deviating more than %d ticks (±%.1f%% of 1/16th) from grid.", tol, (tol / 240.0) * 100))
+        end
 
         reaper.ImGui_Spacing(ctx)
         reaper.ImGui_Separator(ctx)
@@ -237,7 +245,7 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
             end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Highlights all detected irregular notes with a vivid yellow notehead and glow directly on the score canvas before reassigning.")
+            reaper.ImGui_SetTooltip(ctx, "Highlights all detected irregular notes with a vivid yellow notehead and glow directly on the score canvas.")
         end
 
         local dim_active = (state.filter_irregular_dim_regular == true)
@@ -262,30 +270,43 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         end
 
         local mute_opt = state.filter_irregular_also_mute or false
-        local chg_mute, new_mute = reaper.ImGui_Checkbox(ctx, "Mute irregular notes after moving##MuteCb", mute_opt)
+        local chg_mute, new_mute = reaper.ImGui_Checkbox(ctx, "Mute irregular notes after moving to target voice##MuteCb", mute_opt)
         if chg_mute then state.filter_irregular_also_mute = new_mute end
-
-        reaper.ImGui_SameLine(ctx, 0, 20)
-        local sel_opt = state.filter_irregular_also_select or false
-        local chg_sel, new_sel = reaper.ImGui_Checkbox(ctx, "Select irregular notes##SelCb", sel_opt)
-        if chg_sel then state.filter_irregular_also_select = new_sel end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "When reassigning to target voice, also mutes the moved notes.")
+        end
 
         reaper.ImGui_Spacing(ctx)
         reaper.ImGui_Spacing(ctx)
 
         -- ------------------------------------------------------------------
-        -- 7. ACTION BUTTONS
+        -- 7. ACTION BUTTONS (Select Notes vs. Reassign to Voice)
         -- ------------------------------------------------------------------
-        local btn_label = string.format("⚡ Reassign %d note(s) to Voice %d", stats.irregular_count, target_voice)
         local has_notes = (stats.irregular_count > 0)
+        local sel_btn_label = string.format("🔍 Select Notes (%d)", stats.irregular_count)
+        local reassign_btn_label = string.format("⚡ Reassign to V%d (%d)", target_voice, stats.irregular_count)
 
         if not has_notes then
             reaper.ImGui_BeginDisabled(ctx)
         end
 
+        -- Action 1: SELECT NOTES ONLY (Blue accent)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x2980B9FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x3498DBFF)
+        if reaper.ImGui_Button(ctx, sel_btn_label, 195, 32) then
+            local sel_cnt = FilterNotesService.select_notes(state, nil, active_tracks_data)
+        end
+        reaper.ImGui_PopStyleColor(ctx, 2)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Selects all detected irregular notes on the score canvas and in REAPER.\nVoices, channels, and playback remain completely unchanged.")
+        end
+
+        reaper.ImGui_SameLine(ctx, 0, 8)
+
+        -- Action 2: REASSIGN TO VOICE (Green accent)
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x27AE60FF)
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2ECC71FF)
-        if reaper.ImGui_Button(ctx, btn_label, 260, 32) then
+        if reaper.ImGui_Button(ctx, reassign_btn_label, 205, 32) then
             local moved = FilterNotesService.apply(state, nil, active_tracks_data)
             cached_stats = FilterNotesService.scan(state, nil, active_tracks_data)
             last_scan_sig = make_scan_signature(state)
@@ -296,13 +317,18 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
             end
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, string.format("Moves all detected irregular notes into Voice %d (MIDI channel %d).", target_voice, target_voice - 1))
+        end
 
         if not has_notes then
             reaper.ImGui_EndDisabled(ctx)
         end
 
-        reaper.ImGui_SameLine(ctx, 0, 16)
-        if reaper.ImGui_Button(ctx, "Close##CloseFilterModal", 100, 32) then
+        reaper.ImGui_SameLine(ctx, 0, 8)
+
+        -- Action 3: CLOSE
+        if reaper.ImGui_Button(ctx, "Close##CloseFilterModal", 95, 32) then
             state.show_filter_irregular_modal = false
             cached_stats = nil
             state.filter_irregular_preview_map = nil

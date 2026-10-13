@@ -124,7 +124,7 @@ function FilterNotesService.is_note_regular(take, sppq, grid_qn, tolerance_ticks
     local diff_ticks = diff_qn * 960.0
 
     -- 2. Optional Triplet check (1/4, 1/8, 1/16, 1/32 triplets)
-    if include_triplets and diff_ticks > tolerance_ticks then
+    if include_triplets and diff_ticks > (tolerance_ticks + 0.05) then
         local triplet_divisions = { 1.0 / 3.0, 0.5 / 3.0, 0.25 / 3.0, 0.125 / 3.0 }
         for _, trip_div in ipairs(triplet_divisions) do
             if trip_div >= (grid_qn * 0.3) then
@@ -137,7 +137,12 @@ function FilterNotesService.is_note_regular(take, sppq, grid_qn, tolerance_ticks
         end
     end
 
-    local is_regular = (diff_ticks <= tolerance_ticks)
+    -- Floating point epsilon: deviations below 0.05 ticks are mathematically exact (diff = 0)
+    if diff_ticks < 0.05 then
+        diff_ticks = 0.0
+    end
+
+    local is_regular = (diff_ticks <= (tolerance_ticks + 0.05))
     return is_regular, diff_ticks
 end
 
@@ -303,6 +308,91 @@ function FilterNotesService.apply(state, opts, active_tracks_data)
 
     state.status_msg = string.format("✓ Reassigned %d irregular notes to Voice %d", moved_count, target_voice)
     return moved_count
+end
+
+--- Selects detected irregular notes without changing their voice, channel, or mute state
+--- @param state table
+--- @param opts table
+--- @param active_tracks_data table
+--- @return number selected_count
+function FilterNotesService.select_notes(state, opts, active_tracks_data)
+    opts = opts or {}
+    local stats = FilterNotesService.scan(state, opts, active_tracks_data)
+    if stats.irregular_count == 0 then
+        state.status_msg = "Filter irregular Notes: No irregular notes found to select."
+        return 0
+    end
+
+    local undo_title = "Notator: Select Irregular Notes"
+    reaper.Undo_BeginBlock2(0)
+
+    -- Clear current selection in state so only irregular notes become selected
+    if state and state.clear_selection then
+        state:clear_selection()
+    end
+
+    local selected_count = 0
+    local modified_tracks = {}
+
+    for take, take_data in pairs(stats.notes_by_take) do
+        if reaper.ValidatePtr(take, "MediaItem_Take*") then
+            reaper.MIDI_DisableSort(take)
+
+            local _, notecnt = reaper.MIDI_CountEvts(take)
+            local irreg_map = {}
+            for _, n in ipairs(take_data.notes) do
+                irreg_map[n.idx] = n
+            end
+
+            for ni = 0, notecnt - 1 do
+                local ok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, ni)
+                if ok then
+                    local is_irreg = (irreg_map[ni] ~= nil)
+                    if is_irreg ~= sel then
+                        reaper.MIDI_SetNote(take, ni, is_irreg, muted, sppq, eppq, chan, pitch, vel, true)
+                    end
+                    if is_irreg then
+                        selected_count = selected_count + 1
+                        if state and state.select_note then
+                            local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+                            local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
+                            local note_obj = {
+                                idx = ni,
+                                take = take,
+                                track = take_data.track,
+                                item = irreg_map[ni].item,
+                                sppq = sppq,
+                                eppq = eppq,
+                                start_qn = sqn,
+                                end_qn = eqn,
+                                dur_qn = eqn - sqn,
+                                chan = chan,
+                                pitch = pitch,
+                                vel = vel,
+                                muted = muted,
+                                sel = true
+                            }
+                            state:select_note(note_obj)
+                        end
+                    end
+                end
+            end
+
+            reaper.MIDI_Sort(take)
+
+            if take_data.track and reaper.ValidatePtr(take_data.track, "MediaTrack*") then
+                modified_tracks[reaper.GetTrackGUID(take_data.track)] = take_data.track
+            end
+        end
+    end
+
+    if MidiService and MidiService.sync_selection_to_reaper then
+        MidiService.sync_selection_to_reaper(state, active_tracks_data)
+    end
+
+    reaper.Undo_EndBlock2(0, undo_title, -1)
+    state.status_msg = string.format("✓ Selected %d irregular note(s)", selected_count)
+    return selected_count
 end
 
 return FilterNotesService

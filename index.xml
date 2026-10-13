@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.9.9-beta.6" author="A-intheCode" time="2026-10-13T18:14:38Z">
+      <version name="1.9.9-beta.7" author="A-intheCode" time="2026-10-13T18:38:45Z">
         <changelog><![CDATA[
++ v1.9.9-beta.7: Release vbeta
 + v1.9.9-beta.6: Release vbeta
 + v1.9.9-beta.5: Release vbeta
 + v1.9.9-beta.4: Maximize Screen Bounds Fix & Modals Always-On-Top Layering:
