@@ -436,6 +436,8 @@ function State.new()
         filter_irregular_also_select = false,
         filter_irregular_preview = true,          -- Live yellow highlight preview on score canvas
         filter_irregular_preview_map = nil,
+        filter_irregular_dim_regular = false,     -- Dim regular notes as semi-transparent ghost notes
+        filter_irregular_hide_regular = false,    -- Completely hide regular notes when dimmed
 
         -- Measure repeat marks (Simile %, repeat1Bar)
         repeat_marks = {},

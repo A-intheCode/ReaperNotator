@@ -39,7 +39,7 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         state.focus_filter_irregular_modal = nil
     end
 
-    reaper.ImGui_SetNextWindowSize(ctx, 500, 540, reaper.ImGui_Cond_FirstUseEver())
+    reaper.ImGui_SetNextWindowSize(ctx, 500, 570, reaper.ImGui_Cond_FirstUseEver())
     local s_vis, s_open = reaper.ImGui_Begin(ctx, "🔍 Filter irregular Notes###FilterIrregularModalWindow", true, flags)
 
     if not s_open then
@@ -238,6 +238,27 @@ function FilterIrregularModal.render(ctx, state, midi_service, active_tracks_dat
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Highlights all detected irregular notes with a vivid yellow notehead and glow directly on the score canvas before reassigning.")
+        end
+
+        local dim_active = (state.filter_irregular_dim_regular == true)
+        local chg_dim, new_dim = reaper.ImGui_Checkbox(ctx, "Dim regular notes (semi-transparent ghost notes)##DimRegCb", dim_active)
+        if chg_dim then
+            state.filter_irregular_dim_regular = new_dim
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Renders all regular notes as semi-transparent ghost notes (identical to inactive voices), putting maximum visual focus on the irregular notes.")
+        end
+
+        if dim_active then
+            reaper.ImGui_SameLine(ctx, 0, 16)
+            local hide_active = (state.filter_irregular_hide_regular == true)
+            local chg_hide, new_hide = reaper.ImGui_Checkbox(ctx, "Hide completely##HideRegCb", hide_active)
+            if chg_hide then
+                state.filter_irregular_hide_regular = new_hide
+            end
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Completely hides all regular notes from the canvas instead of showing them semi-transparent.")
+            end
         end
 
         local mute_opt = state.filter_irregular_also_mute or false

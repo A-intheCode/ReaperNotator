@@ -351,6 +351,36 @@ local function sync_arrange_selection(state, project_tracks)
     end
 end
 
+local function is_note_irregular_preview(n, vn, state)
+    if not (state and state.filter_irregular_preview and state.filter_irregular_preview_map and n) then
+        return false
+    end
+    local pmap = state.filter_irregular_preview_map
+    local tk_str = tostring(n.take)
+    if (n.idx and pmap[tk_str .. "_" .. n.idx]) or
+       (n.idx and n.pitch and pmap[tk_str .. "_" .. n.idx .. "_" .. n.pitch]) or
+       (n.pitch and n.start_qn and (pmap[tk_str .. "_" .. n.pitch .. "_" .. string.format("%.2f", n.start_qn)] or
+                                   pmap[tk_str .. "_" .. n.pitch .. "_" .. string.format("%.3f", n.start_qn)] or
+                                   pmap["any_" .. n.pitch .. "_" .. string.format("%.2f", n.start_qn)] or
+                                   pmap["any_" .. n.pitch .. "_" .. string.format("%.3f", n.start_qn)])) then
+        return true
+    end
+    if vn and vn.chain_notes then
+        for _, cn in ipairs(vn.chain_notes) do
+            local cn_tk_str = tostring(cn.take)
+            if (cn.idx and pmap[cn_tk_str .. "_" .. cn.idx]) or
+               (cn.idx and cn.pitch and pmap[cn_tk_str .. "_" .. cn.idx .. "_" .. cn.pitch]) or
+               (cn.pitch and cn.start_qn and (pmap[cn_tk_str .. "_" .. cn.pitch .. "_" .. string.format("%.2f", cn.start_qn)] or
+                                             pmap[cn_tk_str .. "_" .. cn.pitch .. "_" .. string.format("%.3f", cn.start_qn)] or
+                                             pmap["any_" .. cn.pitch .. "_" .. string.format("%.2f", cn.start_qn)] or
+                                             pmap["any_" .. cn.pitch .. "_" .. string.format("%.3f", cn.start_qn)])) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
 local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
     local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil, state and state.user_ties)
     
@@ -1183,6 +1213,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local ghost_opacity = math.max(0.05, math.min(1.0, state.ghost_voice_opacity or 0.25))
     local ghost_alpha_byte = math.floor(ghost_opacity * 255 + 0.5)
     local global_ghost_col = 0x88888800 | ghost_alpha_byte
+    local dim_regular_active = (state.filter_irregular_preview and state.filter_irregular_preview_map and state.filter_irregular_dim_regular)
+    local hide_regular_active = (dim_regular_active and state.filter_irregular_hide_regular)
     
     -- Render each track
     for t_idx, tdata in ipairs(active_tracks_data) do
@@ -1857,15 +1889,20 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                     local all_ghost = true
                     for _, bvn in ipairs(bgroup) do
-                        if not bvn.is_ghost_voice then all_ghost = false break end
+                        local b_ghost = bvn.is_ghost_voice or (dim_regular_active and not is_note_irregular_preview(bvn.orig, bvn, state))
+                        if not b_ghost then all_ghost = false break end
                     end
                     local beam_col = Constants.COLORS.beam_color
                     if all_ghost then
-                        local b_v = (bgroup[1].orig and bgroup[1].orig.chan or 0) + 1
-                        if (state.voice_color_mode ~= false) and b_v > 1 then
-                            beam_col = (Constants.get_voice_color(b_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                        if hide_regular_active then
+                            beam_col = 0x00000000
                         else
-                            beam_col = global_ghost_col
+                            local b_v = (bgroup[1].orig and bgroup[1].orig.chan or 0) + 1
+                            if (state.voice_color_mode ~= false) and b_v > 1 then
+                                beam_col = (Constants.get_voice_color(b_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                            else
+                                beam_col = global_ghost_col
+                            end
                         end
                     end
                     local bg_m = math.floor(((bgroup[1] and bgroup[1].start_qn or 0) + 0.001) / bpi)
@@ -2201,15 +2238,20 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             for _, bgroup in ipairs(beam_groups) do
                 local all_ghost = true
                 for _, bvn in ipairs(bgroup) do
-                    if not bvn.is_ghost_voice then all_ghost = false break end
+                    local b_ghost = bvn.is_ghost_voice or (dim_regular_active and not is_note_irregular_preview(bvn.orig, bvn, state))
+                    if not b_ghost then all_ghost = false break end
                 end
                 local beam_col = Constants.COLORS.beam_color
                 if all_ghost then
-                    local b_v = (bgroup[1].orig and bgroup[1].orig.chan or 0) + 1
-                    if (state.voice_color_mode ~= false) and b_v > 1 then
-                        beam_col = (Constants.get_voice_color(b_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                    if hide_regular_active then
+                        beam_col = 0x00000000
                     else
-                        beam_col = global_ghost_col
+                        local b_v = (bgroup[1].orig and bgroup[1].orig.chan or 0) + 1
+                        if (state.voice_color_mode ~= false) and b_v > 1 then
+                            beam_col = (Constants.get_voice_color(b_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                        else
+                            beam_col = global_ghost_col
+                        end
                     end
                 end
                 local bg_m = math.floor(((bgroup[1] and bgroup[1].start_qn or 0) + 0.001) / bpi)
@@ -2235,7 +2277,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         local closest_hovered_dist_sq = max_hover_dist * max_hover_dist
         if is_hovered then
             for _, vn in ipairs(display_notes) do
-                if not vn.is_ghost_voice then
+                local is_ghost = vn.is_ghost_voice or (dim_regular_active and not is_note_irregular_preview(vn.orig, vn, state))
+                if not is_ghost then
                     local dx = math.abs(mouse_x - vn.vis_nx)
                     if dx <= max_hover_dist then
                         local dy = math.abs(mouse_y - vn.vis_ny)
@@ -2353,34 +2396,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
                 local note_v = (n.chan or 0) + 1
                 
-                local is_irregular_preview = false
-                if state.filter_irregular_preview and state.filter_irregular_preview_map and n then
-                    local pmap = state.filter_irregular_preview_map
-                    local tk_str = tostring(n.take)
-                    if (n.idx and pmap[tk_str .. "_" .. n.idx]) or
-                       (n.idx and n.pitch and pmap[tk_str .. "_" .. n.idx .. "_" .. n.pitch]) or
-                       (n.pitch and n.start_qn and (pmap[tk_str .. "_" .. n.pitch .. "_" .. string.format("%.2f", n.start_qn)] or
-                                                   pmap[tk_str .. "_" .. n.pitch .. "_" .. string.format("%.3f", n.start_qn)] or
-                                                   pmap["any_" .. n.pitch .. "_" .. string.format("%.2f", n.start_qn)] or
-                                                   pmap["any_" .. n.pitch .. "_" .. string.format("%.3f", n.start_qn)])) then
-                        is_irregular_preview = true
-                    elseif vn.chain_notes then
-                        for _, cn in ipairs(vn.chain_notes) do
-                            local cn_tk_str = tostring(cn.take)
-                            if (cn.idx and pmap[cn_tk_str .. "_" .. cn.idx]) or
-                               (cn.idx and cn.pitch and pmap[cn_tk_str .. "_" .. cn.idx .. "_" .. cn.pitch]) or
-                               (cn.pitch and cn.start_qn and (pmap[cn_tk_str .. "_" .. cn.pitch .. "_" .. string.format("%.2f", cn.start_qn)] or
-                                                             pmap[cn_tk_str .. "_" .. cn.pitch .. "_" .. string.format("%.3f", cn.start_qn)] or
-                                                             pmap["any_" .. cn.pitch .. "_" .. string.format("%.2f", cn.start_qn)] or
-                                                             pmap["any_" .. cn.pitch .. "_" .. string.format("%.3f", cn.start_qn)])) then
-                                is_irregular_preview = true
-                                break
-                            end
-                        end
-                    end
-                end
+                local is_irregular_preview = is_note_irregular_preview(n, vn, state)
+                local is_ghost = vn.is_ghost_voice or (dim_regular_active and not is_irregular_preview)
 
-                if is_sel then
+                if hide_regular_active and not is_irregular_preview then
+                    head_col = 0x00000000
+                elseif is_sel then
                     head_col = state.is_dragging and 0x88888855 or Constants.COLORS.selection_gold
                     if not state.is_dragging then
                         reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, 8.5*s, Constants.COLORS.selection_border, 0, 2.5*s)
@@ -2392,7 +2413,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     head_col = is_hov and Constants.COLORS.hover_orange or 0xF1C40FFF
                     reaper.ImGui_DrawList_AddCircleFilled(draw_list, nx, ny, 9.5*s, 0xF1C40F44)
                     reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, 8.5*s, 0xD4AC0DFF, 0, 2.0*s)
-                elseif vn.is_ghost_voice then
+                elseif is_ghost then
                     if (state.voice_color_mode ~= false) and note_v > 1 then
                         head_col = (Constants.get_voice_color(note_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
                     else
@@ -2416,34 +2437,43 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     staff_bot = (vn.in_staff == "treble") and treble_bottom_y or bass_bottom_y
                 end
                 
-                local cur_ledger_col = vn.is_ghost_voice and head_col or ledger_col
-                if dstep <= -2 then
-                    for ls = -2, dstep, -2 do
-                        local ly = staff_bot - (ls * step_y)
-                        reaper.ImGui_DrawList_AddLine(draw_list, nx - 9*s, ly, nx + 9*s, ly, cur_ledger_col, 1.4*s)
-                    end
-                elseif dstep >= 10 then
-                    for ls = 10, dstep, 2 do
-                        local ly = staff_bot - (ls * step_y)
-                        reaper.ImGui_DrawList_AddLine(draw_list, nx - 9*s, ly, nx + 9*s, ly, cur_ledger_col, 1.4*s)
+                local cur_ledger_col = is_ghost and head_col or ledger_col
+                if hide_regular_active and not is_irregular_preview then
+                    cur_ledger_col = 0x00000000
+                end
+                if not (hide_regular_active and not is_irregular_preview) then
+                    if dstep <= -2 then
+                        for ls = -2, dstep, -2 do
+                            local ly = staff_bot - (ls * step_y)
+                            reaper.ImGui_DrawList_AddLine(draw_list, nx - 9*s, ly, nx + 9*s, ly, cur_ledger_col, 1.4*s)
+                        end
+                    elseif dstep >= 10 then
+                        for ls = 10, dstep, 2 do
+                            local ly = staff_bot - (ls * step_y)
+                            reaper.ImGui_DrawList_AddLine(draw_list, nx - 9*s, ly, nx + 9*s, ly, cur_ledger_col, 1.4*s)
+                        end
                     end
                 end
                 
                 -- Accidentals (suppressed on unpitched percussion)
                 if acc ~= 0 and (not vn.is_unpitched) and (not vn.is_segment or vn.seg_idx == 1) then
-                    local acc_col = vn.is_ghost_voice and head_col or nil
-                    Engraver.draw_accidental(draw_list, acc, nx - 11.5*s + vn.acc_x_offset, ny, s, font_music, acc_col)
+                    if not (hide_regular_active and not is_irregular_preview) then
+                        local acc_col = is_ghost and head_col or nil
+                        Engraver.draw_accidental(draw_list, acc, nx - 11.5*s + vn.acc_x_offset, ny, s, font_music, acc_col)
+                    end
                 end
                 
-                local is_whole = (math.abs(vn.dur_qn - 4.0) < 0.15)
-                local is_half  = (math.abs(vn.dur_qn - 2.0) < 0.15 or math.abs(vn.dur_qn - 3.0) < 0.15)
-                Engraver.draw_oval_notehead(draw_list, nx, ny, s, head_col, not (is_whole or is_half), is_whole, font_music, vn.notehead_type)
-                
-                if Engraver.is_dotted_duration(vn.dur_qn) then
-                    Engraver.draw_dot(draw_list, nx, ny, s, head_col, font_music)
+                if not (hide_regular_active and not is_irregular_preview) then
+                    local is_whole = (math.abs(vn.dur_qn - 4.0) < 0.15)
+                    local is_half  = (math.abs(vn.dur_qn - 2.0) < 0.15 or math.abs(vn.dur_qn - 3.0) < 0.15)
+                    Engraver.draw_oval_notehead(draw_list, nx, ny, s, head_col, not (is_whole or is_half), is_whole, font_music, vn.notehead_type)
+                    
+                    if Engraver.is_dotted_duration(vn.dur_qn) then
+                        Engraver.draw_dot(draw_list, nx, ny, s, head_col, font_music)
+                    end
                 end
                 
-                if n.articulation then
+                if n.articulation and not (hide_regular_active and not is_irregular_preview) then
                     local eff_stem_down = vn.beam_stem_down
                     if eff_stem_down == nil and vn.chord_cluster then
                         eff_stem_down = vn.chord_cluster.stem_down
@@ -2549,14 +2579,21 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     local stem_down = cluster.stem_down
                     local stem_col = Constants.COLORS.notehead_black
                     local all_ghost = true
-                    for _, cv in ipairs(cnotes) do if not cv.is_ghost_voice then all_ghost = false break end end
+                    for _, cv in ipairs(cnotes) do
+                        local cv_ghost = cv.is_ghost_voice or (dim_regular_active and not is_note_irregular_preview(cv.orig, cv, state))
+                        if not cv_ghost then all_ghost = false break end
+                    end
                     
                     if all_ghost then
-                        local c_v = (cnotes[1].orig and cnotes[1].orig.chan or 0) + 1
-                        if (state.voice_color_mode ~= false) and c_v > 1 then
-                            stem_col = (Constants.get_voice_color(c_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                        if hide_regular_active then
+                            stem_col = 0x00000000
                         else
-                            stem_col = global_ghost_col
+                            local c_v = (cnotes[1].orig and cnotes[1].orig.chan or 0) + 1
+                            if (state.voice_color_mode ~= false) and c_v > 1 then
+                                stem_col = (Constants.get_voice_color(c_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                            else
+                                stem_col = global_ghost_col
+                            end
                         end
                     else
                         for _, cv in ipairs(cnotes) do
@@ -2631,7 +2668,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     reaper.ImGui_DrawList_AddLine(draw_list, stem_x, stem_start_y, stem_x, draw_stem_end_y, stem_col, 2.5 * s)
                     
                     local flag_count = Engraver.get_flag_count(shortest_dur)
-                    if flag_count > 0 and not has_beamed then
+                    if flag_count > 0 and not has_beamed and not (hide_regular_active and all_ghost) then
                         Engraver.draw_flags(draw_list, stem_x, stem_end_y, s, stem_col, flag_count, stem_down, font_music)
                     end
                 end
@@ -3744,14 +3781,20 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             state.drawn_tie_signatures[nd1.key .. "->" .. nd2.key] = true
                         end
                         
-                        local is_ghost_tie = (nd1.is_ghost_voice == true) or (nd2.is_ghost_voice == true)
+                        local nd1_ghost = (nd1.is_ghost_voice == true) or (dim_regular_active and not is_note_irregular_preview(nd1.orig or nd1.note, nd1, state))
+                        local nd2_ghost = (nd2.is_ghost_voice == true) or (dim_regular_active and not is_note_irregular_preview(nd2.orig or nd2.note, nd2, state))
+                        local is_ghost_tie = nd1_ghost or nd2_ghost
                         local tie_col = Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
                         if is_ghost_tie then
-                            local t_v = (nd1.orig and nd1.orig.chan or 0) + 1
-                            if (state.voice_color_mode ~= false) and t_v > 1 then
-                                tie_col = (Constants.get_voice_color(t_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                            if hide_regular_active and not (is_note_irregular_preview(nd1.orig or nd1.note, nd1, state) or is_note_irregular_preview(nd2.orig or nd2.note, nd2, state)) then
+                                tie_col = 0x00000000
                             else
-                                tie_col = global_ghost_col
+                                local t_v = (nd1.orig and nd1.orig.chan or 0) + 1
+                                if (state.voice_color_mode ~= false) and t_v > 1 then
+                                    tie_col = (Constants.get_voice_color(t_v, state.invert_mode) & 0xFFFFFF00) | ghost_alpha_byte
+                                else
+                                    tie_col = global_ghost_col
+                                end
                             end
                         end
                         local tie_above = (nd1.stem_down == true) or (nd1.dstep and nd1.dstep >= 4)
