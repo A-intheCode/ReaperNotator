@@ -75,6 +75,19 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
 
         reaper.ImGui_Spacing(ctx)
 
+        -- Filter irregular Notes Button
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x3E2723FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x5D4037FF)
+        if reaper.ImGui_Button(ctx, "🔍 Filter irregular Notes...", width - 24, 26) then
+            state.show_filter_irregular_modal = true
+        end
+        reaper.ImGui_PopStyleColor(ctx, 2)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Filter irregular Notes:\nIdentifies unaligned or micro-shifted notes that do not land on standard metric grid divisions (1/1 to 1/32) and routes them into Voice 16 (or custom voice).")
+        end
+
+        reaper.ImGui_Spacing(ctx)
+
         -- Divisio Vocum Button
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x1E4D6BFF)
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2980B9FF)

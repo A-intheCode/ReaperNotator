@@ -6,8 +6,14 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="1.9.9-beta.2" author="A-intheCode" time="2026-10-13T16:13:17Z">
+      <version name="1.9.9-beta.3" author="A-intheCode" time="2026-10-13T16:32:00Z">
         <changelog><![CDATA[
++ v1.9.9-beta.3: Filter Irregular Notes Feature & Dedicated Dialog:
+  - Filter Irregular Notes: Dedicated button in Tools Drawer beneath Auto Voice opening interactive configuration modal.
+  - Metric Grid Irregularity Detection: Scans notes for onset alignment against regular subdivisions (1/1 down to 1/32) relative to measure barlines across project time signature changes.
+  - Flexible Scope & Routing: Configurable scope (Entire Project, Active Track, Selected Media Items, Selected Notes) and destination voice (default Voice 16) to isolate unquantized/humanized recorded MIDI.
+  - Timing Tolerance & Triplet Engine: Adjustable tolerance slider (0-50 ticks) with quick presets and optional triplet subdivision recognition (1/12, 1/24, 1/48).
+  - High-Performance O(N) Batching: Protected under single REAPER Undo block with MIDI_DisableSort/MIDI_Sort and score canvas cache invalidation.
 + v1.9.9-beta.2: Polyphonic rest consolidation, inactive voice rest suppression and cross-voice note collision avoidance
 + v1.9.9-beta.1: Strict check for Reaticulate script in Scripts/Reaticulate
 + v1.9.9-beta: Laptop HiDPI Window Geometry Fix, Startup Freeze Prevention & Reaticulate Dependency Verification:
@@ -53,6 +59,7 @@
         <source file="modules/services/dynamic_text_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/dynamic_text_service.lua</source>
         <source file="modules/services/dynamics_engine.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/dynamics_engine.lua</source>
         <source file="modules/services/fermata_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/fermata_service.lua</source>
+        <source file="modules/services/filter_notes_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/filter_notes_service.lua</source>
         <source file="modules/services/glissando_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/glissando_service.lua</source>
         <source file="modules/services/hairpin_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/hairpin_service.lua</source>
         <source file="modules/services/json_helper.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/json_helper.lua</source>
@@ -81,6 +88,7 @@
         <source file="modules/ui/clef_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/clef_drawer.lua</source>
         <source file="modules/ui/divisio_vocum_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/divisio_vocum_modal.lua</source>
         <source file="modules/ui/dynamics_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/dynamics_drawer.lua</source>
+        <source file="modules/ui/filter_irregular_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/filter_irregular_modal.lua</source>
         <source file="modules/ui/help_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/help_modal.lua</source>
         <source file="modules/ui/key_signature_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/key_signature_drawer.lua</source>
         <source file="modules/ui/midi_editor_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/midi_editor_drawer.lua</source>

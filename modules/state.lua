@@ -424,6 +424,17 @@ function State.new()
         explode_chords_gap_fill = true,
         explode_chords_scope = "selected",
 
+        -- Filter Irregular Notes Modal (Tools Drawer "Filter irregular Notes...")
+        show_filter_irregular_modal = false,
+        filter_irregular_scope = "project",       -- "project" | "track" | "items" | "selection"
+        filter_irregular_target_voice = 16,       -- 1 .. 16 (default Voice 16 = MIDI chan 15)
+        filter_irregular_grid_qn = 0.125,         -- Default 1/32 (0.125 QN)
+        filter_irregular_grid_label = "1/32",     -- "1/1", "1/2", "1/4", "1/8", "1/16", "1/32", "1/64"
+        filter_irregular_tolerance_ticks = 10,    -- 0 .. 50 ticks
+        filter_irregular_include_triplets = false,
+        filter_irregular_also_mute = false,
+        filter_irregular_also_select = false,
+
         -- Measure repeat marks (Simile %, repeat1Bar)
         repeat_marks = {},
         show_repeat_marks_layer = true,

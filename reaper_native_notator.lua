@@ -1,7 +1,13 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 1.9.9-beta.2
+-- @version 1.9.9-beta.3
 -- @changelog
+--   + v1.9.9-beta.3: Filter Irregular Notes Feature & Dedicated Dialog:
+--             - Filter Irregular Notes: New dedicated button in the Tools Drawer directly beneath Auto Voice opening an interactive configuration modal.
+--             - Metric Grid Irregularity Detection: Mathematically scans notes for onset alignment against regular subdivisions (1/1 down to 1/32) relative to measure barlines across project time signature changes.
+--             - Flexible Scope & Routing: Configurable scope (Entire Project, Active Track, Selected Media Items, Selected Notes) and destination voice (default Voice 16 / MIDI channel 15) to isolate unquantized/humanized recorded MIDI.
+--             - Timing Tolerance & Triplet Engine: Adjustable tolerance slider (0-50 ticks) with quick presets and optional triplet subdivision recognition (1/12, 1/24, 1/48).
+--             - High-Performance O(N) Batching: Protected under a single REAPER Undo block with MIDI_DisableSort/MIDI_Sort and instant score canvas cache invalidation.
 --   + v1.9.9-beta.2: Polyphonic Rest Consolidation & Cross-Voice Note Collision Prevention (Elaine Gould compliant):
 --             - Coincident Rest Fusion: When both voices rest simultaneously in polyphonic measures, tentative duplicate rests are fused into a single centered rest on the staff per Gould ('Behind Bars' p. 308).
 --             - Cross-Voice Note Collision Prevention: Rests strictly avoid collisions with all sounding notes across all voices on the staff. Rest signs are never drawn on top of or through active noteheads of secondary voices.
@@ -308,6 +314,7 @@ local GlissandoService     = require("services.glissando_service")
 local MidiEditorDrawer     = require("ui.midi_editor_drawer")
 local DivisioVocumModal    = require("ui.divisio_vocum_modal")
 local ExplodeChordsModal   = DivisioVocumModal
+local FilterIrregularModal = require("ui.filter_irregular_modal")
 
 -- 4. Initialization of State & Fonts
 local state = State.new()
@@ -620,6 +627,7 @@ local function loop()
         ScaleModal.render(ctx, state)
         MusicXmlModal.render(ctx, state, project_tracks)
         DivisioVocumModal.render(ctx, state, MidiService, state.active_tracks_cache)
+        FilterIrregularModal.render(ctx, state, MidiService, state.active_tracks_cache)
         ArticulationsDrawer.render_last_resort_modal(ctx, state, state.active_tracks_cache)
         
         -- ======================================================================
