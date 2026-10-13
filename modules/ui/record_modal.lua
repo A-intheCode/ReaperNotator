@@ -85,8 +85,8 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         reaper.ImGui_SetNextItemWidth(ctx, 130)
         local cur_preroll_bars = state.rec_preroll_bars or 1
         if reaper.APIExists("SNM_GetDoubleConfigVar") then
-            local sws_bars = reaper.SNM_GetDoubleConfigVar("prerollmeas")
-            if sws_bars and sws_bars > 0 then
+            local ok_sws, sws_bars = pcall(reaper.SNM_GetDoubleConfigVar, "prerollmeas", -1.0)
+            if ok_sws and sws_bars and sws_bars > 0 then
                 cur_preroll_bars = math.floor(sws_bars + 0.5)
             end
         end
@@ -99,7 +99,7 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                 if reaper.ImGui_Selectable(ctx, bar_labels[b], is_sel) then
                     state.rec_preroll_bars = b
                     if reaper.APIExists("SNM_SetDoubleConfigVar") then
-                        reaper.SNM_SetDoubleConfigVar("prerollmeas", b)
+                        pcall(reaper.SNM_SetDoubleConfigVar, "prerollmeas", tonumber(b) or 1.0)
                     end
                     require("state").save_settings(state)
                 end
@@ -291,7 +291,8 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
 
         -- Track Selection List Child Window
         local child_h = 160
-        if reaper.ImGui_BeginChild(ctx, "##RecordTracksChild", 0, child_h, true) then
+        local child_flags = reaper.APIExists("ImGui_ChildFlags_Border") and reaper.ImGui_ChildFlags_Border() or 1
+        if reaper.ImGui_BeginChild(ctx, "##RecordTracksChild", 0, child_h, child_flags) then
             local trk_list = {}
             if active_tracks_data and #active_tracks_data > 0 then
                 for _, td in ipairs(active_tracks_data) do
@@ -362,3 +363,4 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
 end
 
 return RecordModal
+

@@ -1,8 +1,9 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.0.0-beta
+-- @version 2.0.0-beta.1
 -- @changelog
---   + v2.0.0-beta: Transport Recording Suite, Pre-roll & Metronome Count-in, Live Canvas Recording Playhead & Auto-Quantize:
+--   + v2.0.0-beta.1: Transport Recording Suite, Pre-roll & Metronome Count-in, Live Canvas Recording Playhead & Auto-Quantize:
+--             - Hotfix (v2.0.0-beta.1): Fixed SWS 'reaper.SNM_GetDoubleConfigVar' missing 2nd default argument error when opening the Record Settings Modal (prerollmeas read/write now passes required fallback and is safely wrapped in pcall).
 --             - Native Record Button: Dedicated Transport Record button located between Play and Stop in the top toolbar with live glowing red recording status ('🔴 REC') and idle mode ('⏺ Rec').
 --             - Right-Click Record Settings Modal: Right-clicking the Record button opens a comprehensive dialog for Pre-roll, Count-in, Track Arming, and Auto-Quantize options.
 --             - Live Canvas Recording Playhead: Eliminates recording playhead freeze. Renders a vibrant signal-red playhead line with red triangle cap sweeping across all staves in real time with continuous auto-scroll during recording.
