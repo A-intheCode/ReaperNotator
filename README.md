@@ -24,21 +24,29 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
-- **Transport Recording Suite, MIDI Input Routing, Live Note Preview & Auto-Quantize Engine (v2.0.0-beta.2)**:
-  - **Native Record Button**: Dedicated transport Record button located between Play and Stop in the top toolbar with live glowing red recording status (`🔴 REC`) and idle state (`⏺ Rec`).
-  - **Right-Click Configuration Modal**: Right-clicking the Record button opens a dedicated dialog for Pre-roll, Metronome Count-in, MIDI Input Device selection, Track Record-Arming, Live Preview, and Auto-Quantize settings.
+- **Automatic Reaticulate FX Slot 1 Setup, Bank Sync & Articulation Engine (v2.0.3)**:
+  - **Automatic `JS:Reaticulate` (`Reaticulate.jsfx`) Verification & Slot 1 Ordering**: Selecting a bank in the Bank Picker or applying an articulation on a brand-new or unconfigured track automatically checks the track's FX chain for `Reaticulate.jsfx`. If missing, it loads it automatically; if placed after a VSTi instrument (slot $> 0$), it automatically moves `Reaticulate.jsfx` to the very first FX slot (**Slot 1 / index 0**) before the instrument so keyswitches and channel routing work out of the box.
+  - **Native `P_EXT:reaticulate` Metadata & Wildcard `Bank * *` MSB/LSB Sync**: Writes the structured JSON bank assignment into the track's `P_EXT:reaticulate` state, resolves or allocates deterministic CRC64 MSB/LSB (`CC0`/`CC32`) numbers for wildcard `Bank * *` definitions, and triggers Reaticulate's live RFX sync.
+  - **Selected Notes & Edit-Cursor Articulation Placement**: Applies articulations (`NOTE <pitch> <chan> a <art>` + `CC0`/`CC32` Bank Select + `Program Change`) to all selected notes, or automatically attaches them directly to notes at the **REAPER Edit Cursor** when no notes are selected.
+
+- **Transport Recording Suite, MIDI Input Routing, Live Note Preview & Auto-Quantize Engine (v2.0.3)**:
+  - **Native Record Button**: Dedicated transport Record button located between Play and Stop in the top toolbar with live glowing red recording status (`🔴 REC`) and idle state (`⏺ Rec`). Left-clicking while recording stops both Recording and Playback completely in one click (`CSurf_OnStop`).
+  - **Right-Click Configuration Modal**: Right-clicking the Record button opens a dedicated dialog for Pre-roll, Metronome Count-in, MIDI Input Device & Channel selection, Track Record-Arming, Live Preview, and Auto-Quantize settings.
   - **MIDI Input Device & Channel Selector**: Choose from all connected hardware MIDI keyboards, REAPER's Virtual MIDI Keyboard, or All MIDI Inputs plus MIDI Channel (`All` or `1–16`). Automatically enables Input Monitoring (`I_RECMON`) and MIDI Overdub (`I_RECMODE = 7`) so REAPER records directly into MIDI score items without popping up Audio `.wav` Save prompts.
-  - **Real-Time Live Note Preview & Recording Playhead**: Captures incoming MIDI Note-On/Note-Off events in real time via `MIDI_GetRecentInputEvent` and renders played notes live on the score canvas at the red playhead (with glowing red noteheads and dynamically growing durations while keys are held).
-  - **Bidirectional Track Record-Arming & Red Canvas Badges**: Lists all REAPER project tracks (including empty tracks) in the modal; arming a track immediately updates REAPER's native TCP/MCP Record-Arm button and highlights the track in the score canvas with red-tinted headers, red borders, and `● REC` badges.
+  - **Real-Time Live Note Preview & Non-Destructive Clamping**: Captures incoming MIDI Note-On/Note-Off events in real time via `MIDI_GetRecentInputEvent` and renders played notes live on the score canvas at the red playhead (strictly clamping held notes to the red playhead to prevent infinite tie artifacts).
+  - **Bidirectional Track Record-Arming & Red Canvas Badges**: Lists all REAPER project tracks (including empty tracks) in the modal; arming a track immediately updates REAPER's native TCP/MCP Record-Arm button and highlights the track in the score canvas with red-tinted headers, red borders, and crisp vector `REC` pill badges.
   - **Pre-roll & Metronome Count-in Sync**: Integrated with REAPER's native Pre-roll (Action 41818), adjustable bar length (1, 2, 4 bars), Count-in (Action 40364), and quick-access button to REAPER's native Metronome/pre-roll settings dialog.
-  - **Auto-Quantize on Record Stop**: Automatically cleans and quantizes newly recorded takes upon stopping recording. Eliminates keyboard pre-bounces ($<15$ ticks), trims same-pitch overlaps, snaps onsets within configurable tick tolerance (default: 1/8 note @ 25 ticks), and provides flexible outlier handling (keep natural, delete outliers, or move to Voice 16).
+  - **Real-Time & Post-Record Auto-Quantize Engine**: Previews auto-quantized notes live on the score canvas and commits them cleanly upon stopping recording. Eliminates keyboard pre-bounces ($<15$ ticks), trims same-pitch overlaps, snaps onsets within configurable tick tolerance (default: 1/8 note @ 25 ticks), and provides four outlier handling modes: **🧲 Snap to Grid** (default), **Keep natural**, **Delete outliers**, or **Move to Voice 16**.
+
+- **2-Step Window Maximize, Startup Centering & Custom Rehearsal Marks (v2.0.3)**:
+  - **2-Step Screen Work Area Maximize & Clean Centered Startup**: Queries the full work area of the target monitor first, opens centered in floating size on every REAPER launch (without persisting `is_maximized` across sessions), and scales cleanly to full monitor bounds on Maximize (`F11`).
+  - **Custom Rehearsal Marks, Inline Double-Click Renaming & `Ctrl+M` Live Shortcut**: Double-click any Rehearsal Mark on the score canvas to rename it inline (automatically locking it as a Custom Marker and excluding it from the `A, B, C...` / `1, 2, 3...` sequence). Press `Ctrl+M` live during Playback/Recording (or when stopped) to drop sequential Custom Markers (`Marker 1`, `Marker 2`...) at the Playhead or Edit Cursor.
 
 - **Filter Irregular Notes & Rhythmic Clean-Up (v1.9.9)**:
   - **Live-Recorded & Humanized MIDI Cleaner**: Detects micro-timing deviations that cause fractional rests and tied fragments in classical engraving.
   - **Subdivision & Triplet Metric Engine**: Tests note onsets against 1/1 through 1/32 subdivisions (and optional 1/12, 1/24, 1/48 triplets) across all time signature changes.
   - **Live Canvas Yellow Highlighting & Ghosting**: Real-time gold/yellow (`#FFD700`) preview on the score canvas with optional dimming/ghosting of regular notes for effortless visual inspection.
   - **Dual Execution Modes**: Non-destructively select irregular notes (`🔍 Select Notes`) or reassign them cleanly to a secondary background voice (`⚡ Reassign to Voice`, default Voice 16 / MIDI Ch 15).
-  - **Multi-Monitor Window Geometry & Maximization Memory**: Relaunches seamlessly on secondary or ultra-wide monitors without coordinate drift, with top-level modal Z-ordering and instant maximize/restore state persistence.
   - **Gould Polyphonic Rest Consolidation**: Automatically consolidates co-occurring identical rests across polyphonic voices into a single centered rest with vertical collision avoidance.
 
 - **Integrated Multi-Lane MIDI Editor Suite (v1.8.0)**:

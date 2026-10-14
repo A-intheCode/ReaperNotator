@@ -1,7 +1,10 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.0.2
+-- @version 2.0.3
 -- @changelog
+--   + v2.0.3: Hotfix - Top-Bar Version Synchronization & Expanded User Manuals:
+--             - Top-Bar Version Display Hotfix (v2.0.3): Synchronized 'modules/version.lua' to v2.0.3 with automatic '-- @version' header verification and 'package.loaded["version"]' cache clearing on script reload, resolving the issue where v2.0.2 still displayed 'v2.0.1' in the top-left toolbar badge.
+--             - Expanded User Manual & PDF Documentation (v2.0.3): Updated 'docs/user_manual.md', 'docs/reaper_notator_user_manual.pdf', 'README.md', and the in-app Help Modal with comprehensive documentation for the Transport Recording & Auto-Quantize Suite (Right-Click Record Modal, Track Arming & MIDI Overdub, MIDI Input/Channel Selector, Live Canvas Note Preview, and 'Snap to Grid' outlier quantization) as well as the Automatic Reaticulate FX Slot 1 Setup & Bank Sync on new tracks.
 --   + v2.0.2: Official Production Release - Reaticulate FX Slot 1 Auto-Setup, Bank Sync & Articulation Fix:
 --             - Automatic Reaticulate FX Slot 1 Setup & P_EXT Bank Sync (v2.0.2): Selecting a bank in the Bank Picker or applying an articulation on a new/unconfigured track now automatically verifies that 'JS:Reaticulate' ('Reaticulate.jsfx') is loaded on the track, places/moves it to the very first FX slot (Slot 1 / index 0, before any VSTi instrument), writes the bank assignment into 'P_EXT:reaticulate', resolves/allocates project MSB/LSB ('CC0'/'CC32') for 'Bank * *' definitions, and syncs with Reaticulate.
 --             - Reliable Articulation Insertion at Selected Notes & Edit Cursor (v2.0.2): Fixed missing 'CC0'/'CC32' Bank Select events on wildcard banks, automatic bank override resolution across all MidiService articulation helpers, and direct attachment of 'NOTE <pitch> <chan> a <art>' + Bank Select + Program Change to notes at the Edit Cursor when no notes are explicitly selected.
@@ -274,7 +277,7 @@ package.path = script_dir .. "?.lua;"
 
 -- 0. Dev-Mode Cache Clearing
 for k in pairs(package.loaded) do
-    if k:match("^constants") or k:match("^state") or k:match("^classes%.") or k:match("^services%.") or k:match("^rendering%.") or k:match("^ui%.") or k:match("^input%.") then
+    if k:match("^version") or k:match("^constants") or k:match("^state") or k:match("^classes%.") or k:match("^services%.") or k:match("^rendering%.") or k:match("^ui%.") or k:match("^input%.") then
         package.loaded[k] = nil
     end
 end

@@ -1,7 +1,7 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
-**Version:** 2.0.0-beta.2  
-**Date:** 2026-10-13  
+**Version:** 2.0.3  
+**Date:** 2026-10-14  
 **License:** GNU General Public License v3.0  
 
 ---
@@ -9,7 +9,7 @@
 ## Table of Contents
 
 - [Chapter 1: Introduction & Interface Architecture](#chapter-1-introduction--interface-architecture)
-- [Chapter 2: Top Toolbar & Global Navigation](#chapter-2-top-toolbar--global-navigation)
+- [Chapter 2: Top Toolbar, Live Recording Suite & Global Navigation](#chapter-2-top-toolbar-live-recording-suite--global-navigation)
 - [Chapter 3: Score Canvas & Note Editing Engine](#chapter-3-score-canvas--note-editing-engine)
 - [Chapter 4: Standard-Compliant Automatic Beaming Engine](#chapter-4-standard-compliant-automatic-beaming-engine)
 - [Chapter 5: Dynamics Engine, Hairpins & Bow Swell Function](#chapter-5-dynamics-engine-hairpins--bow-swell-function)
@@ -48,62 +48,65 @@ The user interface is designed around an ergonomic three-column layout:
 - Center Column (Score Canvas): Infinite interactive notation canvas displaying visual staves, barlines, noteheads, stems, beams, ties, slurs, lyrics, and rehearsal marks.
 - Right Column (Context Drawers & Tool Panels): Collapsible slide-out panels for Dynamics automation, Reaticulate banks, Tempo maps, Clef palettes, Key signatures, Pattern browser, and Settings.
 
-### 1.3 Window Resizing & Docking
+### 1.3 Window Resizing, Docking & 2-Step Monitor Maximize Engine
 
 REAPER-Notator can run as a floating window or docked directly into any REAPER docker (bottom, top, left, right, or multi-tabbed). The score canvas dynamically scales according to the zoom factor (adjustable from 0.6x to 2.0x), preserving crisp vector typography at all DPI scaling factors.
 
-#### Multi-Monitor Window State Persistence (v1.9.9)
-- **Automatic Display Coordinate Memory**: REAPER-Notator automatically persists its exact window bounds $(X, Y, W, H)$ and maximization state (`wnd_maximized`) across sessions in global and project ExtState.
-- **Secondary Display Positioning**: When positioned on secondary, tertiary, or ultra-wide monitors (including negative or offset virtual screen coordinates, e.g. a second monitor placed to the left or right of the main display), REAPER-Notator restores its exact placement upon re-opening without jumping back to the primary display.
-- **One-Click Maximize / Restore**: The top toolbar features an integrated `Maximize` / `Restore` toggle button. Clicking `Maximize` expands the window cleanly to fill the active monitor's work area (respecting OS taskbars and scaling) without coordinate drift or window shrinkage. Clicking `Restore` brings the window back to its previous floating geometry.
-- **In-Front Modal Dialog Architecture**: All secondary dialogs and tools modals (Filter Irregular Notes, Quantize, Divisio Vocum, Fix of Last Resort) maintain top-level Z-order above the score canvas (`ImGui_WindowFlags_TopMost`), preventing background clicks on the score canvas from hiding active configuration dialogs.
+2-Step Monitor Maximize, Startup Centering & Multi-Monitor Management (v2.0.1+):
+- Centered Floating Startup (Clean Session Launch): On every REAPER startup or script launch, REAPER-Notator first queries the maximum possible work area of the target monitor (via ImGui_GetMainViewport and reaper.my_getViewport with HiDPI coordinate conversion) and opens in a clean, centered floating window in the middle of the screen. Maximization state (is_maximized) is intentionally not persisted across restarts so the user always retains full control and the window can never get stuck in an un-restorable geometry.
+- 2-Step Screen Maximize & Restore Toggle (Top Bar / F11): Clicking the Maximize button in the top-right toolbar (or pressing F11) executes a deterministic two-step sequence: (1) it reads the full work area bounds of the monitor where the window currently resides and stores a centered floating restore rectangle in the middle of that monitor, and (2) scales the window cleanly to 100% of the monitor work area. Clicking Restore returns the window directly to the centered floating geometry.
+- Anti-Collapse Title Bar Guard & Legacy Cleanup: Uses ImGui_WindowFlags_NoCollapse and ImGui_SetNextWindowCollapsed(ctx, false) so double-clicking the title bar never collapses the window into an unresponsive shaded bar, and automatically purges obsolete pre-v2 ExtState entries on startup.
+- Always-On-Top Modal Layering: All secondary configuration dialogs (Record & Auto-Quantize, Filter Irregular Notes, Quantize, Divisio Vocum, Bank Picker, Settings, and Help) render with ImGui_WindowFlags_TopMost, remaining strictly in the foreground above the score canvas.
 
 ---
 
-## Chapter 2: Top Toolbar & Global Navigation
+## Chapter 2: Top Toolbar, Live Recording Suite & Global Navigation
 
 ### 2.1 Title & Version Indicator
 
-Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.0.0-beta). When running in a developer environment, Notator automatically detects and displays the active Git commit hash.
+Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.0.3), synchronized directly with modules/version.lua and the main @version header. When running in a Git repository environment, Notator automatically detects and displays the active commit hash via pure-Lua .git/HEAD inspection.
 
 ### 2.2 Transport & Playhead Controls
 
 Functions:
 - Rewind (|<): Instantly returns REAPER's edit cursor to measure 1.0 (time 0.0s).
 - Play / Pause (> / ||): Starts timeline playback or pauses at the current cursor position. Key shortcut: Space.
-- Record (⏺ Rec / 🔴 REC): Dedicated transport recording control situated between Play and Stop.
-  - Left-Click: Toggles REAPER recording (`CSurf_OnRecord` / Action 1013). When active, glows in vivid signal red (`🔴 REC`); when idle, shows a subtle dark-red accent (`⏺ Rec`).
-  - Right-Click: Opens the **Recording & Auto-Quantize Settings** configuration dialog.
-- Stop: Halts playback or recording, triggers the Auto-Quantize engine (if enabled), and resets playhead according to REAPER's project settings.
+- Record ([Rec] / [REC]): Dedicated transport recording button situated between Play and Stop.
+  * Left-Click: Starts REAPER recording immediately (CSurf_OnRecord / Action 1013) when stopped, glowing in vivid signal red ([REC]). Clicking the red button again while recording is active calls CSurf_OnStop(), stopping both Recording and Playback completely in one click.
+  * Right-Click: Opens the Recording & Auto-Quantize Settings modal dialog (RecordModal).
+- Stop: Halts playback or recording completely, commits the Auto-Quantize engine to newly recorded takes (if enabled), and resets the playhead according to REAPER's project settings.
 DAW Effect: Calls REAPER's CSurf_OnPlay, CSurf_OnRecord, CSurf_OnStop, and SetEditCurPos directly, maintaining sample-accurate alignment with REAPER's master audio engine.
 
-### 2.3 Live Canvas Recording Playhead (v2.0.0-beta)
+### 2.3 Live Canvas Recording Playhead & Real-Time Live Note Preview (v2.0+)
 
 Functions:
-- Signal-Red Playhead: During active recording, the score canvas displays a prominent **vivid red vertical sweep line** (`0xE74C3CFF`) capped with a red triangular pointer (`▼`) moving in real time across all staves.
-- Real-Time Auto-Scroll: The score canvas smoothly follows the live recording playhead position at 60 FPS, keeping upcoming measures and downbeats in view.
-- Real-Time Counter Tracking: The top bar measure/beat counter and elapsed time displays update continuously during recording.
+- Signal-Red Recording Playhead: During active recording, the score canvas renders a high-visibility signal-red vertical sweep line (0xE74C3CFF) capped with a red triangular pointer ([v]) moving in real time across all staves.
+- Real-Time Live Note Preview: Polls incoming hardware and virtual MIDI Note-On and Note-Off events in real time via MIDI_GetRecentInputEvent and engraves played notes live on the score canvas at the red playhead with glowing red/coral noteheads and dynamically growing note durations while keys are held down.
+- Non-Destructive Live Clamping (Zero Infinite Tie Artifacts): While recording in MIDI Overdub mode, REAPER temporarily sets the Note-Off of held notes to the end of the MIDI item until the key is released. REAPER-Notator performs real-time auto-quantize preview non-destructively on the ScoreCanvas (strictly clamping held notes to the current red playhead position) without calling MIDI_SetNote/MIDI_Sort mid-recording, and commits the final quantized notes and stop-position clamping cleanly to the REAPER take the instant recording stops.
+- Continuous 60 FPS Auto-Scroll & Counter Tracking: The score viewport smoothly tracks the live recording playhead and updates the top bar Measure.Beat and elapsed time counters continuously.
 
-### 2.4 Pre-roll, Metronome Count-in & Track Arming (v2.0.0-beta)
+### 2.4 Right-Click Record Modal: Track Arming, MIDI Input Routing, Pre-Roll & Count-In (v2.0+)
+
+Functions (accessible by right-clicking the Record button in the Top Toolbar):
+- Bidirectional REAPER Track Arming: Lists all REAPER project tracks (including empty tracks that do not yet contain MIDI items). Toggling a track's checkbox in the Record Modal immediately synchronizes REAPER's native TCP/MCP Record-Arm button (I_RECARM = 1), enables Input Monitoring (I_RECMON = 1), configures MIDI Overdub (I_RECMODE = 7) so REAPER records directly into MIDI score takes without popping up Audio '.wav' Save prompts, and makes the track visible on the score canvas.
+- Armed Track Red Canvas Badges: Any track armed for recording displays a subtle red background tint, red outer border, red left accent stripe, and a crisp vector circle 'REC' pill badge in the track header (with automatic track title truncation so the badge and track name never overlap).
+- MIDI Input Device & Channel Selector: Choose from all connected hardware MIDI keyboards, REAPER's Virtual MIDI Keyboard (VKB), or 'All MIDI Inputs', alongside the target MIDI Channel ('All Channels' or 'Channel 1..16'), assignable globally across armed tracks or individually per track.
+- Pre-Roll on Record (Action 41818): Toggle to audition preceding measures before recording punches in, with selectable Pre-Roll Bar Length (1, 2, or 4 bars synchronized with REAPER's prerollmeas configuration).
+- Metronome Count-In before Record (Action 40364): Enables audible metronome lead-in clicks before recording starts, plus a 1-click shortcut button to open REAPER's native Metronome / Pre-Roll Settings dialog (Action 40049).
+
+### 2.5 Real-Time & Post-Record Auto-Quantize Engine (v2.0+)
 
 Functions:
-- Pre-roll on Record (Action 41818): Configurable toggle to audition preceding measures before recording punches in.
-- Pre-roll Bar Length: Select 1, 2, or 4 bars of pre-roll (synchronized with REAPER's `prerollmeas` configuration).
-- Count-in before Record (Action 40364): Audible metronome lead-in clicks before recording commences.
-- Metronome Quick-Settings: Instant button opening REAPER's native Metronome/Pre-roll Settings dialog (Action 40049).
-- Armed Track Red Badges: Tracks armed for recording in REAPER (`I_RECARM == 1`) display a red background tint, red outer border, red left stripe, and a high-visibility `● REC` badge in the score canvas.
-
-### 2.5 Auto-Quantize on Record Stop Engine (v2.0.0-beta)
-
-Functions:
-- Automatic Processing on Stop: Intercepts newly recorded MIDI takes on armed tracks the moment recording stops.
-- Key Bounce & Overlap Cleaning: Detects fast keyboard pre-bounces (< 15 ticks on identical pitch) and clamps overlapping note tails to 1 tick prior to the next onset.
-- Metric Grid Snapping within Tolerance: Snaps note onsets that land within a configurable tick tolerance (default: 1/8 note @ 25 ticks) mathematically onto the musical grid.
-- Outlier Handling: Choose how to handle notes deviating outside the tolerance radius:
-  - *Keep natural (unquantized)*: Preserves played micro-timing for organic expressive phrasing.
-  - *Delete outlier notes*: Removes accidental micro-notes or missed strikes outside the tolerance window.
-  - *Move to Voice 16*: Routes irregular notes to Voice 16 (MIDI channel 15) to keep the primary notation voice pristine.
-- Transactional Undo Safety: The entire operation is enclosed within a single REAPER undo transaction (`Undo_BeginBlock2`), allowing complete rollback with Ctrl+Z.
+- Live Preview & Automatic Commit on Stop: Previews quantized rhythmic positions live on the score canvas during recording and automatically processes newly recorded MIDI notes on all armed tracks the moment recording stops.
+- Configurable Quantize Grid: Select target rhythmic division (1/4, 1/8, 1/16, 1/32, with optional Triplet grid recognition).
+- Key Bounce & Overlap Cleaning: Automatically eliminates mechanical keyboard pre-bounces (< 15 ticks on identical pitch), deduplicates multiple notes snapping to the same grid slot, and trims overlapping same-pitch note tails to 1 tick prior to the next note onset.
+- Strict Tick Tolerance Slider (5 to 60 Ticks, default 25 Ticks): Defines the timing window around each rhythmic grid division.
+- Four Outlier Handling Modes ('Notes outside tolerance'):
+  1. '[Snap] Snap to Grid' (Default): Magnetizes all recorded notes—including notes played outside the strict tick tolerance window—cleanly onto the nearest rhythmic grid division for immediately clean, readable sheet music.
+  2. 'Keep natural (unquantized)': Snaps notes within the tolerance window to the grid while preserving played micro-timing for notes outside the window.
+  3. 'Delete outliers': Removes stray accidental key touches that fall outside the tolerance window.
+  4. 'Move to Voice 16': Routes outlier notes outside the tolerance window to Voice 16 (MIDI channel 15) so they remain audible in playback while keeping Voice 1 notation pristine.
+- Transactional Undo Safety: Enclosed within a single REAPER undo block (Undo_BeginBlock2) for instant rollback via Ctrl+Z.
 
 ### 2.6 Timeline & Meter Displays
 
@@ -207,11 +210,12 @@ Functions:
 - Second Intervals (Seconds): Notes placed on adjacent staff degrees in the same chord automatically offset horizontally (left/right) according to Elaine Gould engraving rules to prevent notehead collisions.
 - Multi-Voice Stems: Polyphonic voices automatically flip stems (Voice 1 stems up, Voice 2 stems down).
 
-### 3.7 Standard Gould Rests
+### 3.7 Standard Gould Rests & Polyphonic Rest Consolidation
 
 Functions:
 - Empty Measure Rests: Empty measures automatically display a centered whole-measure rest glyph.
 - Rhythmic Rest Decomposition: Gaps between notes decompose into standard rests (quarter, eighth, 16th rests) strictly aligned to the meter division.
+- Polyphonic Rest Consolidation (Behind Bars p. 308): Coincident identical rests across simultaneous voices merge into a single shared centered rest, and rests strictly avoid colliding with active sounding noteheads on secondary voices.
 
 ### 3.8 Non-Mouse Keyboard Note Navigation & Selection Expansion
 
@@ -303,22 +307,28 @@ Function: Checkbox to temporarily disable CC automation playback without deletin
 
 ## Chapter 6: Articulations & Reaticulate Integration
 
-### 6.1 Reaticulate Bank Auto-Discovery
+### 6.1 Reaticulate Bank Auto-Discovery & Bank Picker Modal
 
-Functions: REAPER-Notator automatically scans REAPER's user directory for Reaticulate sound bank definitions (Reaticulate.reabank). When a track is selected, Notator matches track names (e.g. 'Violin I', 'Cello', 'Horns') to corresponding library banks.
+Functions: REAPER-Notator automatically scans REAPER's Data and Scripts directories for factory and user Reaticulate sound bank definitions (Reaticulate-factory.reabank and Reaticulate.reabank). When a track is selected, Notator reads the track's P_EXT:reaticulate assignment, user bank override, or matches track names (e.g. 'Violin I', 'Cello', 'Horns') to corresponding library banks. Users can also explicitly assign or switch any track's sound bank at any time via the 'Select Bank...' button in the Articulations Drawer (BankPickerModal).
 
-### 6.2 Visual Playing Technique Glyphs
+### 6.2 Automatic Reaticulate.jsfx FX Slot 1 Setup & Bank Sync on New Tracks (v2.0.2+)
 
-Functions: Provides an instant-access drawer for score playing techniques:
-- Staccato (dot), Staccatissimo (wedge), Accent (>), Marcato (^), Tenuto (-)
-- Pizzicato (pizz.), Arco, Con Sordino, Sul Ponticello, Col Legno, Tremolo, Harmonics (o)
-Placement: Notator automatically positions articulation marks above noteheads for stems-down notes, or below noteheads for stems-up notes according to standard engraving conventions.
+Functions & Zero-Configuration New Track Workflow:
+- Automatic FX Verification & Insertion: When you create a brand-new track in REAPER (even one that only has a virtual instrument VSTi loaded or an empty FX chain) and select a bank in the Bank Picker—or apply any articulation from the Articulations Drawer / Sidebar—REAPER-Notator automatically checks the track's FX chain for 'JS:Reaticulate' (Reaticulate.jsfx). If missing, Notator automatically loads it onto the track via TrackFX_AddByName.
+- Strict FX Slot 1 (Index 0) Placement Before Instrument VSTi: For Reaticulate to intercept Bank Select (CC0/CC32) and Program Change events and translate them into sampler keyswitches, Reaticulate.jsfx MUST sit in the very first FX slot (Slot 1 / index 0) prior to the virtual instrument (Kontakt, Sine, Opus, Play, VSL, etc.). If Reaticulate.jsfx is absent or positioned after an instrument plugin (slot > 0), REAPER-Notator automatically moves it to FX Slot 1 (index 0) via TrackFX_CopyToTrack(..., 0, true).
+- Native P_EXT:reaticulate Track Metadata Sync: Selecting a bank or applying an articulation automatically writes the structured JSON bank configuration into the track's P_EXT:reaticulate extension state (preserving existing secondary banks or generating a valid RFC-4122 UUID v4 when needed) and triggers Reaticulate's live RFX sync so both the Reaticulate GUI and JSFX immediately activate the bank.
+- Wildcard 'Bank * *' MSB/LSB Resolution & Allocation: Many custom user .reabank files define banks using wildcard headers ('Bank * * LibraryName') rather than hardcoded MSB/LSB numbers. REAPER-Notator automatically parses project-level MSB/LSB assignments from REAPER's REATICULATE bank_msblsb ExtState, or allocates deterministic Reaticulate-compatible CRC64 MSB/LSB numbers (CC0/CC32) and persists them to the project so Bank Select events are never skipped.
 
-### 6.3 DAW Automation Impact
+### 6.3 Visual Playing Technique Glyphs & Applying Articulations (Selected Notes & Edit Cursor)
 
-DAW Effect: Inserting an articulation writes:
-  1. REAPER Type 15 notation text events into the MIDI take for persistent score recall.
-  2. MIDI CC0 / CC32 Bank Select and Program Change messages at the note start position to trigger sample library key switches in Kontakt, Spitfire, VSL, Orchestral Tools, etc.
+Functions:
+- Instant Playing Technique Palette: Provides an instant-access drawer and sidebar buttons for standard SMuFL glyphs and text playing techniques:
+  * Staccato (dot), Staccatissimo (wedge), Accent (>), Marcato (^), Tenuto (-)
+  * Legato, Long / Sustain, Pizzicato (pizz.), Arco, Con Sordino, Sul Ponticello, Sul Tasto, Col Legno, Tremolo, Trills, Harmonics / Flageolet (o)
+- Standard Engraving Placement: Automatically positions articulation marks above noteheads for stems-down notes, or below noteheads for stems-up notes (with consistent beam-side alignment and staff-line avoidance).
+- Applying to Selected Notes: When one or more notes are selected on the score canvas, clicking an articulation attaches the persistent REAPER Type 15 notation tag (`NOTE <pitch> <chan> a <art_name>`), writes the resolved MIDI CC0 (MSB), CC32 (LSB), and Program Change at the note onset, and schedules Auto-Chase return events.
+- Applying at Edit Cursor (No Note Selection Needed, v2.0.2+): If no notes are currently selected, clicking an articulation in the Articulations Drawer automatically finds all notes on the active track/take at the current REAPER Edit Cursor position (cursor_qn), attaches the visual notation tag (`NOTE ... a ...`) directly to those notes, and inserts the corresponding CC0/CC32 Bank Select and Program Change events. If no note exists at the Edit Cursor, a standalone Program Change switch is inserted at the cursor position.
+DAW Effect: Writes both persistent Type 15 score notation events and sample-accurate CC0/CC32 Bank Select + Program Change events into the REAPER MIDI take, immediately marking the item dirty and synchronizing open MIDI editors.
 
 ### 6.4 Momentary Articulations & Auto-Chase Return Engine
 
@@ -533,13 +543,15 @@ Functions: Integrated one-click downloader built into the browser toolbar and em
 
 ## Chapter 11: Rehearsal Marks, Fermatas & Score Tools
 
-### 11.1 Dynamic Rehearsal Marks & Interactive Drag-and-Drop
+### 11.1 Dynamic & Custom Rehearsal Marks, Inline Renaming & Live Shortcut (Ctrl+M)
 
-Functions: Professional structural navigation and rehearsal tagging:
+Functions: Professional structural navigation, custom section markers, and rehearsal tagging:
 - Dedicated Rehearsal Lane: Positioned cleanly between the Chord Track lane and Bar Numbers, providing unobstructed structural visibility across all systems.
-- Interactive Mouse Drag & Drop: Click and drag any rehearsal mark directly along the top lane to move it to any measure. During dragging, the mark follows the cursor with a real-time vertical snap guide line and target bar indicator ('Bar X').
-- Auto-Sequencing: Marks automatically sequence as [A], [B], [C]... or [1], [2], [3]... Moving or inserting marks chronologically re-indexes all subsequent marks across the score.
-- Edit-Cursor Placement: The Tools Drawer dynamically detects the active REAPER edit cursor position, displaying explicit actions like 'Add Letter Mark at Bar X' and 'Add Number Mark at Bar X'.
+- Interactive Mouse Drag & Drop: Click and drag any rehearsal mark directly along the top lane to move it to any measure or grid beat. Custom Markers and Navigation Marks (e.g. 'D.C.', 'D.C. al Fine') permanently retain their custom label across moves with dynamic badge hitboxes.
+- Auto-Sequencing: Standard marks automatically sequence as [A], [B], [C]... or [1], [2], [3]... Moving or inserting standard marks chronologically re-indexes all subsequent standard marks across the score.
+- Inline Double-Click Renaming & Auto-Sequence Exclusion (v2.0+): Double-clicking any Rehearsal Mark on the score canvas (or choosing 'Rename Mark' in the right-click context menu / Tools Drawer) opens an inline rename box. Renaming any mark locks it as a Custom Marker and automatically excludes it from the A, B, C... / 1, 2, 3... counting sequence.
+- Live & Stopped Custom Marker Shortcut ('Ctrl+M', v2.0+): Pressing Ctrl+M (configurable in Settings -> Shortcuts) places sequential default custom markers ('Marker 1', 'Marker 2', 'Marker 3'...) at the exact Playhead position during live Playback or Recording (snapped to the active Notation Grid), or at the Edit Cursor when stopped.
+- Edit-Cursor Placement: The Tools Drawer dynamically detects the active REAPER edit cursor position, displaying explicit actions like 'Add Letter Mark at Bar X', 'Add Number Mark at Bar X', and 'Add Custom Marker at Bar X'.
 - Classical Navigation Symbols: Immediate one-click placement of Da Capo (D.C.), D.C. al Fine, Dal Segno (D.S.), D.S. al Coda, Segno, Coda, and Fine marks.
 - Inverted Engraving Typography: Styled according to classical engraving rules with a crisp paper background, 2px dark border, and high-contrast dark typography.
 - Settings & View Options: Configurable vertical Y-offset slider in Settings and a show/hide toggle in the View dropdown.
@@ -592,51 +604,16 @@ DAW Execution, Articulation & Sound Bank Bridging:
 
 ### 11.5 Filter Irregular Notes (Humanized & Live-Recorded MIDI Cleaner)
 
-#### Musical Concept & Background
-Live-recorded MIDI keyboard performances and humanized takes inherently feature subtle micro-timing variations. While these nuances sound organic in audio playback, standard music notation engravers struggle to render them cleanly. Unquantized notes often result in severe visual clutter—generating microscopic 64th or 128th rests, fragmented split notes, and confusing ties across beats.
+Musical Concept & Background:
+Live-recorded MIDI keyboard performances and humanized takes inherently feature subtle micro-timing variations. Filter Irregular Notes analyzes note onset positions relative to the musical meter, flags notes that deviate from standard metric subdivisions outside a user-defined tick tolerance, renders a live gold/yellow (#FFD700) preview on the score canvas, and allows you to either select them for manual inspection or reassign them cleanly into a secondary background voice (default Voice 16 / MIDI channel 15).
 
-**Filter Irregular Notes** provides an intelligent, non-destructive workflow to address this: it analyzes note onset positions relative to the musical meter, flags notes that deviate from standard metric subdivisions outside a user-defined tick tolerance, renders a live yellow preview on the score canvas, and allows you to either select them for manual inspection or reassign them cleanly into a separate polyphonic voice (such as Voice 16 / MIDI channel 15).
-
-#### How to Access the Tool
-- Open the right-hand **Tools** drawer.
-- Click the **Filter irregular Notes...** button, located directly below *Auto Voice*.
-
-#### Interactive Dialog Controls & Features
-- **Tolerance Slider (0 to 50 Ticks)**:
-  - Determines how many MIDI ticks of micro-timing deviation are permitted before a note is treated as irregular.
-  - At **0 Ticks**, the detection algorithm tests strict mathematical alignment with a sub-tick float epsilon ($< 0.05$ ticks). Notes that sit cleanly on a musical subdivision are never falsely flagged, even at zero tolerance.
-  - Raising the slider widens the acceptable boundary ($\pm \text{tolerance}$ ticks around each grid subdivision). Notes outside this boundary are flagged as irregular.
-- **Include Triplets Checkbox**:
-  - By default, the engine tests binary subdivisions: Whole ($1/1$), Half ($1/2$), Quarter ($1/4$), Eighth ($1/8$), 16th ($1/16$), and 32nd ($1/32$) notes relative to measure barlines and time signatures.
-  - When **Include Triplets** is enabled, the detection algorithm also tests compound/triplet subdivisions: 12th ($1/12$), 24th ($1/24$), and 48th ($1/48$) notes.
-- **Target Voice Selector (Voice 1 through Voice 16)**:
-  - Chooses the destination voice when reassigning irregular notes.
-  - Defaults to **Voice 16** (mapped to MIDI channel 15 in REAPER's multi-voice architecture), isolating irregular notes into their own voice layer without modifying pitch or performance timing.
-- **Processing Scope**:
-  - **Selected Notes Only**: Restricts detection and actions exclusively to currently highlighted notes in the score canvas.
-  - **All Notes on Track / Item**: Analyzes all MIDI notes across the active take/track.
-- **Live Canvas Preview (Yellow Note Highlighting)**:
-  - While the modal dialog is open, all matching irregular notes are dynamically highlighted in vivid **gold/yellow** (`#FFD700`) directly on the score notation canvas in real time.
-  - Moving the tolerance slider or toggling triplets immediately recalculates and refreshes the yellow highlight on the fly.
-- **Dim / Ghost Regular Notes Checkbox**:
-  - When checked, all regular (non-flagged) notes on the canvas are visually dimmed and rendered semi-transparent (matching the inactive voice visual hierarchy).
-  - This dims out the musical background, allowing irregular notes to stand out with instant clarity.
-- **Dynamic Irregular Note Counter**:
-  - An inline status badge continuously reports the number of detected irregular notes (e.g. `14 irregular notes detected`) matching the active parameters.
-
-#### Dual Execution Actions
-- **🔍 Select Notes**:
-  - Non-destructively selects the detected irregular notes in both the REAPER-Notator canvas and REAPER's underlying MIDI take.
-  - Does **not** modify note voices, channels, pitches, or timing.
-  - Ideal for inspecting notes, transposing, deleting, or applying custom quantization to specific problem notes.
-- **⚡ Reassign to Voice**:
-  - Moves all detected irregular notes into the configured **Target Voice** (Voice 16 by default).
-  - Shifts note MIDI channels accordingly while strictly preserving their exact pitch, duration, velocity, and micro-timing.
-  - Retains full audio playback while keeping Voice 1 (and primary engraving voices) visually clean and legible.
-
-#### Performance & Safety
-- **Batched O(N) Processing**: Implements `MIDI_DisableSort` and `MIDI_Sort` batching to process thousands of notes in milliseconds without UI stutter.
-- **Transactional Undo**: The entire operation is enclosed within a single REAPER undo transaction (`Undo_BeginBlock2`), guaranteeing full, immediate undo with `Ctrl+Z`.
+Interactive Dialog Controls & Features:
+- Tolerance Slider (0 to 50 Ticks): Determines how many MIDI ticks of micro-timing deviation are permitted before a note is treated as irregular (with a sub-tick float epsilon < 0.05 ticks at 0 tolerance).
+- Include Triplets Checkbox: Tests compound/triplet subdivisions (1/12, 1/24, 1/48) in addition to binary subdivisions (1/1 through 1/32).
+- Target Voice Selector (Voice 1 through Voice 16): Chooses the destination voice when reassigning irregular notes (defaults to Voice 16).
+- Processing Scope: Choose between Entire Project, Active Track, Selected Media Items, or Selected Notes Only.
+- Live Canvas Yellow Preview & Regular Note Ghosting: Highlights matching irregular notes in vivid yellow on the score canvas in real time and optionally dims/ghosts regular notes.
+- Dual Execution Actions: 'Select Notes' (non-destructively selects irregular notes for inspection) and 'Reassign to Voice' (moves irregular notes to the target voice within a single REAPER undo transaction).
 
 ### 11.6 Floating Text Items & In-Place Editing
 
@@ -800,6 +777,9 @@ Quick reference table for high-speed score entry, MIDI editing, and viewport nav
 | Key / Shortcut | Action | Description |
 | :--- | :--- | :--- |
 | Space | Play / Pause | Starts or stops timeline playback |
+| Record Button (Left/Right Click) | Record / Record Settings | Left-click starts/stops MIDI recording; Right-click opens Record & Auto-Quantize Modal |
+| Ctrl + M | Add Custom Marker | Places sequential Custom Rehearsal Marker live at Playhead or at Edit Cursor |
+| F11 / Maximize Button | Maximize / Restore | 2-step full-monitor work area maximize and centered floating restore |
 | Delete / Backspace | Delete | Deletes selected notes, dynamics, tempo marks, or lines |
 | Esc | Clear Selection | Deselects all active items and clears focus |
 | Up / Down Arrows | Transpose Pitch | Moves selected notes up/down by 1 semitone |

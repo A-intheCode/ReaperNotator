@@ -19,7 +19,7 @@ function HelpModal.render(ctx, state)
         state.focus_help_modal = nil
     end
 
-    reaper.ImGui_SetNextWindowSize(ctx, 580, 520, reaper.ImGui_Cond_Appearing())
+    reaper.ImGui_SetNextWindowSize(ctx, 620, 580, reaper.ImGui_Cond_Appearing())
     local h_vis, h_open = reaper.ImGui_Begin(ctx, "REAPER Notator - Shortcuts & Help", true, flags)
     if not h_open then
         state.show_help = false
@@ -39,10 +39,14 @@ function HelpModal.render(ctx, state)
         reaper.ImGui_BulletText(ctx, "Del / Backspace: Delete selected note(s) or dynamic")
         reaper.ImGui_BulletText(ctx, "C, D, E, F, G, A, B: Quick step input at cursor")
         reaper.ImGui_BulletText(ctx, "2, 3, 4, 5, 6, 7: Note value (1/32 to 1/1)")
+        reaper.ImGui_BulletText(ctx, "Ctrl + 1..7 / Ctrl + K: Grid snap shortcuts / Link Grid & Note Duration")
         reaper.ImGui_BulletText(ctx, "Period (.): Toggle dotted note")
         reaper.ImGui_BulletText(ctx, "S: Slur (Legato phrase mark connecting notes with sampler Legato transition)")
         reaper.ImGui_BulletText(ctx, "T: Tie (Held note connecting identical pitches without re-striking)")
+        reaper.ImGui_BulletText(ctx, "Ctrl + M: Add Custom Rehearsal Marker (live at Playhead or at Edit Cursor)")
         reaper.ImGui_BulletText(ctx, "Spacebar: Play / Pause")
+        reaper.ImGui_BulletText(ctx, "Record Button (Top Bar): Left-click to Record/Stop; Right-click for Record & Auto-Quantize Modal")
+        reaper.ImGui_BulletText(ctx, "Reaticulate Auto-Setup: Selecting a Bank or Articulation auto-loads Reaticulate.jsfx in FX Slot 1")
         reaper.ImGui_BulletText(ctx, "Click on empty staff: Sets REAPER Edit-Cursor")
         reaper.ImGui_Spacing(ctx)
         reaper.ImGui_TextColored(ctx, 0x64D2FFFF, "💡 Tip: Click the gear icon ⚙ in the top bar to customize all keyboard shortcuts!")
