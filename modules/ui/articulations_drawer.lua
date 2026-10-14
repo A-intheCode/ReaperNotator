@@ -163,10 +163,15 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
                 end
                 if reaper.ImGui_Button(ctx, (is_tb_cur and "✓ " or "") .. tb.name .. "##tb_quick_" .. tostring(tb.id), -1, 22) then
                     bank = tb
+                    if cur_track and reaper.ValidatePtr(cur_track, "MediaTrack*") then
+                        ReaticulateParser.ensure_track_reaticulate_fx_and_bank(cur_track, tb, state, false)
+                    end
                     if trk_guid then
                         state.track_articulation_banks[trk_guid] = tb.id ~= "" and tb.id or tb.name
                         state:save_settings()
                     end
+                    midi_service.invalidate_cache()
+                    state.active_tracks_cache = nil
                 end
                 if is_tb_cur then
                     reaper.ImGui_PopStyleColor(ctx)

@@ -1655,6 +1655,9 @@ function MidiService.insert_note(take, qn, pitch, dur_qn, vel, chan, articulatio
         local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
         local all_banks = ReaticulateParser.get_all_banks()
         local bank = trk and ReaticulateParser.get_bank_for_track(trk, all_banks)
+        if trk and bank then
+            ReaticulateParser.ensure_track_reaticulate_fx_and_bank(trk, bank, package.loaded["state"], false)
+        end
         local art_match = bank and MidiService.find_reaticulate_art_for_id(bank, articulation)
         if art_match then
             if bank.msb and bank.msb >= 0 then
@@ -3240,7 +3243,12 @@ function MidiService.toggle_selected_articulation(state, art_id)
     
     for take, n_list in pairs(by_take) do
         local trk = get_track_from_take(take)
-        local bank = trk and ReaticulateParser.get_bank_for_track(trk, all_banks)
+        local trk_guid = trk and reaper.GetTrackGUID(trk)
+        local trk_override = trk_guid and state.track_articulation_banks and state.track_articulation_banks[trk_guid]
+        local bank = trk and ReaticulateParser.get_bank_for_track(trk, all_banks, trk_override)
+        if trk and bank and not is_clearing then
+            ReaticulateParser.ensure_track_reaticulate_fx_and_bank(trk, bank, state, false)
+        end
         local art_match = bank and norm_target and MidiService.find_reaticulate_art_for_id(bank, norm_target)
         if art_match then
             matched_reaticulate_name = art_match.name
@@ -3316,6 +3324,13 @@ function MidiService.toggle_selected_articulation(state, art_id)
         
         MidiService.auto_chase_momentary_articulations(take, bank)
         reaper.MIDI_Sort(take)
+        local item = reaper.GetMediaItemTake_Item(take)
+        if item and reaper.ValidatePtr(item, "MediaItem*") then
+            reaper.UpdateItemInProject(item)
+            if trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.APIExists("MarkTrackItemsDirty") then
+                reaper.MarkTrackItemsDirty(trk, item)
+            end
+        end
     end
     
     reaper.Undo_EndBlock2(0, "Notator: Toggle Articulation", -1)
@@ -3796,10 +3811,9 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
     for _, sn in pairs(state.selected_notes) do table.insert(targets, sn) end
     if #targets == 0 and state.selected_note then table.insert(targets, state.selected_note) end
     
-    local msb = bank and bank.msb
-    local lsb = bank and bank.lsb
     local pc = art_def.pc
     local mapped_id = MidiService.art_id_from_reaticulate_art(art_def)
+    local safe_name = (art_def.name or "art"):gsub("%s+", "_")
     
     reaper.Undo_BeginBlock2(0)
     
@@ -3814,10 +3828,22 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
         end
         
         for take, n_list in pairs(by_take) do
+            local trk = get_track_from_take(take)
+            local eff_bank = bank or (trk and ReaticulateParser.get_bank_for_track(trk, nil, state))
+            if trk and eff_bank then
+                ReaticulateParser.ensure_track_reaticulate_fx_and_bank(trk, eff_bank, state, false)
+            end
+            local msb = eff_bank and eff_bank.msb
+            local lsb = eff_bank and eff_bank.lsb
+            
             reaper.MIDI_DisableSort(take)
             local handled_ppqs = {}
             for _, sn in ipairs(n_list) do
                 local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn) + 0.5)
+                if sn.idx and sn.idx >= 0 then
+                    local ok_n, _, _, s_ppq = reaper.MIDI_GetNote(take, sn.idx)
+                    if ok_n and s_ppq then sppq = s_ppq end
+                end
                 local chan = sn.chan or 0
                 local ppq_key = string.format("%d_%d", sppq, chan)
                 
@@ -3826,7 +3852,7 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
                     local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
                     if ok and etype == 15 then
                         local p = msg:match("NOTE%s+(%d+)")
-                        if p and tonumber(p) == sn.pitch and math.abs(ppq - sppq) <= 25 then
+                        if p and tonumber(p) == sn.pitch and math.abs(ppq - sppq) <= 35 then
                             reaper.MIDI_DeleteTextSysexEvt(take, ti)
                         end
                     end
@@ -3836,7 +3862,6 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
                     reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, string.format("NOTE %d %d a %s", sn.pitch, chan, mapped_id))
                     sn.articulation = mapped_id
                 else
-                    local safe_name = (art_def.name or "art"):gsub("%s+", "_")
                     reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, string.format("NOTE %d %d a %s", sn.pitch, chan, safe_name))
                     sn.articulation = art_def.name
                 end
@@ -3864,8 +3889,15 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
                     reaper.MIDI_InsertCC(take, false, false, sppq, 0xC0, chan, pc, 0)
                 end
             end
-            MidiService.auto_chase_momentary_articulations(take, bank)
+            MidiService.auto_chase_momentary_articulations(take, eff_bank)
             reaper.MIDI_Sort(take)
+            local item = reaper.GetMediaItemTake_Item(take)
+            if item and reaper.ValidatePtr(item, "MediaItem*") then
+                reaper.UpdateItemInProject(item)
+                if trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.APIExists("MarkTrackItemsDirty") then
+                    reaper.MarkTrackItemsDirty(trk, item)
+                end
+            end
         end
         state.status_msg = string.format("Applied '%s' to %d note(s)", art_def.name, #targets)
     else
@@ -3873,38 +3905,108 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
         local cur_qn = reaper.TimeMap2_timeToQN(0, cur_pos)
         local cur_trk = track or state.focused_track or reaper.GetSelectedTrack(0, 0)
         if cur_trk and reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+            local eff_bank = bank or ReaticulateParser.get_bank_for_track(cur_trk, nil, state)
+            if eff_bank then
+                ReaticulateParser.ensure_track_reaticulate_fx_and_bank(cur_trk, eff_bank, state, false)
+            end
+            local msb = eff_bank and eff_bank.msb
+            local lsb = eff_bank and eff_bank.lsb
+            
             local item, take = MidiService.get_or_create_item_at_qn(cur_trk, cur_qn, 1.0)
             if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
                 reaper.MIDI_DisableSort(take)
                 local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, cur_qn) + 0.5)
                 local chan = 0
                 local trk_guid = reaper.GetTrackGUID(cur_trk)
-                if state.track_voices and state.track_voices[trk_guid] and state.track_voices[trk_guid] > 0 then
-                    chan = state.track_voices[trk_guid] - 1
+                local active_voice = (state.track_voices and trk_guid and state.track_voices[trk_guid]) or 0
+                if active_voice > 0 then
+                    chan = active_voice - 1
                 end
                 
-                local _, _, cc_cnt = reaper.MIDI_CountEvts(take)
-                for ci = cc_cnt - 1, 0, -1 do
-                    local ok, _, _, ppq, chanmsg, cchan, msg2 = reaper.MIDI_GetCC(take, ci)
-                    if ok and math.abs(ppq - sppq) <= 35 and cchan == chan then
-                        local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
-                        local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
-                        if is_pc or is_bank then
-                            reaper.MIDI_DeleteCC(take, ci)
+                -- Check if there are notes at the Edit Cursor position and attach the articulation to them
+                local _, notecnt = reaper.MIDI_CountEvts(take)
+                local cursor_notes = {}
+                for ni = 0, notecnt - 1 do
+                    local ok_n, _, muted_n, n_sppq, _, n_chan, n_pitch = reaper.MIDI_GetNote(take, ni)
+                    if ok_n and not muted_n then
+                        local n_qn = reaper.MIDI_GetProjQNFromPPQPos(take, n_sppq)
+                        if math.abs(n_qn - cur_qn) <= 0.06 and (active_voice == 0 or n_chan == chan) then
+                            table.insert(cursor_notes, { sp = n_sppq, ch = n_chan, pt = n_pitch })
                         end
                     end
                 end
                 
-                if msb and msb >= 0 then
-                    reaper.MIDI_InsertCC(take, false, false, sppq, 0xB0, chan, 0, msb)
+                if #cursor_notes > 0 then
+                    local handled_ppqs = {}
+                    for _, cn in ipairs(cursor_notes) do
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        for ti = text_cnt - 1, 0, -1 do
+                            local ok_t, _, _, t_ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
+                            if ok_t and etype == 15 then
+                                local p = msg:match("NOTE%s+(%d+)")
+                                if p and tonumber(p) == cn.pt and math.abs(t_ppq - cn.sp) <= 35 then
+                                    reaper.MIDI_DeleteTextSysexEvt(take, ti)
+                                end
+                            end
+                        end
+                        local art_tok = mapped_id or safe_name
+                        reaper.MIDI_InsertTextSysexEvt(take, false, false, cn.sp, 15, string.format("NOTE %d %d a %s", cn.pt, cn.ch, art_tok))
+                        
+                        local ppq_key = string.format("%d_%d", cn.sp, cn.ch)
+                        if not handled_ppqs[ppq_key] then
+                            handled_ppqs[ppq_key] = true
+                            local _, _, cc_cnt = reaper.MIDI_CountEvts(take)
+                            for ci = cc_cnt - 1, 0, -1 do
+                                local ok, _, _, ppq, chanmsg, cchan, msg2 = reaper.MIDI_GetCC(take, ci)
+                                if ok and math.abs(ppq - cn.sp) <= 35 and cchan == cn.ch then
+                                    local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
+                                    local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
+                                    if is_pc or is_bank then
+                                        reaper.MIDI_DeleteCC(take, ci)
+                                    end
+                                end
+                            end
+                            if msb and msb >= 0 then
+                                reaper.MIDI_InsertCC(take, false, false, cn.sp, 0xB0, cn.ch, 0, msb)
+                            end
+                            if lsb and lsb >= 0 then
+                                reaper.MIDI_InsertCC(take, false, false, cn.sp, 0xB0, cn.ch, 32, lsb)
+                            end
+                            reaper.MIDI_InsertCC(take, false, false, cn.sp, 0xC0, cn.ch, pc, 0)
+                        end
+                    end
+                    state.status_msg = string.format("Applied '%s' to %d note(s) at cursor", art_def.name, #cursor_notes)
+                else
+                    local _, _, cc_cnt = reaper.MIDI_CountEvts(take)
+                    for ci = cc_cnt - 1, 0, -1 do
+                        local ok, _, _, ppq, chanmsg, cchan, msg2 = reaper.MIDI_GetCC(take, ci)
+                        if ok and math.abs(ppq - sppq) <= 35 and cchan == chan then
+                            local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
+                            local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
+                            if is_pc or is_bank then
+                                reaper.MIDI_DeleteCC(take, ci)
+                            end
+                        end
+                    end
+                    
+                    if msb and msb >= 0 then
+                        reaper.MIDI_InsertCC(take, false, false, sppq, 0xB0, chan, 0, msb)
+                    end
+                    if lsb and lsb >= 0 then
+                        reaper.MIDI_InsertCC(take, false, false, sppq, 0xB0, chan, 32, lsb)
+                    end
+                    reaper.MIDI_InsertCC(take, false, false, sppq, 0xC0, chan, pc, 0)
+                    state.status_msg = string.format("Inserted articulation '%s' at cursor (measure %.2f)", art_def.name, (cur_qn / 4) + 1)
                 end
-                if lsb and lsb >= 0 then
-                    reaper.MIDI_InsertCC(take, false, false, sppq, 0xB0, chan, 32, lsb)
-                end
-                reaper.MIDI_InsertCC(take, false, false, sppq, 0xC0, chan, pc, 0)
-                MidiService.auto_chase_momentary_articulations(take, bank)
+                
+                MidiService.auto_chase_momentary_articulations(take, eff_bank)
                 reaper.MIDI_Sort(take)
-                state.status_msg = string.format("Inserted articulation '%s' at cursor (measure %.2f)", art_def.name, (cur_qn / 4) + 1)
+                if item and reaper.ValidatePtr(item, "MediaItem*") then
+                    reaper.UpdateItemInProject(item)
+                    if reaper.APIExists("MarkTrackItemsDirty") then
+                        reaper.MarkTrackItemsDirty(cur_trk, item)
+                    end
+                end
             end
         end
     end
@@ -4361,6 +4463,9 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort, is_
             local trk_guid = trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.GetTrackGUID(trk)
             local trk_override = trk_guid and state.track_articulation_banks and state.track_articulation_banks[trk_guid]
             local bank = trk and ReaticulateParser.get_bank_for_track(trk, all_banks, trk_override)
+            if trk and bank then
+                ReaticulateParser.ensure_track_reaticulate_fx_and_bank(trk, bank, state, false)
+            end
             
             local default_base_art = nil
             if bank and bank.articulations and #bank.articulations > 0 then
@@ -4482,6 +4587,12 @@ function MidiService.fix_playback(state, active_tracks_data, is_last_resort, is_
         -- Resolve Reaticulate bank for this track (do NOT blindly fallback to all_banks[1]!)
         local trk_override = trk_guid and state.track_articulation_banks and state.track_articulation_banks[trk_guid]
         local bank = trk and ReaticulateParser.get_bank_for_track(trk, all_banks, trk_override)
+        if trk and bank then
+            local _, fx_repaired = ReaticulateParser.ensure_track_reaticulate_fx_and_bank(trk, bank, state, false)
+            if fx_repaired then
+                total_fixed_notes = total_fixed_notes + 1
+            end
+        end
         
         local default_base_art = nil
         if bank and bank.articulations and #bank.articulations > 0 then

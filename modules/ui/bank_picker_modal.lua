@@ -94,11 +94,19 @@ function BankPickerModal.render(ctx, state, cur_track, active_tracks_data)
                         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x2ECC7188)
                     end
                     if reaper.ImGui_Button(ctx, btn_label, -1, 22) then
+                        if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+                            ReaticulateParser.ensure_track_reaticulate_fx_and_bank(trk, ab, state, true)
+                        end
                         if trk_guid then
                             state.track_articulation_banks[trk_guid] = ab.id ~= "" and ab.id or ab.name
                             state:save_settings()
                         end
-                        state.status_msg = string.format("Selected track bank '%s'", ab.name)
+                        local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+                        if MidiService and MidiService.invalidate_cache then
+                            MidiService.invalidate_cache()
+                        end
+                        state.active_tracks_cache = nil
+                        state.status_msg = string.format("Selected track bank '%s' (Reaticulate FX verified at Slot 1)", ab.name)
                         state.show_bank_picker_modal = false
                     end
                     if is_act then
@@ -417,11 +425,24 @@ function BankPickerModal.render(ctx, state, cur_track, active_tracks_data)
                             reaper.ImGui_PopStyleColor(ctx, 2)
                         else
                             if reaper.ImGui_Button(ctx, "Select##" .. card_key, btn_w, 28) or (row_clicked and not is_act) then
+                                local fx_ok, fx_added = false, false
+                                if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+                                    fx_ok, fx_added = ReaticulateParser.ensure_track_reaticulate_fx_and_bank(trk, b, state, true)
+                                end
                                 if trk_guid then
                                     state.track_articulation_banks[trk_guid] = b.id ~= "" and b.id or b.name
                                     state:save_settings()
                                 end
-                                state.status_msg = string.format("Selected bank '%s' for track '%s'", b.name, trk_name)
+                                local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+                                if MidiService and MidiService.invalidate_cache then
+                                    MidiService.invalidate_cache()
+                                end
+                                state.active_tracks_cache = nil
+                                if fx_added then
+                                    state.status_msg = string.format("Selected bank '%s' for '%s' & loaded Reaticulate FX at Slot 1", b.name, trk_name)
+                                else
+                                    state.status_msg = string.format("Selected bank '%s' for track '%s'", b.name, trk_name)
+                                end
                                 state.show_bank_picker_modal = false
                             end
                         end
