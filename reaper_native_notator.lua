@@ -1,7 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.0.4
+-- @version 2.0.5-beta
 -- @changelog
+--   + v2.0.5-beta: Native High-Refresh Timer Engine (60 / 90 / 120 / 144 FPS Unlock):
+--             - Native Win32 0x29a Timer Bridge ('modules/bin/notator_timer_x64.dll' & 'modules/services/frame_timer_service.lua'): Unlocks REAPER's hardcoded 30ms (~32.0 FPS) global 'reaper.defer()' and ReaImGui timer ceiling on Windows. Synchronizes REAPER's '0x29a' main-window timer at 1ms kernel precision with 'Target Framerate (FPS)' (15, 30, 60, 90, 120, 144, Uncapped) while REAPER Notator is open, and automatically restores REAPER's default 30ms timer upon closing ('atexit' + 800ms auto-shutoff watchdog).
+--             - Eliminated ReaImGui Frame-Skip Desynchronization: Driven natively by the OS timer at the target framerate instead of skipping 'ImGui_Begin' frames inside 'defer', keeping ReaImGui's 'Resource::Timer::tick()' and 'keepAlive' lifecycle 100% synchronized on every tick.
+--             - Framerate-Independent Reaticulate Sync Polling: Converted 'poll_reaticulate_sync' from tick-counting to real-time seconds ('reaper.time_precise()') so bank compilation polling behaves identically at 30, 60, 90, or 144 FPS.
 --   + v2.0.4: Official Production Release - Reaticulate Top-Bank Replacement, Empty-Item Cursor Articulations & Note-to-Item Selection Sync:
 --             - Reaticulate Primary Bank Replacement Without Stacking (v2.0.4): Adding or changing an articulation bank on a track now deletes the top primary bank ('appdata.banks[1]') and any conflicting Omni ('src == 17') or duplicate entries in 'P_EXT:reaticulate' before loading the new bank, and guards against Reaticulate's 'rfx.gc()' overwriting 'P_EXT:reaticulate' with stale uncommitted UI state, preventing duplicate stacked banks and program number conflict errors in Reaticulate.
 --             - Insert Articulations at Edit Cursor in Empty Selected MIDI Items (v2.0.4): Articulations can now be inserted directly at the Edit Cursor inside a selected MIDI item even when the item contains 0 notes (or no note at the cursor position). 'auto_chase_momentary_articulations' now preserves standalone user-placed Program Change / Bank Select events on empty takes, and 'ScoreCanvas' visibly renders all standalone articulations above the staff when no note exists at that position yet.
@@ -396,10 +400,18 @@ state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
 state._last_total_tracks_cleanup = reaper.CountTracks(0)
 PatternService.init()
 local fonts = FontManager.init(ctx, state)
+local FrameTimerService = safe_require("services.frame_timer_service", {
+    init = function() return false end,
+    apply_target_fps = function() return false end,
+    tick = function() end,
+    restore = function() end,
+})
+FrameTimerService.init(state)
 local initial_dep_status = PathService.detect_status(state)
 local reaticulate_installed = initial_dep_status.reaticulate_found
 
 reaper.atexit(function()
+    FrameTimerService.restore()
     AudioPreview.stop_all(state)
     -- Safely persist all Notator objects & settings before script exit / REAPER shutdown:
     TempoService.save_markers(state)
@@ -420,31 +432,44 @@ reaper.atexit(function()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end)
 
--- 5. Main Render Loop (Configurable Target FPS with Adaptive Timing)
+-- 5. Main Render Loop (Native High-Refresh Timer Engine with Configurable Target FPS)
 local last_frame_time = 0
 local frame_count = 0
 local fps_timer = 0
+local skipped_ticks = 0
 
 local function loop()
-    if not state.is_open then return end
-    if reaper.APIExists("ImGui_ValidatePtr") and not reaper.ImGui_ValidatePtr(ctx, "ImGui_Context*") then return end
+    if not state.is_open then
+        FrameTimerService.restore()
+        return
+    end
+    if reaper.APIExists("ImGui_ValidatePtr") and not reaper.ImGui_ValidatePtr(ctx, "ImGui_Context*") then
+        FrameTimerService.restore()
+        return
+    end
 
-    -- Framerate Throttling & FPS Meter
+    -- Synchronize native Win32 0x29a timer with state.target_fps & update heartbeat
+    FrameTimerService.tick(state)
+
+    -- Framerate Throttling (Fallback only when native timer bridge is unavailable) & FPS Meter
     local target_fps = state.target_fps or 60
     local now = reaper.time_precise()
-    if target_fps > 0 and target_fps < 240 then
+    if not FrameTimerService._available and target_fps > 0 and target_fps <= 20 then
         local min_dt = 1.0 / target_fps
-        if (now - last_frame_time) < (min_dt - 0.0015) then
-            -- Skip expensive UI rendering this tick, but maintain audio preview timing
+        if (now - last_frame_time) < (min_dt - 0.002) and skipped_ticks < 1 then
+            skipped_ticks = skipped_ticks + 1
             AudioPreview.update(state, ctx)
             PatternService.update_preview(AudioPreview)
             reaper.defer(loop)
             return
         end
     end
+    skipped_ticks = 0
 
     frame_count = frame_count + 1
-    if (now - fps_timer) >= 0.5 then
+    if fps_timer == 0 then
+        fps_timer = now
+    elseif (now - fps_timer) >= 0.4 then
         state.measured_fps = frame_count / (now - fps_timer)
         frame_count = 0
         fps_timer = now
@@ -1176,6 +1201,7 @@ local function loop()
         PatternService.update_preview(AudioPreview)
         reaper.defer(loop)
     else
+        FrameTimerService.restore()
         AudioPreview.stop_all(state)
         PatternService.stop_preview(AudioPreview)
     end

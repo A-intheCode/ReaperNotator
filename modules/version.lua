@@ -6,8 +6,8 @@
 local Version = {
     major = 2,
     minor = 0,
-    patch = 4,
-    suffix = "", -- Official 2.0.4 Release (Reaticulate Top-Bank Replacement, Cursor Articulation in Empty Items & Note-Item Selection Sync)
+    patch = 5,
+    suffix = "-beta", -- 2.0.5-beta Release (Native 60/90/120/144 FPS High-Refresh Timer Engine)
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

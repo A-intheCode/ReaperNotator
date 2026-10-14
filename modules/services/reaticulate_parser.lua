@@ -514,13 +514,17 @@ function ReaticulateParser.trigger_reaticulate_sync(track, state, expected_encod
     reaper.SetExtState("reaticulate", "command", "ping=" .. now_str, false)
     
     local ticks = 0
+    local start_poll_t = reaper.time_precise()
+    local last_cookie_bump_t = start_poll_t
     local launched_main = false
     local function poll_reaticulate_sync()
         ticks = ticks + 1
+        local cur_t = reaper.time_precise()
+        local elapsed_s = cur_t - start_poll_t
         local pong = reaper.GetExtState("reaticulate", "pong")
         local is_running = (pong and pong ~= "" and tonumber(pong) and tonumber(pong) >= tonumber(now_str))
         
-        if not is_running and ticks == 2 and not launched_main then
+        if not is_running and elapsed_s >= 0.05 and not launched_main then
             launched_main = true
             local cmd = reaper.GetExtState("reaticulate", "main_command_id")
             local cmd_id = cmd and tonumber(cmd)
@@ -547,21 +551,23 @@ function ReaticulateParser.trigger_reaticulate_sync(track, state, expected_encod
             if expected_encoded and not has_expected_bank then
                 -- Reaticulate's rfx.gc() overwrote P_EXT:reaticulate with stale uncommitted UI state; restore our bank!
                 reaper.GetSetMediaTrackInfo_String(track, "P_EXT:reaticulate", expected_encoded, true)
-                local c_restore = string.format("notator_restore_%d_%d", os.time(), math.floor((reaper.time_precise() * 1000) % 100000) + ticks)
+                local c_restore = string.format("notator_restore_%d_%d", os.time(), math.floor((cur_t * 1000) % 100000) + ticks)
                 reaper.SetProjExtState(0, "reaticulate", "change_cookie", c_restore)
+                last_cookie_bump_t = cur_t
             else
                 local has_compiled_hash = ok_ext and ext_data and ext_data:find('"h"%s*:') ~= nil
                 if has_compiled_hash and has_expected_bank then
                     return -- Reaticulate has compiled opcodes into Reaticulate.jsfx!
                 end
-                if ticks == 3 or ticks == 7 or ticks == 12 then
-                    local c2 = string.format("notator_%d_%d", os.time(), math.floor((reaper.time_precise() * 1000) % 100000) + ticks)
+                if (cur_t - last_cookie_bump_t) >= 0.10 then
+                    last_cookie_bump_t = cur_t
+                    local c2 = string.format("notator_%d_%d", os.time(), math.floor((cur_t * 1000) % 100000) + ticks)
                     reaper.SetProjExtState(0, "reaticulate", "change_cookie", c2)
                 end
             end
         end
         
-        if ticks < 14 then
+        if elapsed_s < 0.50 then
             reaper.defer(poll_reaticulate_sync)
         end
     end

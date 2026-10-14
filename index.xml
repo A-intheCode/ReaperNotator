@@ -6,9 +6,12 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.0.4" author="A-intheCode" time="2026-10-14T21:20:00Z">
+      <version name="2.0.5-beta" author="A-intheCode" time="2026-10-15T00:45:00Z">
         <changelog><![CDATA[
-+ v2.0.4: Official Production Release - Reaticulate Top-Bank Replacement, Empty-Item Cursor Articulations & Note-to-Item Selection Sync:
++ v2.0.5-beta: Native High-Refresh Timer Engine (60 / 90 / 120 / 144 FPS Unlock):
+  - Native Win32 0x29a Timer Bridge ('modules/bin/notator_timer_x64.dll' & 'modules/services/frame_timer_service.lua'): Unlocks REAPER's hardcoded 30ms (~32.0 FPS) global 'reaper.defer()' and ReaImGui timer ceiling on Windows. Synchronizes REAPER's '0x29a' main-window timer at 1ms kernel precision with 'Target Framerate (FPS)' (15, 30, 60, 90, 120, 144, Uncapped) while REAPER Notator is open, and automatically restores REAPER's default 30ms timer upon closing ('atexit' + 800ms auto-shutoff watchdog).
+  - Eliminated ReaImGui Frame-Skip Desynchronization: Driven natively by the OS timer at the target framerate instead of skipping 'ImGui_Begin' frames inside 'defer', keeping ReaImGui's 'Resource::Timer::tick()' and 'keepAlive' lifecycle 100% synchronized on every tick.
+  - Framerate-Independent Reaticulate Sync Polling: Converted 'poll_reaticulate_sync' from tick-counting to real-time seconds ('reaper.time_precise()') so bank compilation polling behaves identically at 30, 60, 90, or 144 FPS.
   - Reaticulate Primary Bank Replacement Without Stacking (v2.0.4): Adding or changing an articulation bank on a track now deletes the top primary bank ('appdata.banks[1]') and any conflicting Omni ('src == 17') or duplicate entries in 'P_EXT:reaticulate' before loading the new bank, and guards against Reaticulate's 'rfx.gc()' overwriting 'P_EXT:reaticulate' with stale uncommitted UI state, preventing duplicate stacked banks and program number conflict errors in Reaticulate.
   - Insert Articulations at Edit Cursor in Empty Selected MIDI Items (v2.0.4): Articulations can now be inserted directly at the Edit Cursor inside a selected MIDI item even when the item contains 0 notes (or no note at the cursor position). 'auto_chase_momentary_articulations' now preserves standalone user-placed Program Change / Bank Select events on empty takes, and 'ScoreCanvas' visibly renders all standalone articulations above the staff when no note exists at that position yet.
   - Automatic MIDI Item Selection on Note Selection (v2.0.4): Selecting a note (via click, right-click, marquee selection, or keyboard navigation) now automatically selects its parent MIDI item in both REAPER Notator ('state.selected_item' / 'state.selected_take') and REAPER's arrange timeline ('SetMediaItemSelected'). Clicking inside an empty MIDI item on the staff to place the Edit Cursor also selects that MIDI item.
@@ -34,6 +37,7 @@
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
         <source file="LICENSE">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/LICENSE</source>
         <source file="README.md">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/README.md</source>
+        <source file="modules/bin/notator_timer_x64.dll">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/bin/notator_timer_x64.dll</source>
         <source file="modules/constants.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/constants.lua</source>
         <source file="modules/state.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/state.lua</source>
         <source file="modules/version.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/version.lua</source>
@@ -68,6 +72,7 @@
         <source file="modules/services/dynamics_engine.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/dynamics_engine.lua</source>
         <source file="modules/services/fermata_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/fermata_service.lua</source>
         <source file="modules/services/filter_notes_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/filter_notes_service.lua</source>
+        <source file="modules/services/frame_timer_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/frame_timer_service.lua</source>
         <source file="modules/services/glissando_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/glissando_service.lua</source>
         <source file="modules/services/hairpin_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/hairpin_service.lua</source>
         <source file="modules/services/json_helper.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/json_helper.lua</source>
