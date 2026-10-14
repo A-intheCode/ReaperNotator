@@ -321,7 +321,11 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
         else
             local norm_clicked = normalize_art(art_id)
             state.active_articulation = (cur_art == norm_clicked) and nil or norm_clicked
-            if state.active_articulation then
+            local art_match = active_bank and art_id and midi_service.find_reaticulate_art_for_id and midi_service.find_reaticulate_art_for_id(active_bank, art_id)
+            local has_sel_item = (state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*")) or (reaper.GetSelectedMediaItem(0, 0) ~= nil)
+            if art_match and state.active_articulation and has_sel_item and midi_service.apply_reaticulate_art then
+                midi_service.apply_reaticulate_art(state, art_match, active_bank, active_track, active_tracks_data)
+            elseif state.active_articulation then
                 state.status_msg = string.format("Sticky Articulation: %s (applies to next entered notes)", state.active_articulation)
             else
                 state.status_msg = "Sticky Articulation: Off"

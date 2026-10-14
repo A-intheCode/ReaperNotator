@@ -1180,7 +1180,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             local click_time = reaper.TimeMap2_QNToTime(0, click_qn)
             reaper.SetEditCurPos2(0, click_time, true, false)
             
-            -- Determine clicked track and focus it
+            -- Determine clicked track and focus it (and select MIDI item under click_qn if present)
             local focused_name = "Track"
             if canvas_info.active_tracks_data then
                 for _, tdata in ipairs(canvas_info.active_tracks_data) do
@@ -1191,6 +1191,18 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                             state.last_reaper_sel_track = tdata.track
                             state.jump_to_item = nil
                             focused_name = tdata.name or "Track"
+                            if tdata.items then
+                                for _, it in ipairs(tdata.items) do
+                                    if it.item and reaper.ValidatePtr(it.item, "MediaItem*") and click_qn >= (it.start_qn or 0) - 0.02 and click_qn <= (it.end_qn or 0) + 0.02 then
+                                        state.selected_item = it.item
+                                        state.selected_take = it.take
+                                        reaper.SelectAllMediaItems(0, false)
+                                        reaper.SetMediaItemSelected(it.item, true)
+                                        reaper.UpdateArrange()
+                                        break
+                                    end
+                                end
+                            end
                         end
                         break
                     end

@@ -2363,10 +2363,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     else
                         if state:count_selected_notes() > 1 or not state:is_note_selected(n) then
                             state:clear_selection()
-                            state:select_note(n)
-                        else
-                            state.selected_note = n
                         end
+                        state:select_note(n)
                     end
                     state.drag_note = n
                     state.drag_start_x = mouse_x
@@ -2407,9 +2405,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     AudioPreview.play_note(state, n.pitch, n.vel, n.chan, n.track, n.start_qn, n)
                     if state:count_selected_notes() > 1 or not state:is_note_selected(n) then
                         state:clear_selection()
-                        state:select_note(n)
-                        midi_service.sync_selection_to_reaper(state, active_tracks_data)
                     end
+                    state:select_note(n)
+                    midi_service.sync_selection_to_reaper(state, active_tracks_data)
                     reaper.ImGui_OpenPopup(ctx, "NoteContextMenu")
                 end
                 
@@ -3265,42 +3263,56 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     art.label = label
                     
                     -- Standard note articulations (staccato, tenuto, marcato, etc.) are rendered directly as symbols on the note
-                    -- and should not appear duplicated as text in the articulation lane.
+                    -- and should not appear duplicated as text in the articulation lane IF a note actually exists at this QN position.
                     local is_standard_symbol = false
                     local art_sig = (state._slurs_version or #(state.user_slurs or {})) * 100000 + #(state.user_ties or {}) * 1000 + #(tdata.notes or {})
                     if art._is_std_sym_sig == art_sig then
                         is_standard_symbol = art._is_std_sym
                     else
-                        if bank and bank.articulations and midi_service and midi_service.art_id_from_reaticulate_art then
-                            for _, ba in ipairs(bank.articulations) do
-                                if ba.pc == art.pc then
-                                    local mapped = midi_service.art_id_from_reaticulate_art(ba)
-                                    if mapped and mapped ~= "legato" then
-                                        is_standard_symbol = true
-                                    end
+                        local has_note_at_art_qn = false
+                        if tdata.notes then
+                            for _, n in ipairs(tdata.notes) do
+                                if math.abs((n.start_qn or 0.0) - cur_qn) < 0.08 then
+                                    has_note_at_art_qn = true
                                     break
                                 end
                             end
                         end
-                        if not is_standard_symbol and label then
-                            local l_low = label:lower()
-                            if l_low:find("^stacc") or l_low:find("staccatiss") or l_low:find("spicc") or l_low:find("^marc") or l_low:find("^tenuto") or l_low:find("^accent") or l_low:find("harmonic") or l_low:find("flageolet") then
-                                is_standard_symbol = true
+                        
+                        if has_note_at_art_qn then
+                            if bank and bank.articulations and midi_service and midi_service.art_id_from_reaticulate_art then
+                                for _, ba in ipairs(bank.articulations) do
+                                    if ba.pc == art.pc then
+                                        local mapped = midi_service.art_id_from_reaticulate_art(ba)
+                                        if mapped and mapped ~= "legato" then
+                                            is_standard_symbol = true
+                                        end
+                                        break
+                                    end
+                                end
+                            end
+                            if not is_standard_symbol and label then
+                                local l_low = label:lower()
+                                if l_low:find("^stacc") or l_low:find("staccatiss") or l_low:find("spicc") or l_low:find("^marc") or l_low:find("^tenuto") or l_low:find("^accent") or l_low:find("harmonic") or l_low:find("flageolet") then
+                                    is_standard_symbol = true
+                                end
                             end
                         end
                         
                         -- Slurs and Ties (Legato / Long placed as slurs) and Auto-Chase Return events must NEVER show text badges (Long, Legato, Tremolo chase, etc.) above staff
                         if not is_standard_symbol then
-                            if art.is_slur or art.is_slur_pc or art.is_auto_return then
+                            if art.is_auto_return then
                                 is_standard_symbol = true
-                            elseif label then
+                            elseif has_note_at_art_qn and (art.is_slur or art.is_slur_pc) then
+                                is_standard_symbol = true
+                            elseif has_note_at_art_qn and label then
                                 local l_low = label:lower()
                                 if l_low:find("^slur") then
                                     is_standard_symbol = true
                                 end
                             end
                         end
-                        if not is_standard_symbol and state.user_slurs then
+                        if not is_standard_symbol and has_note_at_art_qn and state.user_slurs then
                             for _, sl in ipairs(state.user_slurs) do
                                 local s_sqn = sl.start_qn or 0.0
                                 local s_eqn = sl.end_qn or sl.n2_start_qn or (s_sqn + 1.0)
@@ -3310,7 +3322,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 end
                             end
                         end
-                        if not is_standard_symbol and state.user_ties then
+                        if not is_standard_symbol and has_note_at_art_qn and state.user_ties then
                             for _, tie in ipairs(state.user_ties) do
                                 local t_sqn1 = tie.n1_start_qn or 0.0
                                 local t_sqn2 = tie.n2_start_qn or (t_sqn1 + 1.0)
@@ -3320,7 +3332,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 end
                             end
                         end
-                        if not is_standard_symbol and tdata.notes then
+                        if not is_standard_symbol and has_note_at_art_qn and tdata.notes then
                             for _, n in ipairs(tdata.notes) do
                                 local n_sqn = n.start_qn or 0.0
                                 if math.abs(n_sqn - cur_qn) < 0.15 then
@@ -3335,7 +3347,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 end
                             end
                         end
-                        if not is_standard_symbol and tdata.notes then
+                        if not is_standard_symbol and has_note_at_art_qn and tdata.notes then
                             for _, n in ipairs(tdata.notes) do
                                 if math.abs(n.start_qn - cur_qn) < 0.05 and n.articulation and n.articulation ~= "" and n.articulation ~= "none" then
                                     local a_id = n.articulation:lower()

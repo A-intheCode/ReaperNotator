@@ -538,6 +538,14 @@ function State.new()
             self.selected_notes[key] = n
             self.selected_note = n
         end
+        local it = n.item or (n.take and reaper.ValidatePtr(n.take, "MediaItem_Take*") and reaper.GetMediaItemTake_Item(n.take))
+        if it and reaper.ValidatePtr(it, "MediaItem*") then
+            self.selected_item = it
+            self.selected_take = (n.take and reaper.ValidatePtr(n.take, "MediaItem_Take*")) and n.take or reaper.GetActiveTake(it)
+        end
+        if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
+            self.focused_track = n.track
+        end
     end
     
     function self:toggle_note_selection(n)
@@ -556,6 +564,17 @@ function State.new()
             else
                 self.selected_notes[key] = n
                 self.selected_note = n
+            end
+        end
+        if self.selected_note then
+            local sn = self.selected_note
+            local it = sn.item or (sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") and reaper.GetMediaItemTake_Item(sn.take))
+            if it and reaper.ValidatePtr(it, "MediaItem*") then
+                self.selected_item = it
+                self.selected_take = (sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*")) and sn.take or reaper.GetActiveTake(it)
+            end
+            if sn.track and reaper.ValidatePtr(sn.track, "MediaTrack*") then
+                self.focused_track = sn.track
             end
         end
     end

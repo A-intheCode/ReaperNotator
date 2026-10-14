@@ -494,7 +494,7 @@ function ReaticulateParser.resolve_or_assign_bank_msblsb(bank, state)
     return bank.msb or 0, bank.lsb or 1
 end
 
-function ReaticulateParser.trigger_reaticulate_sync(track, state)
+function ReaticulateParser.trigger_reaticulate_sync(track, state, expected_encoded, expected_v_str)
     -- 1. Bump Reaticulate's project change_cookie so Reaticulate reloads project state & track P_EXT:reaticulate
     local cookie = string.format("notator_%d_%d", os.time(), math.floor((reaper.time_precise() * 1000) % 100000))
     reaper.SetProjExtState(0, "reaticulate", "change_cookie", cookie)
@@ -543,13 +543,21 @@ function ReaticulateParser.trigger_reaticulate_sync(track, state)
         
         if track and reaper.ValidatePtr(track, "MediaTrack*") then
             local ok_ext, ext_data = reaper.GetSetMediaTrackInfo_String(track, "P_EXT:reaticulate", "", false)
-            local has_compiled_hash = ok_ext and ext_data and ext_data:find('"h"%s*:') ~= nil
-            if has_compiled_hash then
-                return -- Reaticulate has compiled opcodes into Reaticulate.jsfx!
-            end
-            if ticks == 3 or ticks == 7 or ticks == 12 then
-                local c2 = string.format("notator_%d_%d", os.time(), math.floor((reaper.time_precise() * 1000) % 100000) + ticks)
-                reaper.SetProjExtState(0, "reaticulate", "change_cookie", c2)
+            local has_expected_bank = (not expected_v_str) or (ok_ext and ext_data and ext_data:find(expected_v_str, 1, true) ~= nil)
+            if expected_encoded and not has_expected_bank then
+                -- Reaticulate's rfx.gc() overwrote P_EXT:reaticulate with stale uncommitted UI state; restore our bank!
+                reaper.GetSetMediaTrackInfo_String(track, "P_EXT:reaticulate", expected_encoded, true)
+                local c_restore = string.format("notator_restore_%d_%d", os.time(), math.floor((reaper.time_precise() * 1000) % 100000) + ticks)
+                reaper.SetProjExtState(0, "reaticulate", "change_cookie", c_restore)
+            else
+                local has_compiled_hash = ok_ext and ext_data and ext_data:find('"h"%s*:') ~= nil
+                if has_compiled_hash and has_expected_bank then
+                    return -- Reaticulate has compiled opcodes into Reaticulate.jsfx!
+                end
+                if ticks == 3 or ticks == 7 or ticks == 12 then
+                    local c2 = string.format("notator_%d_%d", os.time(), math.floor((reaper.time_precise() * 1000) % 100000) + ticks)
+                    reaper.SetProjExtState(0, "reaticulate", "change_cookie", c2)
+                end
             end
         end
         
@@ -613,6 +621,8 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
     
     -- 2. Resolve MSB/LSB and ensure the bank is written into P_EXT:reaticulate on the track
     local appdata_modified = false
+    local last_encoded = nil
+    local target_v_str = nil
     if bank then
         ReaticulateParser.resolve_or_assign_bank_msblsb(bank, state)
         
@@ -632,6 +642,7 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
         
         local has_guid = (bank.id and bank.id ~= "")
         local target_v = has_guid and bank.id or (((bank.msb and bank.msb >= 0 and bank.msb or 0) << 8) + (bank.lsb and bank.lsb >= 0 and bank.lsb or 1))
+        target_v_str = tostring(target_v)
         local new_entry = {
             t = has_guid and "g" or "b",
             v = target_v,
@@ -641,38 +652,38 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
             name = bank.name or "Bank"
         }
         
-        local found_idx = nil
-        for idx, binfo in ipairs(appdata.banks) do
-            if (has_guid and binfo.v == bank.id) or (binfo.name and binfo.name == bank.name) then
-                found_idx = idx
-                break
-            end
-        end
+        local already_sole_primary = (
+            #appdata.banks == 1 and (
+                (has_guid and appdata.banks[1].v == bank.id) or
+                (appdata.banks[1].name and appdata.banks[1].name == bank.name)
+            )
+        )
         
-        if replace_primary then
-            if found_idx then
-                table.remove(appdata.banks, found_idx)
-            elseif #appdata.banks == 1 then
-                appdata.banks = {}
+        if replace_primary or not already_sole_primary then
+            -- Delete top bank (index 1) and any conflicting Omni (src == 17) or duplicate entries before loading the new bank at index 1
+            local kept_banks = {}
+            for idx, binfo in ipairs(appdata.banks) do
+                local is_top = (idx == 1)
+                local is_same = (has_guid and binfo.v == bank.id) or (binfo.name and binfo.name == bank.name)
+                local is_omni = (not binfo.src or binfo.src == 17)
+                if not is_top and not is_same and not is_omni then
+                    table.insert(kept_banks, binfo)
+                end
             end
-            table.insert(appdata.banks, 1, new_entry)
+            table.insert(kept_banks, 1, new_entry)
+            appdata.banks = kept_banks
             appdata_modified = true
-        else
-            if not found_idx then
-                table.insert(appdata.banks, 1, new_entry)
-                appdata_modified = true
-            elseif fx_added_or_moved or not appdata.banks[found_idx].h then
-                appdata.banks[found_idx].h = nil
-                appdata_modified = true
-            end
+        elseif fx_added_or_moved or not appdata.banks[1].h then
+            appdata.banks[1].h = nil
+            appdata_modified = true
         end
         
         if appdata_modified or fx_added_or_moved then
             for _, binfo in ipairs(appdata.banks) do
                 binfo.h = nil -- Force Reaticulate to re-compile opcodes into Reaticulate.jsfx
             end
-            local encoded = "2" .. encode_track_appdata_json(appdata)
-            reaper.GetSetMediaTrackInfo_String(track, "P_EXT:reaticulate", encoded, true)
+            last_encoded = "2" .. encode_track_appdata_json(appdata)
+            reaper.GetSetMediaTrackInfo_String(track, "P_EXT:reaticulate", last_encoded, true)
             reaper.MarkProjectDirty(0)
         end
     end
@@ -680,7 +691,7 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
     reaper.PreventUIRefresh(-1)
     
     if fx_added_or_moved or appdata_modified then
-        ReaticulateParser.trigger_reaticulate_sync(track, state)
+        ReaticulateParser.trigger_reaticulate_sync(track, state, last_encoded, target_v_str)
     end
     
     return reaticulate_fx_idx == 0, fx_added_or_moved

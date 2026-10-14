@@ -1130,10 +1130,45 @@ end
 
 function MidiService.sync_selection_to_reaper(state, active_tracks_data)
     local takes = {}
+    local selected_items_map = {}
+    local has_selected_items = false
+    local primary_item = nil
+    local primary_take = nil
+    
+    if state.selected_note then
+        local sn = state.selected_note
+        local it = sn.item or (sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") and reaper.GetMediaItemTake_Item(sn.take))
+        if it and reaper.ValidatePtr(it, "MediaItem*") then
+            selected_items_map[it] = true
+            has_selected_items = true
+            primary_item = it
+            primary_take = (sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*")) and sn.take or reaper.GetActiveTake(it)
+        end
+    end
+    
     for _, sn in pairs(state.selected_notes) do
         if sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") then
             takes[sn.take] = true
         end
+        local it = sn.item or (sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") and reaper.GetMediaItemTake_Item(sn.take))
+        if it and reaper.ValidatePtr(it, "MediaItem*") then
+            selected_items_map[it] = true
+            has_selected_items = true
+            if not primary_item then
+                primary_item = it
+                primary_take = (sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*")) and sn.take or reaper.GetActiveTake(it)
+            end
+        end
+    end
+    
+    if has_selected_items then
+        state.selected_item = primary_item
+        state.selected_take = primary_take
+        reaper.SelectAllMediaItems(0, false)
+        for it in pairs(selected_items_map) do
+            reaper.SetMediaItemSelected(it, true)
+        end
+        reaper.UpdateArrange()
     end
     
     if active_tracks_data then
@@ -2835,24 +2870,36 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank)
     -- 1. Read all notes and text/CC events from take
     local _, notecnt, cccnt, textcnt = reaper.MIDI_CountEvts(take)
     if notecnt == 0 then
-        -- All notes deleted: clean up all chase events and orphaned articulation events on this empty take
+        -- All notes deleted or empty take: clean up ONLY auto-chase return events and orphaned note-bound Type 15 events,
+        -- while preserving standalone user-placed Program Change / Bank Select articulations!
+        local chase_ppqs = {}
         local _, _, cur_cc_cnt, cur_text_cnt = reaper.MIDI_CountEvts(take)
         for ti = cur_text_cnt - 1, 0, -1 do
             local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
             if ok and etype == 15 then
-                if msg:match("^NOTATOR_CHASE") or msg:match("^NOTE%s+%d+%s+%d+%s+a%s+") then
+                if msg:match("^NOTATOR_CHASE") then
+                    chase_ppqs[ppq] = true
+                    reaper.MIDI_DeleteTextSysexEvt(take, ti)
+                elseif msg:match("^NOTE%s+%d+%s+%d+%s+a%s+") then
                     reaper.MIDI_DeleteTextSysexEvt(take, ti)
                 end
             end
         end
-        local _, _, cur_cc_cnt2 = reaper.MIDI_CountEvts(take)
-        for ci = cur_cc_cnt2 - 1, 0, -1 do
-            local ok, _, _, ppq, chanmsg, chan, msg2 = reaper.MIDI_GetCC(take, ci)
-            if ok then
-                local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
-                local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
-                if is_pc or is_bank then
-                    reaper.MIDI_DeleteCC(take, ci)
+        if next(chase_ppqs) ~= nil then
+            local _, _, cur_cc_cnt2 = reaper.MIDI_CountEvts(take)
+            for ci = cur_cc_cnt2 - 1, 0, -1 do
+                local ok, _, _, ppq, chanmsg, chan, msg2 = reaper.MIDI_GetCC(take, ci)
+                if ok then
+                    local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
+                    local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
+                    if is_pc or is_bank then
+                        for c_ppq in pairs(chase_ppqs) do
+                            if math.abs(ppq - c_ppq) <= 5 then
+                                reaper.MIDI_DeleteCC(take, ci)
+                                break
+                            end
+                        end
+                    end
                 end
             end
         end
@@ -3903,7 +3950,14 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
     else
         local cur_pos = reaper.GetCursorPosition()
         local cur_qn = reaper.TimeMap2_timeToQN(0, cur_pos)
-        local cur_trk = track or state.focused_track or reaper.GetSelectedTrack(0, 0)
+        local sel_it = (state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*")) and state.selected_item or reaper.GetSelectedMediaItem(0, 0)
+        local sel_tk = (sel_it and reaper.ValidatePtr(sel_it, "MediaItem*")) and reaper.GetActiveTake(sel_it) or nil
+        if sel_tk and (not reaper.ValidatePtr(sel_tk, "MediaItem_Take*") or not reaper.TakeIsMIDI(sel_tk)) then
+            sel_it = nil
+            sel_tk = nil
+        end
+        local sel_it_trk = sel_it and reaper.GetMediaItem_Track(sel_it) or nil
+        local cur_trk = track or state.focused_track or sel_it_trk or reaper.GetSelectedTrack(0, 0)
         if cur_trk and reaper.ValidatePtr(cur_trk, "MediaTrack*") then
             local eff_bank = bank or ReaticulateParser.get_bank_for_track(cur_trk, nil, state)
             if eff_bank then
@@ -3912,7 +3966,47 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
             local msb = eff_bank and eff_bank.msb
             local lsb = eff_bank and eff_bank.lsb
             
-            local item, take = MidiService.get_or_create_item_at_qn(cur_trk, cur_qn, 1.0)
+            local item, take = nil, nil
+            if sel_it and sel_tk and sel_it_trk == cur_trk then
+                local it_pos = reaper.GetMediaItemInfo_Value(sel_it, "D_POSITION")
+                local it_len = reaper.GetMediaItemInfo_Value(sel_it, "D_LENGTH")
+                local it_sqn = reaper.TimeMap2_timeToQN(0, it_pos)
+                local it_eqn = reaper.TimeMap2_timeToQN(0, it_pos + it_len)
+                if cur_qn >= it_sqn - 0.05 and cur_qn <= it_eqn + 0.05 then
+                    item, take = sel_it, sel_tk
+                    cur_qn = math.max(it_sqn, math.min(it_eqn - 0.005, cur_qn))
+                else
+                    -- Check if another item on cur_trk covers cur_qn; if not, insert into the selected MIDI item at its start/clamped position
+                    local other_covering = false
+                    local num_items = reaper.CountTrackMediaItems(cur_trk)
+                    for i = 0, num_items - 1 do
+                        local chk_it = reaper.GetTrackMediaItem(cur_trk, i)
+                        local chk_tk = reaper.GetActiveTake(chk_it)
+                        if chk_tk and reaper.TakeIsMIDI(chk_tk) then
+                            local p = reaper.GetMediaItemInfo_Value(chk_it, "D_POSITION")
+                            local l = reaper.GetMediaItemInfo_Value(chk_it, "D_LENGTH")
+                            local sq = reaper.TimeMap2_timeToQN(0, p)
+                            local eq = reaper.TimeMap2_timeToQN(0, p + l)
+                            if cur_qn >= sq - 0.01 and cur_qn <= eq + 0.01 then
+                                other_covering = true
+                                break
+                            end
+                        end
+                    end
+                    if not other_covering then
+                        item, take = sel_it, sel_tk
+                        cur_qn = math.max(it_sqn, math.min(it_eqn - 0.005, cur_qn))
+                    end
+                end
+            end
+            if not item or not take then
+                item, take = MidiService.get_or_create_item_at_qn(cur_trk, cur_qn, 1.0)
+            end
+            if item and reaper.ValidatePtr(item, "MediaItem*") then
+                state.selected_item = item
+                state.selected_take = take
+                reaper.SetMediaItemSelected(item, true)
+            end
             if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
                 reaper.MIDI_DisableSort(take)
                 local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, cur_qn) + 0.5)
