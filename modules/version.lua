@@ -6,8 +6,8 @@
 local Version = {
     major = 2,
     minor = 0,
-    patch = 0,
-    suffix = "", -- Official 2.0.0 Release
+    patch = 1,
+    suffix = "", -- Official 2.0.1 Release (2-step Maximize & Startup Center Fix)
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

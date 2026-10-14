@@ -6,10 +6,11 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.0.0" author="A-intheCode" time="2026-10-14T19:25:00Z">
+      <version name="2.0.1" author="A-intheCode" time="2026-10-14T19:37:00Z">
         <changelog><![CDATA[
-+ v2.0.0: Official Production Release - Live MIDI Recording Suite, Auto-Quantize, Custom Rehearsal Marks & Startup/Legacy Cleanup:
-  - Unified v2.0.0 ReaPack Release & Fault-Tolerant Module Loading: Promoted to official v2.0.0 release so all ReaPack users automatically receive the complete module suite ('ui.record_modal', 'services.record_quantize_service', 'ui.filter_irregular_modal') upon synchronizing packages, with safe module fallbacks and removal of deprecated legacy versions so outdated releases can no longer be installed.
++ v2.0.1: Official Production Release - 2-Step Maximize Window Fix, Startup Centering, Live MIDI Recording Suite & Legacy Cleanup:
+  - 2-Step Window Maximize & Startup Centering Fix (v2.0.1): Removed 'ImGui_GetWindowViewport' (which returned the window's own size instead of the monitor size). On both REAPER startup and Maximize toggle, REAPER Notator now strictly reads the maximum possible screen work area of the target monitor first, places the window in small size in the exact center of the screen, and then scales up to full screen when maximizing. 'is_maximized' is no longer persisted across sessions so every startup opens cleanly centered.
+  - Unified ReaPack Release & Fault-Tolerant Module Loading (v2.0.0): Promoted to official v2.0.x release so all ReaPack users automatically receive the complete module suite ('ui.record_modal', 'services.record_quantize_service', 'ui.filter_irregular_modal') upon synchronizing packages, with safe module fallbacks and removal of deprecated legacy versions so outdated releases can no longer be installed.
   - Collapsed Window & Legacy ExtState Cleanup on Startup: Added 'ImGui_WindowFlags_NoCollapse' and 'ImGui_SetNextWindowCollapsed(ctx, false)' to prevent double-clicking the title bar from shading/collapsing the window into an unresponsive state in ReaImGui's .ini file. Automatically purges legacy pre-v2 physical window coordinates from reaper-extstate.ini and removes obsolete temporary files on startup.
   - Single-Pass Startup Optimization & Non-Blocking Version Detection: Eliminated redundant 3x full-project MIDI scans on Frame 1, added fast-path Type-15 text event checks before take reconciliation, and replaced synchronous 'reaper.ExecProcess(git ...)' at startup with pure-Lua .git/HEAD inspection.
   - Custom & Navigation Rehearsal Mark Drag-and-Drop Fix: Custom Markers and Navigation Marks (e.g. 'D.C.', 'D.C. al Fine') permanently retain their name across moves, with dynamic badge hitboxes and grid-snapped dragging.
