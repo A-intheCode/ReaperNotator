@@ -1,8 +1,11 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.0.0-beta.7
+-- @version 2.0.0
 -- @changelog
---   + v2.0.0-beta.7: Custom Rehearsal Marks Drag Preservation, Inline Renaming & Live Playback Shortcut:
+--   + v2.0.0: Official Production Release - Live MIDI Recording Suite, Auto-Quantize, Custom Rehearsal Marks & Startup/Legacy Cleanup:
+--             - Unified v2.0.0 ReaPack Release & Fault-Tolerant Module Loading: Promoted to official v2.0.0 release so all ReaPack users automatically receive the complete module suite ('ui.record_modal', 'services.record_quantize_service', 'ui.filter_irregular_modal') upon synchronizing packages, with safe module fallbacks and removal of deprecated legacy versions.
+--             - Collapsed Window & Legacy ExtState Cleanup on Startup: Added 'ImGui_WindowFlags_NoCollapse' and 'ImGui_SetNextWindowCollapsed(ctx, false)' to prevent double-clicking the title bar from shading/collapsing the window into an unresponsive state in ReaImGui's .ini file. Automatically purges legacy pre-v2 physical window coordinates from reaper-extstate.ini and removes obsolete temporary files on startup.
+--             - Single-Pass Startup Optimization & Non-Blocking Version Detection: Eliminated redundant 3x full-project MIDI scans on Frame 1, added fast-path Type-15 text event checks before take reconciliation, and replaced synchronous 'reaper.ExecProcess(git ...)' at startup with pure-Lua .git/HEAD inspection.
 --             - Custom & Navigation Rehearsal Mark Drag-and-Drop Fix (v2.0.0-beta.7): Fixed a bug where dragging or double-clicking wider Custom Markers or Navigation Marks (e.g. 'D.C.', 'D.C. al Fine') could overwrite them into auto-letter marks ('A', 'B'). Custom and navigation marks now permanently retain their name across moves, with dynamic badge hitboxes and grid-snapped dragging.
 --             - Inline Double-Click Renaming & Auto-Sequence Exclusion (v2.0.0-beta.7): Double-clicking any Rehearsal Mark on the score canvas (or using '✏ Rename Mark' in the right-click menu / Tools Drawer) opens an inline rename box. Renaming any mark locks it as a Custom Marker and automatically excludes it from the A, B, C... / 1, 2, 3... counting sequence.
 --             - Custom Marker Shortcut ('Ctrl+M') During Live Playback & Stopped (v2.0.0-beta.7): Added configurable shortcut 'Add Custom Rehearsal Marker' (default: Ctrl+M) that places sequential default markers ('Marker 1', 'Marker 2', 'Marker 3'...) both when stopped (at Edit Cursor) and live during Playback/Recording at the exact Playhead position snapped to the active Notation Grid.
@@ -342,14 +345,26 @@ local SlurService          = require("services.slur_service")
 local PortamentoService    = require("services.portamento_service")
 local GlissandoService     = require("services.glissando_service")
 local MidiEditorDrawer     = require("ui.midi_editor_drawer")
-local DivisioVocumModal    = require("ui.divisio_vocum_modal")
-local ExplodeChordsModal   = DivisioVocumModal
-local FilterIrregularModal = require("ui.filter_irregular_modal")
-local RecordModal          = require("ui.record_modal")
-local RecordQuantizeService = require("services.record_quantize_service")
+local function safe_require(mod_name, fallback)
+    local ok, mod = pcall(require, mod_name)
+    if ok and mod then return mod end
+    return fallback
+end
+
+local DivisioVocumModal     = safe_require("ui.divisio_vocum_modal", { render = function() end })
+local ExplodeChordsModal    = DivisioVocumModal
+local FilterIrregularModal  = safe_require("ui.filter_irregular_modal", { render = function() end })
+local RecordModal           = safe_require("ui.record_modal", { render = function() end })
+local RecordQuantizeService = safe_require("services.record_quantize_service", {
+    on_record_start = function() end,
+    process_recording = function() end,
+    update_live_recording = function() end
+})
 
 -- 4. Initialization of State & Fonts
 local state = State.new()
+SettingsModal.apply_theme(state)
+PathService.cleanup_legacy_artifacts(state)
 ShortcutManager.init()
 FermataService.load_fermatas(state)
 TempoService.load_markers(state)
@@ -366,6 +381,9 @@ SlurService.load_slurs(state)
 PortamentoService.load_portamentos(state)
 GlissandoService.load_glissandos(state)
 MidiService.cleanup_orphaned_score_elements(state)
+state.current_reaproject, state.current_proj_fn = reaper.EnumProjects(-1)
+state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
+state._last_total_tracks_cleanup = reaper.CountTracks(0)
 PatternService.init()
 local fonts = FontManager.init(ctx, state)
 local initial_dep_status = PathService.detect_status(state)
@@ -446,6 +464,8 @@ local function loop()
         PortamentoService.load_portamentos(state)
         GlissandoService.load_glissandos(state)
         MidiService.cleanup_orphaned_score_elements(state)
+        state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
+        state._last_total_tracks_cleanup = reaper.CountTracks(0)
         state:clear_selection()
     end
     
@@ -481,8 +501,20 @@ local function loop()
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(),    8.0, 6.0)
     
     -- Determine multi-monitor work area (excluding taskbars) for window positioning in ReaImGui logical coordinates
-    local function get_screen_work_area(wx, wy, ww, wh)
-        -- 1. Query ReaImGui GetMainViewport (returns exact logical screen work area for primary display)
+    local function get_screen_work_area(wx, wy, ww, wh, is_inside_begin)
+        -- 1. If called inside ImGui_Begin, query the current window's viewport directly
+        if is_inside_begin and reaper.APIExists("ImGui_GetWindowViewport") then
+            local ok_vp, wvp = pcall(reaper.ImGui_GetWindowViewport, ctx)
+            if ok_vp and wvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
+                local wvx, wvy = reaper.ImGui_Viewport_GetWorkPos(wvp)
+                local wvw, wvh = reaper.ImGui_Viewport_GetWorkSize(wvp)
+                if wvw and wvw > 300 and wvh and wvh > 300 then
+                    return wvx, wvy, wvw, wvh
+                end
+            end
+        end
+
+        -- 2. Query ReaImGui GetMainViewport (returns exact logical screen work area for primary display)
         local mvp_x, mvp_y, mvp_w, mvp_h = nil, nil, nil, nil
         if reaper.APIExists("ImGui_GetMainViewport") then
             local ok, mvp = pcall(reaper.ImGui_GetMainViewport, ctx)
@@ -492,19 +524,17 @@ local function loop()
             end
         end
 
-        -- 2. Multi-monitor / secondary display check via REAPER native my_getViewport
-        if reaper.my_getViewport and wx and wy and ww and wh then
+        -- 3. Multi-monitor / secondary display check via REAPER native my_getViewport (only when inside Begin)
+        if is_inside_begin and reaper.my_getViewport and wx and wy and ww and wh then
             local cx = wx + math.floor(ww / 2)
             local cy = wy + math.floor(wh / 2)
             
-            -- If window center is within the main display, return exact ReaImGui MainViewport metrics
             if mvp_x and mvp_w and cx >= mvp_x and cx < (mvp_x + mvp_w) and cy >= mvp_y and cy < (mvp_y + mvp_h) then
                 if mvp_w > 300 and mvp_h > 300 then
                     return mvp_x, mvp_y, mvp_w, mvp_h
                 end
             end
 
-            -- Otherwise, window center is on a secondary monitor: query native viewport
             local n_cx, n_cy = cx, cy
             if reaper.APIExists("ImGui_PointConvertNative") then
                 local ok_cnv, nx, ny = pcall(reaper.ImGui_PointConvertNative, ctx, cx, cy, true)
@@ -543,7 +573,7 @@ local function loop()
     local vh = state.screen_work_h
     
     if not vx or not vw then
-        vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
+        vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h, false)
         state.screen_work_x = vx
         state.screen_work_y = vy
         state.screen_work_w = vw
@@ -619,6 +649,7 @@ local function loop()
             
             reaper.ImGui_SetNextWindowPos(ctx, rx, ry, reaper.ImGui_Cond_Always())
             reaper.ImGui_SetNextWindowSize(ctx, rw, rh, reaper.ImGui_Cond_Always())
+            state._window_pos_initialized = true
         else
             reaper.ImGui_SetNextWindowSize(ctx, min_w, min_h, reaper.ImGui_Cond_FirstUseEver())
         end
@@ -632,6 +663,9 @@ local function loop()
     local child_none = reaper.APIExists("ImGui_ChildFlags_None") and reaper.ImGui_ChildFlags_None() or 0
     
     local window_flags = reaper.ImGui_WindowFlags_NoScrollbar()
+    if reaper.APIExists("ImGui_WindowFlags_NoCollapse") then
+        window_flags = window_flags | reaper.ImGui_WindowFlags_NoCollapse()
+    end
     if reaper.APIExists("ImGui_WindowFlags_NoScrollWithMouse") then
         window_flags = window_flags | reaper.ImGui_WindowFlags_NoScrollWithMouse()
     end
@@ -647,6 +681,11 @@ local function loop()
         if reaper.APIExists("ImGui_WindowFlags_NoMove") then
             window_flags = window_flags | reaper.ImGui_WindowFlags_NoMove()
         end
+    end
+    
+    -- Prevent any legacy collapsed state persisted in ReaImGui's .ini file from hiding the UI
+    if reaper.APIExists("ImGui_SetNextWindowCollapsed") then
+        reaper.ImGui_SetNextWindowCollapsed(ctx, false, reaper.ImGui_Cond_Always())
     end
     
     local visible, open = reaper.ImGui_Begin(ctx, "REAPER Notator", true, window_flags)
@@ -666,7 +705,7 @@ local function loop()
         state.cur_win_h = win_h
         
         -- Continuously update the monitor where the window is located
-        local svx, svy, svw, svh = get_screen_work_area(win_x, win_y, win_w, win_h)
+        local svx, svy, svw, svh = get_screen_work_area(win_x, win_y, win_w, win_h, true)
         state.screen_work_x = svx
         state.screen_work_y = svy
         state.screen_work_w = svw

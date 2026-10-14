@@ -122,13 +122,15 @@ function PathService.get_script_dir()
         end
     end
 
-    -- 2. Attempt: Default location via REAPER ResourcePath
+    -- 2. Attempt: Default location via REAPER ResourcePath (including ReaPack 'Notation' category folder)
     local res_path = ""
     if reaper.APIExists("GetResourcePath") then
         res_path = PathService.normalize(reaper.GetResourcePath())
     end
     local candidates = {
+        res_path .. "/Scripts/REAPER-Notator/Notation",
         res_path .. "/Scripts/REAPER-Notator",
+        res_path .. "/Scripts/reaper-notator/Notation",
         res_path .. "/Scripts/reaper-notator",
         res_path .. "/Scripts/REAPER-Notator-main"
     }
@@ -140,7 +142,7 @@ function PathService.get_script_dir()
     end
 
     -- 3. Fallback
-    _cached_script_dir = res_path .. "/Scripts/REAPER-Notator"
+    _cached_script_dir = res_path .. "/Scripts/REAPER-Notator/Notation"
     return _cached_script_dir
 end
 
@@ -203,7 +205,9 @@ function PathService.get_bravura_path(state)
         s_dir .. "/Bravura.otf",
         s_dir .. "/../Bravura.otf",
         s_dir .. "/../../Bravura.otf",
+        res_dir .. "/Scripts/REAPER-Notator/Notation/Bravura.otf",
         res_dir .. "/Scripts/REAPER-Notator/Bravura.otf",
+        res_dir .. "/Scripts/reaper-notator/Notation/Bravura.otf",
         res_dir .. "/Scripts/reaper-notator/Bravura.otf",
         res_dir .. "/Data/Bravura.otf"
     }
@@ -229,7 +233,15 @@ function PathService.get_patterns_dir(state)
     if PathService.dir_exists(p) then
         return p
     end
+    local parent_p = PathService.normalize(s_dir .. "/../patterns")
+    if PathService.dir_exists(parent_p) then
+        return parent_p
+    end
     local res_dir = PathService.get_reaper_resource_dir(state)
+    local fallback_reapack = res_dir .. "/Scripts/REAPER-Notator/Notation/patterns"
+    if PathService.dir_exists(fallback_reapack) then
+        return fallback_reapack
+    end
     local fallback = res_dir .. "/Scripts/REAPER-Notator/patterns"
     if PathService.dir_exists(fallback) then
         return fallback
@@ -435,4 +447,51 @@ function PathService.browse_for_save_file(default_path, title, default_ext)
     return nil
 end
 
+--- Cleans up leftover temporary files and obsolete legacy artifacts from older versions
+--- @param state table|nil
+function PathService.cleanup_legacy_artifacts(state)
+    local res_dir = PathService.get_reaper_resource_dir(state)
+    local s_dir = PathService.get_script_dir()
+
+    local temp_files = {
+        res_dir .. "/_notator_save_dlg.ps1",
+        res_dir .. "/_notator_save_out.txt",
+        res_dir .. "/.notator_dir_test",
+        s_dir .. "/_notator_save_dlg.ps1",
+        s_dir .. "/_notator_save_out.txt",
+        s_dir .. "/.notator_dir_test",
+        s_dir .. "/modules/ui/explode_chords_modal.lua",
+        s_dir .. "/modules/services/explode_chords_service.lua",
+    }
+
+    for _, tf in ipairs(temp_files) do
+        if tf and tf ~= "" and PathService.file_exists(tf) then
+            pcall(os.remove, tf)
+        end
+    end
+
+    -- If running inside ReaPack's '/Scripts/REAPER-Notator/Notation' subdirectory (and parent is not a Git repo),
+    -- remove any stale duplicate 'reaper_native_notator.lua' or obsolete module files left in the parent folder
+    -- from an older manual pre-ReaPack installation.
+    if s_dir:match("/Scripts/REAPER%-Notator/Notation$") or s_dir:match("/Scripts/reaper%-notator/Notation$") then
+        local parent_dir = s_dir:gsub("/Notation$", "")
+        if parent_dir ~= s_dir and not PathService.dir_exists(parent_dir .. "/.git") and not PathService.file_exists(parent_dir .. "/.git/HEAD") then
+            local stale_parent_files = {
+                parent_dir .. "/reaper_native_notator.lua",
+                parent_dir .. "/modules/constants.lua",
+                parent_dir .. "/modules/state.lua",
+                parent_dir .. "/modules/version.lua",
+                parent_dir .. "/modules/ui/explode_chords_modal.lua",
+                parent_dir .. "/modules/services/explode_chords_service.lua",
+            }
+            for _, pf in ipairs(stale_parent_files) do
+                if PathService.file_exists(pf) then
+                    pcall(os.remove, pf)
+                end
+            end
+        end
+    end
+end
+
 return PathService
+

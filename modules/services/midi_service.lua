@@ -5149,6 +5149,7 @@ function MidiService.cleanup_orphaned_score_elements(state)
     local num_tracks = reaper.CountTracks(0)
     local valid_tracks = {}
     local track_midi_spans = {}
+    local total_project_text_events = 0
     
     for t = 0, num_tracks - 1 do
         local trk = reaper.GetTrack(0, t)
@@ -5170,6 +5171,10 @@ function MidiService.cleanup_orphaned_score_elements(state)
                         start_qn = start_qn,
                         end_qn = end_qn
                     })
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                    if text_cnt and text_cnt > 0 then
+                        total_project_text_events = total_project_text_events + text_cnt
+                    end
                 end
             end
         end
@@ -5401,12 +5406,14 @@ function MidiService.cleanup_orphaned_score_elements(state)
     end
     
     -- 8. Clean and reset orphaned notes from shortened/deleted chord track items
-    local ScaleService = package.loaded["services.scale_service"] or package.loaded["modules.services.scale_service"]
-    if not ScaleService then
-        pcall(function() ScaleService = require("services.scale_service") end)
-    end
-    if ScaleService and ScaleService.revert_orphaned_chord_notes then
-        ScaleService.revert_orphaned_chord_notes(state)
+    if total_project_text_events > 0 then
+        local ScaleService = package.loaded["services.scale_service"] or package.loaded["modules.services.scale_service"]
+        if not ScaleService then
+            pcall(function() ScaleService = require("services.scale_service") end)
+        end
+        if ScaleService and ScaleService.revert_orphaned_chord_notes then
+            ScaleService.revert_orphaned_chord_notes(state)
+        end
     end
     
     -- 9. Clean orphaned slurs and ties
@@ -5537,18 +5544,20 @@ function MidiService.cleanup_orphaned_score_elements(state)
         end
     end
 
-    -- 11. Reconcile moved / copied / duplicated items across tracks
-    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
-    if SlurService and SlurService.reconcile_from_takes then
-        if SlurService.reconcile_from_takes(state) then any_changed = true end
-    end
-    local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
-    if GlissandoService and GlissandoService.reconcile_from_takes then
-        if GlissandoService.reconcile_from_takes(state) then any_changed = true end
-    end
-    local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
-    if PortamentoService and PortamentoService.reconcile_from_takes then
-        if PortamentoService.reconcile_from_takes(state) then any_changed = true end
+    -- 11. Reconcile moved / copied / duplicated items across tracks (only when takes actually contain text events)
+    if total_project_text_events > 0 then
+        local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+        if SlurService and SlurService.reconcile_from_takes then
+            if SlurService.reconcile_from_takes(state) then any_changed = true end
+        end
+        local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+        if GlissandoService and GlissandoService.reconcile_from_takes then
+            if GlissandoService.reconcile_from_takes(state) then any_changed = true end
+        end
+        local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+        if PortamentoService and PortamentoService.reconcile_from_takes then
+            if PortamentoService.reconcile_from_takes(state) then any_changed = true end
+        end
     end
     
     if any_changed and reaper.MarkProjectDirty then

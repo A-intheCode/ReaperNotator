@@ -763,6 +763,29 @@ function State:load_settings()
     self.nav_zoom_mouse     = load_str("nav_zoom_mouse", "wheel_v")
     self.scroll_invert_h    = load_bool("scroll_invert_h", false)
     self.scroll_invert_v    = load_bool("scroll_invert_v", false)
+    -- Legacy ExtState Window Coordinate Migration (purges corrupt physical/off-screen coordinates from older versions)
+    local win_schema = reaper.GetExtState("REAPER_Notator", "win_coords_schema")
+    if win_schema ~= "v2" then
+        local legacy_win_keys = {
+            "win_x", "win_y", "win_w", "win_h",
+            "cur_win_x", "cur_win_y", "cur_win_w", "cur_win_h",
+            "prev_win_x", "prev_win_y", "prev_win_w", "prev_win_h",
+            "is_maximized"
+        }
+        for _, wk in ipairs(legacy_win_keys) do
+            reaper.DeleteExtState("REAPER_Notator", wk, true)
+            reaper.SetProjExtState(0, "REAPER_Notator", wk, "")
+        end
+        reaper.SetExtState("REAPER_Notator", "win_coords_schema", "v2", true)
+    end
+
+    local function sanitize_coord(v, min_v, max_v, fallback)
+        if type(v) ~= "number" or v ~= v or v < min_v or v > max_v then
+            return fallback
+        end
+        return v
+    end
+
     local loaded_max    = load_bool("is_maximized", nil)
     local loaded_cur_x  = load_num("cur_win_x", nil) or load_num("win_x", nil)
     local loaded_cur_y  = load_num("cur_win_y", nil) or load_num("win_y", nil)
@@ -777,14 +800,14 @@ function State:load_settings()
         if loaded_max ~= nil then
             self.is_maximized = loaded_max
         end
-        self.cur_win_x  = loaded_cur_x or loaded_prev_x or 100
-        self.cur_win_y  = loaded_cur_y or loaded_prev_y or 60
-        self.cur_win_w  = loaded_cur_w or loaded_prev_w or 1280
-        self.cur_win_h  = loaded_cur_h or loaded_prev_h or 720
-        self.prev_win_x = loaded_prev_x or self.cur_win_x or 100
-        self.prev_win_y = loaded_prev_y or self.cur_win_y or 60
-        self.prev_win_w = loaded_prev_w or self.cur_win_w or 1280
-        self.prev_win_h = loaded_prev_h or self.cur_win_h or 720
+        self.cur_win_x  = sanitize_coord(loaded_cur_x or loaded_prev_x, -8000, 16000, 100)
+        self.cur_win_y  = sanitize_coord(loaded_cur_y or loaded_prev_y, -4000, 8000,  60)
+        self.cur_win_w  = sanitize_coord(loaded_cur_w or loaded_prev_w, 640,   8192,  1280)
+        self.cur_win_h  = sanitize_coord(loaded_cur_h or loaded_prev_h, 400,   4320,  720)
+        self.prev_win_x = sanitize_coord(loaded_prev_x or self.cur_win_x, -8000, 16000, 100)
+        self.prev_win_y = sanitize_coord(loaded_prev_y or self.cur_win_y, -4000, 8000,  60)
+        self.prev_win_w = sanitize_coord(loaded_prev_w or self.cur_win_w, 640,   8192,  1280)
+        self.prev_win_h = sanitize_coord(loaded_prev_h or self.cur_win_h, 400,   4320,  720)
     end
     -- Backward compatibility aliases
     self.scroll_factor         = self.scroll_factor_h
