@@ -49,24 +49,40 @@ end
 -- ==============================================================================
 
 KeySignatureService._take_events_cache = {}
+KeySignatureService._take_time_events_cache = {}
 KeySignatureService._item_pext_cache = {}
+KeySignatureService._item_pext_time_cache = {}
 KeySignatureService._cache_proj_cnt = -1
 
 function KeySignatureService.invalidate_cache()
     KeySignatureService._take_events_cache = {}
+    KeySignatureService._take_time_events_cache = {}
     KeySignatureService._item_pext_cache = {}
+    KeySignatureService._item_pext_time_cache = {}
     KeySignatureService._cache_proj_cnt = -1
 end
 
-local function get_cached_take_key_events(take)
+local function check_proj_cache_validity()
     local proj_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
     if KeySignatureService._cache_proj_cnt ~= proj_cnt then
         KeySignatureService._take_events_cache = {}
+        KeySignatureService._take_time_events_cache = {}
         KeySignatureService._item_pext_cache = {}
+        KeySignatureService._item_pext_time_cache = {}
         KeySignatureService._cache_proj_cnt = proj_cnt
     end
+end
+
+local function get_cached_take_key_events(take)
+    if not take then return {} end
+    check_proj_cache_validity()
     local cached = KeySignatureService._take_events_cache[take]
     if cached then return cached end
+
+    if not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) then
+        KeySignatureService._take_events_cache[take] = {}
+        return {}
+    end
 
     local events = {}
     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
@@ -86,7 +102,8 @@ local function get_cached_take_key_events(take)
                 end
             end
             if kidx ~= nil then
-                table.insert(events, { ppq = ppq, idx = kidx, key_idx = kidx, mode = kmode })
+                local evt_qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                table.insert(events, { ppq = ppq, qn = evt_qn, idx = kidx, key_idx = kidx, mode = kmode })
             end
         end
     end
@@ -95,17 +112,56 @@ local function get_cached_take_key_events(take)
     return events
 end
 
-local function get_cached_item_pext_key(real_item)
-    local proj_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
-    if KeySignatureService._cache_proj_cnt ~= proj_cnt then
-        KeySignatureService._take_events_cache = {}
-        KeySignatureService._item_pext_cache = {}
-        KeySignatureService._cache_proj_cnt = proj_cnt
+local function get_cached_take_time_events(take)
+    if not take then return {} end
+    check_proj_cache_validity()
+    local cached = KeySignatureService._take_time_events_cache[take]
+    if cached then return cached end
+
+    if not reaper.ValidatePtr(take, "MediaItem_Take*") or not reaper.TakeIsMIDI(take) then
+        KeySignatureService._take_time_events_cache[take] = {}
+        return {}
     end
+
+    local events = {}
+    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+    for ti = 0, text_cnt - 1 do
+        local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
+        if ok and etype == 15 then
+            local num_s, den_s = msg:match("^NOTATOR_TIME_SIG%s+(%d+)%s+(%d+)")
+            if not num_s then
+                num_s, den_s = msg:match("^time%s+(%d+)/(%d+)")
+            end
+            if num_s and den_s then
+                local n_num = tonumber(num_s)
+                local n_den = tonumber(den_s)
+                if n_num and n_den then
+                    local evt_qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                    local t_entry = make_timesig_table(n_num, n_den)
+                    t_entry.ppq = ppq
+                    t_entry.qn = evt_qn
+                    table.insert(events, t_entry)
+                end
+            end
+        end
+    end
+    table.sort(events, function(a, b) return a.ppq < b.ppq end)
+    KeySignatureService._take_time_events_cache[take] = events
+    return events
+end
+
+local function get_cached_item_pext_key(real_item)
+    if not real_item then return nil end
+    check_proj_cache_validity()
     local cached = KeySignatureService._item_pext_cache[real_item]
     if cached ~= nil then
         if cached == false then return nil end
         return cached, cached.mode
+    end
+
+    if not reaper.ValidatePtr(real_item, "MediaItem*") then
+        KeySignatureService._item_pext_cache[real_item] = false
+        return nil
     end
 
     local ok, ext_val = reaper.GetSetMediaItemInfo_String(real_item, "P_EXT:notator_key_sig", "", false)
@@ -123,6 +179,35 @@ local function get_cached_item_pext_key(real_item)
     return nil
 end
 
+local function get_cached_item_pext_time(real_item)
+    if not real_item then return nil end
+    check_proj_cache_validity()
+    local cached = KeySignatureService._item_pext_time_cache[real_item]
+    if cached ~= nil then
+        if cached == false then return nil end
+        return cached, cached.num, cached.denom
+    end
+
+    if not reaper.ValidatePtr(real_item, "MediaItem*") then
+        KeySignatureService._item_pext_time_cache[real_item] = false
+        return nil
+    end
+
+    local ok, ext_val = reaper.GetSetMediaItemInfo_String(real_item, "P_EXT:notator_time_sig", "", false)
+    if ok and ext_val and ext_val ~= "" then
+        local num_s, den_s = ext_val:match("^(%d+)|(%d+)")
+        if num_s and den_s then
+            local n_num = tonumber(num_s)
+            local n_den = tonumber(den_s)
+            local res = make_timesig_table(n_num, n_den)
+            KeySignatureService._item_pext_time_cache[real_item] = res
+            return res, n_num, n_den
+        end
+    end
+    KeySignatureService._item_pext_time_cache[real_item] = false
+    return nil
+end
+
 --- Reads the key signature of a MIDI item from P_EXT or type 15 take events.
 -- If qn is provided and take is valid, resolves the active key signature at or before position qn.
 -- @param item MediaItem* or MidiItem wrapper
@@ -135,24 +220,33 @@ function KeySignatureService.get_item_key_sig(item, take, qn)
         local real_it_obj = item.item_obj or item
         if real_it_obj.key_sig_events and #real_it_obj.key_sig_events > 0 then
             if qn then
-                local real_take = real_it_obj.take or (real_it_obj.item and reaper.ValidatePtr(real_it_obj.item, "MediaItem*") and reaper.GetActiveTake(real_it_obj.item))
-                local target_ppq = 0
-                if real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
-                    target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
-                end
                 local best_evt = nil
-                for _, evt in ipairs(real_it_obj.key_sig_events) do
-                    if evt.ppq <= target_ppq + 5 then
-                        best_evt = evt
-                    else
-                        break
+                local first_evt = real_it_obj.key_sig_events[1]
+                if first_evt and first_evt.qn ~= nil then
+                    for _, evt in ipairs(real_it_obj.key_sig_events) do
+                        if evt.qn <= qn + 0.015 then
+                            best_evt = evt
+                        else
+                            break
+                        end
+                    end
+                else
+                    local real_take = real_it_obj.take or (real_it_obj.item and reaper.ValidatePtr(real_it_obj.item, "MediaItem*") and reaper.GetActiveTake(real_it_obj.item))
+                    local target_ppq = 0
+                    if real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
+                        target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
+                    end
+                    for _, evt in ipairs(real_it_obj.key_sig_events) do
+                        evt.qn = reaper.MIDI_GetProjQNFromPPQPos(real_take, evt.ppq)
+                        if evt.ppq <= target_ppq + 5 then
+                            best_evt = evt
+                        end
                     end
                 end
                 if best_evt then
                     return best_evt, best_evt.mode
                 else
-                    local first = real_it_obj.key_sig_events[1]
-                    return first, first.mode
+                    return first_evt, first_evt.mode
                 end
             elseif real_it_obj.key_sig then
                 return real_it_obj.key_sig, real_it_obj.key_sig.mode or "major"
@@ -164,14 +258,13 @@ function KeySignatureService.get_item_key_sig(item, take, qn)
 
     local real_item, real_take = resolve_item_and_take(item, take)
 
-    -- If qn is provided and real_take is valid MIDI take, look up active event in cached events
-    if qn and real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
+    -- If qn is provided and real_take is valid, look up active event in cached events using precomputed QN
+    if qn and real_take then
         local events = get_cached_take_key_events(real_take)
         if #events > 0 then
-            local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
             local best_evt = nil
             for _, evt in ipairs(events) do
-                if evt.ppq <= target_ppq + 5 then
+                if evt.qn <= qn + 0.015 then
                     best_evt = evt
                 else
                     break
@@ -186,13 +279,13 @@ function KeySignatureService.get_item_key_sig(item, take, qn)
     end
 
     -- 1st attempt: MediaItem P_EXT:notator_key_sig ("<key_idx>|<mode>") cached
-    if real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
+    if real_item then
         local res, mode = get_cached_item_pext_key(real_item)
         if res then return res, mode end
     end
 
     -- 2nd attempt: Type 15 notation events in take from cache
-    if real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
+    if real_take then
         local events = get_cached_take_key_events(real_take)
         if #events > 0 then
             return events[1], events[1].mode
@@ -292,6 +385,7 @@ function KeySignatureService.set_item_key_sig(state, item, take, key_idx, mode, 
     end
 
     -- 5. Invalidate cache & update project
+    KeySignatureService.invalidate_cache()
     local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
     if MidiService and MidiService.invalidate_cache then
         MidiService.invalidate_cache()
@@ -314,77 +408,41 @@ end
 function KeySignatureService.get_item_time_sig(item, take, qn)
     local real_item, real_take = resolve_item_and_take(item, take)
 
-    -- If qn is provided and real_take is valid MIDI take, look for the active Type 15 notation event at or before qn
-    if qn and real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
-        local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(real_take, qn)
-        local _, _, _, text_cnt = reaper.MIDI_CountEvts(real_take)
-        local best_evt = nil
-        local best_ppq = -1
-        local first_evt = nil
-        local first_ppq = math.huge
-
-        for ti = 0, text_cnt - 1 do
-            local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(real_take, ti)
-            if ok and etype == 15 then
-                local num_s, den_s = msg:match("^NOTATOR_TIME_SIG%s+(%d+)%s+(%d+)")
-                if not num_s then
-                    num_s, den_s = msg:match("^time%s+(%d+)/(%d+)")
-                end
-                if num_s and den_s then
-                    local n_num = tonumber(num_s)
-                    local n_den = tonumber(den_s)
-                    local t_entry = make_timesig_table(n_num, n_den)
-                    if ppq < first_ppq then
-                        first_ppq = ppq
-                        first_evt = t_entry
-                    end
-                    if ppq <= target_ppq + 5 and ppq >= best_ppq then
-                        best_ppq = ppq
-                        best_evt = t_entry
-                    end
+    -- If qn is provided and real_take is valid, look up active time signature in cached take events
+    if qn and real_take then
+        local events = get_cached_take_time_events(real_take)
+        if #events > 0 then
+            local best_evt = nil
+            for _, evt in ipairs(events) do
+                if evt.qn <= qn + 0.015 then
+                    best_evt = evt
+                else
+                    break
                 end
             end
-        end
-
-        if best_evt then
-            return best_evt, best_evt.num, best_evt.denom
-        elseif first_evt then
-            return first_evt, first_evt.num, first_evt.denom
-        end
-    end
-
-    -- 1st attempt: MediaItem P_EXT:notator_time_sig ("<num>|<denom>")
-    if real_item and reaper.ValidatePtr(real_item, "MediaItem*") then
-        local ok, ext_val = reaper.GetSetMediaItemInfo_String(real_item, "P_EXT:notator_time_sig", "", false)
-        if ok and ext_val and ext_val ~= "" then
-            local num_s, den_s = ext_val:match("^(%d+)|(%d+)")
-            if num_s and den_s then
-                local n_num = tonumber(num_s)
-                local n_den = tonumber(den_s)
-                return { num = n_num, denom = n_den }, n_num, n_den
+            if best_evt then
+                return best_evt, best_evt.num, best_evt.denom
+            else
+                local first = events[1]
+                return first, first.num, first.denom
             end
         end
     end
 
-    -- 2nd attempt: Type 15 take events ("NOTATOR_TIME_SIG <num> <denom>" or "time <num>/<denom>")
-    if real_take and reaper.ValidatePtr(real_take, "MediaItem_Take*") and reaper.TakeIsMIDI(real_take) then
-        local _, _, _, text_cnt = reaper.MIDI_CountEvts(real_take)
-        for ti = 0, text_cnt - 1 do
-            local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(real_take, ti)
-            if ok and etype == 15 then
-                local num_s, den_s = msg:match("^NOTATOR_TIME_SIG%s+(%d+)%s+(%d+)")
-                if num_s and den_s then
-                    local n_num = tonumber(num_s)
-                    local n_den = tonumber(den_s)
-                    return make_timesig_table(n_num, n_den), n_num, n_den
-                end
-                local nat_n, nat_d = msg:match("^time%s+(%d+)/(%d+)")
-                if nat_n and nat_d then
-                    local n_num = tonumber(nat_n)
-                    local n_den = tonumber(nat_d)
-                    return make_timesig_table(n_num, n_den), n_num, n_den
-                end
-            end
+    -- 1st attempt: MediaItem P_EXT:notator_time_sig ("<num>|<denom>") cached
+    if real_item then
+        local res, n_num, n_den = get_cached_item_pext_time(real_item)
+        if res then
+            return res, n_num, n_den
+        end
+    end
+
+    -- 2nd attempt: Type 15 take events ("NOTATOR_TIME_SIG <num> <denom>" or "time <num>/<denom>") from cache
+    if real_take then
+        local events = get_cached_take_time_events(real_take)
+        if #events > 0 then
+            local first = events[1]
+            return first, first.num, first.denom
         end
     end
 
@@ -473,6 +531,7 @@ function KeySignatureService.set_item_time_sig(state, item, take, num, denom, at
     end
 
     -- 4. Invalidate cache & update project
+    KeySignatureService.invalidate_cache()
     local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
     if MidiService and MidiService.invalidate_cache then
         MidiService.invalidate_cache()
@@ -507,17 +566,27 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
                 end
             else
                 -- Resolve from item.key_sig_events in memory without C-API calls
-                local target_ppq = 0
-                local r_take = it_obj.take or (it_obj.item and reaper.ValidatePtr(it_obj.item, "MediaItem*") and reaper.GetActiveTake(it_obj.item))
-                if r_take and reaper.ValidatePtr(r_take, "MediaItem_Take*") and reaper.TakeIsMIDI(r_take) then
-                    target_ppq = reaper.MIDI_GetPPQPosFromProjQN(r_take, qn)
-                end
                 local best_evt = nil
-                for _, evt in ipairs(it_obj.key_sig_events) do
-                    if evt.ppq <= target_ppq + 5 then
-                        best_evt = evt
-                    else
-                        break
+                local first_evt = it_obj.key_sig_events[1]
+                if first_evt and first_evt.qn ~= nil then
+                    for _, evt in ipairs(it_obj.key_sig_events) do
+                        if evt.qn <= qn + 0.015 then
+                            best_evt = evt
+                        else
+                            break
+                        end
+                    end
+                else
+                    local target_ppq = 0
+                    local r_take = it_obj.take or (it_obj.item and reaper.ValidatePtr(it_obj.item, "MediaItem*") and reaper.GetActiveTake(it_obj.item))
+                    if r_take and reaper.ValidatePtr(r_take, "MediaItem_Take*") and reaper.TakeIsMIDI(r_take) then
+                        target_ppq = reaper.MIDI_GetPPQPosFromProjQN(r_take, qn)
+                        for _, evt in ipairs(it_obj.key_sig_events) do
+                            evt.qn = reaper.MIDI_GetProjQNFromPPQPos(r_take, evt.ppq)
+                            if evt.ppq <= target_ppq + 5 then
+                                best_evt = evt
+                            end
+                        end
                     end
                 end
                 if best_evt then

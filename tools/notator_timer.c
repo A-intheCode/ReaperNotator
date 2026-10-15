@@ -215,3 +215,4 @@ __declspec(dllexport) int notator_restore_timer(void *L) {
     stop_timer_internal();
     return 0;
 }
+

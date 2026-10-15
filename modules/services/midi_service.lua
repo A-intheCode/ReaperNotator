@@ -497,7 +497,8 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             end
             if idx_s then
                 item_obj.key_sig_events = item_obj.key_sig_events or {}
-                table.insert(item_obj.key_sig_events, { ppq = ppq, key_idx = tonumber(idx_s), idx = tonumber(idx_s), mode = (mode_s and mode_s ~= "") and mode_s or "major" })
+                local ev_qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                table.insert(item_obj.key_sig_events, { ppq = ppq, qn = ev_qn, key_idx = tonumber(idx_s), idx = tonumber(idx_s), mode = (mode_s and mode_s ~= "") and mode_s or "major" })
             end
             
             -- Extract time signatures (NOTATOR_TIME_SIG <num> <denom> or native time <num>/<denom>)
@@ -507,7 +508,8 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             end
             if ts_num_s and ts_den_s then
                 item_obj.time_sig_events = item_obj.time_sig_events or {}
-                table.insert(item_obj.time_sig_events, { ppq = ppq, num = tonumber(ts_num_s), denom = tonumber(ts_den_s) })
+                local ev_qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                table.insert(item_obj.time_sig_events, { ppq = ppq, qn = ev_qn, num = tonumber(ts_num_s), denom = tonumber(ts_den_s) })
             end
         end
     end
@@ -516,10 +518,11 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     local _, raw_user_ties = reaper.GetProjExtState(0, "REAPER_Notator", "user_ties")
     if raw_user_ties and raw_user_ties ~= "" then
         local trk_guid = track and reaper.GetTrackGUID(track)
+        local single_trk_proj = (reaper.CountTracks(0) <= 1)
         for entry in raw_user_ties:gmatch("([^;]+)") do
             local p = {}
             for field in (entry .. "|"):gmatch("([^|]*)|") do table.insert(p, field) end
-            if p[1] and p[1] ~= "" and (p[2] == "" or not trk_guid or p[2] == trk_guid) then
+            if p[1] and p[1] ~= "" and ((p[2] ~= "" and trk_guid and p[2] == trk_guid) or (p[2] == "" and single_trk_proj)) then
                 local t_id = p[1]
                 local t_ch = tonumber(p[3]) or 0
                 local t_pitch = tonumber(p[4]) or 60
@@ -547,12 +550,13 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     local _, raw_user_gliss = reaper.GetProjExtState(0, "REAPER_Notator", "glissando_marks")
     if raw_user_gliss and raw_user_gliss ~= "" then
         local trk_guid = track and reaper.GetTrackGUID(track)
+        local single_trk_proj = (reaper.CountTracks(0) <= 1)
         for entry in raw_user_gliss:gmatch("([^;]+)") do
             local gp = {}
             for field in (entry .. "|"):gmatch("([^|]*)|") do table.insert(gp, field) end
             local gid = gp[1]
             local g_guid = gp[2]
-            if gid and gid ~= "" and (g_guid == "" or not trk_guid or g_guid == trk_guid) then
+            if gid and gid ~= "" and ((g_guid ~= "" and trk_guid and g_guid == trk_guid) or (g_guid == "" and single_trk_proj)) then
                 local g_ch  = tonumber(gp[3]) or 0
                 local g_p1  = tonumber(gp[4]) or 60
                 local g_s1  = tonumber(gp[5]) or 0.0

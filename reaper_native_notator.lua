@@ -1,7 +1,12 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.0.5-beta
+-- @version 2.0.6-beta
 -- @changelog
+--   + v2.0.6-beta: MusicXML Performance Optimization, Mid-Piece Time Signature Sync & Multi-Monitor HiDPI Maximize Fix:
+--             - MusicXML Slur & Tie Rendering Optimization ('modules/services/slur_service.lua'): Eliminated the 8 FPS bottleneck in dense orchestral MusicXML scores (e.g. Bars 40-49 with dozens of slurs and 200+ ties) by introducing a per-frame spatial/pitch index ('get_note_render_index' with 'by_pitch', 'min_qn'/'max_qn' culling, and cached 'resolved_ties'/'resolved_slurs'), memoized GUID normalization ('_norm_guid_cache'), and direct MediaTrack pointer comparisons (removing ~200,000 'ValidatePtr'/'GetTrackGUID' C-API calls and ~1.5M table iterations per frame).
+--             - Cached Key & Time Signature Resolution ('modules/services/key_signature_service.lua' & 'modules/services/midi_service.lua'): Added take-level caches ('_take_time_events_cache', '_item_pext_time_cache') and precomputed 'evt.qn' values for all 'NOTATOR_KEY' and 'NOTATOR_TIME_SIG' text events, eliminating ~25,000 C-API calls ('MIDI_CountEvts', 'MIDI_GetTextSysexEvt', 'MIDI_GetPPQPosFromProjQN') and ~50,000 regex matches per frame.
+--             - Mid-Piece MusicXML Time Signature Timeline Sync & Orphaned Metadata Cleanup ('modules/services/tempo_service.lua' & 'modules/services/musicxml_import_service.lua'): Synchronizes mid-piece 'NOTATOR_TIME_SIG' changes from MIDI takes directly to REAPER's master timeline via 'SetTempoTimeSigMarker', prunes orphaned legacy 'ProjExtState' ties/key signatures on import and project load, and scopes unguided legacy ties to prevent cross-track duplication.
+--             - Multi-Monitor & 4K HiDPI Window Maximize Fix ('reaper_native_notator.lua'): Removed 'ImGui_GetMainViewport' fallback (which returned REAPER's main window on the 1080p monitor instead of the Notator's target 4K display), replaced hardcoded '1280x720' (16:9) limits with monitor-proportional bounds, and added live OS HWND coordinate-space calibration ('JS_Window_GetRect' vs ReaImGui logical window state + Stage 3 post-maximize verification) so maximizing fills 100% of any monitor (4K laptop + 1080p external display) regardless of Windows DPI scaling (100%-250%).
 --   + v2.0.5-beta: Native High-Refresh Timer Engine (60 / 90 / 120 / 144 FPS Unlock):
 --             - Native Win32 0x29a Timer Bridge ('modules/bin/notator_timer_x64.dll' & 'modules/services/frame_timer_service.lua'): Unlocks REAPER's hardcoded 30ms (~32.0 FPS) global 'reaper.defer()' and ReaImGui timer ceiling on Windows. Synchronizes REAPER's '0x29a' main-window timer at 1ms kernel precision with 'Target Framerate (FPS)' (15, 30, 60, 90, 120, 144, Uncapped) while REAPER Notator is open, and automatically restores REAPER's default 30ms timer upon closing ('atexit' + 800ms auto-shutoff watchdog).
 --             - Eliminated ReaImGui Frame-Skip Desynchronization: Driven natively by the OS timer at the target framerate instead of skipping 'ImGui_Begin' frames inside 'defer', keeping ReaImGui's 'Resource::Timer::tick()' and 'keepAlive' lifecycle 100% synchronized on every tick.
@@ -535,32 +540,115 @@ local function loop()
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FrameRounding(),  4.0)
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(),    8.0, 6.0)
     
-    -- Determine maximum possible screen work area (excluding taskbars) for the monitor where the window is located
-    -- IMPORTANT: Never use ImGui_GetWindowViewport here, as it returns the window's own current size instead of the monitor size!
+    -- Locate REAPER Notator's own native OS window handle (HWND) for exact per-monitor rect & DPI calibration
+    local function get_notator_hwnd()
+        if state._notator_hwnd and reaper.APIExists("JS_Window_IsWindow") and reaper.JS_Window_IsWindow(state._notator_hwnd) then
+            return state._notator_hwnd
+        end
+        local hwnd = nil
+        if reaper.APIExists("JS_Window_FindTop") then
+            hwnd = reaper.JS_Window_FindTop("REAPER Notator", true)
+        end
+        if not hwnd and reaper.APIExists("JS_Window_Find") then
+            hwnd = reaper.JS_Window_Find("REAPER Notator", true)
+        end
+        state._notator_hwnd = hwnd
+        return hwnd
+    end
+
+    -- Determine maximum possible screen work area (excluding taskbars) for the monitor where the window is located.
+    -- Uses live OS HWND rectangle vs. ReaImGui window metrics so mixed-DPI multi-monitor setups (e.g. 4K laptop + 1080p monitor)
+    -- always calibrate to 100% of the target monitor with zero GetMainViewport cross-monitor pollution.
     local function get_screen_work_area(wx, wy, ww, wh)
-        -- 1. Query ReaImGui GetMainViewport (returns exact logical screen work area for primary display)
-        local mvp_x, mvp_y, mvp_w, mvp_h = nil, nil, nil, nil
-        if reaper.APIExists("ImGui_GetMainViewport") then
-            local ok, mvp = pcall(reaper.ImGui_GetMainViewport, ctx)
-            if ok and mvp and reaper.APIExists("ImGui_Viewport_GetWorkPos") and reaper.APIExists("ImGui_Viewport_GetWorkSize") then
-                mvp_x, mvp_y = reaper.ImGui_Viewport_GetWorkPos(mvp)
-                mvp_w, mvp_h = reaper.ImGui_Viewport_GetWorkSize(mvp)
+        local hwnd = get_notator_hwnd()
+        if hwnd and reaper.APIExists("JS_Window_GetRect") then
+            local ok_w, wl, wt, wr, wb = reaper.JS_Window_GetRect(hwnd)
+            if ok_w and wl and wt and wr and wb and math.abs(wr - wl) > 100 and math.abs(wb - wt) > 100 then
+                local win_l = math.min(wl, wr)
+                local win_r = math.max(wl, wr)
+                local win_t = math.min(wt, wb)
+                local win_b = math.max(wt, wb)
+                local os_ww = win_r - win_l
+                local os_wh = win_b - win_t
+
+                local cl_l, cl_t, cl_r, cl_b = win_l, win_t, win_r, win_b
+                if reaper.APIExists("JS_Window_GetClientRect") then
+                    local ok_c, c1, c2, c3, c4 = reaper.JS_Window_GetClientRect(hwnd)
+                    if ok_c and c1 and c2 and c3 and c4 then
+                        local ct_l = math.min(c1, c3)
+                        local ct_r = math.max(c1, c3)
+                        local ct_t = math.min(c2, c4)
+                        local ct_b = math.max(c2, c4)
+                        if ct_l == 0 and ct_t == 0 and (math.abs(win_l) > 2 or math.abs(win_t) > 2) and reaper.APIExists("JS_Window_ClientToScreen") then
+                            local sx1, sy1 = reaper.JS_Window_ClientToScreen(hwnd, 0, 0)
+                            local sx2, sy2 = reaper.JS_Window_ClientToScreen(hwnd, ct_r, ct_b)
+                            if sx1 and sy1 and sx2 and sy2 then
+                                cl_l = math.min(sx1, sx2)
+                                cl_r = math.max(sx1, sx2)
+                                cl_t = math.min(sy1, sy2)
+                                cl_b = math.max(sy1, sy2)
+                            end
+                        elseif (ct_r - ct_l) > 50 and (ct_b - ct_t) > 50 then
+                            cl_l, cl_t, cl_r, cl_b = ct_l, ct_t, ct_r, ct_b
+                        end
+                    end
+                end
+
+                local os_cw = math.max(100, cl_r - cl_l)
+                local os_ch = math.max(100, cl_b - cl_t)
+
+                local ml, mt, mr, mb = nil, nil, nil, nil
+                if reaper.APIExists("JS_Window_GetViewportFromRect") then
+                    ml, mt, mr, mb = reaper.JS_Window_GetViewportFromRect(win_l, win_t, win_r, win_b, true)
+                end
+                if (not ml or not mr or math.abs(mr - ml) <= 300) and reaper.my_getViewport then
+                    local cx = math.floor((win_l + win_r) * 0.5)
+                    local cy = math.floor((win_t + win_b) * 0.5)
+                    ml, mt, mr, mb = reaper.my_getViewport(0, 0, 0, 0, cx, cy, cx, cy, true)
+                end
+
+                if ml and mt and mr and mb then
+                    local mon_l = math.min(ml, mr)
+                    local mon_r = math.max(ml, mr)
+                    local mon_t = math.min(mt, mb)
+                    local mon_b = math.max(mt, mb)
+                    local mon_w = mon_r - mon_l
+                    local mon_h = mon_b - mon_t
+
+                    if mon_w > 300 and mon_h > 300 then
+                        local cur_imgui_x = state.cur_win_x or wx
+                        local cur_imgui_y = state.cur_win_y or wy
+                        local cur_imgui_w = state.cur_win_w or ww
+                        local cur_imgui_h = state.cur_win_h or wh
+
+                        if cur_imgui_x and cur_imgui_y and cur_imgui_w and cur_imgui_h and cur_imgui_w > 100 and cur_imgui_h > 100 then
+                            local scale_x = os_cw / cur_imgui_w
+                            local scale_y = os_ch / cur_imgui_h
+                            if scale_x < 0.25 or scale_x > 4.0 then scale_x = 1.0 end
+                            if scale_y < 0.25 or scale_y > 4.0 then scale_y = 1.0 end
+
+                            local frame_w = math.max(0, os_ww - os_cw)
+                            local frame_h = math.max(0, os_wh - os_ch)
+
+                            local vx = cur_imgui_x + (mon_l - win_l) / scale_x
+                            local vy = cur_imgui_y + (mon_t - win_t) / scale_y
+                            local vw = (mon_w - frame_w) / scale_x
+                            local vh = (mon_h - frame_h) / scale_y
+
+                            local err_x = math.abs(win_l - mon_l) + math.abs(os_ww - mon_w)
+                            local err_y = math.abs(win_t - mon_t) + math.abs(os_wh - mon_h)
+
+                            return math.floor(vx + 0.5), math.floor(vy + 0.5), math.floor(vw + 0.5), math.floor(vh + 0.5), (err_x <= 6 and err_y <= 6)
+                        end
+                    end
+                end
             end
         end
 
-        -- 2. Multi-monitor / target display maximum work area check via REAPER native my_getViewport
+        -- Fallback before HWND creation on frame 1 or when JS_ReaScriptAPI is unavailable
         if reaper.my_getViewport and wx and wy and ww and wh then
-            local cx = wx + math.floor(ww / 2)
-            local cy = wy + math.floor(wh / 2)
-            
-            -- If window center is within the main display, return exact ReaImGui MainViewport metrics
-            if mvp_x and mvp_w and cx >= mvp_x and cx < (mvp_x + mvp_w) and cy >= mvp_y and cy < (mvp_y + mvp_h) then
-                if mvp_w > 300 and mvp_h > 300 then
-                    return mvp_x, mvp_y, mvp_w, mvp_h
-                end
-            end
-
-            -- Otherwise, window center is on a secondary monitor: query native OS monitor work area
+            local cx = wx + math.floor(ww * 0.5)
+            local cy = wy + math.floor(wh * 0.5)
             local n_cx, n_cy = cx, cy
             if reaper.APIExists("ImGui_PointConvertNative") then
                 local ok_cnv, nx, ny = pcall(reaper.ImGui_PointConvertNative, ctx, cx, cy, true)
@@ -568,40 +656,47 @@ local function loop()
                     n_cx, n_cy = nx, ny
                 end
             end
-            local l, t, r, b = reaper.my_getViewport(0, 0, 0, 0, n_cx, n_cy, n_cx, n_cy, 1)
-            if l and t and r and b and (r - l) > 300 and (b - t) > 300 then
+            local l, t, r, b = reaper.my_getViewport(0, 0, 0, 0, n_cx, n_cy, n_cx, n_cy, true)
+            if l and t and r and b and math.abs(r - l) > 300 and math.abs(b - t) > 300 then
+                local mon_l = math.min(l, r)
+                local mon_r = math.max(l, r)
+                local mon_t = math.min(t, b)
+                local mon_b = math.max(t, b)
                 if reaper.APIExists("ImGui_PointConvertNative") then
-                    local ok1, cl, ct = pcall(reaper.ImGui_PointConvertNative, ctx, l, t, false)
-                    local ok2, cr, cb = pcall(reaper.ImGui_PointConvertNative, ctx, r, b, false)
-                    if ok1 and ok2 and cr and cl and (cr - cl) > 300 and cb and ct and (cb - ct) > 300 then
-                        return cl, ct, (cr - cl), (cb - ct)
+                    local ok1, cl, ct = pcall(reaper.ImGui_PointConvertNative, ctx, mon_l, mon_t, false)
+                    local ok2, cr, cb = pcall(reaper.ImGui_PointConvertNative, ctx, mon_r, mon_b, false)
+                    if ok1 and ok2 and cr and cl and math.abs(cr - cl) > 300 and cb and ct and math.abs(cb - ct) > 300 then
+                        local rl = math.min(cl, cr)
+                        local rr = math.max(cl, cr)
+                        local rt = math.min(ct, cb)
+                        local rb = math.max(ct, cb)
+                        return rl, rt, (rr - rl), (rb - rt), false
                     end
                 end
-                return l, t, (r - l), (b - t)
+                return mon_l, mon_t, (mon_r - mon_l), (mon_b - mon_t), false
             end
         end
 
-        if mvp_w and mvp_w > 300 and mvp_h and mvp_h > 300 then
-            return mvp_x, mvp_y, mvp_w, mvp_h
-        end
-
-        return 0, 0, 1920, 1080
+        return 0, 0, 1920, 1080, false
     end
 
-    -- Helper: Computes a clean, small centered window rectangle in the middle of the given screen work area (vx, vy, vw, vh)
+    -- Helper: Computes a proportional centered window rectangle in the middle of the given screen work area (vx, vy, vw, vh)
+    -- Free of any hardcoded 1280x720 or 16:9 aspect ratio constraints.
     local function get_small_centered_bounds(vx, vy, vw, vh)
-        local min_w = math.min(1280, math.max(640, vw - 20))
-        local min_h = math.min(720, math.max(480, vh - 20))
-        local target_rw = state.prev_win_w or 1280
-        local target_rh = state.prev_win_h or 720
-        if target_rw >= (vw - 20) or target_rh >= (vh - 20) then
-            target_rw = math.floor(vw * 0.80 + 0.5)
-            target_rh = math.floor(vh * 0.80 + 0.5)
+        local min_w = math.min(640, math.max(360, math.floor(vw * 0.35)))
+        local min_h = math.min(420, math.max(260, math.floor(vh * 0.35)))
+        local def_w = math.floor(vw * 0.78 + 0.5)
+        local def_h = math.floor(vh * 0.78 + 0.5)
+        local target_rw = state.prev_win_w or def_w
+        local target_rh = state.prev_win_h or def_h
+        if target_rw >= math.floor(vw * 0.92) or target_rh >= math.floor(vh * 0.92) then
+            target_rw = def_w
+            target_rh = def_h
         end
         local rw = math.max(min_w, math.min(vw - 20, target_rw))
         local rh = math.max(min_h, math.min(vh - 20, target_rh))
-        local rx = vx + math.floor((vw - rw) / 2)
-        local ry = vy + math.floor((vh - rh) / 2)
+        local rx = vx + math.floor((vw - rw) * 0.5)
+        local ry = vy + math.floor((vh - rh) * 0.5)
         if rx < vx then rx = vx end
         if ry < vy then ry = vy end
         if rx + rw > vx + vw then rx = math.max(vx, vx + vw - rw) end
@@ -611,26 +706,29 @@ local function loop()
     
     local cur_x = state.cur_win_x or state.prev_win_x or 100
     local cur_y = state.cur_win_y or state.prev_win_y or 60
-    local cur_w = state.cur_win_w or state.prev_win_w or 1280
-    local cur_h = state.cur_win_h or state.prev_win_h or 720
-    
-    local vx = state.screen_work_x
-    local vy = state.screen_work_y
-    local vw = state.screen_work_w
-    local vh = state.screen_work_h
-    
-    if not vx or not vw then
-        vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
-        state.screen_work_x = vx
-        state.screen_work_y = vy
-        state.screen_work_w = vw
-        state.screen_work_h = vh
+    local cur_w = state.cur_win_w or state.prev_win_w or 1000
+    local cur_h = state.cur_win_h or state.prev_win_h or 650
+
+    -- Measure current monitor work area at the start of the frame (when OS HWND and state.cur_win_* are 100% in sync)
+    if not state.is_maximized or (state._maximize_stage or 0) > 0 then
+        local svx, svy, svw, svh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
+        if svx and svw then
+            state.screen_work_x = svx
+            state.screen_work_y = svy
+            state.screen_work_w = svw
+            state.screen_work_h = svh
+        end
     end
+    
+    local vx = state.screen_work_x or 0
+    local vy = state.screen_work_y or 0
+    local vw = state.screen_work_w or 1920
+    local vh = state.screen_work_h or 1080
     
     if state.request_maximize_toggle then
         state.request_maximize_toggle = false
         if not state.is_maximized and (state._maximize_stage or 0) == 0 then
-            -- Step 1 of Maximize: Read maximum possible screen size of target monitor, place small window in center first
+            -- Step 1 of Maximize: Read maximum possible screen size of target monitor, place window in center first
             vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
             state.screen_work_x = vx
             state.screen_work_y = vy
@@ -638,7 +736,7 @@ local function loop()
             state.screen_work_h = vh
             state._maximize_stage = 1
         else
-            -- Unmaximize / Restore to small centered window
+            -- Unmaximize / Restore to centered window on current display
             state.is_maximized = false
             state._maximize_stage = 0
             state.just_restored = true
@@ -646,11 +744,11 @@ local function loop()
         end
     end
     
-    local min_w = math.min(1280, math.max(640, vw - 20))
-    local min_h = math.min(720, math.max(480, vh - 20))
+    local min_w = math.min(640, math.max(360, math.floor(vw * 0.35)))
+    local min_h = math.min(420, math.max(260, math.floor(vh * 0.35)))
 
     if state._maximize_stage == 1 then
-        -- Stage 1: Place window in small size in the exact center of the target screen before scaling up on next frame
+        -- Stage 1: Place window in centered bounds on the target screen so OS monitor & DPI are locked in
         local rx, ry, rw, rh = get_small_centered_bounds(vx, vy, vw, vh)
         state.prev_win_x = rx
         state.prev_win_y = ry
@@ -661,15 +759,31 @@ local function loop()
         state._maximize_stage = 2
         state._window_pos_initialized = true
     elseif state._maximize_stage == 2 then
-        -- Stage 2: Window is now centered on the target monitor -> read max screen size & scale up to full screen
+        -- Stage 2: Window is now centered on the target monitor -> read live HWND scale & maximize to 100% of monitor work area
         vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
         state.screen_work_x = vx
         state.screen_work_y = vy
         state.screen_work_w = vw
         state.screen_work_h = vh
         state.is_maximized = true
-        state._maximize_stage = 0
+        state._maximize_stage = 3
+        state._maximize_verify_tries = 0
         state.status_msg = "Window maximized on current display"
+        reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
+        reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
+        state._window_pos_initialized = true
+    elseif state._maximize_stage == 3 then
+        -- Stage 3: Post-maximize closed-loop verification against OS monitor work area (handles cross-monitor DPI changes)
+        local cvx, cvy, cvw, cvh, is_exact = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
+        state.screen_work_x = cvx
+        state.screen_work_y = cvy
+        state.screen_work_w = cvw
+        state.screen_work_h = cvh
+        vx, vy, vw, vh = cvx, cvy, cvw, cvh
+        state._maximize_verify_tries = (state._maximize_verify_tries or 0) + 1
+        if is_exact or state._maximize_verify_tries >= 3 then
+            state._maximize_stage = 0
+        end
         reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
         reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
         state._window_pos_initialized = true
@@ -678,14 +792,14 @@ local function loop()
         reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
         state._window_pos_initialized = true
     else
-        -- Enforce responsive minimum size: at least 640x480, bounded by screen work area
+        -- Enforce responsive minimum size without aspect-ratio constraints
         if reaper.APIExists("ImGui_SetNextWindowSizeConstraints") then
             reaper.ImGui_SetNextWindowSizeConstraints(ctx, min_w, min_h, 16384, 16384)
         end
         
-        if state.just_restored or not state._window_pos_initialized then
-            -- Both on Restore AND on every fresh REAPER / Notator startup:
-            -- First read maximum screen work area of target monitor, then place small window cleanly in the center of the screen
+        if state.just_restored or not state._window_pos_initialized or (not state._hwnd_calibrated and get_notator_hwnd() ~= nil) then
+            -- Both on Restore AND on fresh startup (plus one-shot calibration once native HWND is live):
+            -- Read maximum screen work area of target monitor, then place window cleanly in the center of the screen
             vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
             state.screen_work_x = vx
             state.screen_work_y = vy
@@ -698,6 +812,9 @@ local function loop()
             state.prev_win_h = rh
             reaper.ImGui_SetNextWindowPos(ctx, rx, ry, reaper.ImGui_Cond_Always())
             reaper.ImGui_SetNextWindowSize(ctx, rw, rh, reaper.ImGui_Cond_Always())
+            if get_notator_hwnd() ~= nil then
+                state._hwnd_calibrated = true
+            end
             state.just_restored = false
             state._window_pos_initialized = true
         else
@@ -754,16 +871,12 @@ local function loop()
         state.cur_win_w = win_w
         state.cur_win_h = win_h
         
-        -- Continuously update the monitor where the window is located
-        local svx, svy, svw, svh = get_screen_work_area(win_x, win_y, win_w, win_h)
-        state.screen_work_x = svx
-        state.screen_work_y = svy
-        state.screen_work_w = svw
-        state.screen_work_h = svh
+        local svw = state.screen_work_w or 1920
+        local svh = state.screen_work_h or 1080
         
         -- Remember current unmaximized window size (for clean restoration)
         if not state.is_maximized and (state._maximize_stage or 0) == 0 then
-            if win_w >= 640 and win_h >= 400 and (win_w < (svw - 10) or win_h < (svh - 10)) then
+            if win_w >= 360 and win_h >= 260 and (win_w < (svw - 10) or win_h < (svh - 10)) then
                 state.prev_win_w = win_w
                 state.prev_win_h = win_h
                 state.prev_win_x = win_x

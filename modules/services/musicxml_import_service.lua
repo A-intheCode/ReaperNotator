@@ -1953,25 +1953,29 @@ function MusicXmlImportService.import_file(file_path, state, options)
         end
     end
 
-    -- Sync imported tempo markers into Notator state and REAPER
-    if #imported_tempo_markers > 0 then
+    -- Sync imported tempo markers and mid-piece time signatures into Notator state and REAPER
+    do
         local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
         local TempoMarker = package.loaded["classes.tempo_marker"] or require("classes.tempo_marker")
         if state then
-            state.tempo_markers = {}
-            for _, itm in ipairs(imported_tempo_markers) do
-                local tm = TempoMarker.new({
-                    type = itm.type or "absolute",
-                    label = itm.label or "",
-                    bpm = itm.bpm,
-                    start_qn = itm.qn,
-                    end_qn = itm.qn + 4.0,
-                    custom_bpm_only = (not itm.label or itm.label == "")
-                })
-                table.insert(state.tempo_markers, tm)
+            if #imported_tempo_markers > 0 then
+                state.tempo_markers = {}
+                for _, itm in ipairs(imported_tempo_markers) do
+                    local tm = TempoMarker.new({
+                        type = itm.type or "absolute",
+                        label = itm.label or "",
+                        bpm = itm.bpm,
+                        start_qn = itm.qn,
+                        end_qn = itm.qn + 4.0,
+                        custom_bpm_only = (not itm.label or itm.label == "")
+                    })
+                    table.insert(state.tempo_markers, tm)
+                end
+                TempoService.save_markers(state)
             end
-            TempoService.save_markers(state)
-            TempoService.sync_all_to_reaper(state)
+            if #imported_tempo_markers > 0 or do_import_keys then
+                TempoService.sync_all_to_reaper(state)
+            end
         end
     end
 
@@ -2036,6 +2040,22 @@ function MusicXmlImportService.import_file(file_path, state, options)
 
     -- Persist all imported objects to project and takes
     if state then
+        -- Prune orphaned track_key_signatures for tracks that no longer exist
+        if state.track_key_signatures then
+            local valid_guids = {}
+            local tcnt = reaper.CountTracks(0)
+            for ti = 0, tcnt - 1 do
+                local trk = reaper.GetTrack(0, ti)
+                local g = trk and reaper.GetTrackGUID(trk)
+                if g then valid_guids[g] = true end
+            end
+            for g in pairs(state.track_key_signatures) do
+                if not valid_guids[g] then
+                    state.track_key_signatures[g] = nil
+                end
+            end
+        end
+
         if HairpinService and HairpinService.save_hairpins then
             HairpinService.save_hairpins(state)
         end
@@ -2061,8 +2081,12 @@ function MusicXmlImportService.import_file(file_path, state, options)
         if KeySignatureService and KeySignatureService.save then
             KeySignatureService.save(state)
         end
-        if SlurService and SlurService.save_slurs then
-            SlurService.save_slurs(state)
+        if SlurService then
+            if SlurService.heal_slurs_and_ties then
+                SlurService.heal_slurs_and_ties(state)
+            elseif SlurService.save_slurs then
+                SlurService.save_slurs(state)
+            end
         end
         if GlissandoService and GlissandoService.save_glissandos then
             GlissandoService.save_glissandos(state)

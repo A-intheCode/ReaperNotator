@@ -6,8 +6,8 @@
 local Version = {
     major = 2,
     minor = 0,
-    patch = 5,
-    suffix = "-beta", -- 2.0.5-beta Release (Native 60/90/120/144 FPS High-Refresh Timer Engine)
+    patch = 6,
+    suffix = "-beta", -- 2.0.6-beta Release (MusicXML Performance Optimization & Multi-Monitor HiDPI Maximize Fix)
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

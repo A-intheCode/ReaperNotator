@@ -147,3 +147,4 @@ function FrameTimerService.restore()
 end
 
 return FrameTimerService
+

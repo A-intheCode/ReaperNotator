@@ -595,17 +595,66 @@ function TempoService.sync_all_to_reaper(state)
 
     local cnt_before = reaper.CountTempoTimeSigMarkers(0)
     
-    -- Preserve any existing REAPER time signatures at markers > 0
+    -- Preserve any existing REAPER time signatures at markers > 0 (stored by QN so tempo changes never shift bar positions)
     local existing_time_sigs = {}
+    local function add_time_sig_at_qn(qn_val, num_val, den_val)
+        if not qn_val or qn_val <= 0.05 or not num_val or not den_val or num_val <= 0 or den_val <= 0 then return end
+        for _, ts in ipairs(existing_time_sigs) do
+            if math.abs(ts.qn - qn_val) < 0.15 then
+                ts.num = num_val
+                ts.den = den_val
+                return
+            end
+        end
+        table.insert(existing_time_sigs, { qn = qn_val, num = num_val, den = den_val })
+    end
+
     if cnt_before > 1 then
         for i = 1, cnt_before - 1 do
             local ok, tpos, _, _, _, ts_num, ts_den = reaper.GetTempoTimeSigMarker(0, i)
             if ok and ts_num > 0 and ts_den > 0 then
-                table.insert(existing_time_sigs, { timepos = tpos, num = ts_num, den = ts_den })
+                local ts_qn = reaper.TimeMap2_timeToQN(0, tpos)
+                add_time_sig_at_qn(ts_qn, ts_num, ts_den)
             end
         end
     end
-    
+
+    -- Also synchronize mid-piece NOTATOR_TIME_SIG events from MIDI takes (e.g. MusicXML imports)
+    local trk_cnt = reaper.CountTracks(0)
+    for ti = 0, trk_cnt - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk then
+            local found_in_track = false
+            local item_cnt = reaper.CountTrackMediaItems(trk)
+            for ii = 0, item_cnt - 1 do
+                local it = reaper.GetTrackMediaItem(trk, ii)
+                local tk = it and reaper.GetActiveTake(it)
+                if tk and reaper.TakeIsMIDI(tk) then
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(tk)
+                    for tx = 0, (text_cnt or 0) - 1 do
+                        local ok_t, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(tk, tx)
+                        if ok_t and ev_type == 15 and msg then
+                            local tn, td = msg:match("NOTATOR_TIME_SIG%s+(%d+)%s+(%d+)")
+                            if not tn then tn, td = msg:match("^time%s+(%d+)/(%d+)") end
+                            if tn and td then
+                                local ev_qn = reaper.MIDI_GetProjQNFromPPQPos(tk, ppq)
+                                ev_qn = math.floor(ev_qn * 100 + 0.5) / 100
+                                if ev_qn <= 0.05 then
+                                    bpi = tonumber(tn) or bpi
+                                    bpi_d = tonumber(td) or bpi_d
+                                else
+                                    add_time_sig_at_qn(ev_qn, tonumber(tn), tonumber(td))
+                                end
+                                found_in_track = true
+                            end
+                        end
+                    end
+                end
+            end
+            if found_in_track then break end
+        end
+    end
+
     -- Point 0 at time 0.0:
     -- If REAPER already has markers, update marker 0.
     -- If REAPER has 0 markers, ptidx MUST be -1 to insert the first marker!
@@ -634,28 +683,38 @@ function TempoService.sync_all_to_reaper(state)
         reaper.DeleteTempoTimeSigMarker(0, i)
     end
     
-    -- Now create all further points cleanly and exactly in chronological order:
-    for i = 2, #merged_points do
-        local pt = merged_points[i]
-        local t_pos = reaper.TimeMap2_QNToTime(0, pt.qn)
-        local ts_n, ts_d = 0, 0
-        for _, ts in ipairs(existing_time_sigs) do
-            if not ts.used and math.abs(ts.timepos - t_pos) < 0.05 then
-                ts_n, ts_d = ts.num, ts.den
-                ts.used = true
+    -- Merge any standalone time signature changes into merged_points so all markers are created in strict QN order
+    for _, ts in ipairs(existing_time_sigs) do
+        local matched = false
+        for i = 2, #merged_points do
+            local pt = merged_points[i]
+            if math.abs(pt.qn - ts.qn) < 0.15 then
+                pt.ts_num = ts.num
+                pt.ts_den = ts.den
+                matched = true
                 break
             end
         end
-        reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, pt.bpm, ts_n, ts_d, pt.linear == true)
-    end
-    
-    -- Re-insert any preserved time signature markers that were not matched by a tempo point
-    for _, ts in ipairs(existing_time_sigs) do
-        if not ts.used then
-            local qn = reaper.TimeMap2_timeToQN(0, ts.timepos)
-            local effective_bpm = TempoService.get_tempo_at_qn(state, qn)
-            reaper.SetTempoTimeSigMarker(0, -1, ts.timepos, -1, -1, effective_bpm, ts.num, ts.den, false)
+        if not matched then
+            local effective_bpm = TempoService.get_tempo_at_qn(state, ts.qn)
+            table.insert(merged_points, {
+                qn     = ts.qn,
+                bpm    = effective_bpm,
+                ts_num = ts.num,
+                ts_den = ts.den,
+                linear = false
+            })
         end
+    end
+    table.sort(merged_points, function(a, b) return a.qn < b.qn end)
+
+    -- Now create all further points cleanly and exactly in chronological QN order:
+    for i = 2, #merged_points do
+        local pt = merged_points[i]
+        local t_pos = reaper.TimeMap2_QNToTime(0, pt.qn)
+        local ts_n = pt.ts_num or 0
+        local ts_d = pt.ts_den or 0
+        reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, pt.bpm, ts_n, ts_d, pt.linear == true)
     end
     
     reaper.UpdateTimeline()
