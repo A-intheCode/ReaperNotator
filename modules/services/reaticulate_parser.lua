@@ -692,6 +692,36 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
             reaper.GetSetMediaTrackInfo_String(track, "P_EXT:reaticulate", last_encoded, true)
             reaper.MarkProjectDirty(0)
         end
+        
+        -- Automatically initialize or validate track slur behavior when bank is assigned
+        local st_mod = package.loaded["state"]
+        local eff_st = state or (st_mod and (st_mod._active_instance or st_mod))
+        local tguid = reaper.GetTrackGUID(track)
+        if tguid then
+            local cur_beh = (eff_st and eff_st.track_slur_behavior and eff_st.track_slur_behavior[tguid]) or nil
+            if not cur_beh or cur_beh == "" then
+                local ok_ext, ext_beh = reaper.GetSetMediaTrackInfo_String(track, "P_EXT:notator_slur_behavior", "", false)
+                if ok_ext and ext_beh and ext_beh ~= "" then
+                    cur_beh = ext_beh
+                end
+            end
+            local reset_to_auto = (not cur_beh or cur_beh == "")
+            if cur_beh and cur_beh:match("^pc:(%d+)$") and bank.articulations then
+                local req_pc = tonumber(cur_beh:match("^pc:(%d+)$"))
+                local pc_exists = false
+                for _, a in ipairs(bank.articulations) do
+                    if a.pc == req_pc then pc_exists = true break end
+                end
+                if not pc_exists then reset_to_auto = true end
+            end
+            if reset_to_auto then
+                cur_beh = "auto"
+                reaper.GetSetMediaTrackInfo_String(track, "P_EXT:notator_slur_behavior", "auto", true)
+            end
+            if eff_st and eff_st.track_slur_behavior then
+                eff_st.track_slur_behavior[tguid] = cur_beh
+            end
+        end
     end
     
     reaper.PreventUIRefresh(-1)
@@ -870,7 +900,8 @@ function ReaticulateParser.get_bank_for_track(track, banks, override_or_msb, opt
     
     -- Automatically consult state.track_articulation_banks if caller didn't pass an explicit override string
     if (not override_val or override_val == "") and track and reaper.ValidatePtr(track, "MediaTrack*") then
-        local st = package.loaded["state"]
+        local st_mod = package.loaded["state"]
+        local st = st_mod and (st_mod._active_instance or st_mod)
         if st and st.track_articulation_banks then
             local tguid = reaper.GetTrackGUID(track)
             if tguid and st.track_articulation_banks[tguid] then

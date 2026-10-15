@@ -313,7 +313,7 @@ function SlurService.toggle_slur(state, active_tracks_data)
         local all_cands = {}
         local n1_guid = get_track_guid_from_note(n1)
         local n1_trk = get_track_from_note(n1)
-        for _, td in ipairs(active_tracks_data) do
+        for _, td in ipairs(eff_tracks_data) do
             local is_match = false
             if n1_trk and td.track and td.track == n1_trk then
                 is_match = true
@@ -356,7 +356,7 @@ function SlurService.toggle_slur(state, active_tracks_data)
     if existing_idx then
         -- TOGGLE OFF: Remove slur and restore original note durations / playback
         local sl = state.user_slurs[existing_idx]
-        SlurService.delete_slur(state, sl, MidiService, active_tracks_data)
+        SlurService.delete_slur(state, sl, MidiService, eff_tracks_data)
         return
     end
     
@@ -377,11 +377,14 @@ function SlurService.toggle_slur(state, active_tracks_data)
     local trk = get_track_from_take(take)
     local trk_guid = (trk and reaper.GetTrackGUID(trk)) or ""
     local all_banks = ReaticulateParser and ReaticulateParser.get_all_banks()
-    local bank = trk and ReaticulateParser and ReaticulateParser.get_bank_for_track(trk, all_banks)
+    local bank = trk and ReaticulateParser and ReaticulateParser.get_bank_for_track(trk, all_banks, state)
+    if trk and bank and ReaticulateParser and ReaticulateParser.ensure_track_reaticulate_fx_and_bank then
+        ReaticulateParser.ensure_track_reaticulate_fx_and_bank(trk, bank, state, false)
+    end
     
     local n1_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
     
-    -- 1. Scan for active pre-slur articulation on this channel (e.g. Tremolo)
+    -- 1. Scan for active pre-slur articulation on this channel (e.g. Tremolo / Trill)
     local pre_slur_pc = nil
     local pre_slur_msb = -1
     local pre_slur_lsb = -1
@@ -425,16 +428,28 @@ function SlurService.toggle_slur(state, active_tracks_data)
         end
     end
     
-    -- 3. Insert Legato articulation: look for "legato", fallback to "long" / "sustain" (User requirement!)
-    local art_match = bank and MidiService.find_reaticulate_art_for_id(bank, "legato")
-    if not art_match and bank then
-        art_match = MidiService.find_reaticulate_art_for_id(bank, "long")
-    end
-    if not art_match and bank then
-        art_match = MidiService.find_reaticulate_art_for_id(bank, "sustain")
-    end
+    -- 3. Insert Slur articulation using track behavior priority (Auto: Legato -> Long / Sustain, or explicit selection)
+    local art_match = bank and MidiService.find_slur_articulation_in_bank(bank, trk, state)
     
     if art_match then
+        -- Remove any conflicting PCs / Bank Selects or NOTATOR_CHASE tags right at n1_sppq
+        local _, _, cc_del_cnt, text_del_cnt = reaper.MIDI_CountEvts(take)
+        for ci = (cc_del_cnt or 0) - 1, 0, -1 do
+            local ok_c, _, _, c_ppq, chanmsg, c_chan, msg2 = reaper.MIDI_GetCC(take, ci)
+            if ok_c and c_chan == chan and math.abs(c_ppq - n1_sppq) <= 25 then
+                local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
+                local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
+                if is_pc or is_bank then
+                    reaper.MIDI_DeleteCC(take, ci)
+                end
+            end
+        end
+        for ti = (text_del_cnt or 0) - 1, 0, -1 do
+            local ok_t, _, _, t_ppq, etype, msg_t = reaper.MIDI_GetTextSysexEvt(take, ti)
+            if ok_t and math.abs(t_ppq - n1_sppq) <= 25 and msg_t and msg_t:find("NOTATOR_CHASE") then
+                reaper.MIDI_DeleteTextSysexEvt(take, ti)
+            end
+        end
         local eff_msb = (bank.msb and bank.msb >= 0) and bank.msb or pre_slur_msb
         local eff_lsb = (bank.lsb and bank.lsb >= 0) and bank.lsb or pre_slur_lsb
         if eff_msb and eff_msb >= 0 then
@@ -446,27 +461,28 @@ function SlurService.toggle_slur(state, active_tracks_data)
         reaper.MIDI_InsertCC(take, false, false, n1_sppq, 0xC0, chan, art_match.pc, 0)
     end
     
-    -- 4. Tag all notes in phrase with Type 15 "NOTE pitch chan a legato" and clean conflicting staccato tags
+    -- 4. Tag all notes in phrase with Type 15 articulation tag and clean conflicting short/momentary tags
+    local slur_art_tag = (art_match and art_match.name and not art_match.name:lower():find("legato") and not art_match.name:lower():find("portato") and not art_match.name:lower():find("gliss") and not art_match.name:lower():find("portamento")) and "long" or "legato"
     for _, pn in ipairs(phrase_notes) do
         local pn_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, pn.start_qn) + 0.5)
         local _, _, _, textcnt = reaper.MIDI_CountEvts(take)
         for ti = (textcnt or 0) - 1, 0, -1 do
             local ok_t, _, _, t_ppq, etype, msg_t = reaper.MIDI_GetTextSysexEvt(take, ti)
             if ok_t and etype == 15 and math.abs(t_ppq - pn_sppq) <= 25 then
-                local low_msg = msg_t:lower()
-                if low_msg:find("stacc") or low_msg:find("spicc") or low_msg:find("wedge") then
+                local p_m, ch_m = msg_t:match("^NOTE%s+(%d+)%s+(%d+)%s+a%s+")
+                if p_m and tonumber(p_m) == pn.pitch and (tonumber(ch_m) or 0) == chan then
                     reaper.MIDI_DeleteTextSysexEvt(take, ti)
                 end
             end
         end
-        reaper.MIDI_InsertTextSysexEvt(take, false, false, pn_sppq, 15, string.format("NOTE %d %d a legato", pn.pitch, chan))
-        pn.articulation = "legato"
+        reaper.MIDI_InsertTextSysexEvt(take, false, false, pn_sppq, 15, string.format("NOTE %d %d a %s", pn.pitch, chan, slur_art_tag))
+        pn.articulation = slur_art_tag
     end
     
-    -- 5. Insert Type 15 Slur persistence tag with pre_slur articulation memory
-    reaper.MIDI_InsertTextSysexEvt(take, false, false, n1_sppq, 15, string.format("NOTATOR_SLUR %s %d %d %d %.4f %.4f %.4f %s %s %s",
+    -- 5. Insert Type 15 Slur persistence tag with pre_slur articulation memory (numeric -1 fallback so pattern matching never shifts columns)
+    reaper.MIDI_InsertTextSysexEvt(take, false, false, n1_sppq, 15, string.format("NOTATOR_SLUR %s %d %d %d %.4f %.4f %.4f %d %d %d",
         slur_id, chan, n1.pitch, n_last.pitch, n1.start_qn, n_last.start_qn, orig_dur1,
-        pre_slur_pc or "", pre_slur_msb or -1, pre_slur_lsb or -1))
+        tonumber(pre_slur_pc) or -1, tonumber(pre_slur_msb) or -1, tonumber(pre_slur_lsb) or -1))
     
     -- 6. Store slur in state
     local slur_obj = {
@@ -2030,7 +2046,7 @@ function SlurService.load_slurs(state)
                         n2_start_qn = n2sqn,
                         end_qn      = n2sqn + 1.0,
                         orig_dur1   = tonumber(p[8]) or 1.0,
-                        pre_slur_pc = (p[9] and p[9] ~= "") and tonumber(p[9]) or nil,
+                        pre_slur_pc = (p[9] and p[9] ~= "" and tonumber(p[9]) and tonumber(p[9]) >= 0) and tonumber(p[9]) or nil,
                         pre_slur_msb = tonumber(p[10]) or -1,
                         pre_slur_lsb = tonumber(p[11]) or -1,
                         n1_key      = n1_k,
@@ -2083,6 +2099,8 @@ function SlurService.load_slurs(state)
     end
     
     -- 2. Dual persistence: scan takes for Type 15 NOTATOR_SLUR / NOTATOR_TIE
+    local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+    local takes_to_heal_slurs = {}
     local trk_count = reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
         local trk = reaper.GetTrack(0, ti)
@@ -2094,12 +2112,14 @@ function SlurService.load_slurs(state)
                 local item = reaper.GetTrackMediaItem(trk, ii)
                 local take = item and reaper.GetActiveTake(item)
                 if take and reaper.TakeIsMIDI(take) then
+                    local take_has_slur = false
                     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
                     for text_i = 0, text_cnt - 1 do
                         local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
                         if ok and ev_type == 15 then
                             local s_id, s_chan, p1, p2, sqn, n2sqn, odur, pre_pc, pre_msb, pre_lsb = msg:match("^NOTATOR_SLUR%s+([%w_]+)%s+(%d+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%-?%d*)%s*(%-?%d*)%s*(%-?%d*)")
                             if s_id then
+                                take_has_slur = true
                                 local track_key = s_id .. "_" .. norm_trk_guid
                                 local ch = tonumber(s_chan) or 0
                                 local p1_n = tonumber(p1) or 60
@@ -2129,7 +2149,7 @@ function SlurService.load_slurs(state)
                                         n2_start_qn = n2sqn_n,
                                         end_qn      = n2sqn_n + 1.0,
                                         orig_dur1   = tonumber(odur) or 1.0,
-                                        pre_slur_pc = (pre_pc and pre_pc ~= "") and tonumber(pre_pc) or nil,
+                                        pre_slur_pc = (pre_pc and pre_pc ~= "" and tonumber(pre_pc) and tonumber(pre_pc) >= 0) and tonumber(pre_pc) or nil,
                                         pre_slur_msb = tonumber(pre_msb) or -1,
                                         pre_slur_lsb = tonumber(pre_lsb) or -1,
                                         n1_key      = n1_k,
@@ -2196,8 +2216,19 @@ function SlurService.load_slurs(state)
                             end
                         end
                     end
+                    if take_has_slur then
+                        table.insert(takes_to_heal_slurs, take)
+                    end
                 end
             end
+        end
+    end
+
+    if MidiService and MidiService.auto_chase_momentary_articulations then
+        for _, tk in ipairs(takes_to_heal_slurs) do
+            reaper.MIDI_DisableSort(tk)
+            MidiService.auto_chase_momentary_articulations(tk)
+            reaper.MIDI_Sort(tk)
         end
     end
 
@@ -2375,6 +2406,7 @@ function SlurService.reconcile_from_takes(state)
 
     local seen_slur_ids = {}
     local seen_tie_ids = {}
+    local newly_discovered_slur_takes = {}
 
     local trk_count = reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
@@ -2387,6 +2419,7 @@ function SlurService.reconcile_from_takes(state)
                 local item = reaper.GetTrackMediaItem(trk, ii)
                 local take = item and reaper.GetActiveTake(item)
                 if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+                    local take_new_slur = false
                     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
                     for text_i = 0, text_cnt - 1 do
                         local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
@@ -2427,7 +2460,7 @@ function SlurService.reconcile_from_takes(state)
                                             n2_start_qn = n2sqn_n,
                                             end_qn      = n2sqn_n + 1.0,
                                             orig_dur1   = tonumber(odur) or 1.0,
-                                            pre_slur_pc = (pre_pc and pre_pc ~= "") and tonumber(pre_pc) or nil,
+                                            pre_slur_pc = (pre_pc and pre_pc ~= "" and tonumber(pre_pc) and tonumber(pre_pc) >= 0) and tonumber(pre_pc) or nil,
                                             pre_slur_msb = tonumber(pre_msb) or -1,
                                             pre_slur_lsb = tonumber(pre_lsb) or -1,
                                             n1_key      = n1_k,
@@ -2437,6 +2470,7 @@ function SlurService.reconcile_from_takes(state)
                                         slur_by_id[s_id] = nsl
                                         seen_slur_pairs[pair_key] = nsl
                                         any_changed = true
+                                        take_new_slur = true
                                     end
                                 end
                             end
@@ -2488,7 +2522,21 @@ function SlurService.reconcile_from_takes(state)
                             end
                         end
                     end
+                    if take_new_slur then
+                        table.insert(newly_discovered_slur_takes, take)
+                    end
                 end
+            end
+        end
+    end
+
+    if #newly_discovered_slur_takes > 0 then
+        local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+        if MidiService and MidiService.auto_chase_momentary_articulations then
+            for _, tk in ipairs(newly_discovered_slur_takes) do
+                reaper.MIDI_DisableSort(tk)
+                MidiService.auto_chase_momentary_articulations(tk)
+                reaper.MIDI_Sort(tk)
             end
         end
     end

@@ -989,6 +989,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             track = nil, guid = "default", idx = 1, name = "MIDI Track", col = 0, items = {}, notes = {}, dynamics = {}
         })
     end
+    state.active_tracks_cache = active_tracks_data
     
     local total_measures = math.max(16, math.ceil(max_proj_qn / qn_per_measure) + 2)
     local measure_w = Engraver.get_measure_layout(s, qn_per_measure)
