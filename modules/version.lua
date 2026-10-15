@@ -7,7 +7,7 @@ local Version = {
     major = 2,
     minor = 0,
     patch = 7,
-    suffix = "-beta", -- 2.0.7-beta Release (Clean Note Audition Without REC Badge & Static Viewport on Note Click)
+    suffix = "", -- 2.0.7 Official Production Release
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

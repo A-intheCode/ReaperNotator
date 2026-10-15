@@ -57,11 +57,12 @@ MANUAL_DATA = [
                         "- Right Column (Context Drawers & Tool Panels): Collapsible slide-out panels for Dynamics automation, Reaticulate banks, Tempo maps, Clef palettes, Key signatures, Pattern browser, and Settings."
             },
             {
-                "heading": "1.3 Window Resizing, Docking & 2-Step Monitor Maximize Engine",
+                "heading": "1.3 Window Resizing, Docking, Multi-Monitor 4K HiDPI & 2-Step Maximize Engine",
                 "text": "REAPER-Notator can run as a floating window or docked directly into any REAPER docker (bottom, top, left, right, or multi-tabbed). The score canvas dynamically scales according to the zoom factor (adjustable from 0.6x to 2.0x), preserving crisp vector typography at all DPI scaling factors.\n\n"
-                        "2-Step Monitor Maximize, Startup Centering & Multi-Monitor Management (v2.0.1+):\n"
-                        "- Centered Floating Startup (Clean Session Launch): On every REAPER startup or script launch, REAPER-Notator first queries the maximum possible work area of the target monitor (via ImGui_GetMainViewport and reaper.my_getViewport with HiDPI coordinate conversion) and opens in a clean, centered floating window in the middle of the screen. Maximization state (is_maximized) is intentionally not persisted across restarts so the user always retains full control and the window can never get stuck in an un-restorable geometry.\n"
+                        "2-Step Monitor Maximize, Startup Centering & Multi-Monitor HiDPI Management (v2.0.1 - v2.0.7):\n"
+                        "- Centered Floating Startup (Clean Session Launch): On every REAPER startup or script launch, REAPER-Notator first queries the maximum possible work area of the target monitor and opens in a clean, centered floating window in the middle of the screen. Maximization state (is_maximized) is intentionally not persisted across restarts so the user always retains full control and the window can never get stuck in an un-restorable geometry.\n"
                         "- 2-Step Screen Maximize & Restore Toggle (Top Bar / F11): Clicking the Maximize button in the top-right toolbar (or pressing F11) executes a deterministic two-step sequence: (1) it reads the full work area bounds of the monitor where the window currently resides and stores a centered floating restore rectangle in the middle of that monitor, and (2) scales the window cleanly to 100% of the monitor work area. Clicking Restore returns the window directly to the centered floating geometry.\n"
+                        "- Multi-Monitor & 4K HiDPI Coordinate-Space Calibration (v2.0.7): Automatically detects mixed-DPI multi-monitor setups (such as a 4K laptop display at 150%-250% scaling alongside a 1080p external monitor at 100% scaling) without relying on REAPER's main window viewport or hardcoded 16:9 limits. Live OS HWND rectangle verification (JS_Window_GetRect vs. ReaImGui logical window coordinates + Stage 3 post-maximize verification) ensures maximizing fills 100% of any monitor regardless of aspect ratio or Windows DPI scaling.\n"
                         "- Anti-Collapse Title Bar Guard & Legacy Cleanup: Uses ImGui_WindowFlags_NoCollapse and ImGui_SetNextWindowCollapsed(ctx, false) so double-clicking the title bar never collapses the window into an unresponsive shaded bar, and automatically purges obsolete pre-v2 ExtState entries on startup.\n"
                         "- Always-On-Top Modal Layering: All secondary configuration dialogs (Record & Auto-Quantize, Filter Irregular Notes, Quantize, Divisio Vocum, Bank Picker, Settings, and Help) render with ImGui_WindowFlags_TopMost, remaining strictly in the foreground above the score canvas."
             }
@@ -98,7 +99,7 @@ MANUAL_DATA = [
                 "heading": "2.4 Right-Click Record Modal: Track Arming, MIDI Input Routing, Pre-Roll & Count-In (v2.0+)",
                 "text": "Functions (accessible by right-clicking the Record button in the Top Toolbar):\n"
                         "- Bidirectional REAPER Track Arming: Lists all REAPER project tracks (including empty tracks that do not yet contain MIDI items). Toggling a track's checkbox in the Record Modal immediately synchronizes REAPER's native TCP/MCP Record-Arm button (I_RECARM = 1), enables Input Monitoring (I_RECMON = 1), configures MIDI Overdub (I_RECMODE = 7) so REAPER records directly into MIDI score takes without popping up Audio '.wav' Save prompts, and makes the track visible on the score canvas.\n"
-                        "- Armed Track Red Canvas Badges: Any track armed for recording displays a subtle red background tint, red outer border, red left accent stripe, and a crisp vector circle 'REC' pill badge in the track header (with automatic track title truncation so the badge and track name never overlap).\n"
+                        "- Armed Track Red Canvas Badges (Genuine User Arming Only, v2.0.7): Any track genuinely armed for recording by the user displays a subtle red background tint, red outer border, red left accent stripe, and a crisp vector circle 'REC' pill badge in the track header (with automatic track title truncation so the badge and track name never overlap). Temporary internal Virtual MIDI Keyboard routing during note click auditioning (AudioPreview.is_track_user_armed) is strictly excluded so auditioning a note never triggers the red 'REC' badge.\n"
                         "- MIDI Input Device & Channel Selector: Choose from all connected hardware MIDI keyboards, REAPER's Virtual MIDI Keyboard (VKB), or 'All MIDI Inputs', alongside the target MIDI Channel ('All Channels' or 'Channel 1..16'), assignable globally across armed tracks or individually per track.\n"
                         "- Pre-Roll on Record (Action 41818): Toggle to audition preceding measures before recording punches in, with selectable Pre-Roll Bar Length (1, 2, or 4 bars synchronized with REAPER's prerollmeas configuration).\n"
                         "- Metronome Count-In before Record (Action 40364): Enables audible metronome lead-in clicks before recording starts, plus a 1-click shortcut button to open REAPER's native Metronome / Pre-Roll Settings dialog (Action 40049)."
@@ -126,14 +127,15 @@ MANUAL_DATA = [
                         "DAW Effect: Evaluates TimeMap_GetTimeSigAtTime on every frame to mirror timeline accelerandos, ritardandos, and time signature changes."
             },
             {
-                "heading": "2.7 Audition Preview (Note Audio on Click)",
+                "heading": "2.7 Audition Preview (Note Audio on Click) & Static Viewport Focus (v2.0.7)",
                 "text": "Functions:\n"
                         "- Single-Note Audition: Clicking or vertically dragging any note on the canvas triggers an immediate acoustic preview sound, arbitrated to audition strictly the single hovered note even in dense chords or adjacent systems.\n"
-                        "- Non-Intrusive Direct Playback: Auditioning operates purely via direct MIDI output without ever modifying track record-arm status (I_RECARM), input monitoring (I_RECMON), or input channel routing (I_RECINPUT), guaranteeing that track states in REAPER remain 100% pristine and unaltered.\n"
+                        "- Clean Note Audition Without 'REC' Badge (v2.0.7): AudioPreview.is_track_user_armed(track) distinguishes genuine user record-arming from temporary Virtual MIDI Keyboard preview routing. Clicking or dragging notes to audition them never displays the red 'REC' pill badge or red recording border on the instrument track header, and restores exact track states immediately after the note finishes ringing out.\n"
+                        "- Static ScoreCanvas Viewport on Note Click (v2.0.7): Clicking notes, item header badges, clefs, or track headers on the ScoreCanvas selects the parent MIDI item and track in REAPER while keeping the ScoreCanvas viewport (scroll_x and scroll_y) completely stationary—unless Follow Playhead / Auto-Scroll (state.auto_scroll) is explicitly enabled.\n"
                         "- Instant Zero-Latency Response: Notes trigger instantly on mouse click with 0 ms latency, exactly like auditioning within REAPER's native MIDI Editor.\n"
                         "- Dynamics & Articulation Chasing: The engine scans the project timeline from measure 1 to chase active Program Changes, note-level articulation marks (Staccato, Marcato, Tenuto, Pizzicato), and configured CC dynamics (CC11 Expression / CC1 Modwheel).\n"
                         "- Musical Minimum Duration: Short clicks sound for a minimum of 650 ms so that instrument attack transients, body, and acoustic room release tails ring out cleanly before Note-Off is dispatched.\n"
-                        "DAW Effect: Dispatches synchronized Bank Select, Program Change, CC controllers, and instantaneous MIDI Note-On / scheduled Note-Off events to the active track's virtual instrument synth without altering REAPER track record arming."
+                        "DAW Effect: Dispatches synchronized Bank Select, Program Change, CC controllers, and instantaneous MIDI Note-On / scheduled Note-Off events to the active track's virtual instrument synth while preserving original user record-arm states."
             },
             {
                 "heading": "2.8 Follow Playhead (Auto-Scroll)",
@@ -329,22 +331,23 @@ MANUAL_DATA = [
                 "text": "Functions: REAPER-Notator automatically scans REAPER's Data and Scripts directories for factory and user Reaticulate sound bank definitions (Reaticulate-factory.reabank and Reaticulate.reabank). When a track is selected, Notator reads the track's P_EXT:reaticulate assignment, user bank override, or matches track names (e.g. 'Violin I', 'Cello', 'Horns') to corresponding library banks. Users can also explicitly assign or switch any track's sound bank at any time via the 'Select Bank...' button in the Articulations Drawer (BankPickerModal)."
             },
             {
-                "heading": "6.2 Automatic Reaticulate.jsfx FX Slot 1 Setup & Bank Sync on New Tracks (v2.0.2+)",
+                "heading": "6.2 Automatic Reaticulate.jsfx FX Slot 1 Setup, Primary Bank Replacement & Bank Sync (v2.0.2 - v2.0.7)",
                 "text": "Functions & Zero-Configuration New Track Workflow:\n"
                         "- Automatic FX Verification & Insertion: When you create a brand-new track in REAPER (even one that only has a virtual instrument VSTi loaded or an empty FX chain) and select a bank in the Bank Picker—or apply any articulation from the Articulations Drawer / Sidebar—REAPER-Notator automatically checks the track's FX chain for 'JS:Reaticulate' (Reaticulate.jsfx). If missing, Notator automatically loads it onto the track via TrackFX_AddByName.\n"
                         "- Strict FX Slot 1 (Index 0) Placement Before Instrument VSTi: For Reaticulate to intercept Bank Select (CC0/CC32) and Program Change events and translate them into sampler keyswitches, Reaticulate.jsfx MUST sit in the very first FX slot (Slot 1 / index 0) prior to the virtual instrument (Kontakt, Sine, Opus, Play, VSL, etc.). If Reaticulate.jsfx is absent or positioned after an instrument plugin (slot > 0), REAPER-Notator automatically moves it to FX Slot 1 (index 0) via TrackFX_CopyToTrack(..., 0, true).\n"
+                        "- Primary Bank Replacement Without Stacking (v2.0.4+): Adding or changing an articulation bank on a track cleanly replaces the top primary bank (appdata.banks[1]) and any conflicting Omni (src == 17) or duplicate entries in P_EXT:reaticulate before loading the new bank, and guards against Reaticulate's rfx.gc() overwriting P_EXT:reaticulate with stale uncommitted UI state—preventing duplicate stacked banks and program number conflict errors in Reaticulate.\n"
                         "- Native P_EXT:reaticulate Track Metadata Sync: Selecting a bank or applying an articulation automatically writes the structured JSON bank configuration into the track's P_EXT:reaticulate extension state (preserving existing secondary banks or generating a valid RFC-4122 UUID v4 when needed) and triggers Reaticulate's live RFX sync so both the Reaticulate GUI and JSFX immediately activate the bank.\n"
                         "- Wildcard 'Bank * *' MSB/LSB Resolution & Allocation: Many custom user .reabank files define banks using wildcard headers ('Bank * * LibraryName') rather than hardcoded MSB/LSB numbers. REAPER-Notator automatically parses project-level MSB/LSB assignments from REAPER's REATICULATE bank_msblsb ExtState, or allocates deterministic Reaticulate-compatible CRC64 MSB/LSB numbers (CC0/CC32) and persists them to the project so Bank Select events are never skipped."
             },
             {
-                "heading": "6.3 Visual Playing Technique Glyphs & Applying Articulations (Selected Notes & Edit Cursor)",
+                "heading": "6.3 Visual Playing Technique Glyphs & Applying Articulations (Selected Notes, Edit Cursor & Empty Items)",
                 "text": "Functions:\n"
                         "- Instant Playing Technique Palette: Provides an instant-access drawer and sidebar buttons for standard SMuFL glyphs and text playing techniques:\n"
                         "  * Staccato (dot), Staccatissimo (wedge), Accent (>), Marcato (^), Tenuto (-)\n"
                         "  * Legato, Long / Sustain, Pizzicato (pizz.), Arco, Con Sordino, Sul Ponticello, Sul Tasto, Col Legno, Tremolo, Trills, Harmonics / Flageolet (o)\n"
                         "- Standard Engraving Placement: Automatically positions articulation marks above noteheads for stems-down notes, or below noteheads for stems-up notes (with consistent beam-side alignment and staff-line avoidance).\n"
                         "- Applying to Selected Notes: When one or more notes are selected on the score canvas, clicking an articulation attaches the persistent REAPER Type 15 notation tag (`NOTE <pitch> <chan> a <art_name>`), writes the resolved MIDI CC0 (MSB), CC32 (LSB), and Program Change at the note onset, and schedules Auto-Chase return events.\n"
-                        "- Applying at Edit Cursor (No Note Selection Needed, v2.0.2+): If no notes are currently selected, clicking an articulation in the Articulations Drawer automatically finds all notes on the active track/take at the current REAPER Edit Cursor position (cursor_qn), attaches the visual notation tag (`NOTE ... a ...`) directly to those notes, and inserts the corresponding CC0/CC32 Bank Select and Program Change events. If no note exists at the Edit Cursor, a standalone Program Change switch is inserted at the cursor position.\n"
+                        "- Applying at Edit Cursor & Empty MIDI Items (v2.0.4+): If no notes are currently selected, clicking an articulation in the Articulations Drawer automatically finds all notes on the active track/take at the current REAPER Edit Cursor position (cursor_qn), attaches the visual notation tag (`NOTE ... a ...`) directly to those notes, and inserts the corresponding CC0/CC32 Bank Select and Program Change events. If no note exists at the Edit Cursor (or the selected MIDI item contains 0 notes), a standalone Program Change + Bank Select switch is inserted directly at the Edit Cursor, preserved across Auto-Chase passes, and visibly rendered above the staff on the ScoreCanvas.\n"
                         "DAW Effect: Writes both persistent Type 15 score notation events and sample-accurate CC0/CC32 Bank Select + Program Change events into the REAPER MIDI take, immediately marking the item dirty and synchronizing open MIDI editors."
             },
             {
@@ -653,9 +656,10 @@ MANUAL_DATA = [
                 "text": "Functions: MusicXML 4.0 is the universal interchange format between professional notation software. REAPER-Notator includes a dedicated MusicXML parser and exporter written in pure Lua."
             },
             {
-                "heading": "12.2 Importing Scores & Articulation Auto-Mapping",
+                "heading": "12.2 Importing Scores, Mid-Piece Time Signature Sync & Articulation Auto-Mapping",
                 "text": "Functions:\n"
-                        "- Orchestral Score Import: Click 'Import MusicXML' to load orchestral scores created in external notation programs. Notator parses parts, measures, time signatures, key signatures, pitch data, dynamics, lyrics, and tempo markers, creating fully arranged tracks and MIDI items directly in REAPER.\n"
+                        "- Orchestral Score Import: Click 'Import MusicXML' to load orchestral scores created in external notation programs. Notator parses parts, measures, time signatures, key signatures, pitch data, dynamics, lyrics, slurs, ties, and tempo markers, creating fully arranged tracks and MIDI items directly in REAPER.\n"
+                        "- Mid-Piece Time Signature Timeline Sync & Orphaned Metadata Cleanup (v2.0.7): Automatically synchronizes mid-piece NOTATOR_TIME_SIG changes from imported MIDI takes directly to REAPER's master timeline via SetTempoTimeSigMarker, prunes orphaned legacy ProjExtState ties/key signatures on import and project load, and scopes legacy ties to prevent cross-track duplication.\n"
                         "- Intelligent Articulation Detection: Automatically analyzes Reaticulate sound banks loaded on destination tracks. Employs a prioritized 3-tier mapping algorithm for articulations (e.g. prioritizing dedicated 'Staccato Dig' patches for Spitfire Double Basses over fallback 'Short 0.5' duration patches).\n"
                         "- Compact Track Layout: Automatically collapses imported track heights (25px) to provide an immediate, organized orchestral overview without overwhelming the REAPER track arrangement."
             },
@@ -719,6 +723,12 @@ MANUAL_DATA = [
                 "text": "Functions:\n"
                         "- Zero-Latency Viewport Tracking: When follow-playhead (Auto-Scroll) triggers SetScrollX, the canvas origin, margin offsets, and measure position maps are re-anchored immediately within the exact same frame, eliminating single-frame desynchronization and visual jitter.\n"
                         "- Stopped-State Auto-Scroll Decoupling: While playback is stopped, auto-scroll is decoupled from manual canvas navigation, re-centering only when REAPER's edit cursor is explicitly relocated externally."
+            },
+            {
+                "heading": "14.6 MusicXML Slur/Tie Spatial Index & Cached Key/Time Signature Engine (v2.0.7)",
+                "text": "Functions:\n"
+                        "- Per-Frame Slur & Tie Spatial/Pitch Index (get_note_render_index): Eliminates framerate drops in dense orchestral MusicXML scores containing hundreds of ties and slurs by indexing rendered notes by pitch (by_pitch) and timeline range (min_qn / max_qn), caching resolved_ties and resolved_slurs, memoizing GUID normalization (_norm_guid_cache), and using direct MediaTrack pointer comparisons—removing ~200,000 ValidatePtr/GetTrackGUID C-API calls and ~1.5M table iterations per frame.\n"
+                        "- Take-Level Key & Time Signature Caching: Caches NOTATOR_KEY and NOTATOR_TIME_SIG text events per take (_take_time_events_cache, _item_pext_time_cache) with precomputed quarter-note (evt.qn) values, eliminating ~25,000 MIDI_CountEvts/MIDI_GetTextSysexEvt C-API calls and ~50,000 regex evaluations per frame."
             }
         ]
     },
@@ -765,10 +775,11 @@ MANUAL_DATA = [
         "title": "Modernized Interface & Performance Settings",
         "sections": [
             {
-                "heading": "16.1 Target Framerate (FPS) Configuration",
+                "heading": "16.1 Target Framerate (FPS) & Native High-Refresh Timer Engine (v2.0.5 - v2.0.7)",
                 "text": "Functions:\n"
                         "- Configurable Target FPS: Located in Settings -> General Settings, allowing users to tailor GUI performance to their hardware.\n"
                         "- Selectable Presets: 15 FPS (Ultra Power Saver), 30 FPS (Power Saver / Large Scores), 60 FPS (Default / Standard Smooth), 90 FPS (High-Refresh), 120 FPS (High-Refresh Pro), 144 FPS (Ultra-High Refresh), and Uncapped / Native Host Rate (VSync).\n"
+                        "- Native Win32 0x29a Timer Bridge (modules/bin/notator_timer_x64.dll & FrameTimerService, v2.0.5+): Unlocks REAPER's hardcoded 30ms (~32.0 FPS) global reaper.defer() and ReaImGui timer ceiling on Windows. Synchronizes REAPER's 0x29a main-window timer at 1ms kernel precision with the user's selected Target Framerate while REAPER Notator is open, and automatically restores REAPER's default 30ms timer upon closing (via atexit + 800ms auto-shutoff watchdog).\n"
                         "- Live Real-Time FPS Meter: Displays real-time rendering framerate ('Live: XX.X FPS') to evaluate GPU load."
             },
             {
