@@ -96,53 +96,72 @@ def update_index_xml(semver, changelog_note=None):
     now = datetime.datetime.now(datetime.timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     is_beta = ("-" in semver and "deprecated" not in semver.lower()) or ("beta" in semver.lower()) or ("rc" in semver.lower())
 
-    # Match first <version ...> ... </version> block
-    m = re.search(r'([ \t]*<version name="([^"]+)" author="([^"]+)" time="[^"]+">.*?</version>)', content, re.DOTALL)
-    if not m:
+    # Match all <version ...> ... </version> blocks
+    matches = list(re.finditer(r'([ \t]*<version name="([^"]+)" author="([^"]+)" time="[^"]+">.*?</version>)', content, re.DOTALL))
+    if not matches:
         print("Warning: Could not find <version> block in index.xml")
         return
 
-    top_block = m.group(1)
-    top_name = m.group(2)
-    top_is_beta = ("-" in top_name and "deprecated" not in top_name.lower()) or ("beta" in top_name.lower()) or ("rc" in top_name.lower())
+    beta_match = None
+    stable_match = None
+    for m in matches:
+        v_name = m.group(2)
+        v_is_beta = ("-" in v_name and "deprecated" not in v_name.lower()) or ("beta" in v_name.lower()) or ("rc" in v_name.lower())
+        if v_is_beta and beta_match is None:
+            beta_match = m
+        elif not v_is_beta and "deprecated" not in v_name.lower() and stable_match is None:
+            stable_match = m
 
-    if is_beta and not top_is_beta:
-        # Prepending a new beta block on top of a stable version
-        new_block = top_block
-        new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
-                           f'<version name="{semver}" author="\\1" time="{now}">',
-                           new_block, count=1)
-        # Point all sources for beta to testing branch
-        new_block = re.sub(r'/ReaperNotator/main/', r'/ReaperNotator/testing/', new_block)
-        note_str = f"+ v{semver}: {changelog_note}\n" if changelog_note else f"+ v{semver}: Beta pre-release\n"
-        new_block = re.sub(r'<changelog><!\[CDATA\[.*?\]\]></changelog>',
-                           f'<changelog><![CDATA[\n{note_str}        ]]></changelog>',
-                           new_block, flags=re.DOTALL)
-        content = content[:m.start(1)] + new_block + "\n" + content[m.start(1):]
-
-    elif is_beta and top_is_beta:
-        # Updating an existing beta block in-place
-        new_block = top_block
-        new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
-                           f'<version name="{semver}" author="\\1" time="{now}">',
-                           new_block, count=1)
-        new_block = re.sub(r'/ReaperNotator/main/', r'/ReaperNotator/testing/', new_block)
-        if changelog_note:
-            note_str = f"+ v{semver}: {changelog_note}\n"
-            new_block = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', new_block, count=1)
-        content = content[:m.start(1)] + new_block + content[m.end(1):]
-
+    if is_beta:
+        if beta_match:
+            # Update the existing Beta block in-place without touching any Release block
+            target_m = beta_match
+            new_block = target_m.group(1)
+            new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
+                               f'<version name="{semver}" author="\\1" time="{now}">',
+                               new_block, count=1)
+            new_block = re.sub(r'/ReaperNotator/main/', r'/ReaperNotator/testing/', new_block)
+            if changelog_note:
+                note_str = f"+ v{semver}: {changelog_note}\n"
+                new_block = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', new_block, count=1)
+            content = content[:target_m.start(1)] + new_block + content[target_m.end(1):]
+        else:
+            # Prepend a new Beta block on top without deleting the Release block
+            first_m = matches[0]
+            new_block = first_m.group(1)
+            new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
+                               f'<version name="{semver}" author="\\1" time="{now}">',
+                               new_block, count=1)
+            new_block = re.sub(r'/ReaperNotator/main/', r'/ReaperNotator/testing/', new_block)
+            note_str = f"+ v{semver}: {changelog_note}\n" if changelog_note else f"+ v{semver}: Beta pre-release\n"
+            new_block = re.sub(r'<changelog><!\[CDATA\[.*?\]\]></changelog>',
+                               f'<changelog><![CDATA[\n{note_str}        ]]></changelog>',
+                               new_block, flags=re.DOTALL)
+            content = content[:first_m.start(1)] + new_block + "\n" + content[first_m.start(1):]
     else:
-        # Stable release! If top was a beta, replace it with stable pointing to main
-        new_block = top_block
-        new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
-                           f'<version name="{semver}" author="\\1" time="{now}">',
-                           new_block, count=1)
-        new_block = re.sub(r'/ReaperNotator/testing/', r'/ReaperNotator/main/', new_block)
-        if changelog_note:
-            note_str = f"+ v{semver}: {changelog_note}\n"
-            new_block = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', new_block, count=1)
-        content = content[:m.start(1)] + new_block + content[m.end(1):]
+        # Stable Release: NEVER delete the Beta block! Update or insert the Stable Release block separately.
+        if stable_match:
+            target_m = stable_match
+            new_block = target_m.group(1)
+            new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
+                               f'<version name="{semver}" author="\\1" time="{now}">',
+                               new_block, count=1)
+            new_block = re.sub(r'/ReaperNotator/testing/', r'/ReaperNotator/main/', new_block)
+            if changelog_note:
+                note_str = f"+ v{semver}: {changelog_note}\n"
+                new_block = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', new_block, count=1)
+            content = content[:target_m.start(1)] + new_block + content[target_m.end(1):]
+        else:
+            first_m = matches[0]
+            new_block = first_m.group(1)
+            new_block = re.sub(r'<version name="[^"]+" author="([^"]+)" time="[^"]+">',
+                               f'<version name="{semver}" author="\\1" time="{now}">',
+                               new_block, count=1)
+            new_block = re.sub(r'/ReaperNotator/testing/', r'/ReaperNotator/main/', new_block)
+            if changelog_note:
+                note_str = f"+ v{semver}: {changelog_note}\n"
+                new_block = re.sub(r'(<changelog><!\[CDATA\[\n)', f'\\1{note_str}', new_block, count=1)
+            content = content[:first_m.start(1)] + new_block + "\n" + content[first_m.start(1):]
 
     with open(INDEX_XML, "w", encoding="utf-8") as f:
         f.write(content)
