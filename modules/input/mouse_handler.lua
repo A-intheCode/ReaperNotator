@@ -1108,7 +1108,10 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                 
                 -- Move edit cursor to the end of the newly placed note
                 local next_qn = prev.qn + dur
-                reaper.SetEditCurPos2(0, reaper.TimeMap2_QNToTime(0, next_qn), true, false)
+                reaper.SetEditCurPos2(0, reaper.TimeMap2_QNToTime(0, next_qn), state.auto_scroll and true or false, false)
+                if not state.auto_scroll then
+                    state._suppress_autoscroll_frames = 2
+                end
             end
             return
         end
@@ -1146,7 +1149,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     local tempo_lane_y = canvas_info.first_staff_top_y and (canvas_info.first_staff_top_y - tempo_offset_y)
     local in_tempo_lane = (state.show_tempo_layer ~= false and tempo_lane_y and mouse_y >= (tempo_lane_y - 14 * s) and mouse_y <= (tempo_lane_y + 14 * s))
     local empty_click = (state.input_mode_type ~= "draw") and reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
-                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not state.hovered_slur and not state.hovered_tie and not state.hovered_portamento and not in_chord_lane and not in_reh_lane and not in_tempo_lane and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark
+                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_item_tag and not state.hovered_clef and not state.hovered_track_header and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not state.hovered_slur and not state.hovered_tie and not state.hovered_portamento and not in_chord_lane and not in_reh_lane and not in_tempo_lane and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark
                         
     if empty_click then
         state.drag_note = nil
@@ -1178,7 +1181,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             -- Normal click without Ctrl: Set edit cursor to clicked QN position
             local click_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
             local click_time = reaper.TimeMap2_QNToTime(0, click_qn)
-            reaper.SetEditCurPos2(0, click_time, true, false)
+            reaper.SetEditCurPos2(0, click_time, state.auto_scroll and true or false, false)
+            state._suppress_autoscroll_frames = 2
             
             -- Determine clicked track and focus it (and select MIDI item under click_qn if present)
             local focused_name = "Track"
@@ -1203,6 +1207,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                                     end
                                 end
                             end
+                            state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
                         end
                         break
                     end

@@ -6,6 +6,7 @@
 -- ==============================================================================
 
 local RecordQuantizeService = package.loaded["services.record_quantize_service"] or require("services.record_quantize_service")
+local AudioPreview = package.loaded["services.audio_preview"] or require("services.audio_preview")
 
 local RecordModal = {}
 
@@ -24,7 +25,7 @@ local function apply_routing_to_all_armed(state)
     for ti = 0, trk_cnt - 1 do
         local trk = reaper.GetTrack(0, ti)
         if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
-            if reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1 then
+            if AudioPreview.is_track_user_armed(trk) then
                 RecordQuantizeService.apply_midi_routing_to_track(state, trk, true)
             end
         end
@@ -429,7 +430,7 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                     if not tname or tname == "" then
                         tname = string.format("Track %d", ti + 1)
                     end
-                    local is_armed = (reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1)
+                    local is_armed = AudioPreview.is_track_user_armed(trk)
                     local in_label, is_midi_in = RecordQuantizeService.format_track_midi_input(trk)
 
                     if is_armed then

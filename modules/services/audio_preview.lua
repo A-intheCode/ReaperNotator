@@ -147,6 +147,19 @@ function AudioPreview.restore_all_tracks()
     AudioPreview.track_restore = {}
 end
 
+--- Returns true only if the track was genuinely record-armed by the user,
+--- ignoring temporary I_RECARM changes made by AudioPreview for VKB auditioning.
+--- @param track MediaTrack
+--- @return boolean is_user_armed
+function AudioPreview.is_track_user_armed(track)
+    if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return false end
+    local r = AudioPreview.track_restore and AudioPreview.track_restore[track]
+    if r and r.changed_arm then
+        return (r.orig_arm == 1)
+    end
+    return (reaper.GetMediaTrackInfo_Value(track, "I_RECARM") == 1)
+end
+
 --- Prepares a track by temporarily switching its input device to Virtual MIDI Keyboard (6080)
 --- and arming the track for monitoring during the initial 50ms window.
 --- @param track MediaTrack

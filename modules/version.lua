@@ -6,8 +6,8 @@
 local Version = {
     major = 2,
     minor = 0,
-    patch = 6,
-    suffix = "-beta", -- 2.0.6-beta Release (MusicXML Performance Optimization & Multi-Monitor HiDPI Maximize Fix)
+    patch = 7,
+    suffix = "-beta", -- 2.0.7-beta Release (Clean Note Audition Without REC Badge & Static Viewport on Note Click)
 }
 
 Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

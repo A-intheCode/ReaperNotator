@@ -144,6 +144,12 @@ function RecordQuantizeService.set_track_armed(state, trk, armed)
     if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then return end
 
     local arm_val = armed and 1 or 0
+    local ap = package.loaded["services.audio_preview"]
+    if ap and ap.track_restore and ap.track_restore[trk] then
+        ap.track_restore[trk].orig_arm = arm_val
+        ap.track_restore[trk].changed_arm = false
+    end
+
     reaper.SetMediaTrackInfo_Value(trk, "I_RECARM", arm_val)
     if reaper.APIExists("CSurf_OnRecArmChange") then
         pcall(reaper.CSurf_OnRecArmChange, trk, arm_val)
@@ -171,6 +177,11 @@ RecordQuantizeService._pre_existing_notes = {}
 --- Prepares all armed tracks right when recording starts and snapshots existing notes
 --- @param state table
 function RecordQuantizeService.on_record_start(state)
+    local ap = package.loaded["services.audio_preview"]
+    if ap and ap.restore_all_tracks then
+        ap.restore_all_tracks()
+    end
+
     RecordQuantizeService.clear_live_recording()
     RecordQuantizeService._realtime_take_counts = {}
     RecordQuantizeService._processed_note_sigs = {}

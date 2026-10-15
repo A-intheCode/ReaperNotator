@@ -1172,7 +1172,14 @@ function MidiService.sync_selection_to_reaper(state, active_tracks_data)
         for it in pairs(selected_items_map) do
             reaper.SetMediaItemSelected(it, true)
         end
+        state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+        state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+        state.jump_to_item = nil
         reaper.UpdateArrange()
+    else
+        state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+        state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+        state.jump_to_item = nil
     end
     
     if active_tracks_data then
@@ -1816,6 +1823,9 @@ function MidiService.insert_note_at_qn(state, qn, pitch, dur)
         state:clear_selection()
         state:select_note(n_obj)
         state.selected_note = n_obj
+        state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+        state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+        state.jump_to_item = nil
     end
     return n_obj
 end

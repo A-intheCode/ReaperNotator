@@ -274,8 +274,8 @@ local function sync_arrange_selection(state, project_tracks)
     local cur_sel_item = reaper.GetSelectedMediaItem(0, 0)
     local cur_sel_trk = reaper.GetSelectedTrack(0, 0)
     
-    if cur_sel_item ~= state.selected_item or cur_sel_item ~= state.last_reaper_sel_item or cur_sel_trk ~= state.last_reaper_sel_track then
-        local item_changed = (cur_sel_item ~= state.selected_item)
+    if cur_sel_item ~= state.last_reaper_sel_item or cur_sel_trk ~= state.last_reaper_sel_track then
+        local item_changed = (cur_sel_item ~= state.last_reaper_sel_item)
         state.last_reaper_sel_item = cur_sel_item
         state.last_reaper_sel_track = cur_sel_trk
         
@@ -285,7 +285,7 @@ local function sync_arrange_selection(state, project_tracks)
             local take = reaper.GetActiveTake(cur_sel_item)
             state.selected_item = cur_sel_item
             state.selected_take = take
-            if item_changed then
+            if item_changed and state.auto_scroll then
                 state.jump_to_item = cur_sel_item
             end
         else
@@ -342,7 +342,7 @@ local function sync_arrange_selection(state, project_tracks)
     local has_any_sel = false
     if project_tracks then
         for _, t in ipairs(project_tracks) do
-            if t.track and reaper.ValidatePtr(t.track, "MediaTrack*") and reaper.GetMediaTrackInfo_Value(t.track, "I_RECARM") == 1 then
+            if AudioPreview.is_track_user_armed(t.track) then
                 state.selected_tracks[t.guid] = true
             end
             if state.selected_tracks[t.guid] then has_any_sel = true end
@@ -951,7 +951,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     for _, t in ipairs(project_tracks) do
         if state.selected_tracks[t.guid] then
             local items, trk_notes, dyns, arts, trk_max_qn, r_cache, l_cache = midi_service.get_track_items_and_notes(t.track)
-            if is_recording and t.track and reaper.ValidatePtr(t.track, "MediaTrack*") and reaper.GetMediaTrackInfo_Value(t.track, "I_RECARM") == 1 then
+            if is_recording and AudioPreview.is_track_user_armed(t.track) then
                 local merged_notes, live_max_qn = RecordQuantizeService.get_merged_live_notes_for_track(state, { track = t.track, notes = trk_notes })
                 trk_notes = merged_notes
                 if live_max_qn and live_max_qn > max_proj_qn then
@@ -1098,24 +1098,42 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         end
     end
 
-    -- Auto-scroll and item jump logic (MUST be placed here after declaring window size via InvisibleButton, otherwise SetScrollX is cleared to 0)
-    if state.jump_to_item then
-        -- 1. Jump to a newly selected media item (highest priority on click)
-        if reaper.ValidatePtr(state.jump_to_item, "MediaItem*") then
-            local item_pos = reaper.GetMediaItemInfo_Value(state.jump_to_item, "D_POSITION")
-            local item_qn = reaper.TimeMap2_timeToQN(0, item_pos)
-            local target_x = Engraver.cursor_qn_to_canvas_x(item_qn, margin_left, s, qn_per_measure, measure_map)
-            apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.25)))
-        end
+    local suppress_autoscroll = false
+    if state._suppress_autoscroll_frames and state._suppress_autoscroll_frames > 0 then
+        suppress_autoscroll = true
+        state._suppress_autoscroll_frames = state._suppress_autoscroll_frames - 1
+        state._last_autoscroll_cur_time = reaper.GetCursorPosition()
+    end
+
+    -- Auto-scroll and item/note jump logic (strictly respects state.auto_scroll!)
+    if not state.auto_scroll then
         state.jump_to_item = nil
-    elseif state.auto_scroll then
-        -- 2. Automatic scrolling during playback
-        if is_playing then
+        state.jump_to_note_qn = nil
+        state._last_autoscroll_cur_time = reaper.GetCursorPosition()
+    else
+        if state.jump_to_note_qn ~= nil then
+            local target_x = Engraver.cursor_qn_to_canvas_x(state.jump_to_note_qn, margin_left, s, qn_per_measure, measure_map)
+            apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+            state.jump_to_note_qn = nil
+            state.jump_to_item = nil
+            state._last_autoscroll_cur_time = reaper.GetCursorPosition()
+        elseif state.jump_to_item then
+            -- 1. Jump to a newly selected media item in REAPER arrange (only when Auto-Scroll is enabled)
+            if reaper.ValidatePtr(state.jump_to_item, "MediaItem*") then
+                local item_pos = reaper.GetMediaItemInfo_Value(state.jump_to_item, "D_POSITION")
+                local item_qn = reaper.TimeMap2_timeToQN(0, item_pos)
+                local target_x = Engraver.cursor_qn_to_canvas_x(item_qn, margin_left, s, qn_per_measure, measure_map)
+                apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.25)))
+            end
+            state.jump_to_item = nil
+            state._last_autoscroll_cur_time = reaper.GetCursorPosition()
+        elseif is_playing then
+            -- 2. Automatic scrolling during playback
             local play_time = reaper.GetPlayPosition()
             local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, play_time), margin_left, s, qn_per_measure, measure_map)
             apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
-        -- 3. Automatic scrolling in stopped state (ONLY when edit cursor position actually changed in REAPER!)
-        else
+        elseif not suppress_autoscroll then
+            -- 3. Automatic scrolling in stopped state (ONLY when edit cursor position actually changed in REAPER!)
             local cur_edit_time = reaper.GetCursorPosition()
             if state._last_autoscroll_cur_time == nil then
                 state._last_autoscroll_cur_time = cur_edit_time
@@ -1203,6 +1221,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local dyn_hovered_this_frame = nil
     local art_hovered_this_frame = nil
     local item_edge_hovered_this_frame = nil
+    local item_tag_hovered_this_frame = false
+    local clef_hovered_this_frame = false
+    local track_hdr_hovered_this_frame = false
     local hairpin_hovered_this_frame = nil
     local hairpin_handle_hovered_this_frame = nil
     local dynamic_text_hovered_this_frame = nil
@@ -1342,6 +1363,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         -- Item tag click (Left = selection, Right = item context menu)
                         local is_tag_hov = is_hovered and (mouse_x >= tag_x0 and mouse_x <= tag_x1 and mouse_y >= tag_y0 and mouse_y <= tag_y1)
                         if is_tag_hov then
+                            item_tag_hovered_this_frame = true
                             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
                             if reaper.ImGui_IsMouseClicked(ctx, 0) and not is_ctrl then
                                 if state.selected_item == it.item then
@@ -1360,6 +1382,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                     reaper.UpdateArrange()
                                     state.status_msg = string.format("MIDI item '%s' (%s) selected", it.name, tdata.name)
                                 end
+                                state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+                                state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+                                state.jump_to_item = nil
+                                state._suppress_autoscroll_frames = 2
                             end
                             if reaper.ImGui_IsMouseClicked(ctx, 1) then
                                 state.selected_item = it.item
@@ -1368,6 +1394,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 state.key_sig_scope = "item"
                                 state.item_context_target = it
                                 state.item_context_track_data = tdata
+                                state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+                                state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+                                state.jump_to_item = nil
+                                state._suppress_autoscroll_frames = 2
                                 reaper.ImGui_OpenPopup(ctx, "item_header_context_popup")
                             end
                         end
@@ -1460,6 +1490,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             
             local is_clef_hov = is_hovered and (mouse_x >= clef_bx0 and mouse_x <= clef_bx1 and mouse_y >= clef_by0 and mouse_y <= clef_by1)
             if is_clef_hov then
+                clef_hovered_this_frame = true
                 reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
                 reaper.ImGui_DrawList_AddRectFilled(draw_list, clef_bx0, clef_by0, clef_bx1, clef_by1, 0xFF9F1C25, 4)
                 reaper.ImGui_DrawList_AddRect(draw_list, clef_bx0, clef_by0, clef_bx1, clef_by1, 0xFF9F1C88, 4, 0, 1.2 * s)
@@ -1475,6 +1506,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.show_clefs = true
                     state.show_dynamics = false
                     state.show_tempo = false
+                    state.jump_to_item = nil
+                    state._suppress_autoscroll_frames = 2
                     state.status_msg = string.format("Track '%s': Clef drawer opened", tdata.name)
                 end
             end
@@ -1600,7 +1633,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         local visual_notes, chord_clusters, beam_groups, is_polyphonic_track
         local cached_layout = nil
         local layout_key = nil
-        local is_trk_rec_live = is_recording and tdata.track and reaper.ValidatePtr(tdata.track, "MediaTrack*") and (reaper.GetMediaTrackInfo_Value(tdata.track, "I_RECARM") == 1)
+        local is_trk_rec_live = is_recording and AudioPreview.is_track_user_armed(tdata.track)
         if is_trk_rec_live then
             cached_layout = build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
         elseif not is_dragging_notes and tdata.layout_cache then
@@ -2384,6 +2417,15 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         })
                     end
                     midi_service.sync_selection_to_reaper(state, active_tracks_data)
+                    state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+                    state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+                    state.jump_to_item = nil
+                    if state.auto_scroll then
+                        state.jump_to_note_qn = n.start_qn
+                    else
+                        state.jump_to_note_qn = nil
+                        state._suppress_autoscroll_frames = 2
+                    end
                     local note_v = (n.chan or 0) + 1
                     state.status_msg = string.format("Selected: %d note(s) | Focus: %s%d [Voice %d / Ch %d] (Vel %d)", state:count_selected_notes(), Constants.PITCH_MAP[n.pitch % 12].name, math.floor(n.pitch/12)-1, note_v, note_v, n.vel)
                 end
@@ -2408,6 +2450,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                     state:select_note(n)
                     midi_service.sync_selection_to_reaper(state, active_tracks_data)
+                    state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+                    state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+                    state.jump_to_item = nil
+                    state._suppress_autoscroll_frames = 2
                     reaper.ImGui_OpenPopup(ctx, "NoteContextMenu")
                 end
                 
@@ -3951,7 +3997,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
                 
-                local is_rec_armed = tdata.track and reaper.ValidatePtr(tdata.track, "MediaTrack*") and (reaper.GetMediaTrackInfo_Value(tdata.track, "I_RECARM") == 1)
+                local is_rec_armed = AudioPreview.is_track_user_armed(tdata.track)
                 local is_focused = (state.focused_track == tdata.track)
 
                 local hdr_bg
@@ -4037,6 +4083,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 -- Clicking track header selects & focuses the track (dynamically sized tooltip without clipping)
                 local is_hdr_hov = is_hovered and (mouse_x >= cur_hdr_x0 and mouse_x <= cur_hdr_x1 and mouse_y >= hdr_y0 and mouse_y <= hdr_y1)
                 if is_hdr_hov then
+                    track_hdr_hovered_this_frame = true
                     reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
                     local tip = string.format("Track [%d]: %s (%d Items)\nClick: Focus track & select in REAPER", tdata.idx, tdata.name or "Track", tdata.items and #tdata.items or 0)
                     local cw, ch = FontManager.calc_text_size(ctx, tip)
@@ -4058,6 +4105,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         if tdata.track and reaper.ValidatePtr(tdata.track, "MediaTrack*") then
                             reaper.SetOnlyTrackSelected(tdata.track)
                         end
+                        state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+                        state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+                        state.jump_to_item = nil
+                        state._suppress_autoscroll_frames = 2
                         state.status_msg = string.format("Track [%d] %s selected & focused", tdata.idx, tdata.name)
                     end
                 end
@@ -4590,6 +4641,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 if target_tdata.track and reaper.ValidatePtr(target_tdata.track, "MediaTrack*") then
                     reaper.SetOnlyTrackSelected(target_tdata.track)
                 end
+                state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
+                state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
+                state.jump_to_item = nil
             end
             
             local raw_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
@@ -4597,7 +4651,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local _, exact_m = reaper.TimeMap2_timeToBeats(0, click_time)
             state.context_measure = exact_m or math.floor(raw_qn / (qn_per_measure or 4.0))
             state.context_click_qn = raw_qn
-            reaper.SetEditCurPos2(0, click_time, true, false)
+            reaper.SetEditCurPos2(0, click_time, state.auto_scroll and true or false, false)
+            state._suppress_autoscroll_frames = 2
             if target_tdata then
                 state.context_measure_track = target_tdata.track
             end
@@ -4634,6 +4689,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         state.hovered_dynamic = nil
         state.hovered_articulation = nil
         state.hovered_item_edge = nil
+        state.hovered_item_tag = false
+        state.hovered_clef = false
+        state.hovered_track_header = false
         state.hovered_hairpin = nil
         state.hovered_hairpin_handle = nil
         state.hovered_dynamic_text = nil
@@ -4656,6 +4714,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         state.hovered_dynamic = dyn_hovered_this_frame
         state.hovered_articulation = art_hovered_this_frame
         state.hovered_item_edge = item_edge_hovered_this_frame
+        state.hovered_item_tag = item_tag_hovered_this_frame
+        state.hovered_clef = clef_hovered_this_frame
+        state.hovered_track_header = track_hdr_hovered_this_frame
         state.hovered_hairpin = hairpin_hovered_this_frame
         state.hovered_hairpin_handle = hairpin_handle_hovered_this_frame
         state.hovered_dynamic_text = dynamic_text_hovered_this_frame

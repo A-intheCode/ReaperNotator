@@ -546,6 +546,7 @@ function State.new()
         if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
             self.focused_track = n.track
         end
+        self.jump_to_item = nil
     end
     
     function self:toggle_note_selection(n)
@@ -577,6 +578,7 @@ function State.new()
                 self.focused_track = sn.track
             end
         end
+        self.jump_to_item = nil
     end
     
     function self:is_note_selected(n)
