@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.12
+-- @version 2.13
 -- @changelog
+--   + v2.13: Hotfix: Pattern Browser instrument selection & track preview routing
 --   + v2.12: Hotfix: Pattern Browser full-length playback
 --   + v2.11: Hotfix: Multi-note selection preserved on right-click (Filter Selection & context menu)
 --   + v2.10: Staccato dots on all selected notes, pre-staccato articulation auto-chase, slur legato playback & note audition accuracy

@@ -276,12 +276,20 @@ local function sync_arrange_selection(state, project_tracks)
     
     if cur_sel_item ~= state.last_reaper_sel_item or cur_sel_trk ~= state.last_reaper_sel_track then
         local item_changed = (cur_sel_item ~= state.last_reaper_sel_item)
+        local trk_changed = (cur_sel_trk ~= state.last_reaper_sel_track)
         state.last_reaper_sel_item = cur_sel_item
         state.last_reaper_sel_track = cur_sel_trk
         
         local clicked_trk = nil
+        if trk_changed and cur_sel_trk and reaper.ValidatePtr(cur_sel_trk, "MediaTrack*") then
+            clicked_trk = cur_sel_trk
+        end
+        
         if cur_sel_item and reaper.ValidatePtr(cur_sel_item, "MediaItem*") then
-            clicked_trk = reaper.GetMediaItem_Track(cur_sel_item)
+            local item_trk = reaper.GetMediaItem_Track(cur_sel_item)
+            if not clicked_trk then
+                clicked_trk = item_trk
+            end
             local take = reaper.GetActiveTake(cur_sel_item)
             state.selected_item = cur_sel_item
             state.selected_take = take
@@ -291,7 +299,7 @@ local function sync_arrange_selection(state, project_tracks)
         else
             state.selected_item = nil
             state.selected_take = nil
-            if cur_sel_trk and reaper.ValidatePtr(cur_sel_trk, "MediaTrack*") then
+            if not clicked_trk and cur_sel_trk and reaper.ValidatePtr(cur_sel_trk, "MediaTrack*") then
                 clicked_trk = cur_sel_trk
             end
         end
@@ -340,16 +348,28 @@ local function sync_arrange_selection(state, project_tracks)
     end
     
     local has_any_sel = false
+    local first_sel_trk = nil
     if project_tracks then
         for _, t in ipairs(project_tracks) do
             if AudioPreview.is_track_user_armed(t.track) then
                 state.selected_tracks[t.guid] = true
             end
-            if state.selected_tracks[t.guid] then has_any_sel = true end
+            if state.selected_tracks[t.guid] then
+                has_any_sel = true
+                if not first_sel_trk then first_sel_trk = t.track end
+            end
         end
         if not has_any_sel and #project_tracks > 0 then
             state.selected_tracks[project_tracks[1].guid] = true
             state.focused_track = project_tracks[1].track
+        elseif first_sel_trk then
+            if not state.focused_track or not reaper.ValidatePtr(state.focused_track, "MediaTrack*") or not state.selected_tracks[reaper.GetTrackGUID(state.focused_track)] then
+                if cur_sel_trk and reaper.ValidatePtr(cur_sel_trk, "MediaTrack*") and state.selected_tracks[reaper.GetTrackGUID(cur_sel_trk)] then
+                    state.focused_track = cur_sel_trk
+                else
+                    state.focused_track = first_sel_trk
+                end
+            end
         end
     end
 end

@@ -5,7 +5,7 @@
 
 local Version = {
     major = 2,
-    minor = 12,
+    minor = 13,
     patch = 0,
     suffix = "", -- 2.0.8-beta Slur Legato/Long Playback, Default Slur Dropdown & Note Preview Articulation Hotfix
 }

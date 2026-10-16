@@ -27,7 +27,12 @@ function TrackPicker.render(ctx, state, project_tracks)
             local is_chk = state.selected_tracks[t.guid] or false
             local lbl = string.format("Track %d: %s (%d MIDI Items)###tr_%s", t.idx, t.name, t.midi_items, t.guid)
             local changed, val = reaper.ImGui_Checkbox(ctx, lbl, is_chk)
-            if changed then state.selected_tracks[t.guid] = val end
+            if changed then
+                state.selected_tracks[t.guid] = val
+                if val and t.track then
+                    state.focused_track = t.track
+                end
+            end
         end
         
         reaper.ImGui_Separator(ctx)

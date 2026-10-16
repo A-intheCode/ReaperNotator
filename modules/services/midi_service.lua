@@ -117,7 +117,7 @@ function MidiService.get_project_midi_tracks()
     end
     for t = 0, num_tracks - 1 do
         local trk = reaper.GetTrack(0, t)
-        if trk and reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1 then
+        if trk and AudioPreview.is_track_user_armed(trk) then
             sel_sig = sel_sig .. "_arm" .. tostring(t)
         end
     end
@@ -135,7 +135,7 @@ function MidiService.get_project_midi_tracks()
         local guid = reaper.GetTrackGUID(track)
         local _, name = reaper.GetTrackName(track)
         local col = reaper.GetTrackColor(track)
-        local is_armed = (reaper.GetMediaTrackInfo_Value(track, "I_RECARM") == 1)
+        local is_armed = AudioPreview.is_track_user_armed(track)
         
         local num_items = reaper.CountTrackMediaItems(track)
         local midi_item_cnt = 0

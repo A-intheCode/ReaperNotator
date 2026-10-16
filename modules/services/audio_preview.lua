@@ -229,7 +229,6 @@ function AudioPreview.prepare_track(track)
         if needs_arm then
             reaper.SetMediaTrackInfo_Value(track, "I_RECARM", 1)
         end
-        reaper.SetOnlyTrackSelected(track)
         reaper.TrackList_AdjustWindows(false)
         reaper.UpdateArrange()
         just_switched = true

@@ -20,7 +20,40 @@ local capture_bars_idx = 0 -- 0 = 4 measures, 1 = 8 measures
 local new_folder_modal_open = false
 local new_folder_name_buf = "New Folder"
 
-local preview_track_idx = 0
+local function resolve_active_notator_track(state, project_tracks)
+    if state then
+        if state.selected_note and state.selected_note.track and reaper.ValidatePtr(state.selected_note.track, "MediaTrack*") then
+            return state.selected_note.track
+        end
+        if state.selected_notes then
+            for _, sn in pairs(state.selected_notes) do
+                if sn and sn.track and reaper.ValidatePtr(sn.track, "MediaTrack*") then
+                    return sn.track
+                end
+            end
+        end
+        if state.focused_track and reaper.ValidatePtr(state.focused_track, "MediaTrack*") then
+            local fguid = reaper.GetTrackGUID(state.focused_track)
+            if not state.selected_tracks or next(state.selected_tracks) == nil or state.selected_tracks[fguid] then
+                return state.focused_track
+            end
+        end
+    end
+    local reaper_sel = reaper.GetSelectedTrack(0, 0)
+    if reaper_sel and reaper.ValidatePtr(reaper_sel, "MediaTrack*") then
+        return reaper_sel
+    end
+    if state and state.focused_track and reaper.ValidatePtr(state.focused_track, "MediaTrack*") then
+        return state.focused_track
+    end
+    if state and state.active_tracks_cache and state.active_tracks_cache[1] and state.active_tracks_cache[1].track and reaper.ValidatePtr(state.active_tracks_cache[1].track, "MediaTrack*") then
+        return state.active_tracks_cache[1].track
+    end
+    if project_tracks and project_tracks[1] and project_tracks[1].track and reaper.ValidatePtr(project_tracks[1].track, "MediaTrack*") then
+        return project_tracks[1].track
+    end
+    return reaper.GetTrack(0, 0)
+end
 
 --- Draws a crisp 4-8 measure miniature score into the given rectangle
 --- @param draw_list ImDrawList
@@ -258,23 +291,55 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
         reaper.ImGui_SameLine(ctx, 0, 12)
         reaper.ImGui_Text(ctx, "Preview Instrument:")
         reaper.ImGui_SameLine(ctx, 0, 6)
-        reaper.ImGui_SetNextItemWidth(ctx, 190)
+        reaper.ImGui_SetNextItemWidth(ctx, 215)
         
-        -- Build track selection list
-        local preview_options = { "⚡ Active Notator Track" }
-        local track_map = { [1] = nil } -- nil = Active track
-        for i, t in ipairs(project_tracks or {}) do
-            local track_name = string.format("Track %d: %s", t.idx + 1, (t.name and #t.name > 0) and t.name or "Instrument")
-            table.insert(preview_options, track_name)
-            table.insert(track_map, t.track)
+        if state.pattern_preview_track and not reaper.ValidatePtr(state.pattern_preview_track, "MediaTrack*") then
+            state.pattern_preview_track = nil
         end
         
-        if reaper.ImGui_BeginCombo(ctx, "##PreviewTrackCombo", preview_options[preview_track_idx + 1] or preview_options[1]) then
-            for idx, opt_label in ipairs(preview_options) do
-                local is_sel = (idx - 1 == preview_track_idx)
-                if reaper.ImGui_Selectable(ctx, opt_label, is_sel) then
-                    preview_track_idx = idx - 1
-                    state.pattern_preview_track = track_map[idx]
+        local auto_trk = resolve_active_notator_track(state, project_tracks)
+        local auto_trk_name = "⚡ Active Notator Track"
+        if auto_trk and reaper.ValidatePtr(auto_trk, "MediaTrack*") then
+            local _, aname = reaper.GetTrackName(auto_trk)
+            if aname and #aname > 0 then
+                auto_trk_name = string.format("⚡ Active (%s)", aname)
+            end
+        end
+        
+        -- Build stable track selection list from all REAPER project tracks (with exact 1-based track number)
+        local preview_entries = {
+            { label = auto_trk_name, track = nil }
+        }
+        local current_combo_label = auto_trk_name
+        local total_proj_tracks = reaper.CountTracks(0)
+        for ti = 0, total_proj_tracks - 1 do
+            local tr = reaper.GetTrack(0, ti)
+            if tr and reaper.ValidatePtr(tr, "MediaTrack*") then
+                local folder_depth = reaper.GetMediaTrackInfo_Value(tr, "I_FOLDERDEPTH")
+                local has_midi_or_fx = (reaper.TrackFX_GetCount(tr) > 0) or (reaper.CountTrackMediaItems(tr) > 0) or (folder_depth ~= 1)
+                if has_midi_or_fx or tr == state.pattern_preview_track then
+                    local _, tname = reaper.GetTrackName(tr)
+                    local clean_name = (tname and #tname > 0) and tname or string.format("Track %d", ti + 1)
+                    local lbl = string.format("Track %d: %s", ti + 1, clean_name)
+                    table.insert(preview_entries, { label = lbl, track = tr })
+                    if state.pattern_preview_track == tr then
+                        current_combo_label = lbl
+                    end
+                end
+            end
+        end
+        
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_PopupBg(), 0x1A1D24FF)
+        if reaper.ImGui_BeginCombo(ctx, "##PreviewTrackCombo", current_combo_label) then
+            state._pattern_combo_active_time = reaper.time_precise()
+            for idx, entry in ipairs(preview_entries) do
+                local is_sel = (entry.track == state.pattern_preview_track)
+                if reaper.ImGui_Selectable(ctx, entry.label .. "##prev_trk_" .. tostring(idx), is_sel) then
+                    state.pattern_preview_track = entry.track
+                    state._pattern_combo_active_time = reaper.time_precise()
+                    if PatternService.active_preview then
+                        PatternService.stop_preview(audio_preview)
+                    end
                 end
                 if is_sel then
                     reaper.ImGui_SetItemDefaultFocus(ctx)
@@ -282,6 +347,7 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
             end
             reaper.ImGui_EndCombo(ctx)
         end
+        reaper.ImGui_PopStyleColor(ctx, 1)
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Select a track from REAPER (e.g. Piano or VSTi) to audition patterns")
         end
@@ -537,11 +603,13 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                         local sc_x, sc_y = reaper.ImGui_GetCursorScreenPos(ctx)
                         draw_mini_score(dl, pat, sc_x, sc_y, preview_w, preview_h, font_music, zoom)
                         
+                        local combo_just_used = (reaper.time_precise() - (state._pattern_combo_active_time or 0)) < 0.25
+                        
                         -- Invisible click/drag area over preview
                         reaper.ImGui_InvisibleButton(ctx, "drag_zone_" .. pat.id, preview_w, preview_h)
                         
                         -- Drag & Drop Source
-                        if reaper.ImGui_BeginDragDropSource(ctx) then
+                        if not combo_just_used and reaper.ImGui_BeginDragDropSource(ctx) then
                             state.dragged_pattern = pat
                             state.is_dragging_pattern = true
                             reaper.ImGui_SetDragDropPayload(ctx, "NOTATOR_PATTERN", pat.id)
@@ -549,7 +617,7 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                             reaper.ImGui_TextColored(ctx, 0x8892B0FF, string.format("Drag onto track in score (%d bars)", pat.bars or 4))
                             reaper.ImGui_EndDragDropSource(ctx)
                         end
-                        if reaper.ImGui_IsItemHovered(ctx) then
+                        if not combo_just_used and reaper.ImGui_IsItemHovered(ctx) then
                             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
                             reaper.ImGui_SetTooltip(ctx, "Left-click and drag into score canvas!")
                         end
@@ -562,16 +630,15 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                         
                         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), btn_col)
                         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), btn_hov)
-                        if reaper.ImGui_Button(ctx, btn_label .. "##" .. pat.id, play_btn_w, btn_h) then
+                        if reaper.ImGui_Button(ctx, btn_label .. "##" .. pat.id, play_btn_w, btn_h) and not combo_just_used then
                             if is_playing then
                                 PatternService.stop_preview(audio_preview)
                             else
                                 -- Determine target track: selected preview track or active track in notator
-                                local target_tr = state.pattern_preview_track or state.focused_track
-                                if not target_tr and #project_tracks > 0 then
-                                    target_tr = project_tracks[1].track
-                                end
-                                if target_tr then
+                                local target_tr = (state.pattern_preview_track and reaper.ValidatePtr(state.pattern_preview_track, "MediaTrack*"))
+                                                  and state.pattern_preview_track
+                                                  or resolve_active_notator_track(state, project_tracks)
+                                if target_tr and reaper.ValidatePtr(target_tr, "MediaTrack*") then
                                     PatternService.start_preview(pat, target_tr, audio_preview)
                                 else
                                     state.status_msg = "No track available for audio preview"
@@ -592,7 +659,7 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                             reaper.ImGui_Separator(ctx)
                             
                             if reaper.ImGui_MenuItem(ctx, "➕ Insert into Canvas at Edit Cursor") then
-                                local target_tr = state.focused_track or (project_tracks[1] and project_tracks[1].track)
+                                local target_tr = resolve_active_notator_track(state, project_tracks)
                                 local target_qn = reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition())
                                 if target_tr then
                                     PatternService.insert_pattern_into_track(target_tr, target_qn, pat, midi_service)
