@@ -101,6 +101,21 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
             reaper.ImGui_SetTooltip(ctx, "Divisio Vocum (Voice Division):\nOpens the Divisio Vocum dialog to distribute multi-voice chords\nvertically across the visible tracks in the score viewport below.")
         end
 
+        reaper.ImGui_Spacing(ctx)
+
+        -- Divisi Button (Split Voices to Duplicated Tracks)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x1B5E20FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2E7D32FF)
+        if reaper.ImGui_Button(ctx, "✂ Divisi (Split Voices to Tracks)...", width - 24, 26) then
+            state.divisi_target_track = nil
+            state.show_divisi_modal = true
+            state.focus_divisi_modal = true
+        end
+        reaper.ImGui_PopStyleColor(ctx, 2)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Divisi (Split Voices to Duplicated Tracks):\nSplits Voices 2..16 of the selected notes or selected staff onto full track duplicates\n(preserving Kontakt/VSTi instances, Reaticulate banks, routing, and MIDI items).")
+        end
+
         -- ------------------------------------------------------------------
         -- CLEANUP TOOLS (Selected MIDI Item) - Safety Section
         -- ------------------------------------------------------------------

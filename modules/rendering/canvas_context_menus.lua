@@ -998,6 +998,39 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 state.show_divisio_vocum_modal = true
                 state.show_explode_chords_modal = true
             end
+            if reaper.ImGui_MenuItem(ctx, "✂ Divisi (Split Voices to Duplicated Tracks)") then
+                local DivisiService = package.loaded["services.divisi_service"] or require("services.divisi_service")
+                local sn = state.selected_note
+                if not sn and state.selected_notes then
+                    for _, n in pairs(state.selected_notes) do sn = n break end
+                end
+                local trk = (sn and sn.track) or state.focused_track
+                local voice_list = DivisiService.analyze_voices(state, trk, true)
+                if #voice_list >= 2 then
+                    DivisiService.execute(state, {
+                        source_track = trk,
+                        scope = "selected",
+                        normalize_to_voice_1 = true,
+                        remove_from_source = true,
+                        active_tracks_data = active_tracks_data
+                    })
+                else
+                    state.divisi_target_track = trk
+                    state.divisi_scope = "selected"
+                    state.show_divisi_modal = true
+                    state.focus_divisi_modal = true
+                end
+            end
+            if reaper.ImGui_MenuItem(ctx, "✂ Divisi (Options / Preview)...") then
+                local sn = state.selected_note
+                if not sn and state.selected_notes then
+                    for _, n in pairs(state.selected_notes) do sn = n break end
+                end
+                state.divisi_target_track = (sn and sn.track) or state.focused_track
+                state.divisi_scope = "selected"
+                state.show_divisi_modal = true
+                state.focus_divisi_modal = true
+            end
             
             reaper.ImGui_Separator(ctx)
             
@@ -1143,6 +1176,31 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
             if reaper.ImGui_MenuItem(ctx, "🎼 Divisio Vocum...") then
                 state.show_divisio_vocum_modal = true
                 state.show_explode_chords_modal = true
+            end
+
+            if reaper.ImGui_MenuItem(ctx, "✂ Divisi (Split Voices to Duplicated Tracks)") then
+                local DivisiService = package.loaded["services.divisi_service"] or require("services.divisi_service")
+                local voice_list = DivisiService.analyze_voices(state, cur_trk, false)
+                if #voice_list >= 2 then
+                    DivisiService.execute(state, {
+                        source_track = cur_trk,
+                        scope = "all",
+                        normalize_to_voice_1 = true,
+                        remove_from_source = true,
+                        active_tracks_data = active_tracks_data
+                    })
+                else
+                    state.divisi_target_track = cur_trk
+                    state.divisi_scope = "all"
+                    state.show_divisi_modal = true
+                    state.focus_divisi_modal = true
+                end
+            end
+            if reaper.ImGui_MenuItem(ctx, "✂ Divisi (Options / Preview)...") then
+                state.divisi_target_track = cur_trk
+                state.divisi_scope = "all"
+                state.show_divisi_modal = true
+                state.focus_divisi_modal = true
             end
             
             if reaper.ImGui_MenuItem(ctx, "⚡ Quantize Track... (Q)") then

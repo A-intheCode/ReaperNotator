@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.14
+-- @version 2.15
 -- @changelog
+--   + v2.15: New: Divisi (split voices to duplicated tracks)
 --   + v2.14: Hotfix: Fix AudioPreview require in MidiService
 --   + v2.13: Hotfix: Pattern Browser instrument selection & track preview routing
 --   + v2.12: Hotfix: Pattern Browser full-length playback
@@ -145,6 +146,7 @@ local function safe_require(mod_name, fallback)
 end
 
 local DivisioVocumModal     = safe_require("ui.divisio_vocum_modal", { render = function() end })
+local DivisiModal           = safe_require("ui.divisi_modal", { render = function() end })
 local ExplodeChordsModal    = DivisioVocumModal
 local FilterIrregularModal  = safe_require("ui.filter_irregular_modal", { render = function() end })
 local RecordModal           = safe_require("ui.record_modal", { render = function() end })
@@ -716,6 +718,7 @@ local function loop()
         ScaleModal.render(ctx, state)
         MusicXmlModal.render(ctx, state, project_tracks)
         DivisioVocumModal.render(ctx, state, MidiService, state.active_tracks_cache)
+        DivisiModal.render(ctx, state, MidiService, state.active_tracks_cache)
         FilterIrregularModal.render(ctx, state, MidiService, state.active_tracks_cache)
         RecordModal.render(ctx, state, MidiService, project_tracks, state.active_tracks_cache)
         ArticulationsDrawer.render_last_resort_modal(ctx, state, state.active_tracks_cache)
