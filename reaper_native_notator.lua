@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.22-beta
+-- @version 2.23-beta
 -- @changelog
 --   + v2.19-beta: Melodic Pathfinder: Clef Register Intelligence, Audition Wakeup & Film Composer Styles 1-4
 --   + v2.18-beta: New: Melodic Pathfinder & Counter-Melody Generator (Corpus-trained Viterbi inpainting, Inversion & Reference Track Harmony)
@@ -728,13 +728,16 @@ local function loop()
             state.request_maximize_toggle = true
         end
 
-        -- Continuous synchronization & orphan cleanup upon REAPER project changes (e.g. deleted items/tracks)
+        -- Continuous synchronization & orphan cleanup upon REAPER project changes (e.g. deleted items/tracks or disarmed tracks)
         local cur_proj_change = reaper.GetProjectStateChangeCount(0)
         local cur_total_tracks = reaper.CountTracks(0)
         if state._last_proj_change_cleanup ~= cur_proj_change or state._last_total_tracks_cleanup ~= cur_total_tracks then
             state._last_proj_change_cleanup = cur_proj_change
             state._last_total_tracks_cleanup = cur_total_tracks
             MidiService.cleanup_orphaned_score_elements(state)
+            if RecordQuantizeService and RecordQuantizeService.sync_all_tracks_monitoring then
+                RecordQuantizeService.sync_all_tracks_monitoring()
+            end
             state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
         end
 

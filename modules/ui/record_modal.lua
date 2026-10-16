@@ -38,11 +38,97 @@ local function apply_routing_to_all_armed(state)
     end
 end
 
+local function is_hwnd_open(hwnd)
+    if not hwnd then return false end
+    if reaper.APIExists("JS_Window_IsWindow") and not reaper.JS_Window_IsWindow(hwnd) then
+        return false
+    end
+    if reaper.APIExists("JS_Window_IsVisible") and not reaper.JS_Window_IsVisible(hwnd) then
+        return false
+    end
+    return true
+end
+
+local function resolve_top_dialog_hwnd(cand, main_hwnd, notator_hwnd)
+    if not cand or cand == main_hwnd or cand == notator_hwnd then return nil end
+    local cur = cand
+    if reaper.APIExists("JS_Window_GetParent") then
+        for _ = 1, 8 do
+            local p = reaper.JS_Window_GetParent(cur)
+            if not p or p == main_hwnd then
+                break
+            end
+            cur = p
+        end
+    end
+    if not cur or cur == main_hwnd or cur == notator_hwnd then return nil end
+    if reaper.APIExists("JS_Window_GetTitle") then
+        local title = reaper.JS_Window_GetTitle(cur) or ""
+        if title:find("REAPER Notator") or title:find("Recording, MIDI Input") then
+            return nil
+        end
+    end
+    return cur
+end
+
+local function find_metro_hwnd(state)
+    if is_hwnd_open(state._metro_hwnd) then
+        return state._metro_hwnd
+    end
+    local main_hwnd = reaper.GetMainHwnd()
+    local notator_hwnd = state._notator_hwnd
+
+    if reaper.APIExists("JS_Window_GetFocus") then
+        local f_hwnd = resolve_top_dialog_hwnd(reaper.JS_Window_GetFocus(), main_hwnd, notator_hwnd)
+        if f_hwnd and is_hwnd_open(f_hwnd) then
+            return f_hwnd
+        end
+    end
+    if reaper.APIExists("JS_Window_GetForeground") then
+        local fg_hwnd = resolve_top_dialog_hwnd(reaper.JS_Window_GetForeground(), main_hwnd, notator_hwnd)
+        if fg_hwnd and is_hwnd_open(fg_hwnd) then
+            return fg_hwnd
+        end
+    end
+    if reaper.APIExists("JS_Window_FindTop") then
+        local h = reaper.JS_Window_FindTop("Metronome", false) or reaper.JS_Window_FindTop("Metronom", false)
+        h = resolve_top_dialog_hwnd(h, main_hwnd, notator_hwnd)
+        if h and is_hwnd_open(h) then return h end
+    end
+    if reaper.APIExists("JS_Window_Find") then
+        local h = reaper.JS_Window_Find("Metronome", false) or reaper.JS_Window_Find("Metronom", false)
+        h = resolve_top_dialog_hwnd(h, main_hwnd, notator_hwnd)
+        if h and is_hwnd_open(h) then return h end
+    end
+    return nil
+end
+
+local function pin_metro_hwnd_topmost(hwnd, set_focus)
+    if not is_hwnd_open(hwnd) then return false end
+    if reaper.APIExists("JS_Window_SetZOrder") then
+        reaper.JS_Window_SetZOrder(hwnd, "TOPMOST")
+    end
+    if set_focus then
+        if reaper.APIExists("JS_Window_SetForeground") then
+            reaper.JS_Window_SetForeground(hwnd)
+        end
+        if reaper.APIExists("JS_Window_SetFocus") then
+            reaper.JS_Window_SetFocus(hwnd)
+        end
+    end
+    return true
+end
+
 function RecordModal.render(ctx, state, midi_service, project_tracks, active_tracks_data)
     if not state.show_record_modal then return end
 
+    local metro_is_open = is_hwnd_open(state._metro_hwnd) or ((state._metro_pin_frames or 0) > 0) or ((state._metro_open_delay or 0) > 0)
+    if not is_hwnd_open(state._metro_hwnd) and (state._metro_pin_frames or 0) <= 0 and (state._metro_open_delay or 0) <= 0 then
+        state._metro_hwnd = nil
+    end
+
     local flags = reaper.ImGui_WindowFlags_NoCollapse()
-    if reaper.APIExists("ImGui_WindowFlags_TopMost") then
+    if not metro_is_open and reaper.APIExists("ImGui_WindowFlags_TopMost") then
         flags = flags | reaper.ImGui_WindowFlags_TopMost()
     end
     if state.focus_record_modal then
@@ -139,10 +225,11 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
 
         reaper.ImGui_SameLine(ctx, 0, 16)
         if reaper.ImGui_Button(ctx, "⚙ Metronome Settings...##MetroBtn", 170, 22) then
-            reaper.Main_OnCommand(40363, 0)
+            state._metro_open_delay = 2
+            state._metro_pin_frames = 30
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Opens REAPER's native Metronome and Pre-roll settings dialog.")
+            reaper.ImGui_SetTooltip(ctx, "Opens REAPER's native Metronome and Pre-roll settings dialog on top of all windows.")
         end
 
         reaper.ImGui_Spacing(ctx)
@@ -430,7 +517,22 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                     if not tname or tname == "" then
                         tname = string.format("Track %d", ti + 1)
                     end
+                    local tguid = reaper.GetTrackGUID(trk)
                     local is_armed = AudioPreview.is_track_user_armed(trk)
+                    RecordQuantizeService._tracked_armed_guids = RecordQuantizeService._tracked_armed_guids or {}
+                    if is_armed then
+                        if tguid then RecordQuantizeService._tracked_armed_guids[tguid] = true end
+                    elseif tguid and RecordQuantizeService._tracked_armed_guids[tguid] then
+                        -- Track was disarmed externally in REAPER TCP/MCP -> turn off monitoring
+                        RecordQuantizeService._tracked_armed_guids[tguid] = nil
+                        reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
+                        if AudioPreview.track_restore and AudioPreview.track_restore[trk] then
+                            AudioPreview.track_restore[trk].orig_arm = 0
+                            AudioPreview.track_restore[trk].changed_arm = false
+                            AudioPreview.track_restore[trk].orig_mon = 0
+                            AudioPreview.track_restore[trk].changed_mon = false
+                        end
+                    end
                     local in_label, is_midi_in = RecordQuantizeService.format_track_midi_input(trk)
 
                     if is_armed then
@@ -475,7 +577,7 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                             if reaper.ImGui_MenuItem(ctx, d.name, nil, is_midi_in and (trk_dev == d.id)) then
                                 local encoded = RecordQuantizeService.encode_midi_recinput(d.id, trk_ch or 0)
                                 reaper.SetMediaTrackInfo_Value(trk, "I_RECINPUT", encoded)
-                                reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 1)
+                                reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", (is_armed and state.rec_auto_monitor ~= false) and 1 or 0)
                                 reaper.SetMediaTrackInfo_Value(trk, "I_RECMODE", state.rec_mode or 7)
                                 if reaper.TrackList_AdjustWindows then reaper.TrackList_AdjustWindows(false) end
                             end
@@ -517,6 +619,59 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
     end
 
     reaper.ImGui_End(ctx)
+
+    -- Deferred Metronome Settings opening & TopMost Z-order pinning (executes after ReaImGui frame completes)
+    if state._metro_open_delay and state._metro_open_delay > 0 then
+        state._metro_open_delay = state._metro_open_delay - 1
+        if state._metro_open_delay == 0 then
+            reaper.defer(function()
+                local main_hwnd = reaper.GetMainHwnd()
+                local notator_hwnd = state._notator_hwnd
+                local existing = nil
+                if is_hwnd_open(state._metro_hwnd) then
+                    existing = state._metro_hwnd
+                elseif reaper.APIExists("JS_Window_FindTop") then
+                    local h = reaper.JS_Window_FindTop("Metronome", false) or reaper.JS_Window_FindTop("Metronom", false)
+                    existing = resolve_top_dialog_hwnd(h, main_hwnd, notator_hwnd)
+                end
+
+                if existing and is_hwnd_open(existing) then
+                    state._metro_hwnd = existing
+                    pin_metro_hwnd_topmost(existing, true)
+                else
+                    reaper.Main_OnCommand(40363, 0)
+                    local hwnd = find_metro_hwnd(state)
+                    if not hwnd then
+                        -- Action 40363 is a toggle; if it just closed a hidden window, call it once more to re-open
+                        reaper.Main_OnCommand(40363, 0)
+                        hwnd = find_metro_hwnd(state)
+                    end
+                    if hwnd then
+                        state._metro_hwnd = hwnd
+                        pin_metro_hwnd_topmost(hwnd, true)
+                    end
+                end
+            end)
+        end
+    elseif state._metro_pin_frames and state._metro_pin_frames > 0 then
+        state._metro_pin_frames = state._metro_pin_frames - 1
+        local do_focus = (state._metro_pin_frames >= 22)
+        reaper.defer(function()
+            if not is_hwnd_open(state._metro_hwnd) then
+                state._metro_hwnd = find_metro_hwnd(state)
+            end
+            if state._metro_hwnd then
+                pin_metro_hwnd_topmost(state._metro_hwnd, do_focus)
+            end
+        end)
+    elseif is_hwnd_open(state._metro_hwnd) then
+        if reaper.ImGui_IsMouseClicked(ctx, 0) or reaper.ImGui_IsMouseReleased(ctx, 0) then
+            local h = state._metro_hwnd
+            reaper.defer(function()
+                pin_metro_hwnd_topmost(h, false)
+            end)
+        end
+    end
 end
 
 return RecordModal

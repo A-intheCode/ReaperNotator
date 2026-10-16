@@ -123,18 +123,22 @@ function RecordQuantizeService.apply_midi_routing_to_track(state, trk, force_inp
         reaper.SetMediaTrackInfo_Value(trk, "I_RECINPUT", target_in)
     end
 
-    -- Enable Input Monitoring (I_RECMON = 1) so the VSTi is audible while playing
+    -- Enable Input Monitoring (I_RECMON = 1) when Monitor Input is active, or disable when unchecked
     if not state or state.rec_auto_monitor ~= false then
         local cur_mon = math.floor(reaper.GetMediaTrackInfo_Value(trk, "I_RECMON") or 0)
         if cur_mon == 0 then
             reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 1)
         end
+    else
+        reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
     end
 
     -- Set Record Mode (Default 7 = MIDI Overdub: writes directly into MIDI item without Save dialog)
     local target_mode = (state and state.rec_mode) or 7
     reaper.SetMediaTrackInfo_Value(trk, "I_RECMODE", target_mode)
 end
+
+RecordQuantizeService._tracked_armed_guids = {}
 
 --- Arms or disarms a track in REAPER, synchronizes TCP/MCP UI, and ensures visibility in Notator
 --- @param state table
@@ -144,10 +148,15 @@ function RecordQuantizeService.set_track_armed(state, trk, armed)
     if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then return end
 
     local arm_val = armed and 1 or 0
+    local mon_val = (armed and (not state or state.rec_auto_monitor ~= false)) and 1 or 0
+    local guid = reaper.GetTrackGUID(trk)
+
     local ap = package.loaded["services.audio_preview"]
     if ap and ap.track_restore and ap.track_restore[trk] then
         ap.track_restore[trk].orig_arm = arm_val
         ap.track_restore[trk].changed_arm = false
+        ap.track_restore[trk].orig_mon = mon_val
+        ap.track_restore[trk].changed_mon = false
     end
 
     reaper.SetMediaTrackInfo_Value(trk, "I_RECARM", arm_val)
@@ -156,11 +165,14 @@ function RecordQuantizeService.set_track_armed(state, trk, armed)
     end
 
     if armed then
+        if guid then RecordQuantizeService._tracked_armed_guids[guid] = true end
         RecordQuantizeService.apply_midi_routing_to_track(state, trk, false)
-        local guid = reaper.GetTrackGUID(trk)
         if state and state.selected_tracks and guid then
             state.selected_tracks[guid] = true
         end
+    else
+        if guid then RecordQuantizeService._tracked_armed_guids[guid] = nil end
+        reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
     end
 
     MidiService.invalidate_cache()
@@ -169,6 +181,32 @@ function RecordQuantizeService.set_track_armed(state, trk, armed)
     end
     if reaper.UpdateArrange then
         reaper.UpdateArrange()
+    end
+end
+
+--- Synchronizes monitoring state across all project tracks so tracks disarmed in REAPER TCP/MCP also disable I_RECMON
+function RecordQuantizeService.sync_all_tracks_monitoring()
+    RecordQuantizeService._tracked_armed_guids = RecordQuantizeService._tracked_armed_guids or {}
+    local ap = package.loaded["services.audio_preview"]
+    local trk_cnt = reaper.CountTracks(0)
+    for ti = 0, trk_cnt - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+            local guid = reaper.GetTrackGUID(trk)
+            local is_armed = (ap and ap.is_track_user_armed and ap.is_track_user_armed(trk)) or (reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1)
+            if is_armed then
+                if guid then RecordQuantizeService._tracked_armed_guids[guid] = true end
+            elseif guid and RecordQuantizeService._tracked_armed_guids[guid] then
+                RecordQuantizeService._tracked_armed_guids[guid] = nil
+                reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
+                if ap and ap.track_restore and ap.track_restore[trk] then
+                    ap.track_restore[trk].orig_arm = 0
+                    ap.track_restore[trk].changed_arm = false
+                    ap.track_restore[trk].orig_mon = 0
+                    ap.track_restore[trk].changed_mon = false
+                end
+            end
+        end
     end
 end
 
