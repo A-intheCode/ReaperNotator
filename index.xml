@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.20-beta" author="A-intheCode" time="2026-10-16T21:32:37Z">
+      <version name="2.21-beta" author="A-intheCode" time="2026-10-16T21:38:39Z">
         <changelog><![CDATA[
++ v2.21-beta: Hotfix: Fix auto-slur creation (SlurService.save_slurs) when inserting pathfinder melody
 + v2.20-beta: Hotfix: Align 4-bar Reference Track window & preserve full bar span in Retrograde
 + v2.19-beta: Melodic Pathfinder: Clef Register Intelligence, Audition Wakeup & Film Composer Styles 1-4
 + v2.18-beta: New: Melodic Pathfinder & Counter-Melody Generator (Corpus-trained Viterbi inpainting, Inversion & Reference Track Harmony)

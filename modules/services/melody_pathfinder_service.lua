@@ -1250,33 +1250,54 @@ function MelodyPathfinderService.apply_to_score(state, midi_service, preview, op
         reaper.MIDI_InsertNote(take, true, false, sppq, eppq, gn.chan or 0, gn.pitch, gn.vel or 90, true)
 
         if gn.art and gn.art ~= "normal" then
-            local notation_str = string.format("NOTE %d %d articulation %s", gn.chan or 0, gn.pitch, gn.art)
+            local notation_str = string.format("NOTE %d %d a %s", gn.pitch, gn.chan or 0, gn.art)
             reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, notation_str)
+        end
+    end
+
+    if opts and opts.auto_slur and #preview.notes >= 2 then
+        local trk_guid = reaper.GetTrackGUID(track)
+        local n1 = preview.notes[1]
+        local n_last = preview.notes[#preview.notes]
+        local slur_id = string.format("slur_%s_%d_%.3f", tostring(trk_guid):gsub("[^%w]", ""), target_chan or 0, n1.start_qn)
+        local n1_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
+        reaper.MIDI_InsertTextSysexEvt(take, false, false, n1_sppq, 15, string.format(
+            "NOTATOR_SLUR %s %d %d %d %.4f %.4f %.4f -1 -1 -1",
+            slur_id, target_chan or 0, n1.pitch, n_last.pitch, n1.start_qn, n_last.start_qn, n1.dur_qn or 0.5
+        ))
+        if state then
+            state.user_slurs = state.user_slurs or {}
+            table.insert(state.user_slurs, {
+                id = slur_id,
+                track_guid = trk_guid,
+                chan = target_chan or 0,
+                pitch1 = n1.pitch,
+                pitch2 = n_last.pitch,
+                start_qn = n1.start_qn,
+                end_qn = (n_last.start_qn or 0) + (n_last.dur_qn or 1.0),
+                n2_start_qn = n_last.start_qn,
+                orig_dur1 = n1.dur_qn or 0.5,
+            })
+            if SlurService and SlurService.save_slurs then
+                pcall(SlurService.save_slurs, state)
+            end
         end
     end
 
     reaper.MIDI_Sort(take)
 
-    if opts and opts.auto_slur and #preview.notes >= 2 then
-        local trk_guid = reaper.GetTrackGUID(track)
-        SlurService.add_slur(
-            state,
-            trk_guid,
-            preview.notes[1].start_qn,
-            preview.notes[#preview.notes].start_qn,
-            (target_chan or 0) + 1
-        )
+    if midi_service and midi_service.invalidate_cache then
+        pcall(midi_service.invalidate_cache)
     end
-
-    if midi_service and midi_service.sync_reaticulate_events then
-        pcall(midi_service.sync_reaticulate_events, take, state)
+    if state then
+        state.active_tracks_cache = nil
+        state.cached_measure_map = nil
+        state.cached_measure_map_sig = nil
     end
 
     if reaper.MarkTrackItemsDirty then
         reaper.MarkTrackItemsDirty(track, item)
     end
-    state.cached_measure_map = nil
-    state.cached_measure_map_sig = nil
 
     local mode_lbl = (opts and opts.counter_melody_mode) and "Counter-Melody" or "Melodic Path"
     reaper.Undo_EndBlock("Melodic Pathfinder: Generate " .. mode_lbl, -1)
