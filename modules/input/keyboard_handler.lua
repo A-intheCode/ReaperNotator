@@ -172,7 +172,10 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
                     dur = dur * (2.0 / 3.0)
                 end
 
-                midi_service.insert_note_at_qn(state, qn, pitch, dur)
+                local n_obj = midi_service.insert_note_at_qn(state, qn, pitch, dur)
+                if n_obj then
+                    AudioPreview.play_note(state, n_obj.pitch or pitch, n_obj.vel or 96, n_obj.chan or 0, n_obj.track or state.focused_track, n_obj.start_qn or qn, n_obj)
+                end
 
                 -- Advance cursor by note duration
                 local new_qn = qn + dur

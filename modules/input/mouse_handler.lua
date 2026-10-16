@@ -40,7 +40,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     if is_playing then
         -- Playback Fast-Path: Bypasses all editing, note manipulation, dragging, marquee & hit-testing.
         -- Repositions the edit cursor if user clicks on the canvas during playback:
-        if reaper.ImGui_IsMouseClicked(ctx, 0) and reaper.ImGui_IsItemHovered(ctx) then
+        if reaper.ImGui_IsMouseClicked(ctx, 0) and (canvas_info.is_hovered or reaper.ImGui_IsItemHovered(ctx)) then
             local mouse_x = reaper.ImGui_GetMousePos(ctx)
             local margin_left = canvas_info.margin_left
             local qn_per_measure = canvas_info.qn_per_measure
@@ -1075,7 +1075,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     end
 
     -- 3b. WRITE NOTES / MOUSE DRAW MODE: Note entry via mouse click
-    if state.input_mode_type == "draw" and reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0) and not is_ctrl and not is_alt and not state.is_resizing_item then
+    local is_canvas_hovered = (canvas_info.is_hovered or reaper.ImGui_IsItemHovered(ctx))
+    if state.input_mode_type == "draw" and is_canvas_hovered and reaper.ImGui_IsMouseClicked(ctx, 0) and not is_ctrl and not is_alt and not state.is_resizing_item then
         local prev = state.draw_preview
         if prev and prev.track and reaper.ValidatePtr(prev.track, "MediaTrack*") and prev.qn and prev.pitch then
             state.focused_track = prev.track
@@ -1092,7 +1093,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             
             local n_obj = midi_service.insert_note_at_qn(state, prev.qn, prev.pitch, dur)
             if n_obj then
-                AudioPreview.play_note(state, prev.pitch, 96, 0, prev.track, prev.qn, n_obj)
+                AudioPreview.play_note(state, n_obj.pitch or prev.pitch, n_obj.vel or 96, n_obj.chan or 0, n_obj.track or prev.track, n_obj.start_qn or prev.qn, n_obj)
                 local bpi = qn_per_measure or 4.0
                 local p_info = Constants.PITCH_MAP and Constants.PITCH_MAP[prev.pitch % 12]
                 local p_name = p_info and p_info.name or "C"
@@ -1148,8 +1149,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     local tempo_offset_y = (state.tempo_offset_y or 62.0) * s
     local tempo_lane_y = canvas_info.first_staff_top_y and (canvas_info.first_staff_top_y - tempo_offset_y)
     local in_tempo_lane = (state.show_tempo_layer ~= false and tempo_lane_y and mouse_y >= (tempo_lane_y - 14 * s) and mouse_y <= (tempo_lane_y + 14 * s))
-    local empty_click = (state.input_mode_type ~= "draw") and reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
-                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_item_tag and not state.hovered_clef and not state.hovered_track_header and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not state.hovered_slur and not state.hovered_tie and not state.hovered_portamento and not in_chord_lane and not in_reh_lane and not in_tempo_lane and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark
+    local empty_click = (state.input_mode_type ~= "draw") and is_canvas_hovered and reaper.ImGui_IsMouseClicked(ctx, 0)
+                        and not state.hovered_note and not state.hovered_dynamic and not state.hovered_articulation and not state.hovered_item_edge and not state.hovered_item_tag and not state.hovered_clef and not state.hovered_track_header and not state.hovered_tempo_marker and not state.hovered_octave_line and not state.hovered_hairpin and not state.hovered_dynamic_text and not state.hovered_pedal and not state.hovered_text_item and not state.hovered_chord_item and not state.hovered_fermata and not state.hovered_rehearsal_mark and not state.hovered_slur and not state.hovered_tie and not state.hovered_portamento and not state.hovered_glissando and not in_chord_lane and not in_reh_lane and not in_tempo_lane and not state.is_dragging_rehearsal_mark and not state.drag_rehearsal_mark
                         
     if empty_click then
         state.drag_note = nil
@@ -1228,6 +1229,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             state.selected_slur = nil
             state.selected_tie = nil
             state.selected_portamento = nil
+            state.selected_glissando = nil
+            state.context_glissando = nil
             midi_service.sync_selection_to_reaper(state, canvas_info.active_tracks_data)
             
             -- Prepare marquee selection (in case dragging occurs after click)

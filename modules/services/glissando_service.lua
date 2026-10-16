@@ -1285,8 +1285,9 @@ function GlissandoService.draw_glissandos(ctx, draw_list, state, all_note_render
                             gm.cross_staff and ", Cross-Staff" or ""))
 
                         if reaper.ImGui_IsMouseClicked(ctx, 0) then
+                            local was_sel = (state.selected_glissando and state.selected_glissando.id == gm.id)
                             state:clear_selection()
-                            state.selected_glissando = gm
+                            state.selected_glissando = (not was_sel) and gm or nil
                         end
                         if reaper.ImGui_IsMouseClicked(ctx, 1) then
                             state:clear_selection()

@@ -278,6 +278,7 @@ function State.new()
         show_articulations_drawer = false, -- Visibility of Articulations drawer on right
         show_bank_picker_modal = false, -- Modal for bank selection (search & categories)
         track_articulation_banks = {}, -- Map: trk_guid -> bank_id_or_name
+        track_slur_behavior = {}, -- Map: trk_guid -> "auto" | "legato" | "long" | "pc:<num>"
         articulations_display_mode = "text", -- "text" (standard engraving) | "badge"
         custom_resource_path = "", -- User-defined REAPER user/resource folder (Settings)
         
@@ -513,6 +514,8 @@ function State.new()
         self.selected_tie = nil
         self.selected_portamento = nil
         self.context_portamento = nil
+        self.selected_glissando = nil
+        self.context_glissando = nil
         
         -- Multi-selection maps & bounds
         self.selected_dynamics = {}
@@ -733,6 +736,7 @@ function State.new()
     end
 
     setmetatable(self, { __index = State })
+    State._active_instance = self
     self.current_reaproject = nil
     self.current_proj_fn = nil
     self:load_settings()
@@ -990,6 +994,16 @@ function State:load_settings()
         end
     end
 
+    -- Track Slur Behavior
+    local ok_sb, sb_json = reaper.GetProjExtState(0, "REAPER_Notator", "track_slur_behavior")
+    if ok_sb == 1 and sb_json and #sb_json > 2 then
+        local JsonHelper = package.loaded["services.json_helper"] or require("services.json_helper")
+        local ok_dec, dec_sb = pcall(JsonHelper.decode, sb_json)
+        if ok_dec and type(dec_sb) == "table" then
+            self.track_slur_behavior = dec_sb
+        end
+    end
+
     -- Track Key Signatures
     local _, raw_ksigs = reaper.GetProjExtState(0, "REAPER_Notator", "track_key_signatures")
     if raw_ksigs and raw_ksigs ~= "" then
@@ -1188,6 +1202,12 @@ function State.save_settings(self)
     if self.track_articulation_banks and next(self.track_articulation_banks) then
         local JsonHelper = package.loaded["services.json_helper"] or require("services.json_helper")
         reaper.SetProjExtState(0, "REAPER_Notator", "track_art_banks", JsonHelper.encode(self.track_articulation_banks))
+    end
+
+    -- Track Slur Behavior
+    if self.track_slur_behavior and next(self.track_slur_behavior) then
+        local JsonHelper = package.loaded["services.json_helper"] or require("services.json_helper")
+        reaper.SetProjExtState(0, "REAPER_Notator", "track_slur_behavior", JsonHelper.encode(self.track_slur_behavior))
     end
 
     -- Track Key Signatures

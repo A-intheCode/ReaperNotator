@@ -312,25 +312,89 @@ function AudioPreview.find_active_articulation_at_qn(state, track, qn, chan, opt
     local target_chan = (chan or (opt_note and opt_note.chan) or 0) & 0x0F
     local opt_pitch = opt_note and opt_note.pitch
 
-    -- 1. Identify bank's default base articulation (e.g. Long / Sustain)
-    local default_base_art = nil
-    for _, ba in ipairs(bank.articulations) do
-        if not MidiService.is_momentary_articulation(ba.name) then
-            default_base_art = ba
-            break
+    -- 1. Identify bank's default base articulation (Long / Sustain, never Legato)
+    local default_base_art = MidiService.get_default_base_articulation(bank)
+
+    -- Helper: resolve take covering qn_pos on track
+    local function resolve_take_at_qn()
+        local take = opt_note and opt_note.take
+        if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+            return take
         end
-    end
-    if not default_base_art and #bank.articulations > 0 then
-        default_base_art = bank.articulations[1]
+        if track and reaper.ValidatePtr(track, "MediaTrack*") then
+            local item_cnt = reaper.CountTrackMediaItems(track)
+            local fallback_take = nil
+            for ii = 0, item_cnt - 1 do
+                local item = reaper.GetTrackMediaItem(track, ii)
+                if item then
+                    local tk = reaper.GetActiveTake(item)
+                    if tk and reaper.ValidatePtr(tk, "MediaItem_Take*") and reaper.TakeIsMIDI(tk) then
+                        if not fallback_take then fallback_take = tk end
+                        local ipos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+                        local ilen = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+                        local i_sqn = reaper.TimeMap2_timeToQN(0, ipos)
+                        local i_eqn = reaper.TimeMap2_timeToQN(0, ipos + ilen)
+                        if qn_pos >= i_sqn - 0.05 and qn_pos <= i_eqn + 0.05 then
+                            return tk
+                        end
+                    end
+                end
+            end
+            return fallback_take
+        end
+        return nil
     end
 
-    -- 2. PRIORITY 1: Check articulation ON THE NOTE ("auf der Note")
+    local active_take = resolve_take_at_qn()
+
+    -- 2. PRIORITY 1: Check if note is inside an active Slur phrase -> return track's configured Slur articulation (Auto: Legato -> Long)
+    local is_under_slur = false
+    if track and reaper.ValidatePtr(track, "MediaTrack*") then
+        local trk_guid = reaper.GetTrackGUID(track)
+        local norm_trk_guid = trk_guid and trk_guid:gsub("[{}%-]", ""):upper() or ""
+        if state and state.user_slurs then
+            for _, sl in ipairs(state.user_slurs) do
+                local sl_guid = (sl.track_guid or ""):gsub("[{}%-]", ""):upper()
+                if (sl_guid == "" or sl_guid == norm_trk_guid) and (sl.chan or 0) == target_chan then
+                    local s_qn = sl.start_qn or 0
+                    local e_qn = sl.n2_start_qn or sl.end_qn or s_qn
+                    if qn_pos >= s_qn - 0.05 and qn_pos <= e_qn + 0.05 then
+                        is_under_slur = true
+                        break
+                    end
+                end
+            end
+        end
+        if not is_under_slur and active_take then
+            local _, _, _, tcnt = reaper.MIDI_CountEvts(active_take)
+            for ti = 0, tcnt - 1 do
+                local ok_t, _, _, _, etype, msg = reaper.MIDI_GetTextSysexEvt(active_take, ti)
+                if ok_t and etype == 15 and msg and msg:find("^NOTATOR_SLUR") then
+                    local _, s_ch, _, _, sqn, n2sqn = msg:match("^NOTATOR_SLUR%s+([%w_]+)%s+(%d+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)")
+                    if s_ch and (tonumber(s_ch) or 0) == target_chan then
+                        local s_qn = tonumber(sqn) or 0
+                        local e_qn = tonumber(n2sqn) or s_qn
+                        if qn_pos >= s_qn - 0.05 and qn_pos <= e_qn + 0.05 then
+                            is_under_slur = true
+                            break
+                        end
+                    end
+                end
+            end
+        end
+    end
+    if is_under_slur then
+        local slur_art = MidiService.find_slur_articulation_in_bank(bank, track, state)
+        if slur_art then return slur_art end
+    end
+
+    -- 3. PRIORITY 2: Check articulation ON THE NOTE ("auf der Note")
     local note_art_id = opt_note and opt_note.articulation
     if (not note_art_id or note_art_id == "" or note_art_id == "none") and opt_note and opt_note.art then
         note_art_id = opt_note.art
     end
 
-    -- 2a. If not directly on opt_note, search active_tracks_cache for note at qn_pos matching pitch & channel
+    -- 3a. If not directly on opt_note, search active_tracks_cache for note at qn_pos matching pitch & channel
     if (not note_art_id or note_art_id == "" or note_art_id == "none") and state and state.active_tracks_cache then
         for _, tdata in ipairs(state.active_tracks_cache) do
             if tdata.track == track and tdata.notes then
@@ -349,13 +413,34 @@ function AudioPreview.find_active_articulation_at_qn(state, track, qn, chan, opt
         end
     end
 
-    -- 2b. If note_art_id found on the note, resolve it in bank
+    -- 3b. Also check Type 15 NOTE tag directly in MIDI take at this note's position
+    if (not note_art_id or note_art_id == "" or note_art_id == "none") and active_take then
+        local note_ppq = reaper.MIDI_GetPPQPosFromProjQN(active_take, qn_pos)
+        local _, _, _, tcnt = reaper.MIDI_CountEvts(active_take)
+        for ti = 0, tcnt - 1 do
+            local ok_t, _, _, ppq_t, etype, msg = reaper.MIDI_GetTextSysexEvt(active_take, ti)
+            if ok_t and etype == 15 and math.abs(ppq_t - note_ppq) <= 25 then
+                local p_str, ch_str, art_str = msg:match("^NOTE%s+(%d+)%s+(%d+)%s+a%s+([%a%d_]+)")
+                if p_str and art_str and (tonumber(ch_str) or 0) == target_chan then
+                    if not opt_pitch or tonumber(p_str) == opt_pitch then
+                        note_art_id = art_str
+                        break
+                    end
+                end
+            end
+        end
+    end
+
+    -- 3c. If note_art_id found on the note, resolve it in bank
     if note_art_id and note_art_id ~= "" and note_art_id ~= "none" then
+        if note_art_id:lower() == "legato" then
+            local slur_art = MidiService.find_slur_articulation_in_bank(bank, track, state)
+            if slur_art then return slur_art end
+        end
         local match = MidiService.find_reaticulate_art_for_id(bank, note_art_id)
         if match then
             return match
         end
-        -- Also try matching by name or display name directly in bank
         for _, ba in ipairs(bank.articulations) do
             if ba.name and ba.name:lower() == note_art_id:lower() then
                 return ba
@@ -363,40 +448,40 @@ function AudioPreview.find_active_articulation_at_qn(state, track, qn, chan, opt
         end
     end
 
-    -- 2c. Check if there is an explicit Program Change AT this note's position (qn_pos)
-    if state and state.active_tracks_cache then
-        for _, tdata in ipairs(state.active_tracks_cache) do
-            if tdata.track == track and tdata.articulations then
-                for _, art in ipairs(tdata.articulations) do
-                    if (art.chan or 0) == target_chan and math.abs(art.qn - qn_pos) <= 0.05 and not art.is_auto_return then
-                        for _, ba in ipairs(bank.articulations) do
-                            if ba.pc == art.pc then
-                                return ba
-                            end
-                        end
-                    end
-                end
-                break
-            end
+    -- 4. PRIORITY 3: Check Program Change AT or BEFORE the note ("davor") across both cache and raw MIDI take!
+    -- Momentary articulations (Staccato / Short / Spiccato) on earlier notes NEVER persist onto a subsequent note without a dot!
+    local persistent_art = nil
+    local latest_qn = -100000
+
+    local function is_bank_art_momentary(ba)
+        if not ba then return false end
+        if MidiService.is_momentary_articulation and MidiService.is_momentary_articulation(ba.name) then
+            return true
         end
+        local mapped = MidiService.art_id_from_reaticulate_art and MidiService.art_id_from_reaticulate_art(ba)
+        if mapped and MidiService.is_momentary_articulation and MidiService.is_momentary_articulation(mapped) then
+            return true
+        end
+        return false
     end
 
-    -- 3. PRIORITY 2: Check articulation BEFORE THE NOTE ("davor")
-    -- Scan from the beginning up to qn_pos for the most recent active persistent technique
-    local persistent_art = nil
-    local latest_qn = -1
-
-    -- 3a. Search tdata.articulations in cache
+    -- 4a. Search tdata.articulations in cache
     if state and state.active_tracks_cache then
         for _, tdata in ipairs(state.active_tracks_cache) do
             if tdata.track == track and tdata.articulations then
                 for _, art in ipairs(tdata.articulations) do
-                    if (art.chan or 0) == target_chan and art.qn <= (qn_pos + 0.02) then
+                    local ch_ok = ((art.chan or 0) == target_chan) or (art.chan == nil)
+                    if ch_ok and art.qn <= (qn_pos + 0.05) then
+                        local is_at_note = math.abs(art.qn - qn_pos) <= 0.05
                         if art.qn >= latest_qn then
-                            latest_qn = art.qn
                             for _, ba in ipairs(bank.articulations) do
                                 if ba.pc == art.pc then
-                                    persistent_art = ba
+                                    local is_mom = is_bank_art_momentary(ba)
+                                    -- Only accept a momentary PC if it is AT this exact position AND note_obj wasn't explicitly un-marked
+                                    if not is_mom or (is_at_note and not note_obj and not art.is_auto_return) then
+                                        latest_qn = art.qn
+                                        persistent_art = ba
+                                    end
                                     break
                                 end
                             end
@@ -408,44 +493,51 @@ function AudioPreview.find_active_articulation_at_qn(state, track, qn, chan, opt
         end
     end
 
-    -- 3b. If not in cache, check MIDI take directly
-    if not persistent_art and track and reaper.ValidatePtr(track, "MediaTrack*") then
-        local take = opt_note and opt_note.take
-        if not take then
-            local item_cnt = reaper.CountTrackMediaItems(track)
-            for ii = 0, item_cnt - 1 do
-                local item = reaper.GetTrackMediaItem(track, ii)
-                local ipos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
-                local ilen = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
-                local i_sqn = reaper.TimeMap2_timeToQN(0, ipos)
-                local i_eqn = reaper.TimeMap2_timeToQN(0, ipos + ilen)
-                if qn_pos >= i_sqn - 0.01 and qn_pos <= i_eqn + 0.01 then
-                    take = reaper.GetActiveTake(item)
-                    break
-                end
-            end
-        end
-        if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
-            local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(take, qn_pos) + 15
-            local _, _, cc_cnt = reaper.MIDI_CountEvts(take)
-            local latest_ppq = -1
-            local latest_pc = nil
-            for ci = 0, cc_cnt - 1 do
-                local ok, _, _, ppq, chanmsg, cchan, msg2 = reaper.MIDI_GetCC(take, ci)
-                if ok and (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0) and cchan == target_chan and ppq <= target_ppq then
-                    if ppq >= latest_ppq then
-                        latest_ppq = ppq
-                        latest_pc = msg2
-                    end
-                end
-            end
-            if latest_pc then
+    -- 4b. ALWAYS also scan the MIDI take directly for 0xC0 Program Changes at or before qn_pos
+    -- (Ensures standalone PCs like Legato / Trill at bar 1 beat 1 are found, while skipping earlier momentary Staccato PCs)
+    if active_take then
+        local note_ppq = reaper.MIDI_GetPPQPosFromProjQN(active_take, qn_pos)
+        local target_ppq = note_ppq + 25
+        local _, _, cc_cnt = reaper.MIDI_CountEvts(active_take)
+        local best_take_ppq = -100000
+        local best_take_ba = nil
+        local fallback_any_chan_ppq = -100000
+        local fallback_any_chan_ba = nil
+
+        for ci = 0, cc_cnt - 1 do
+            local ok, _, _, ppq, chanmsg, cchan, msg2 = reaper.MIDI_GetCC(active_take, ci)
+            if ok and (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0) and ppq <= target_ppq then
+                local matched_ba = nil
                 for _, ba in ipairs(bank.articulations) do
-                    if ba.pc == latest_pc then
-                        persistent_art = ba
+                    if ba.pc == msg2 then
+                        matched_ba = ba
                         break
                     end
                 end
+                if matched_ba then
+                    local is_mom = is_bank_art_momentary(matched_ba)
+                    local is_at_note = math.abs(ppq - note_ppq) <= 25
+                    if not is_mom or (is_at_note and not note_obj) then
+                        if cchan == target_chan and ppq >= best_take_ppq then
+                            best_take_ppq = ppq
+                            best_take_ba = matched_ba
+                        end
+                        if ppq >= fallback_any_chan_ppq then
+                            fallback_any_chan_ppq = ppq
+                            fallback_any_chan_ba = matched_ba
+                        end
+                    end
+                end
+            end
+        end
+
+        local chosen_ppq = (best_take_ba ~= nil) and best_take_ppq or fallback_any_chan_ppq
+        local chosen_ba  = (best_take_ba ~= nil) and best_take_ba  or fallback_any_chan_ba
+        if chosen_ba ~= nil then
+            local chosen_qn = reaper.MIDI_GetProjQNFromPPQPos(active_take, chosen_ppq)
+            if chosen_qn >= latest_qn - 0.01 then
+                persistent_art = chosen_ba
+                latest_qn = chosen_qn
             end
         end
     end
@@ -454,7 +546,7 @@ function AudioPreview.find_active_articulation_at_qn(state, track, qn, chan, opt
         return persistent_art
     end
 
-    -- 4. Fallback: bank's default base articulation
+    -- 5. Fallback: bank's default base articulation (Long / Sustain)
     return default_base_art
 end
 
@@ -475,6 +567,10 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
         if trk_cnt > 0 then target_track = reaper.GetTrack(0, 0) end
     end
     if not target_track then return end
+
+    -- Record activity timestamp immediately so idle restore_all_tracks() never disarms the track mid-click
+    AudioPreview.last_activity_time = reaper.time_precise()
+    AudioPreview.last_audition_time = AudioPreview.last_activity_time
 
     -- 1. Switch to Virtual MIDI Keyboard (6080) and arm track immediately on Mouse Down
     local just_switched = AudioPreview.prepare_track(target_track)
@@ -513,15 +609,14 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
     final_c1  = math.max(0, math.min(127, final_c1))
     final_c11 = math.max(0, math.min(127, final_c11))
 
-    -- 3. Pre-send Articulation Program Change and CCs while mouse is down
+    -- 3. Resolve Reaticulate bank and active articulation at qn_pos
     local target_art = nil
     local bank = nil
-    local _, trk_guid = reaper.GetSetMediaTrackInfo_String(target_track, "GUID", "", false)
-    local trk_override = trk_guid and state and state.track_articulation_banks and state.track_articulation_banks[trk_guid]
     local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
     local all_banks = ReaticulateParser.get_all_banks(false, state)
-    bank = ReaticulateParser.get_bank_for_track(target_track, all_banks, trk_override)
+    bank = ReaticulateParser.get_bank_for_track(target_track, all_banks, state)
     if bank and bank.articulations and #bank.articulations > 0 then
+        ReaticulateParser.ensure_track_reaticulate_fx_and_bank(target_track, bank, state, false)
         target_art = AudioPreview.find_active_articulation_at_qn(state, target_track, qn_pos, ch, opt_note, bank)
     end
 
@@ -530,10 +625,12 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
     if target_art and target_art.pc and target_art.pc >= 0 then
         eff_msb = (target_art.msb and target_art.msb >= 0) and target_art.msb or (bank and bank.msb and bank.msb >= 0 and bank.msb or -1)
         eff_lsb = (target_art.lsb and target_art.lsb >= 0) and target_art.lsb or (bank and bank.lsb and bank.lsb >= 0 and bank.lsb or -1)
-        if eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, eff_msb) end
-        if eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, eff_lsb) end
-        reaper.StuffMIDIMessage(0, 0xC0 + ch, target_art.pc, 0)
-        AudioPreview.current_art_pc = target_art.pc
+        if not just_switched then
+            if eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, eff_msb) end
+            if eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, eff_lsb) end
+            reaper.StuffMIDIMessage(0, 0xC0 + ch, target_art.pc, 0)
+            AudioPreview.current_art_pc = target_art.pc
+        end
     end
 
     local cc_mode = state and state.audition_cc or "11_1"
@@ -570,6 +667,8 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
     AudioPreview.arm_click_note = {
         pitch = p,
         vel = final_vel,
+        final_c1 = final_c1,
+        final_c11 = final_c11,
         chan = ch,
         track = target_track,
         qn = qn_pos,
@@ -578,11 +677,12 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
         target_art = target_art,
         eff_msb = eff_msb,
         eff_lsb = eff_lsb,
-        just_armed = just_switched
+        just_armed = just_switched,
+        click_time = reaper.time_precise()
     }
 end
 
---- Plays the prepared note on Mouse Release (clean note trigger)
+--- Plays the prepared note on Mouse Release (clean two-stage PC -> Note On trigger)
 --- @param state table
 function AudioPreview.play_note_on_release(state)
     local ac = AudioPreview.arm_click_note
@@ -598,39 +698,60 @@ function AudioPreview.play_note_on_release(state)
     if not target_track or not reaper.ValidatePtr(target_track, "MediaTrack*") then return end
 
     local ch = ac.chan & 0x0F
+    local now = reaper.time_precise()
+    AudioPreview.last_activity_time = now
 
-    -- If track was freshly armed on this click, wait a further 250 ms upon mouse release
-    -- so REAPER's audio buffer and the sampler's monitoring thread settle completely!
+    -- If track was freshly armed on this click, run two-stage release:
+    -- Stage 1 (after VKB input settles): Send Bank Select + Program Change + CCs
+    -- Stage 2 (45 ms after Stage 1): Send Note On so Reaticulate & VSTi keyswitch finish before Note On arrives!
     if ac.just_armed then
         AudioPreview.pending_release_note = {
             pitch = ac.pitch,
             vel = ac.vel,
+            final_c1 = ac.final_c1,
+            final_c11 = ac.final_c11,
             chan = ch,
             track = target_track,
             target_art = ac.target_art,
             eff_msb = ac.eff_msb,
             eff_lsb = ac.eff_lsb,
             bank = ac.bank,
-            release_time = reaper.time_precise(),
-            delay = 0.250
+            release_time = now,
+            stage = 1,
+            delay = 0.080
         }
         AudioPreview.start_sequence_loop(state)
         return
     end
 
-    -- Already armed: trigger note immediately (0 ms delay)!
-    -- 1. Re-affirm Bank MSB/LSB and Program Change right before Note On so the sampler is 100% switched
-    if ac.target_art and ac.target_art.pc and ac.target_art.pc >= 0 then
-        if ac.eff_msb and ac.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, ac.eff_msb) end
-        if ac.eff_lsb and ac.eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, ac.eff_lsb) end
-        reaper.StuffMIDIMessage(0, 0xC0 + ch, ac.target_art.pc, 0)
-        AudioPreview.current_art_pc = ac.target_art.pc
+    -- Track was already armed on VKB:
+    -- Bank MSB/LSB and Program Change were already sent on Mouse Down (prepare_for_note_click).
+    -- Ensure at least 45ms have elapsed since the PC was sent before triggering Note On (0x90) so Reaticulate's keyswitch is never racing Note On in the same audio block!
+    local held_ms = now - (ac.click_time or now)
+    if held_ms < 0.045 then
+        AudioPreview.pending_release_note = {
+            pitch = ac.pitch,
+            vel = ac.vel,
+            final_c1 = ac.final_c1,
+            final_c11 = ac.final_c11,
+            chan = ch,
+            track = target_track,
+            target_art = ac.target_art,
+            eff_msb = ac.eff_msb,
+            eff_lsb = ac.eff_lsb,
+            bank = ac.bank,
+            release_time = now,
+            stage = 2,
+            stage2_time = now,
+            stage2_delay = math.max(0.015, 0.045 - held_ms)
+        }
+        AudioPreview.start_sequence_loop(state)
+        return
     end
 
-    -- 2. Trigger the note: Note On
+    -- 2. Trigger the note: Note On (PC already settled during mouse press)
     reaper.StuffMIDIMessage(0, 0x90 + ch, ac.pitch, ac.vel)
 
-    local now = reaper.time_precise()
     local is_momentary = false
     if ac.target_art and ac.target_art.name then
         local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
@@ -727,12 +848,11 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
     local target_art = nil
     local bank = nil
     if target_track and reaper.ValidatePtr(target_track, "MediaTrack*") then
-        local _, trk_guid = reaper.GetSetMediaTrackInfo_String(target_track, "GUID", "", false)
-        local trk_override = trk_guid and state and state.track_articulation_banks and state.track_articulation_banks[trk_guid]
         local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
         local all_banks = ReaticulateParser.get_all_banks(false, state)
-        bank = ReaticulateParser.get_bank_for_track(target_track, all_banks, trk_override)
+        bank = ReaticulateParser.get_bank_for_track(target_track, all_banks, state)
         if bank and bank.articulations and #bank.articulations > 0 then
+            ReaticulateParser.ensure_track_reaticulate_fx_and_bank(target_track, bank, state, false)
             target_art = AudioPreview.find_active_articulation_at_qn(state, target_track, qn_pos, ch, opt_note, bank)
         end
     end
@@ -793,8 +913,9 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
         end
     end
 
-    AudioPreview.last_audition_time = reaper.time_precise()
-    AudioPreview.last_activity_time = reaper.time_precise()
+    local now = reaper.time_precise()
+    AudioPreview.last_audition_time = now
+    AudioPreview.last_activity_time = now
 
     if just_switched then
         -- Timing: Wait 50 ms for Virtual MIDI Keyboard & arming to settle, then another 50 ms before Note On
@@ -807,14 +928,18 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
             eff_msb = eff_msb,
             eff_lsb = eff_lsb,
             cc_list = cc_list,
-            switch_time = reaper.time_precise(),
+            switch_time = now,
             bank = bank,
             stage = 1
         }
         AudioPreview.start_sequence_loop(state)
     else
-        -- Already on Virtual MIDI Keyboard: send Bank/PC, CC and Note On immediately!
+        -- Already on Virtual MIDI Keyboard: send Bank/PC and CCs immediately
+        local pc_changed = false
         if target_art and target_art.pc and target_art.pc >= 0 then
+            if AudioPreview.current_art_pc ~= target_art.pc then
+                pc_changed = true
+            end
             if eff_msb >= 0 then
                 reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, eff_msb)
             end
@@ -829,6 +954,26 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
             reaper.StuffMIDIMessage(0, 0xB0 + ch, cmsg.cc, cmsg.val)
         end
 
+        if pc_changed then
+            -- Wait 40 ms after Program Change so Reaticulate & VSTi keyswitch complete before Note On arrives
+            AudioPreview.pending_note = {
+                pitch = p,
+                chan = ch,
+                vel = final_vel,
+                track = target_track,
+                target_art = target_art,
+                eff_msb = eff_msb,
+                eff_lsb = eff_lsb,
+                cc_list = cc_list,
+                switch_time = now,
+                stage2_time = now,
+                bank = bank,
+                stage = 2
+            }
+            AudioPreview.start_sequence_loop(state)
+            return
+        end
+
         local is_momentary = false
         if target_art and target_art.name then
             local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
@@ -841,7 +986,7 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
             chan = ch,
             vel = final_vel,
             track = target_track,
-            start_time = reaper.time_precise(),
+            start_time = now,
             released = false,
             is_momentary = is_momentary,
             bank = bank
@@ -865,7 +1010,7 @@ function AudioPreview.start_sequence_loop(state)
 
     local function preview_step()
         AudioPreview.update(AudioPreview._last_state, nil)
-        if AudioPreview.pending_note or AudioPreview.pending_release_note or AudioPreview.active_note or next(AudioPreview.track_restore) ~= nil then
+        if AudioPreview.pending_note or AudioPreview.pending_release_note or AudioPreview.active_note or AudioPreview.arm_click_note or next(AudioPreview.track_restore) ~= nil then
             reaper.defer(preview_step)
         else
             AudioPreview._timer_running = false
@@ -890,6 +1035,7 @@ end
 function AudioPreview.stop_all(state)
     AudioPreview.pending_note = nil
     AudioPreview.pending_release_note = nil
+    AudioPreview.arm_click_note = nil
     AudioPreview.stop_note(state)
     for ch = 0, 15 do
         reaper.StuffMIDIMessage(0, 0xB0 + ch, 123, 0) -- All Notes Off
@@ -905,7 +1051,7 @@ function AudioPreview.update(state, ctx)
     if state then AudioPreview._last_state = state end
     local now = reaper.time_precise()
 
-    -- 1. Check pending note (Two-stage delay: 50ms arming/VKB stage + additional 50ms settling stage before note)
+    -- 1. Check pending note (Two-stage delay: 50ms arming/VKB stage + additional 45ms settling stage before note)
     if AudioPreview.pending_note then
         local pn = AudioPreview.pending_note
         local elapsed = now - pn.switch_time
@@ -934,8 +1080,8 @@ function AudioPreview.update(state, ctx)
             pn.stage2_time = now
         end
 
-        -- Stage 2: Wait another 50ms ("nochmal 50 ms", total 100ms) before triggering Note On
-        if pn.stage == 2 and (now - pn.stage2_time >= 0.050 or elapsed >= 0.100) then
+        -- Stage 2: Wait 45ms after Program Change so Reaticulate & VSTi keyswitch complete before triggering Note On
+        if pn.stage == 2 and (now - (pn.stage2_time or pn.switch_time) >= 0.045) then
             local ch = pn.chan
             local is_momentary = false
             if pn.target_art and pn.target_art.name then
@@ -963,18 +1109,23 @@ function AudioPreview.update(state, ctx)
         end
     end
 
-    -- 1b. Check pending release note (250ms settling delay after initial arming activation)
+    -- 1b. Check pending release note (two-stage: Stage 1 sends Bank/PC after VKB settles, Stage 2 sends Note On 45ms later)
     if AudioPreview.pending_release_note then
         local prn = AudioPreview.pending_release_note
-        if (now - prn.release_time) >= (prn.delay or 0.250) then
-            local ch = prn.chan & 0x0F
+        local ch = prn.chan & 0x0F
+        if (prn.stage or 1) == 1 and (now - prn.release_time) >= (prn.delay or 0.080) then
             if prn.target_art and prn.target_art.pc and prn.target_art.pc >= 0 then
                 if prn.eff_msb and prn.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, prn.eff_msb) end
                 if prn.eff_lsb and prn.eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, prn.eff_lsb) end
                 reaper.StuffMIDIMessage(0, 0xC0 + ch, prn.target_art.pc, 0)
                 AudioPreview.current_art_pc = prn.target_art.pc
             end
-
+            if prn.final_c1 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, prn.final_c1) end
+            if prn.final_c11 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, prn.final_c11) end
+            prn.stage = 2
+            prn.stage2_time = now
+            prn.stage2_delay = 0.045
+        elseif prn.stage == 2 and (now - (prn.stage2_time or prn.release_time)) >= (prn.stage2_delay or 0.045) then
             reaper.StuffMIDIMessage(0, 0x90 + ch, prn.pitch, prn.vel)
 
             local is_momentary = false
@@ -1029,8 +1180,8 @@ function AudioPreview.update(state, ctx)
             AudioPreview.stop_note(state)
         end
     else
-        -- 3. Inactivity delay: if no notes played for >= 2.0 seconds, restore original input device
-        if not AudioPreview.pending_note and next(AudioPreview.track_restore) ~= nil then
+        -- 3. Inactivity delay: if no notes played or armed for >= 2.0 seconds, restore original input device
+        if not AudioPreview.pending_note and not AudioPreview.pending_release_note and not AudioPreview.arm_click_note and next(AudioPreview.track_restore) ~= nil then
             local idle_dur = now - (AudioPreview.last_activity_time or 0)
             if idle_dur >= 2.0 then
                 AudioPreview.restore_all_tracks()

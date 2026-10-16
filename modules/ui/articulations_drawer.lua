@@ -248,6 +248,97 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
             reaper.ImGui_SetTooltip(ctx, "Glissando (Chromatic Pitch Steps) [Hotkey: G]:\nConnects 2 selected notes with a wavy glissando line.\nGenerates chromatic pitch steps during playback (filtered out from score canvas).\nSupports Cross-Staff connections (e.g. Harp/Piano Bass to Treble/Alto Clef).")
         end
         
+        -- Default Slur Behavior dropdown (Auto: Legato -> Long, Legato, Long / Sustain, or specific bank patch)
+        do
+            local cur_beh = midi_service.get_track_slur_behavior(cur_track, state)
+            local leg_art = bank and midi_service.find_legato_articulation_in_bank(bank)
+            local base_art = bank and midi_service.get_default_base_articulation(bank)
+            local resolved_slur_art = bank and midi_service.find_slur_articulation_in_bank(bank, cur_track, state)
+            
+            local preview_label = "Auto (Legato -> Long)"
+            if cur_beh == "auto" then
+                if resolved_slur_art then
+                    preview_label = string.format("Auto: %s [PC %d]", resolved_slur_art.name, resolved_slur_art.pc)
+                else
+                    preview_label = "Auto (Legato -> Long)"
+                end
+            elseif cur_beh == "legato" then
+                if leg_art then
+                    preview_label = string.format("Legato: %s [PC %d]", leg_art.name, leg_art.pc)
+                elseif resolved_slur_art then
+                    preview_label = string.format("Legato (-> %s [PC %d])", resolved_slur_art.name, resolved_slur_art.pc)
+                else
+                    preview_label = "Legato"
+                end
+            elseif cur_beh == "long" then
+                if base_art then
+                    preview_label = string.format("Long: %s [PC %d]", base_art.name, base_art.pc)
+                else
+                    preview_label = "Long / Sustain"
+                end
+            elseif cur_beh:match("^pc:%d+$") then
+                if resolved_slur_art then
+                    preview_label = string.format("%s [PC %d]", resolved_slur_art.name, resolved_slur_art.pc)
+                else
+                    preview_label = cur_beh
+                end
+            end
+            
+            reaper.ImGui_AlignTextToFramePadding(ctx)
+            reaper.ImGui_TextDisabled(ctx, "Default Slur:")
+            reaper.ImGui_SameLine(ctx, 0, 6)
+            reaper.ImGui_SetNextItemWidth(ctx, -1)
+            if reaper.ImGui_BeginCombo(ctx, "##DefaultSlurBehaviorCombo", preview_label) then
+                local auto_desc = "✨ Auto (Legato -> Long)"
+                if leg_art then
+                    auto_desc = string.format("✨ Auto (Legato -> Long) [%s, PC %d]", leg_art.name, leg_art.pc)
+                elseif base_art then
+                    auto_desc = string.format("✨ Auto (Legato -> Long) [%s, PC %d]", base_art.name, base_art.pc)
+                end
+                if reaper.ImGui_Selectable(ctx, auto_desc .. "##slur_beh_auto", cur_beh == "auto") then
+                    midi_service.set_track_slur_behavior(cur_track, state, "auto", bank)
+                end
+                if leg_art then
+                    local leg_desc = string.format("🎻 Legato [%s, PC %d]##slur_beh_legato", leg_art.name, leg_art.pc)
+                    if reaper.ImGui_Selectable(ctx, leg_desc, cur_beh == "legato") then
+                        midi_service.set_track_slur_behavior(cur_track, state, "legato", bank)
+                    end
+                end
+                if base_art then
+                    local long_desc = string.format("🎵 Long / Sustain [%s, PC %d]##slur_beh_long", base_art.name, base_art.pc)
+                    if reaper.ImGui_Selectable(ctx, long_desc, cur_beh == "long") then
+                        midi_service.set_track_slur_behavior(cur_track, state, "long", bank)
+                    end
+                end
+                if bank and bank.articulations and #bank.articulations > 0 then
+                    local specific_arts = {}
+                    for _, ba in ipairs(bank.articulations) do
+                        local cat = (ReaticulateParser.categorize_articulation and ReaticulateParser.categorize_articulation(ba)) or ReaticulateParser.format_category(ba.category)
+                        if cat == "LEGATO" or cat == "LONG / SUSTAIN" then
+                            table.insert(specific_arts, { art = ba, cat = cat })
+                        end
+                    end
+                    if #specific_arts > 0 then
+                        reaper.ImGui_Separator(ctx)
+                        reaper.ImGui_TextDisabled(ctx, "Bank Patches (Legato / Long):")
+                        for _, entry in ipairs(specific_arts) do
+                            local ba = entry.art
+                            local pc_val = "pc:" .. tostring(ba.pc)
+                            local icon = (entry.cat == "LEGATO") and "⌒" or "—"
+                            local item_lbl = string.format("%s %s [PC %d]##slur_beh_pc_%d", icon, ba.name, ba.pc, ba.pc)
+                            if reaper.ImGui_Selectable(ctx, item_lbl, cur_beh == pc_val) then
+                                midi_service.set_track_slur_behavior(cur_track, state, pc_val, bank)
+                            end
+                        end
+                    end
+                end
+                reaper.ImGui_EndCombo(ctx)
+            end
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Default Slur Behavior for this track:\n• Auto (Legato -> Long): Uses Legato if available in the active Reaticulate bank; automatically falls back to Long / Sustain if the library has no Legato patch.\n• Legato / Long / Specific Patch: Forces slurs [S] on this track to trigger the selected Reaticulate patch and automatically updates existing slurs.")
+            end
+        end
+        
         reaper.ImGui_Spacing(ctx)
         
         -- Vertical distance of articulations from staff line (independent)
