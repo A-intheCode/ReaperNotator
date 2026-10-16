@@ -1,0 +1,142 @@
+{
+  "id": "perc_146_tubular_bells_boris_godunov_coronation_chimes",
+  "name": "Tubular Bells - Boris Godunov Coronation Chimes",
+  "category": "09_Orchestral_Percussion",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 84,
+  "clef": "treble",
+  "notes": [
+    {
+      "pitch": 65,
+      "start_qn": 0.0,
+      "dur_qn": 0.9,
+      "vel": 110,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 1.0,
+      "dur_qn": 0.9,
+      "vel": 112,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 2.0,
+      "dur_qn": 0.9,
+      "vel": 113,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 3.0,
+      "dur_qn": 0.9,
+      "vel": 97,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 4.0,
+      "dur_qn": 0.9,
+      "vel": 112,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 63,
+      "start_qn": 5.0,
+      "dur_qn": 0.9,
+      "vel": 106,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 67,
+      "start_qn": 6.0,
+      "dur_qn": 0.9,
+      "vel": 111,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 71,
+      "start_qn": 7.0,
+      "dur_qn": 0.9,
+      "vel": 100,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 74,
+      "start_qn": 8.0,
+      "dur_qn": 0.9,
+      "vel": 106,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 79,
+      "start_qn": 9.0,
+      "dur_qn": 0.9,
+      "vel": 100,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 62,
+      "start_qn": 10.0,
+      "dur_qn": 0.9,
+      "vel": 111,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 65,
+      "start_qn": 11.0,
+      "dur_qn": 0.9,
+      "vel": 99,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 68,
+      "start_qn": 12.0,
+      "dur_qn": 0.9,
+      "vel": 100,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 72,
+      "start_qn": 13.0,
+      "dur_qn": 0.9,
+      "vel": 114,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 75,
+      "start_qn": 14.0,
+      "dur_qn": 0.9,
+      "vel": 108,
+      "voice": 1,
+      "art": "tenuto"
+    },
+    {
+      "pitch": 60,
+      "start_qn": 15.0,
+      "dur_qn": 0.9,
+      "vel": 110,
+      "voice": 1,
+      "art": "tenuto"
+    }
+  ]
+}

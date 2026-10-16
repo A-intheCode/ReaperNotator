@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.16
+-- @version 2.17
 -- @changelog
+--   + v2.17: New: 300 Percussion & Low Strings patterns (1,500 total) + Pattern Browser UI refinements
 --   + v2.16: Hotfix: Fix severe UI lag when docked in REAPER Docker
 --   + v2.15: New: Divisi (split voices to duplicated tracks)
 --   + v2.14: Hotfix: Fix AudioPreview require in MidiService

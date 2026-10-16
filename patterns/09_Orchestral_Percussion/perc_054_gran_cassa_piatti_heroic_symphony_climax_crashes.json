@@ -1,0 +1,238 @@
+{
+  "id": "perc_054_gran_cassa_piatti_heroic_symphony_climax_crashes",
+  "name": "Gran Cassa & Piatti - Heroic Symphony Climax Crashes",
+  "category": "09_Orchestral_Percussion",
+  "bars": 8,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 120,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 36,
+      "start_qn": 0.0,
+      "dur_qn": 0.9,
+      "vel": 119,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 116,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.0,
+      "dur_qn": 0.45,
+      "vel": 94,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.5,
+      "dur_qn": 0.45,
+      "vel": 104,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 4.0,
+      "dur_qn": 0.9,
+      "vel": 114,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 4.0,
+      "dur_qn": 1.5,
+      "vel": 122,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 7.5,
+      "dur_qn": 0.45,
+      "vel": 102,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 8.0,
+      "dur_qn": 0.9,
+      "vel": 122,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 108,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 10.0,
+      "dur_qn": 0.45,
+      "vel": 103,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 11.5,
+      "dur_qn": 0.45,
+      "vel": 94,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 12.0,
+      "dur_qn": 0.9,
+      "vel": 120,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 12.0,
+      "dur_qn": 1.5,
+      "vel": 122,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 14.0,
+      "dur_qn": 0.45,
+      "vel": 108,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.5,
+      "dur_qn": 0.45,
+      "vel": 94,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 16.0,
+      "dur_qn": 0.9,
+      "vel": 118,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 16.0,
+      "dur_qn": 1.5,
+      "vel": 115,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 18.0,
+      "dur_qn": 0.45,
+      "vel": 106,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 19.5,
+      "dur_qn": 0.45,
+      "vel": 108,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 20.0,
+      "dur_qn": 0.9,
+      "vel": 122,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 20.0,
+      "dur_qn": 1.5,
+      "vel": 109,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 22.0,
+      "dur_qn": 0.45,
+      "vel": 104,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 24.0,
+      "dur_qn": 0.9,
+      "vel": 122,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 24.0,
+      "dur_qn": 1.5,
+      "vel": 111,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 26.0,
+      "dur_qn": 0.45,
+      "vel": 95,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 28.0,
+      "dur_qn": 0.9,
+      "vel": 122,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 28.0,
+      "dur_qn": 1.5,
+      "vel": 107,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 31.5,
+      "dur_qn": 0.45,
+      "vel": 104,
+      "voice": 2,
+      "art": "staccato"
+    }
+  ]
+}

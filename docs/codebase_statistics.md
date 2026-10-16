@@ -1,30 +1,30 @@
 # REAPER-Notator v2.16 — Codebase & Library Statistics
 
-**Generated:** 2026-10-16 16:49
+**Generated:** 2026-10-16 21:50
 
 ## Executive Summary
 
 - **Version:** v2.16
 - **Total Source Files:** 82 Lua files
-- **Total Line Count:** 63,543
-- **Executable Code Lines:** 53,771 (84.6%)
-- **Comments & Documentation:** 4,428 (7.0%)
-- **Blank / Formatting Lines:** 5,893 (9.3%)
-- **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
+- **Total Line Count:** 63,556
+- **Executable Code Lines:** 53,782 (84.6%)
+- **Comments & Documentation:** 4,431 (7.0%)
+- **Blank / Formatting Lines:** 5,894 (9.3%)
+- **Orchestral Pattern Library:** 1,500 curated JSON patterns across 10 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
 ## 1. Architecture & Module Volume Breakdown
 
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `modules/services` | 32 | 33,673 | 28,747 | 2,083 | 2,983 | 85.4% |
+| `modules/services` | 32 | 33,677 | 28,751 | 2,085 | 2,983 | 85.4% |
 | `modules/rendering` | 7 | 12,574 | 10,737 | 764 | 1,125 | 85.4% |
-| `modules/ui` | 22 | 10,824 | 8,783 | 807 | 1,259 | 81.1% |
+| `modules/ui` | 22 | 10,833 | 8,790 | 808 | 1,260 | 81.1% |
 | `modules` | 3 | 2,396 | 2,101 | 443 | 149 | 87.7% |
 | `modules/input` | 2 | 2,043 | 1,780 | 91 | 174 | 87.1% |
 | `Root` | 1 | 1,259 | 1,026 | 130 | 107 | 81.5% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **82** | **63,543** | **53,771** | **4,428** | **5,893** | **84.6%** |
+| **TOTAL** | **82** | **63,556** | **53,782** | **4,431** | **5,894** | **84.6%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
@@ -65,7 +65,7 @@
 | `modules/services/scale_service.lua` | Scale & Harmony Service - Chord Track harmonic transformations | 835 |
 | `modules/services/slur_service.lua` | Slur Engine - Ergonomic Bezier phrasing curves and keyswitch binding | 2,282 |
 | `modules/services/portamento_service.lua` | Portamento Service - High-resolution micro-tonal pitch-bend transitions | 1,312 |
-| `modules/services/pattern_service.lua` | Pattern Engine - Orchestral motif browser and timeline stamping | 457 |
+| `modules/services/pattern_service.lua` | Pattern Engine - Orchestral motif browser and timeline stamping | 461 |
 | `modules/services/rehearsal_mark_service.lua` | Rehearsal Marks - Custom/auto structural navigation & live markers | 368 |
 | `modules/services/fermata_service.lua` | Fermata Service - Score-wide pause holds and tempo mapping | 232 |
 | `modules/services/pedal_service.lua` | Pedal Service - Classical damper and sustain pedal CC64 lane | 530 |
@@ -82,5 +82,7 @@
 | `06_Woodwinds_Textures` | Woodwind Runs, Flutter-Tongue & Textures | 150 patterns |
 | `07_Cinematic_Piano` | Concert Grand Piano (Arpeggios & Ostinatos) | 150 patterns |
 | `08_Ancient_Harp_Greek_Roman` | Antiquity Concert Harp (Greek & Roman Hymns) | 150 patterns |
-| **TOTAL PATTERNS** | **8 Categories** | **1,200 patterns** |
+| `09_Orchestral_Percussion` | Orchestral & Cinematic Percussion (Timpani, Taiko, Drums) | 150 patterns |
+| `10_Low_Strings_Celli_Basses` | Low Strings Tension & Rhythm (Staccato Celli & Double Basses) | 150 patterns |
+| **TOTAL PATTERNS** | **10 Categories** | **1,500 patterns** |
 

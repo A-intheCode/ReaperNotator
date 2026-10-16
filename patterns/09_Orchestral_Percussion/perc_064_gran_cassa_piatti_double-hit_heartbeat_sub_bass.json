@@ -1,0 +1,110 @@
+{
+  "id": "perc_064_gran_cassa_piatti_double-hit_heartbeat_sub_bass",
+  "name": "Gran Cassa & Piatti - Double-Hit Heartbeat Sub Bass",
+  "category": "09_Orchestral_Percussion",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 72,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 36,
+      "start_qn": 0.0,
+      "dur_qn": 0.9,
+      "vel": 118,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 112,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.0,
+      "dur_qn": 0.45,
+      "vel": 93,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.5,
+      "dur_qn": 0.45,
+      "vel": 91,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 4.0,
+      "dur_qn": 0.9,
+      "vel": 126,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.0,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 7.5,
+      "dur_qn": 0.45,
+      "vel": 100,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 8.0,
+      "dur_qn": 0.9,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 111,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 11.5,
+      "dur_qn": 0.45,
+      "vel": 102,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 12.0,
+      "dur_qn": 0.9,
+      "vel": 118,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.5,
+      "dur_qn": 0.45,
+      "vel": 102,
+      "voice": 2,
+      "art": "staccato"
+    }
+  ]
+}

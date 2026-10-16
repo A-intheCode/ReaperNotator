@@ -1,0 +1,334 @@
+{
+  "id": "perc_138_bodhran_emerald_coast_storm_12_8",
+  "name": "Bodhran - Emerald Coast Storm 12/8",
+  "category": "09_Orchestral_Percussion",
+  "bars": 4,
+  "time_sig": {
+    "num": 12,
+    "denom": 8
+  },
+  "tempo_hint": 130,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 38,
+      "start_qn": 0.0,
+      "dur_qn": 0.35,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 0.5,
+      "dur_qn": 0.2,
+      "vel": 88,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 0.75,
+      "dur_qn": 0.2,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 1.0,
+      "dur_qn": 0.2,
+      "vel": 83,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 1.5,
+      "dur_qn": 0.35,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 2.0,
+      "dur_qn": 0.35,
+      "vel": 114,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 2.5,
+      "dur_qn": 0.2,
+      "vel": 97,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 3.0,
+      "dur_qn": 0.2,
+      "vel": 93,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 3.5,
+      "dur_qn": 0.2,
+      "vel": 98,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 3.75,
+      "dur_qn": 0.2,
+      "vel": 94,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.0,
+      "dur_qn": 0.35,
+      "vel": 108,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 6.5,
+      "dur_qn": 0.2,
+      "vel": 89,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 6.75,
+      "dur_qn": 0.2,
+      "vel": 84,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 7.0,
+      "dur_qn": 0.2,
+      "vel": 89,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 7.5,
+      "dur_qn": 0.35,
+      "vel": 115,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 8.0,
+      "dur_qn": 0.35,
+      "vel": 106,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 8.5,
+      "dur_qn": 0.2,
+      "vel": 86,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 9.0,
+      "dur_qn": 0.2,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 9.5,
+      "dur_qn": 0.2,
+      "vel": 90,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 9.75,
+      "dur_qn": 0.2,
+      "vel": 96,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 12.0,
+      "dur_qn": 0.35,
+      "vel": 106,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 12.5,
+      "dur_qn": 0.2,
+      "vel": 90,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 12.75,
+      "dur_qn": 0.2,
+      "vel": 93,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 13.0,
+      "dur_qn": 0.2,
+      "vel": 86,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 13.5,
+      "dur_qn": 0.35,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 14.0,
+      "dur_qn": 0.35,
+      "vel": 102,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 14.5,
+      "dur_qn": 0.2,
+      "vel": 95,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 15.0,
+      "dur_qn": 0.2,
+      "vel": 89,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 15.5,
+      "dur_qn": 0.2,
+      "vel": 93,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 15.75,
+      "dur_qn": 0.2,
+      "vel": 94,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 18.0,
+      "dur_qn": 0.35,
+      "vel": 114,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 18.5,
+      "dur_qn": 0.2,
+      "vel": 96,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 18.75,
+      "dur_qn": 0.2,
+      "vel": 81,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 19.0,
+      "dur_qn": 0.2,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 19.5,
+      "dur_qn": 0.35,
+      "vel": 112,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 41,
+      "start_qn": 20.0,
+      "dur_qn": 0.35,
+      "vel": 105,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 20.5,
+      "dur_qn": 0.2,
+      "vel": 90,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 21.0,
+      "dur_qn": 0.2,
+      "vel": 85,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 21.5,
+      "dur_qn": 0.2,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 21.75,
+      "dur_qn": 0.2,
+      "vel": 97,
+      "voice": 1,
+      "art": "staccato"
+    }
+  ]
+}

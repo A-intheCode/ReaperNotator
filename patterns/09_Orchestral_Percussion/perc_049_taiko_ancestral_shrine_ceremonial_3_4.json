@@ -1,0 +1,398 @@
+{
+  "id": "perc_049_taiko_ancestral_shrine_ceremonial_3_4",
+  "name": "Taiko - Ancestral Shrine Ceremonial 3/4",
+  "category": "09_Orchestral_Percussion",
+  "bars": 8,
+  "time_sig": {
+    "num": 3,
+    "denom": 4
+  },
+  "tempo_hint": 108,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 36,
+      "start_qn": 0.0,
+      "dur_qn": 0.45,
+      "vel": 120,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 0.0,
+      "dur_qn": 0.2,
+      "vel": 111,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 1.5,
+      "dur_qn": 0.45,
+      "vel": 122,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 1.5,
+      "dur_qn": 0.2,
+      "vel": 106,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 2.0,
+      "dur_qn": 0.2,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 2.5,
+      "dur_qn": 0.2,
+      "vel": 97,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 3.0,
+      "dur_qn": 0.45,
+      "vel": 122,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 3.0,
+      "dur_qn": 0.2,
+      "vel": 108,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 4.5,
+      "dur_qn": 0.45,
+      "vel": 113,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 4.5,
+      "dur_qn": 0.2,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 5.0,
+      "dur_qn": 0.2,
+      "vel": 102,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 5.5,
+      "dur_qn": 0.2,
+      "vel": 95,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 6.0,
+      "dur_qn": 0.45,
+      "vel": 120,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 6.0,
+      "dur_qn": 0.2,
+      "vel": 103,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 7.5,
+      "dur_qn": 0.45,
+      "vel": 124,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 7.5,
+      "dur_qn": 0.2,
+      "vel": 107,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 8.0,
+      "dur_qn": 0.2,
+      "vel": 107,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 8.5,
+      "dur_qn": 0.2,
+      "vel": 100,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 9.0,
+      "dur_qn": 0.45,
+      "vel": 112,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 9.0,
+      "dur_qn": 0.2,
+      "vel": 113,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 10.5,
+      "dur_qn": 0.45,
+      "vel": 120,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 10.5,
+      "dur_qn": 0.2,
+      "vel": 99,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 11.0,
+      "dur_qn": 0.2,
+      "vel": 106,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 11.5,
+      "dur_qn": 0.2,
+      "vel": 85,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 12.0,
+      "dur_qn": 0.45,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 12.0,
+      "dur_qn": 0.2,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 13.5,
+      "dur_qn": 0.45,
+      "vel": 122,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 13.5,
+      "dur_qn": 0.2,
+      "vel": 110,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 14.0,
+      "dur_qn": 0.2,
+      "vel": 113,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 14.5,
+      "dur_qn": 0.2,
+      "vel": 84,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 15.0,
+      "dur_qn": 0.45,
+      "vel": 123,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 15.0,
+      "dur_qn": 0.2,
+      "vel": 103,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 16.5,
+      "dur_qn": 0.45,
+      "vel": 121,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 16.5,
+      "dur_qn": 0.2,
+      "vel": 101,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 17.0,
+      "dur_qn": 0.2,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 17.5,
+      "dur_qn": 0.2,
+      "vel": 92,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 18.0,
+      "dur_qn": 0.45,
+      "vel": 121,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 18.0,
+      "dur_qn": 0.2,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 19.5,
+      "dur_qn": 0.45,
+      "vel": 114,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 19.5,
+      "dur_qn": 0.2,
+      "vel": 105,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 20.0,
+      "dur_qn": 0.2,
+      "vel": 113,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 20.5,
+      "dur_qn": 0.2,
+      "vel": 87,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 21.0,
+      "dur_qn": 0.45,
+      "vel": 125,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 21.0,
+      "dur_qn": 0.2,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 22.5,
+      "dur_qn": 0.45,
+      "vel": 110,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 22.5,
+      "dur_qn": 0.2,
+      "vel": 98,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 43,
+      "start_qn": 23.0,
+      "dur_qn": 0.2,
+      "vel": 103,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 23.5,
+      "dur_qn": 0.2,
+      "vel": 89,
+      "voice": 1,
+      "art": "staccato"
+    }
+  ]
+}

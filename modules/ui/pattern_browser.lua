@@ -104,14 +104,16 @@ local function draw_mini_score(draw_list, pattern, x, y, w, h, font_music, zoom)
     end
     
     local clef_w = math.max(14.0, math.floor(18.0 * z))
-    local clef_font_sz = math.floor(math.max(12.0, math.min(22.0, 16.0 * z)))
+    local clef_font_sz = math.max(10, math.floor(4 * step_y + 0.5))
     
-    -- Upper clef (G-Clef 𝄞) & lower (F-Clef 𝄢)
+    -- Upper clef (G-Clef 𝄞) & lower (F-Clef 𝄢) using SMuFL baseline offset (2.012 * font_sz)
     if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
         local g_char = SMUFL.g_clef or "𝄞"
         local f_char = SMUFL.f_clef or "𝄢"
-        reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, clef_font_sz, x + 5, treble_top_y - (4.5 * z), 0xD0D7DEEE, g_char)
-        reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, clef_font_sz, x + 5, bass_top_y - (1.5 * z), 0xD0D7DEEE, f_char)
+        local g4_y = treble_bot_y - step_y
+        local f3_y = bass_bot_y - (3 * step_y)
+        reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, clef_font_sz, x + 5, g4_y - (clef_font_sz * 2.012), 0xD0D7DEEE, g_char)
+        reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, clef_font_sz, x + 5, f3_y - (clef_font_sz * 2.012), 0xD0D7DEEE, f_char)
     else
         reaper.ImGui_DrawList_AddText(draw_list, x + 6, treble_top_y, 0xD0D7DEEE, "G")
         reaper.ImGui_DrawList_AddText(draw_list, x + 6, bass_top_y, 0xD0D7DEEE, "F")
@@ -158,23 +160,25 @@ local function draw_mini_score(draw_list, pattern, x, y, w, h, font_music, zoom)
         local nx = score_x0 + (n.start_qn / total_qn) * score_w
         local d_val = pitch_to_diatonic(n.pitch)
         
+        local min_ny = y + 3
+        local max_ny = y + h - 3
         local ny, center_y, is_treble
         if n.pitch >= 60 then
             -- Upper staff (Treble, B4 = 41)
             is_treble = true
             center_y = treble_center_y
-            ny = treble_center_y - ((d_val - 41) * half_step_y)
+            ny = math.max(min_ny, math.min(max_ny, treble_center_y - ((d_val - 41) * half_step_y)))
             
             -- Ledger lines
             if ny > treble_bot_y + 1 then
                 local cur_ly = treble_bot_y + step_y
-                while cur_ly <= ny + 1 do
+                while cur_ly <= ny + 1 and cur_ly <= max_ny do
                     reaper.ImGui_DrawList_AddLine(draw_list, nx - 3, cur_ly, nx + 3, cur_ly, line_col, 1.0)
                     cur_ly = cur_ly + step_y
                 end
             elseif ny < treble_top_y - 1 then
                 local cur_ly = treble_top_y - step_y
-                while cur_ly >= ny - 1 do
+                while cur_ly >= ny - 1 and cur_ly >= min_ny do
                     reaper.ImGui_DrawList_AddLine(draw_list, nx - 3, cur_ly, nx + 3, cur_ly, line_col, 1.0)
                     cur_ly = cur_ly - step_y
                 end
@@ -183,18 +187,18 @@ local function draw_mini_score(draw_list, pattern, x, y, w, h, font_music, zoom)
             -- Lower staff (Bass, D3 = 29)
             is_treble = false
             center_y = bass_center_y
-            ny = bass_center_y - ((d_val - 29) * half_step_y)
+            ny = math.max(min_ny, math.min(max_ny, bass_center_y - ((d_val - 29) * half_step_y)))
             
             -- Ledger lines
             if ny < bass_top_y - 1 then
                 local cur_ly = bass_top_y - step_y
-                while cur_ly >= ny - 1 do
+                while cur_ly >= ny - 1 and cur_ly >= min_ny do
                     reaper.ImGui_DrawList_AddLine(draw_list, nx - 3, cur_ly, nx + 3, cur_ly, line_col, 1.0)
                     cur_ly = cur_ly - step_y
                 end
             elseif ny > bass_bot_y + 1 then
                 local cur_ly = bass_bot_y + step_y
-                while cur_ly <= ny + 1 do
+                while cur_ly <= ny + 1 and cur_ly <= max_ny do
                     reaper.ImGui_DrawList_AddLine(draw_list, nx - 3, cur_ly, nx + 3, cur_ly, line_col, 1.0)
                     cur_ly = cur_ly + step_y
                 end
@@ -388,17 +392,17 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
             reaper.ImGui_Button(ctx, "⏳ Downloading...##PatDl", 155, 23)
             reaper.ImGui_PopStyleColor(ctx, 2)
             if reaper.ImGui_IsItemHovered(ctx) then
-                reaper.ImGui_SetTooltip(ctx, "Downloading and installing 1,200 patterns...")
+                reaper.ImGui_SetTooltip(ctx, "Downloading and installing Factory Pattern Library...")
             end
         else
             reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x2E86ABAA)
             reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x33A1DEFF)
-            if reaper.ImGui_Button(ctx, "📥 Download Library (1200)", 185, 23) then
+            if reaper.ImGui_Button(ctx, "📥 Download Factory Library", 185, 23) then
                 PatternService.start_factory_download(state)
             end
             reaper.ImGui_PopStyleColor(ctx, 2)
             if reaper.ImGui_IsItemHovered(ctx) then
-                reaper.ImGui_SetTooltip(ctx, "Download & extract 1,200 curated factory patterns (Ancient Harp, Strings, Brass, Piano, Woodwinds)")
+                reaper.ImGui_SetTooltip(ctx, "Download & extract the curated Factory Pattern Library (Strings, Low Strings, Percussion, Brass, Piano, Woodwinds, Harp)")
             end
         end
         
@@ -514,23 +518,23 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                         
                         reaper.ImGui_SetCursorPosY(ctx, 42)
                         reaper.ImGui_SetCursorPosX(ctx, 20)
-                        reaper.ImGui_TextColored(ctx, 0xCCD6F6FF, "The Factory Library contains 1,200 curated orchestral, ancient harp & cinematic patterns:")
+                        reaper.ImGui_TextColored(ctx, 0xCCD6F6FF, "The Factory Library contains curated orchestral, percussion, low strings & ancient harp patterns:")
                         
                         reaper.ImGui_SetCursorPosY(ctx, 64)
                         reaper.ImGui_SetCursorPosX(ctx, 28)
-                        reaper.ImGui_TextColored(ctx, 0x8892B0FF, "• 150x Ancient Greek & Roman Harp (Dorian, Phrygian, Lydian, Hymns & Processions)\n• 150x Cinematic Piano & Arpeggios\n• 300x Strings (Staccato, Ostinatos & Pizzicato)\n• 150x Epic Brass & Horns\n• 150x Woodwinds & Textures\n• 300x Cinematic & Counter Melodies")
+                        reaper.ImGui_TextColored(ctx, 0x8892B0FF, "• Orchestral & Cinematic Percussion (Timpani, Taiko, Gran Cassa, Snare, Toms, Anvil, Frame Drums)\n• Low Strings Tension & Rhythm (Staccato Celli & Double Basses, Divisi-Ready Motors)\n• Strings (Staccato, Ostinatos & Pizzicato) & Epic Brass\n• Woodwinds, Cinematic Piano, Themes & Ancient Greek/Roman Harp")
                         
                         reaper.ImGui_SetCursorPosY(ctx, 175)
                         reaper.ImGui_SetCursorPosX(ctx, 20)
                         
                         if PatternService.is_downloading then
                             reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0xD35400FF)
-                            reaper.ImGui_Button(ctx, "⏳ Downloading and extracting 1,200 patterns... please wait", 400, 32)
+                            reaper.ImGui_Button(ctx, "⏳ Downloading and extracting Factory Library... please wait", 400, 32)
                             reaper.ImGui_PopStyleColor(ctx, 1)
                         else
                             reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x27AE60EE)
                             reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2ECC71FF)
-                            if reaper.ImGui_Button(ctx, "📥 1-Click Install Factory Patterns (1,200 Patterns)", 400, 32) then
+                            if reaper.ImGui_Button(ctx, "📥 Download Factory Library", 320, 32) then
                                 PatternService.start_factory_download(state)
                             end
                             reaper.ImGui_PopStyleColor(ctx, 2)
@@ -552,11 +556,10 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                 -- Responsive grid calculation
                 local zoom = state.pattern_card_zoom or 1.0
                 local card_w = math.floor(250 * zoom)
-                local preview_h = math.floor(62 * zoom)
-                local preview_w = card_w - 14
+                local preview_w = card_w - 12
                 local btn_h = math.max(18, math.floor(21 * math.min(1.0, zoom)))
                 local play_btn_w = math.max(52, math.floor(66 * zoom))
-                local card_h = math.floor(168 * zoom)
+                local card_h = math.floor(152 * zoom)
                 local card_spacing = 8
                 local cols = math.max(1, math.floor(grid_w / (card_w + card_spacing)))
                 
@@ -583,7 +586,6 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                     
                     if reaper.ImGui_BeginChild(ctx, card_id, card_w, card_h, child_border, card_flags) then
                         local dl = reaper.ImGui_GetWindowDrawList(ctx)
-                        local cp_x, cp_y = reaper.ImGui_GetCursorScreenPos(ctx)
                         
                         -- Title line & badges
                         local max_chars = math.max(14, math.floor(24 * zoom))
@@ -599,14 +601,19 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                         local meta_txt = string.format("%d Bars | %d BPM | %d/%d", pat.bars or 4, pat.tempo_hint or 120, ts.num, ts.denom)
                         reaper.ImGui_TextColored(ctx, 0x8892B0FF, meta_txt)
                         
+                        -- Calculate dynamic preview height so the Play button is anchored flush at the bottom edge
+                        local cur_y = reaper.ImGui_GetCursorPosY(ctx)
+                        local bottom_row_y = card_h - btn_h - 5
+                        local dyn_preview_h = math.max(math.floor(48 * zoom), bottom_row_y - cur_y - 5)
+                        
                         -- Mini-score preview
                         local sc_x, sc_y = reaper.ImGui_GetCursorScreenPos(ctx)
-                        draw_mini_score(dl, pat, sc_x, sc_y, preview_w, preview_h, font_music, zoom)
+                        draw_mini_score(dl, pat, sc_x, sc_y, preview_w, dyn_preview_h, font_music, zoom)
                         
                         local combo_just_used = (reaper.time_precise() - (state._pattern_combo_active_time or 0)) < 0.25
                         
                         -- Invisible click/drag area over preview
-                        reaper.ImGui_InvisibleButton(ctx, "drag_zone_" .. pat.id, preview_w, preview_h)
+                        reaper.ImGui_InvisibleButton(ctx, "drag_zone_" .. pat.id, preview_w, dyn_preview_h)
                         
                         -- Drag & Drop Source
                         if not combo_just_used and reaper.ImGui_BeginDragDropSource(ctx) then
@@ -622,7 +629,8 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                             reaper.ImGui_SetTooltip(ctx, "Left-click and drag into score canvas!")
                         end
                         
-                        -- Bottom: action row (Play/Stop & drag hint)
+                        -- Bottom: action row anchored flush to the bottom edge of the card
+                        reaper.ImGui_SetCursorPosY(ctx, bottom_row_y)
                         local is_playing = (PatternService.active_preview and PatternService.active_preview.pattern and PatternService.active_preview.pattern.id == pat.id)
                         local btn_label = is_playing and "■ Stop" or "▶ Play"
                         local btn_col = is_playing and 0xE74C3CAA or 0x27AE60AA
@@ -648,6 +656,7 @@ function PatternBrowser.render(ctx, state, midi_service, audio_preview, width, h
                         reaper.ImGui_PopStyleColor(ctx, 2)
                         
                         reaper.ImGui_SameLine(ctx, 0, 8)
+                        reaper.ImGui_SetCursorPosY(ctx, bottom_row_y + math.max(0, math.floor((btn_h - 15) * 0.5)))
                         reaper.ImGui_TextColored(ctx, 0x6E7681FF, "⇄ Drag")
                         if reaper.ImGui_IsItemHovered(ctx) then
                             reaper.ImGui_SetTooltip(ctx, "Click and drag this pattern into score canvas")

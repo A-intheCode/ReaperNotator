@@ -1,0 +1,126 @@
+{
+  "id": "perc_069_gran_cassa_piatti_suspended_cymbal_roll_to_slam",
+  "name": "Gran Cassa & Piatti - Suspended Cymbal Roll to Slam",
+  "category": "09_Orchestral_Percussion",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 100,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 36,
+      "start_qn": 0.0,
+      "dur_qn": 0.9,
+      "vel": 119,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 0.0,
+      "dur_qn": 1.5,
+      "vel": 107,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 2.0,
+      "dur_qn": 0.45,
+      "vel": 101,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 3.5,
+      "dur_qn": 0.45,
+      "vel": 99,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 4.0,
+      "dur_qn": 0.9,
+      "vel": 120,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 4.0,
+      "dur_qn": 1.5,
+      "vel": 120,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 6.0,
+      "dur_qn": 0.45,
+      "vel": 99,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 8.0,
+      "dur_qn": 0.9,
+      "vel": 118,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 8.0,
+      "dur_qn": 1.5,
+      "vel": 113,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 10.0,
+      "dur_qn": 0.45,
+      "vel": 107,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 11.5,
+      "dur_qn": 0.45,
+      "vel": 95,
+      "voice": 2,
+      "art": "staccato"
+    },
+    {
+      "pitch": 36,
+      "start_qn": 12.0,
+      "dur_qn": 0.9,
+      "vel": 126,
+      "voice": 2,
+      "art": "accent"
+    },
+    {
+      "pitch": 48,
+      "start_qn": 12.0,
+      "dur_qn": 1.5,
+      "vel": 108,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 38,
+      "start_qn": 15.5,
+      "dur_qn": 0.45,
+      "vel": 105,
+      "voice": 2,
+      "art": "staccato"
+    }
+  ]
+}

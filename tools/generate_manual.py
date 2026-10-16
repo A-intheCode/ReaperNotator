@@ -545,8 +545,8 @@ MANUAL_DATA = [
         "title": "Orchestral Pattern Browser & 1-Click Library",
         "sections": [
             {
-                "heading": "10.1 Curated 1,200 Pattern Factory Library",
-                "text": "Functions: Slide-out pattern browser organized into 8 orchestral categories (1,200 factory patterns total):\n"
+                "heading": "10.1 Curated 1,500 Pattern Factory Library",
+                "text": "Functions: Slide-out pattern browser organized into 10 orchestral categories (1,500 factory patterns total):\n"
                         "- 1. Strings Staccato (150x driving cinema pulses, ostinatos)\n"
                         "- 2. Strings Pizzicato (150x delicate plucks, agile grooves)\n"
                         "- 3. Brass Blockbuster (150x epic horn fanfares, low brass power)\n"
@@ -555,7 +555,9 @@ MANUAL_DATA = [
                         "- 6. Woodwinds Textures (150x runs, fluttering textures)\n"
                         "- 7. Cinematic Piano (150x flowing arpeggios, grand staff ballads)\n"
                         "- 8. Ancient Greek & Roman Harp (150x modal hymns, Delphic paeans, Sapphic strophes, Dorian/Phrygian/Lydian processions)\n"
-                        "- 9. Custom User Patterns (user-captured motifs and items)"
+                        "- 9. Orchestral & Cinematic Percussion (150x Timpani, Taiko, Gran Cassa & Piatti, Snare Drum, Cinematic Toms, Anvil & Metal, Frame Drums, Mallets)\n"
+                        "- 10. Low Strings - Celli & Double Bass Tension (150x pure rhythm, pedal-point motors, half-step thriller ostinatos, tritone dissonance, odd-meter chases, Divisi-ready Celli+Bass grooves)\n"
+                        "- 11. Custom User Patterns (user-captured motifs and items)"
             },
             {
                 "heading": "10.2 One-Click Insertion, Drag & Drop & Audio Audition",
@@ -566,8 +568,8 @@ MANUAL_DATA = [
             },
             {
                 "heading": "10.3 In-App 1-Click Factory Library Downloader",
-                "text": "Functions: Integrated one-click downloader built into the browser toolbar and empty-state banner.\n"
-                        "- 1-Click Install: Downloads and unpacks the entire 1,200 pattern library (820 KB compressed) in one second without leaving REAPER.\n"
+                "text": "Functions: Integrated one-click 'Download Factory Library' button built into the browser toolbar and empty-state banner.\n"
+                        "- 1-Click Install: Downloads and unpacks the entire 1,500 pattern library (~1 MB compressed) in one second without leaving REAPER.\n"
                         "- Offline Archive Support: Automatically unpacks local patterns.zip on first launch if present."
             }
         ]

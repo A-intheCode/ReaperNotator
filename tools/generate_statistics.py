@@ -204,6 +204,8 @@ with open(MD_PATH, 'w', encoding='utf-8') as md:
         "06_Woodwinds_Textures": "Woodwind Runs, Flutter-Tongue & Textures",
         "07_Cinematic_Piano": "Concert Grand Piano (Arpeggios & Ostinatos)",
         "08_Ancient_Harp_Greek_Roman": "Antiquity Concert Harp (Greek & Roman Hymns)",
+        "09_Orchestral_Percussion": "Orchestral & Cinematic Percussion (Timpani, Taiko, Drums)",
+        "10_Low_Strings_Celli_Basses": "Low Strings Tension & Rhythm (Staccato Celli & Double Basses)",
     }
     for cat, cnt in sorted(pattern_stats.items()):
         label = category_labels.get(cat, cat)

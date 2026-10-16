@@ -1,0 +1,230 @@
+{
+  "id": "perc_023_timpani_suspense_heartbeat_low_d2_pulse",
+  "name": "Timpani - Suspense Heartbeat Low D2 Pulse",
+  "category": "09_Orchestral_Percussion",
+  "bars": 4,
+  "time_sig": {
+    "num": 4,
+    "denom": 4
+  },
+  "tempo_hint": 78,
+  "clef": "bass",
+  "notes": [
+    {
+      "pitch": 45,
+      "start_qn": 0.0,
+      "dur_qn": 0.45,
+      "vel": 116,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 1.5,
+      "dur_qn": 0.35,
+      "vel": 78,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 2.0,
+      "dur_qn": 0.4,
+      "vel": 101,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 2.5,
+      "dur_qn": 0.35,
+      "vel": 82,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 3.0,
+      "dur_qn": 0.35,
+      "vel": 96,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 3.5,
+      "dur_qn": 0.35,
+      "vel": 84,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 4.0,
+      "dur_qn": 0.45,
+      "vel": 118,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 4.5,
+      "dur_qn": 0.35,
+      "vel": 80,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 5.0,
+      "dur_qn": 0.35,
+      "vel": 94,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 5.5,
+      "dur_qn": 0.35,
+      "vel": 85,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 6.0,
+      "dur_qn": 0.4,
+      "vel": 106,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 7.0,
+      "dur_qn": 0.2,
+      "vel": 112,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 7.25,
+      "dur_qn": 0.2,
+      "vel": 112,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 7.5,
+      "dur_qn": 0.2,
+      "vel": 117,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 7.75,
+      "dur_qn": 0.2,
+      "vel": 117,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 8.0,
+      "dur_qn": 0.45,
+      "vel": 114,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 45,
+      "start_qn": 9.5,
+      "dur_qn": 0.35,
+      "vel": 91,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 10.0,
+      "dur_qn": 0.4,
+      "vel": 99,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 11.0,
+      "dur_qn": 0.35,
+      "vel": 81,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 12.0,
+      "dur_qn": 0.45,
+      "vel": 122,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 12.5,
+      "dur_qn": 0.35,
+      "vel": 89,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 50,
+      "start_qn": 14.0,
+      "dur_qn": 0.4,
+      "vel": 101,
+      "voice": 1,
+      "art": "accent"
+    },
+    {
+      "pitch": 57,
+      "start_qn": 14.5,
+      "dur_qn": 0.35,
+      "vel": 95,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 15.0,
+      "dur_qn": 0.2,
+      "vel": 112,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 15.25,
+      "dur_qn": 0.2,
+      "vel": 112,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 15.5,
+      "dur_qn": 0.2,
+      "vel": 117,
+      "voice": 1,
+      "art": "staccato"
+    },
+    {
+      "pitch": 52,
+      "start_qn": 15.75,
+      "dur_qn": 0.2,
+      "vel": 117,
+      "voice": 1,
+      "art": "staccato"
+    }
+  ]
+}

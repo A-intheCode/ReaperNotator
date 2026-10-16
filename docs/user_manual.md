@@ -516,9 +516,9 @@ DAW Effect: Notes remain in their natural visual position on the staff for effor
 
 ## Chapter 10: Orchestral Pattern Browser & 1-Click Library
 
-### 10.1 Curated 1,200 Pattern Factory Library
+### 10.1 Curated 1,500 Pattern Factory Library
 
-Functions: Slide-out pattern browser organized into 8 orchestral categories (1,200 factory patterns total):
+Functions: Slide-out pattern browser organized into 10 orchestral categories (1,500 factory patterns total):
 - 1. Strings Staccato (150x driving cinema pulses, ostinatos)
 - 2. Strings Pizzicato (150x delicate plucks, agile grooves)
 - 3. Brass Blockbuster (150x epic horn fanfares, low brass power)
@@ -527,7 +527,9 @@ Functions: Slide-out pattern browser organized into 8 orchestral categories (1,2
 - 6. Woodwinds Textures (150x runs, fluttering textures)
 - 7. Cinematic Piano (150x flowing arpeggios, grand staff ballads)
 - 8. Ancient Greek & Roman Harp (150x modal hymns, Delphic paeans, Sapphic strophes, Dorian/Phrygian/Lydian processions)
-- 9. Custom User Patterns (user-captured motifs and items)
+- 9. Orchestral & Cinematic Percussion (150x Timpani, Taiko, Gran Cassa & Piatti, Snare Drum, Cinematic Toms, Anvil & Metal, Frame Drums, Mallets)
+- 10. Low Strings - Celli & Double Bass Tension (150x pure rhythm, pedal-point motors, half-step thriller ostinatos, tritone dissonance, odd-meter chases, Divisi-ready Celli+Bass grooves)
+- 11. Custom User Patterns (user-captured motifs and items)
 
 ### 10.2 One-Click Insertion, Drag & Drop & Audio Audition
 
@@ -538,8 +540,8 @@ Functions:
 
 ### 10.3 In-App 1-Click Factory Library Downloader
 
-Functions: Integrated one-click downloader built into the browser toolbar and empty-state banner.
-- 1-Click Install: Downloads and unpacks the entire 1,200 pattern library (820 KB compressed) in one second without leaving REAPER.
+Functions: Integrated one-click 'Download Factory Library' button built into the browser toolbar and empty-state banner.
+- 1-Click Install: Downloads and unpacks the entire 1,500 pattern library (~1 MB compressed) in one second without leaving REAPER.
 - Offline Archive Support: Automatically unpacks local patterns.zip on first launch if present.
 
 ---

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 REAPER-Notator - Pattern Library Packager
-Compresses all 1200 orchestral & ancient harp patterns into patterns.zip
+Compresses all 1500 orchestral, percussion, low strings & ancient harp patterns into patterns.zip
 for instant 1-click in-app download and distribution.
 """
 

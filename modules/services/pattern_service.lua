@@ -26,10 +26,14 @@ PatternService.CATEGORY_META = {
     ["06_Woodwinds_Textures"] = { label = "🌪 Woodwinds & Textures", order = 6 },
     ["07_Cinematic_Piano"] = { label = "🎹 Cinematic Piano & Arpeggios", order = 7 },
     ["08_Ancient_Harp_Greek_Roman"] = { label = "🏛 Harp - Ancient Greek & Roman", order = 8 },
-    ["09_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 9 },
-    ["08_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 9 }, -- Fallback
-    ["07_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 9 }, -- Fallback
-    ["06_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 9 }  -- Fallback
+    ["09_Orchestral_Percussion"] = { label = "🥁 Percussion - Timpani, Taiko & Drums", order = 9 },
+    ["10_Low_Strings_Celli_Basses"] = { label = "🎻 Low Strings - Celli & Bass Tension", order = 10 },
+    ["11_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 11 },
+    ["10_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 11 }, -- Fallback
+    ["09_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 11 }, -- Fallback
+    ["08_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 11 }, -- Fallback
+    ["07_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 11 }, -- Fallback
+    ["06_Eigene_Patterns"] = { label = "⭐ User Patterns", order = 11 }  -- Fallback
 }
 
 --- Determines absolute base path of patterns directory
@@ -548,7 +552,7 @@ function PatternService.start_factory_download(state)
         local local_zip1 = (s_dir .. "/patterns.zip"):gsub("/", "\\")
         local local_zip2 = (s_dir .. "/../patterns.zip"):gsub("/", "\\")
         
-        local ps_script = string.format([[$ProgressPreference = 'SilentlyContinue'; $statusFile = '%s'; $targetParent = '%s'; $localZip1 = '%s'; $localZip2 = '%s'; try { if (Test-Path $localZip1) { $srcZip = $localZip1 } elseif (Test-Path $localZip2) { $srcZip = $localZip2 } else { $srcZip = Join-Path $env:TEMP 'notator_patterns.zip'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip' -OutFile $srcZip; } Expand-Archive -Path $srcZip -DestinationPath $targetParent -Force; Set-Content -Path $statusFile -Value 'OK:1200'; } catch { Set-Content -Path $statusFile -Value ('ERROR:' + $_.Exception.Message); }]],
+        local ps_script = string.format([[$ProgressPreference = 'SilentlyContinue'; $statusFile = '%s'; $targetParent = '%s'; $localZip1 = '%s'; $localZip2 = '%s'; try { if (Test-Path $localZip1) { $srcZip = $localZip1 } elseif (Test-Path $localZip2) { $srcZip = $localZip2 } else { $srcZip = Join-Path $env:TEMP 'notator_patterns.zip'; Invoke-WebRequest -Uri 'https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip' -OutFile $srcZip; } Expand-Archive -Path $srcZip -DestinationPath $targetParent -Force; Set-Content -Path $statusFile -Value 'OK'; } catch { Set-Content -Path $statusFile -Value ('ERROR:' + $_.Exception.Message); }]],
             status_path, target_parent, local_zip1, local_zip2)
             
         -- Execute via background PowerShell without command prompt window
@@ -561,7 +565,7 @@ function PatternService.start_factory_download(state)
         local local_zip1 = s_dir .. "/patterns.zip"
         local local_zip2 = s_dir .. "/../patterns.zip"
         
-        local sh_script = string.format([[STATUS='%s'; TARGET='%s'; ZIP='/tmp/notator_patterns.zip'; if [ -f '%s' ]; then unzip -o '%s' -d "$TARGET" && echo "OK:1200" > "$STATUS"; elif [ -f '%s' ]; then unzip -o '%s' -d "$TARGET" && echo "OK:1200" > "$STATUS"; else curl -L 'https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip' -o "$ZIP" && unzip -o "$ZIP" -d "$TARGET" && rm -f "$ZIP" && echo "OK:1200" > "$STATUS" || echo "ERROR:Download failed" > "$STATUS"; fi]],
+        local sh_script = string.format([[STATUS='%s'; TARGET='%s'; ZIP='/tmp/notator_patterns.zip'; if [ -f '%s' ]; then unzip -o '%s' -d "$TARGET" && echo "OK" > "$STATUS"; elif [ -f '%s' ]; then unzip -o '%s' -d "$TARGET" && echo "OK" > "$STATUS"; else curl -L 'https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip' -o "$ZIP" && unzip -o "$ZIP" -d "$TARGET" && rm -f "$ZIP" && echo "OK" > "$STATUS" || echo "ERROR:Download failed" > "$STATUS"; fi]],
             status_path, target_parent, local_zip1, local_zip1, local_zip2, local_zip2)
             
         cmd = string.format('sh -c "%s" &', sh_script:gsub('"', '\\"'))
@@ -589,7 +593,7 @@ function PatternService.check_download_progress(state)
             PatternService.download_error = nil
             PatternService.scan_library()
             if state then
-                state.status_msg = "Successfully installed 1,200 Factory Patterns!"
+                state.status_msg = string.format("Successfully installed Factory Pattern Library (%d patterns)!", #PatternService.patterns)
             end
         else
             PatternService.download_status = "error"
