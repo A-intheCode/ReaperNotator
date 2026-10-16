@@ -2,7 +2,7 @@
 -- REAPER Native Notator - Auto-Generated Module: MelodyStyleCorpus
 -- Trained via tools/train_melody_style_models.py on the 1,500-pattern library
 -- Contains empirical Markov interval weights, gap-fill ratios, rhythm cells,
--- and cadential approach figures for 6 musical style profiles.
+-- cadential approaches, and higher-order compositional rules for 10 styles.
 -- ==============================================================================
 
 local MelodyStyleCorpus = {}
@@ -10,7 +10,7 @@ local MelodyStyleCorpus = {}
 MelodyStyleCorpus.STYLES = {
     [1] = {
         id = "cinematic",
-        name = "🎬 Cinematic / Epic (Film Score)",
+        name = "🎬 Cinematic / Epic (Blockbuster Score)",
         default_scale = "aeolian",
         trained_scores = 300,
         trained_notes = 4599,
@@ -19,7 +19,12 @@ MelodyStyleCorpus.STYLES = {
         staccato_prob = 0.08,
         accent_prob = 0.3,
         anticipation_prob = 0.15,
-        interval_weights = { [-12] = 0.0275, [-11] = 0.0116, [-10] = 0.0174, [-9] = 0.0119, [-8] = 0.0385, [-7] = 0.067, [-6] = 0.0141, [-5] = 0.0721, [-4] = 0.0813, [-3] = 0.1253, [-2] = 0.2055, [-1] = 0.105, [0] = 0.1222, [1] = 0.1049, [2] = 0.1844, [3] = 0.1163, [4] = 0.0998, [5] = 0.1064, [6] = 0.0133, [7] = 0.1292, [8] = 0.0496, [9] = 0.0389, [10] = 0.011, [11] = 0.011, [12] = 0.0442 },
+        triad_fanfare_bonus = 0.35,
+        pivot_return_bonus = 0.15,
+        sequence_repeat_bonus = 0.25,
+        avoid_semitone_lead = false,
+        modal_color_semitones = { 6, 10 },
+        interval_weights = { [-12] = 0.03, [-11] = 0.0126, [-10] = 0.0177, [-9] = 0.0128, [-8] = 0.042, [-7] = 0.0729, [-6] = 0.0147, [-5] = 0.0786, [-4] = 0.0845, [-3] = 0.1269, [-2] = 0.2094, [-1] = 0.1112, [0] = 0.1219, [1] = 0.1088, [2] = 0.1884, [3] = 0.119, [4] = 0.101, [5] = 0.1124, [6] = 0.0141, [7] = 0.1348, [8] = 0.0541, [9] = 0.0424, [10] = 0.012, [11] = 0.012, [12] = 0.0482 },
         rhythm_cells = {
             sparse = { { 2.0, 2.0 }, { 3.0, 1.0 }, { 1.5, 0.5, 2.0 }, { 2.0, 1.5, 0.5 } },
             medium = { { 1.5, 0.5, 1.0, 1.0 }, { 1.0, 1.0, 1.5, 0.5 }, { 1.0, 0.5, 0.5, 1.0, 1.0 }, { 2.0, 1.0, 0.5, 0.5 } },
@@ -28,8 +33,104 @@ MelodyStyleCorpus.STYLES = {
         cadence_approaches = { { -1 }, { -2, -1 }, { 1 }, { -5 }, { 2, -1 } },
     },
     [2] = {
+        id = "film_style_1",
+        name = "🎺 Film Composer Style 1 (Heroic Symphonic Fanfare)",
+        default_scale = "lydian",
+        trained_scores = 450,
+        trained_notes = 7715,
+        gap_fill_strength = 0.767,
+        legato_ratio = 0.94,
+        staccato_prob = 0.14,
+        accent_prob = 0.42,
+        anticipation_prob = 0.18,
+        triad_fanfare_bonus = 0.95,
+        pivot_return_bonus = 0.2,
+        sequence_repeat_bonus = 0.4,
+        avoid_semitone_lead = false,
+        modal_color_semitones = { 6, 10 },
+        interval_weights = { [-12] = 0.054, [-11] = 0.0123, [-10] = 0.0155, [-9] = 0.0485, [-8] = 0.012, [-7] = 0.1085, [-6] = 0.0438, [-5] = 0.1086, [-4] = 0.0865, [-3] = 0.1009, [-2] = 0.2318, [-1] = 0.1527, [0] = 0.0893, [1] = 0.1237, [2] = 0.1896, [3] = 0.1302, [4] = 0.1341, [5] = 0.178, [6] = 0.0553, [7] = 0.2104, [8] = 0.0121, [9] = 0.0842, [10] = 0.012, [11] = 0.012, [12] = 0.0961 },
+        rhythm_cells = {
+            sparse = { { 1.5, 0.5, 2.0 }, { 2.0, 0.75, 0.25, 1.0 }, { 1.0, 2.0, 1.0 }, { 3.0, 0.33, 0.33, 0.34 } },
+            medium = { { 0.75, 0.25, 1.0, 1.0, 1.0 }, { 1.0, 0.33, 0.33, 0.34, 1.0, 1.0 }, { 1.5, 0.5, 0.75, 0.25, 1.0 }, { 1.0, 0.5, 0.5, 1.5, 0.5 } },
+            dense = { { 0.33, 0.33, 0.34, 0.75, 0.25, 0.5, 0.5, 1.0 }, { 0.75, 0.25, 0.5, 0.5, 0.33, 0.33, 0.34, 1.0 }, { 0.5, 0.25, 0.25, 0.5, 0.5, 0.75, 0.25, 1.0 } },
+        },
+        cadence_approaches = { { -5 }, { -1 }, { 2, -1 }, { -2, -1 }, { 5 } },
+    },
+    [3] = {
+        id = "film_style_2",
+        name = "🌙 Film Composer Style 2 (Mysterious Pulse & Lyrical Suspense)",
+        default_scale = "dorian",
+        trained_scores = 450,
+        trained_notes = 15158,
+        gap_fill_strength = 0.693,
+        legato_ratio = 0.95,
+        staccato_prob = 0.12,
+        accent_prob = 0.22,
+        anticipation_prob = 0.32,
+        triad_fanfare_bonus = 0.1,
+        pivot_return_bonus = 0.92,
+        sequence_repeat_bonus = 0.35,
+        avoid_semitone_lead = false,
+        modal_color_semitones = { 8, 9 },
+        interval_weights = { [-12] = 0.0248, [-11] = 0.0125, [-10] = 0.0127, [-9] = 0.059, [-8] = 0.0914, [-7] = 0.0833, [-6] = 0.0154, [-5] = 0.0883, [-4] = 0.0609, [-3] = 0.1685, [-2] = 0.1951, [-1] = 0.204, [0] = 0.0954, [1] = 0.2147, [2] = 0.2136, [3] = 0.209, [4] = 0.0984, [5] = 0.0891, [6] = 0.0128, [7] = 0.1065, [8] = 0.1323, [9] = 0.0721, [10] = 0.012, [11] = 0.012, [12] = 0.0121 },
+        rhythm_cells = {
+            sparse = { { 1.5, 1.5, 1.0 }, { 2.0, 0.5, 1.5 }, { 1.0, 1.5, 1.5 }, { 2.5, 0.5, 1.0 } },
+            medium = { { 0.5, 0.5, 1.5, 0.5, 1.0 }, { 1.0, 0.5, 1.0, 0.5, 1.0 }, { 1.5, 0.5, 0.5, 0.5, 1.0 }, { 0.5, 1.0, 0.5, 1.0, 1.0 } },
+            dense = { { 0.5, 0.5, 0.5, 0.5, 0.5, 0.5, 1.0 }, { 0.5, 0.25, 0.25, 0.5, 0.5, 0.5, 0.5, 1.0 }, { 0.5, 0.5, 0.5, 1.0, 0.5, 0.5, 0.5 } },
+        },
+        cadence_approaches = { { 1 }, { -1 }, { -3, 1 }, { 2, -1 }, { -2, 1 } },
+    },
+    [4] = {
+        id = "film_style_3",
+        name = "🔥 Film Composer Style 3 (Kinetic Action & Propulsive Hybrid)",
+        default_scale = "aeolian",
+        trained_scores = 450,
+        trained_notes = 20525,
+        gap_fill_strength = 0.739,
+        legato_ratio = 0.74,
+        staccato_prob = 0.48,
+        accent_prob = 0.52,
+        anticipation_prob = 0.38,
+        triad_fanfare_bonus = 0.45,
+        pivot_return_bonus = 0.4,
+        sequence_repeat_bonus = 0.95,
+        avoid_semitone_lead = false,
+        modal_color_semitones = { 3, 7, 10 },
+        interval_weights = { [-12] = 0.0664, [-11] = 0.0122, [-10] = 0.0614, [-9] = 0.0121, [-8] = 0.0122, [-7] = 0.1306, [-6] = 0.0223, [-5] = 0.1252, [-4] = 0.0645, [-3] = 0.1403, [-2] = 0.161, [-1] = 0.1314, [0] = 0.3031, [1] = 0.1181, [2] = 0.1562, [3] = 0.1562, [4] = 0.0639, [5] = 0.1508, [6] = 0.0193, [7] = 0.168, [8] = 0.0122, [9] = 0.0121, [10] = 0.0743, [11] = 0.014, [12] = 0.0902 },
+        rhythm_cells = {
+            sparse = { { 1.5, 1.5, 1.0 }, { 1.0, 1.0, 1.5, 0.5 }, { 0.75, 0.75, 0.5, 2.0 } },
+            medium = { { 0.75, 0.75, 0.5, 0.75, 0.75, 0.5 }, { 0.5, 0.5, 0.5, 0.5, 0.75, 0.75, 0.5 }, { 1.0, 0.5, 0.5, 0.5, 0.5, 1.0 } },
+            dense = { { 0.5, 0.25, 0.25, 0.5, 0.25, 0.25, 0.5, 0.5, 0.5, 0.5 }, { 0.25, 0.25, 0.5, 0.5, 0.25, 0.25, 0.5, 0.5, 0.5, 0.5 }, { 0.75, 0.25, 0.5, 0.5, 0.25, 0.25, 0.5, 0.5, 0.5 } },
+        },
+        cadence_approaches = { { -2 }, { -1 }, { 0, -2 }, { -3, -2 }, { 2, 0 } },
+    },
+    [5] = {
+        id = "film_style_4",
+        name = "🌊 Film Composer Style 4 (Pastoral & Lyrical Epic Romance)",
+        default_scale = "mixolydian",
+        trained_scores = 450,
+        trained_notes = 18579,
+        gap_fill_strength = 0.736,
+        legato_ratio = 0.98,
+        staccato_prob = 0.03,
+        accent_prob = 0.2,
+        anticipation_prob = 0.22,
+        triad_fanfare_bonus = 0.55,
+        pivot_return_bonus = 0.3,
+        sequence_repeat_bonus = 0.3,
+        avoid_semitone_lead = true,
+        modal_color_semitones = { 2, 7, 9, 10 },
+        interval_weights = { [-12] = 0.0612, [-11] = 0.0154, [-10] = 0.0257, [-9] = 0.088, [-8] = 0.0159, [-7] = 0.1292, [-6] = 0.0135, [-5] = 0.1349, [-4] = 0.0973, [-3] = 0.1535, [-2] = 0.2417, [-1] = 0.0437, [0] = 0.0499, [1] = 0.0731, [2] = 0.2911, [3] = 0.175, [4] = 0.1391, [5] = 0.1723, [6] = 0.016, [7] = 0.1778, [8] = 0.0134, [9] = 0.1105, [10] = 0.012, [11] = 0.012, [12] = 0.0756 },
+        rhythm_cells = {
+            sparse = { { 2.0, 1.5, 0.5 }, { 1.5, 0.25, 0.25, 2.0 }, { 2.5, 0.5, 1.0 }, { 3.0, 0.5, 0.5 } },
+            medium = { { 1.5, 0.25, 0.25, 1.0, 1.0 }, { 1.0, 1.5, 0.5, 1.0 }, { 1.5, 0.5, 1.0, 0.5, 0.5 }, { 2.0, 0.5, 0.5, 1.0 } },
+            dense = { { 0.5, 0.25, 0.25, 1.0, 0.5, 0.5, 1.0 }, { 1.0, 0.25, 0.25, 0.5, 0.5, 0.5, 1.0 }, { 0.75, 0.25, 0.5, 0.5, 0.5, 0.5, 1.0 } },
+        },
+        cadence_approaches = { { -2 }, { 2 }, { -3, -2 }, { 3, 2 }, { -5, -2 } },
+    },
+    [6] = {
         id = "classical",
-        name = "🎻 Classical / Baroque (Mozart / Bach)",
+        name = "🎻 Classical / Baroque (Chamber & Counterpoint)",
         default_scale = "major",
         trained_scores = 300,
         trained_notes = 7876,
@@ -38,7 +139,12 @@ MelodyStyleCorpus.STYLES = {
         staccato_prob = 0.22,
         accent_prob = 0.2,
         anticipation_prob = 0.08,
-        interval_weights = { [-12] = 0.0256, [-11] = 0.0117, [-10] = 0.0125, [-9] = 0.0215, [-8] = 0.0132, [-7] = 0.0495, [-6] = 0.0178, [-5] = 0.0693, [-4] = 0.0922, [-3] = 0.106, [-2] = 0.2211, [-1] = 0.1602, [0] = 0.0614, [1] = 0.1374, [2] = 0.1942, [3] = 0.2168, [4] = 0.1444, [5] = 0.0642, [6] = 0.0117, [7] = 0.0617, [8] = 0.0281, [9] = 0.0275, [10] = 0.011, [11] = 0.011, [12] = 0.022 },
+        triad_fanfare_bonus = 0.25,
+        pivot_return_bonus = 0.15,
+        sequence_repeat_bonus = 0.55,
+        avoid_semitone_lead = false,
+        modal_color_semitones = { 4, 7, 11 },
+        interval_weights = { [-12] = 0.0272, [-11] = 0.0127, [-10] = 0.0133, [-9] = 0.0214, [-8] = 0.014, [-7] = 0.054, [-6] = 0.018, [-5] = 0.0738, [-4] = 0.0975, [-3] = 0.112, [-2] = 0.2298, [-1] = 0.169, [0] = 0.0612, [1] = 0.1465, [2] = 0.2037, [3] = 0.2105, [4] = 0.1439, [5] = 0.0693, [6] = 0.0127, [7] = 0.0649, [8] = 0.0305, [9] = 0.03, [10] = 0.012, [11] = 0.012, [12] = 0.024 },
         rhythm_cells = {
             sparse = { { 1.0, 1.0, 1.0, 1.0 }, { 2.0, 1.0, 1.0 }, { 1.5, 0.5, 1.0, 1.0 } },
             medium = { { 1.0, 0.5, 0.5, 1.0, 1.0 }, { 0.5, 0.5, 0.5, 0.5, 1.0, 1.0 }, { 1.0, 1.0, 0.5, 0.5, 0.5, 0.5 } },
@@ -46,9 +152,9 @@ MelodyStyleCorpus.STYLES = {
         },
         cadence_approaches = { { -1 }, { 1 }, { 1, -1 }, { -2, -1 }, { 2, 1 } },
     },
-    [3] = {
+    [7] = {
         id = "romantic",
-        name = "🌹 Romantic / Lyrical (Cantabile / Williams)",
+        name = "🌹 Romantic / Lyrical (Cantabile / Late-Romantic)",
         default_scale = "harmonic_minor",
         trained_scores = 300,
         trained_notes = 10398,
@@ -57,7 +163,12 @@ MelodyStyleCorpus.STYLES = {
         staccato_prob = 0.05,
         accent_prob = 0.25,
         anticipation_prob = 0.2,
-        interval_weights = { [-12] = 0.0514, [-11] = 0.0112, [-10] = 0.011, [-9] = 0.0444, [-8] = 0.0502, [-7] = 0.0737, [-6] = 0.0116, [-5] = 0.0668, [-4] = 0.0797, [-3] = 0.1073, [-2] = 0.2304, [-1] = 0.1653, [0] = 0.0388, [1] = 0.1753, [2] = 0.2457, [3] = 0.1036, [4] = 0.1177, [5] = 0.0825, [6] = 0.0117, [7] = 0.1023, [8] = 0.0771, [9] = 0.0717, [10] = 0.011, [11] = 0.011, [12] = 0.0551 },
+        triad_fanfare_bonus = 0.3,
+        pivot_return_bonus = 0.25,
+        sequence_repeat_bonus = 0.35,
+        avoid_semitone_lead = false,
+        modal_color_semitones = { 8, 11 },
+        interval_weights = { [-12] = 0.0523, [-11] = 0.0122, [-10] = 0.012, [-9] = 0.0483, [-8] = 0.0546, [-7] = 0.0766, [-6] = 0.0125, [-5] = 0.0727, [-4] = 0.0864, [-3] = 0.1132, [-2] = 0.2359, [-1] = 0.1747, [0] = 0.04, [1] = 0.178, [2] = 0.2451, [3] = 0.1088, [4] = 0.119, [5] = 0.0889, [6] = 0.0126, [7] = 0.1076, [8] = 0.0841, [9] = 0.0782, [10] = 0.012, [11] = 0.012, [12] = 0.0601 },
         rhythm_cells = {
             sparse = { { 2.5, 0.5, 1.0 }, { 1.5, 0.5, 2.0 }, { 2.0, 1.0, 1.0 } },
             medium = { { 1.5, 0.5, 0.5, 0.5, 1.0 }, { 1.0, 1.5, 0.5, 1.0 }, { 0.5, 1.0, 0.5, 1.0, 1.0 } },
@@ -65,7 +176,7 @@ MelodyStyleCorpus.STYLES = {
         },
         cadence_approaches = { { -1 }, { 1, -1 }, { -3, -1 }, { 2, 1 }, { -2, -1 } },
     },
-    [4] = {
+    [8] = {
         id = "punky",
         name = "⚡ Punky / Driving Action (Syncopated Pulse)",
         default_scale = "minor_pentatonic",
@@ -76,7 +187,12 @@ MelodyStyleCorpus.STYLES = {
         staccato_prob = 0.65,
         accent_prob = 0.45,
         anticipation_prob = 0.45,
-        interval_weights = { [-12] = 0.0437, [-11] = 0.0114, [-10] = 0.0554, [-9] = 0.013, [-8] = 0.0127, [-7] = 0.1408, [-6] = 0.0591, [-5] = 0.0979, [-4] = 0.0555, [-3] = 0.1342, [-2] = 0.1298, [-1] = 0.0501, [0] = 0.2765, [1] = 0.0481, [2] = 0.1287, [3] = 0.178, [4] = 0.0703, [5] = 0.1125, [6] = 0.055, [7] = 0.1535, [8] = 0.0114, [9] = 0.0111, [10] = 0.0591, [11] = 0.0145, [12] = 0.0786 },
+        triad_fanfare_bonus = 0.15,
+        pivot_return_bonus = 0.55,
+        sequence_repeat_bonus = 0.65,
+        avoid_semitone_lead = true,
+        modal_color_semitones = { 3, 6, 10 },
+        interval_weights = { [-12] = 0.0411, [-11] = 0.0123, [-10] = 0.0604, [-9] = 0.0138, [-8] = 0.0135, [-7] = 0.1418, [-6] = 0.0636, [-5] = 0.1048, [-4] = 0.0583, [-3] = 0.1437, [-2] = 0.1398, [-1] = 0.0535, [0] = 0.2791, [1] = 0.0517, [2] = 0.1367, [3] = 0.1849, [4] = 0.0714, [5] = 0.12, [6] = 0.06, [7] = 0.1586, [8] = 0.0124, [9] = 0.0121, [10] = 0.0636, [11] = 0.0151, [12] = 0.0799 },
         rhythm_cells = {
             sparse = { { 1.5, 1.5, 1.0 }, { 1.0, 1.5, 0.5, 1.0 }, { 0.5, 1.0, 1.5, 1.0 } },
             medium = { { 0.75, 0.75, 0.5, 0.5, 0.5, 1.0 }, { 0.5, 0.5, 0.75, 0.75, 0.5, 0.5, 0.5 }, { 0.5, 1.0, 0.5, 0.5, 0.5, 0.5, 0.5 } },
@@ -84,7 +200,7 @@ MelodyStyleCorpus.STYLES = {
         },
         cadence_approaches = { { 0 }, { -2 }, { -3 }, { 0, -1 }, { 3, 0 } },
     },
-    [5] = {
+    [9] = {
         id = "celtic_ancient",
         name = "🏛 Ancient / Celtic Modal (Dorian / Mythic)",
         default_scale = "dorian",
@@ -95,7 +211,12 @@ MelodyStyleCorpus.STYLES = {
         staccato_prob = 0.18,
         accent_prob = 0.25,
         anticipation_prob = 0.18,
-        interval_weights = { [-12] = 0.0282, [-11] = 0.0153, [-10] = 0.0288, [-9] = 0.0434, [-8] = 0.016, [-7] = 0.0888, [-6] = 0.013, [-5] = 0.0917, [-4] = 0.066, [-3] = 0.1063, [-2] = 0.1741, [-1] = 0.0965, [0] = 0.0568, [1] = 0.1351, [2] = 0.2582, [3] = 0.1503, [4] = 0.1138, [5] = 0.1175, [6] = 0.0162, [7] = 0.1004, [8] = 0.0128, [9] = 0.0471, [10] = 0.011, [11] = 0.011, [12] = 0.0376 },
+        triad_fanfare_bonus = 0.35,
+        pivot_return_bonus = 0.35,
+        sequence_repeat_bonus = 0.3,
+        avoid_semitone_lead = true,
+        modal_color_semitones = { 2, 7, 9, 10 },
+        interval_weights = { [-12] = 0.0273, [-11] = 0.0158, [-10] = 0.0278, [-9] = 0.0463, [-8] = 0.0165, [-7] = 0.0945, [-6] = 0.0138, [-5] = 0.0993, [-4] = 0.072, [-3] = 0.1145, [-2] = 0.1836, [-1] = 0.1024, [0] = 0.0594, [1] = 0.1356, [2] = 0.2584, [3] = 0.1536, [4] = 0.1145, [5] = 0.1245, [6] = 0.0166, [7] = 0.107, [8] = 0.0136, [9] = 0.0508, [10] = 0.012, [11] = 0.012, [12] = 0.0401 },
         rhythm_cells = {
             sparse = { { 1.5, 0.5, 1.5, 0.5 }, { 2.0, 1.0, 1.0 }, { 1.0, 2.0, 1.0 } },
             medium = { { 0.75, 0.25, 0.5, 0.5, 1.0, 1.0 }, { 1.0, 0.5, 0.5, 0.75, 0.25, 1.0 }, { 0.5, 0.5, 1.0, 0.5, 0.5, 1.0 } },
@@ -103,7 +224,7 @@ MelodyStyleCorpus.STYLES = {
         },
         cadence_approaches = { { -2 }, { 1 }, { -1, 1 }, { -3, -1 }, { 2, 1 } },
     },
-    [6] = {
+    [10] = {
         id = "thriller",
         name = "🕵️ Dark Thriller / Suspense (Phrygian / Noir)",
         default_scale = "phrygian",
@@ -114,7 +235,12 @@ MelodyStyleCorpus.STYLES = {
         staccato_prob = 0.42,
         accent_prob = 0.38,
         anticipation_prob = 0.25,
-        interval_weights = { [-12] = 0.0157, [-11] = 0.044, [-10] = 0.011, [-9] = 0.011, [-8] = 0.011, [-7] = 0.0627, [-6] = 0.1169, [-5] = 0.0528, [-4] = 0.0407, [-3] = 0.0679, [-2] = 0.1108, [-1] = 0.2119, [0] = 0.3104, [1] = 0.1935, [2] = 0.0846, [3] = 0.0908, [4] = 0.0578, [5] = 0.0532, [6] = 0.1123, [7] = 0.0681, [8] = 0.011, [9] = 0.011, [10] = 0.011, [11] = 0.044, [12] = 0.0155 },
+        triad_fanfare_bonus = 0.05,
+        pivot_return_bonus = 0.8,
+        sequence_repeat_bonus = 0.35,
+        avoid_semitone_lead = false,
+        modal_color_semitones = { 1, 6, 8 },
+        interval_weights = { [-12] = 0.0161, [-11] = 0.048, [-10] = 0.012, [-9] = 0.012, [-8] = 0.012, [-7] = 0.0669, [-6] = 0.1239, [-5] = 0.0569, [-4] = 0.044, [-3] = 0.0737, [-2] = 0.1151, [-1] = 0.2217, [0] = 0.2959, [1] = 0.2031, [2] = 0.0908, [3] = 0.0941, [4] = 0.0592, [5] = 0.0573, [6] = 0.1198, [7] = 0.0717, [8] = 0.012, [9] = 0.012, [10] = 0.012, [11] = 0.048, [12] = 0.016 },
         rhythm_cells = {
             sparse = { { 2.0, 0.5, 1.5 }, { 1.5, 1.5, 1.0 }, { 3.0, 0.5, 0.5 } },
             medium = { { 1.0, 0.5, 0.5, 1.5, 0.5 }, { 0.5, 0.5, 1.0, 0.5, 0.5, 1.0 }, { 1.5, 0.25, 0.25, 1.0, 1.0 } },
@@ -125,8 +251,8 @@ MelodyStyleCorpus.STYLES = {
 }
 
 MelodyStyleCorpus.BY_ID = {}
-for _, s in ipairs(MelodyStyleCorpus.STYLES) do
-    MelodyStyleCorpus.BY_ID[s.id] = s
+for _, st in ipairs(MelodyStyleCorpus.STYLES) do
+    MelodyStyleCorpus.BY_ID[st.id] = st
 end
 
 return MelodyStyleCorpus

@@ -1,7 +1,8 @@
 -- ==============================================================================
 -- REAPER Native Notator - Module: MelodyPathfinderModal
 -- Interactive Modal for Key-Note Waypoint Melodic Inpainting,
--- Corpus-Trained Style Generation, Melodic Inversion & Counter-Melody Creation
+-- Clef-Aware Instrument Register Bounding, Film Composer Styles 1-4,
+-- Melodic Inversion & Counter-Melody Creation
 -- ==============================================================================
 
 local MelodyStyleCorpus       = require("services.melody_style_corpus")
@@ -89,6 +90,16 @@ local function draw_contour_preview(dl, preview, x, y, w, h)
         reaper.ImGui_DrawList_AddRectFilled(dl, nx0, ny - pill_h, math.max(nx0 + 4, nx1 - 1), ny + pill_h, col_fill, 2.0)
         reaper.ImGui_DrawList_AddRect(dl, nx0, ny - pill_h, math.max(nx0 + 4, nx1 - 1), ny + pill_h, col_bord, 2.0)
     end
+
+    -- 3. Live Audition Playhead
+    local ap = PatternService.active_preview
+    if ap and ap.pattern and ap.pattern.id == "__mpf_preview__" then
+        local elapsed = math.max(0, reaper.time_precise() - (ap.start_time or 0))
+        local total_dur = (ap.total_time and ap.total_time > 0) and ap.total_time or 4.0
+        local frac = math.max(0.0, math.min(1.0, elapsed / total_dur))
+        local px = x + pad_x + frac * inner_w
+        reaper.ImGui_DrawList_AddLine(dl, px, y + 2, px, y + h - 2, 0x2ECC71FF, 2.0)
+    end
 end
 
 function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, active_tracks_data)
@@ -96,7 +107,7 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
 
     -- Initialize persistent options in state
     state.mpf_opts = state.mpf_opts or {
-        style_id = "cinematic",
+        style_id = "film_style_1",
         scale_id = "auto",
         transform_id = "normal",
         counter_melody_mode = false,
@@ -105,10 +116,12 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         density = 0.50,
         leap_character = 0.45,
         phrase_bars = 4,
+        octave_shift = 0,
         auto_slur = true,
         seed = 1042,
     }
     local opts = state.mpf_opts
+    if opts.octave_shift == nil then opts.octave_shift = 0 end
 
     local flags = reaper.ImGui_WindowFlags_NoCollapse()
     if reaper.APIExists("ImGui_WindowFlags_TopMost") then
@@ -122,8 +135,8 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         state.mpf_dirty = true
     end
 
-    reaper.ImGui_SetNextWindowSize(ctx, 640, 625, reaper.ImGui_Cond_FirstUseEver())
-    local s_vis, s_open = reaper.ImGui_Begin(ctx, "🧭 Melodic Pathfinder & Counter-Melody Generator###MelodyPathfinderModal", true, flags)
+    reaper.ImGui_SetNextWindowSize(ctx, 650, 635, reaper.ImGui_Cond_FirstUseEver())
+    local s_vis, s_open = reaper.ImGui_Begin(ctx, "🧭 Melodic Pathfinder###MelodyPathfinderModal", true, flags)
 
     if not s_open then
         state.show_melody_pathfinder_modal = false
@@ -132,7 +145,9 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
 
     if s_vis then
         local target_track, waypoints = MelodyPathfinderService.get_selected_waypoints(state, active_tracks_data)
-        local wp_sig = string.format("%d_%s", #waypoints, waypoints[1] and tostring(waypoints[1].start_qn) or "0")
+        local trk_guid = (target_track and reaper.ValidatePtr(target_track, "MediaTrack*") and reaper.GetTrackGUID(target_track)) or ""
+        local cur_clef_setting = (state.track_clefs and state.track_clefs[trk_guid]) or "auto"
+        local wp_sig = string.format("%s_%s_%d_%s", trk_guid, cur_clef_setting, #waypoints, waypoints[1] and tostring(waypoints[1].start_qn) or "0")
         if state.mpf_last_wp_sig ~= wp_sig then
             state.mpf_last_wp_sig = wp_sig
             state.mpf_dirty = true
@@ -143,9 +158,10 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
             state.mpf_dirty = false
         end
         local preview = state.mpf_preview
+        local clef_reg = (preview and preview.clef_register) or { label = "Treble Clef", min_p = 55, max_p = 86 }
 
         -- ==================================================================
-        -- 1. HEADER: ACTIVE TRACK & WAYPOINT LANDMARK STATUS
+        -- 1. HEADER: ACTIVE TRACK, CLEF REGISTER & WAYPOINT LANDMARK STATUS
         -- ==================================================================
         local trk_name = "Active Track"
         if target_track and reaper.ValidatePtr(target_track, "MediaTrack*") then
@@ -157,6 +173,40 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         reaper.ImGui_TextColored(ctx, 0xF39C12FF, "TARGET STAFF:")
         reaper.ImGui_SameLine(ctx)
         reaper.ImGui_TextColored(ctx, 0x5DADE2FF, trk_name)
+        reaper.ImGui_SameLine(ctx, 0, 12)
+        reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format(
+            "𝄞 %s [%s–%s]",
+            clef_reg.label or "Clef",
+            pitch_to_name(clef_reg.min_p),
+            pitch_to_name(clef_reg.max_p)
+        ))
+
+        -- Quick Register Octave Shift (-1 / Auto / +1)
+        reaper.ImGui_SameLine(ctx, 0, 12)
+        if reaper.ImGui_SmallButton(ctx, "-8vb##mpf_oct_dn") then
+            opts.octave_shift = math.max(-2, (opts.octave_shift or 0) - 1)
+            state.mpf_dirty = true
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Shift playable Clef register down by 1 octave (-12 semitones)")
+        end
+        reaper.ImGui_SameLine(ctx, 0, 4)
+        local oct_lbl = (opts.octave_shift == 0) and "Clef:0" or string.format("%+d Oct", opts.octave_shift)
+        if reaper.ImGui_SmallButton(ctx, oct_lbl .. "##mpf_oct_rst") then
+            opts.octave_shift = 0
+            state.mpf_dirty = true
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Reset to automatic Clef & Instrument playable register")
+        end
+        reaper.ImGui_SameLine(ctx, 0, 4)
+        if reaper.ImGui_SmallButton(ctx, "+8va##mpf_oct_up") then
+            opts.octave_shift = math.min(2, (opts.octave_shift or 0) + 1)
+            state.mpf_dirty = true
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Shift playable Clef register up by 1 octave (+12 semitones)")
+        end
 
         if #waypoints >= 2 then
             reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format(
@@ -168,15 +218,19 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
             ))
         elseif #waypoints == 1 then
             reaper.ImGui_TextColored(ctx, 0xF1C40FFF, string.format(
-                "★ 1 Seed Note selected (%s) — generating %d-Bar %s from this anchor!",
+                "★ 1 Seed Note selected (%s) — generating %d-Bar %s in %s register!",
                 pitch_to_name(waypoints[1].pitch),
                 opts.phrase_bars or 4,
-                opts.counter_melody_mode and "Counter-Melody" or "Melodic Phrase"
+                opts.counter_melody_mode and "Counter-Melody" or "Melodic Phrase",
+                clef_reg.label or "Clef"
             ))
         else
             reaper.ImGui_TextColored(ctx, 0xE67E22FF, string.format(
-                "ℹ No notes selected — generating %d-Bar phrase starting at Edit Cursor (select 1+ notes as Key Landmarks!)",
-                opts.phrase_bars or 4
+                "ℹ No notes selected — generating %d-Bar phrase in %s register [%s–%s] at Edit Cursor",
+                opts.phrase_bars or 4,
+                clef_reg.label or "Clef",
+                pitch_to_name(clef_reg.min_p),
+                pitch_to_name(clef_reg.max_p)
             ))
         end
 
@@ -199,7 +253,7 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx,
-                "When enabled, generates an independent Counter-Melody based on 1 selected Seed Note (or multiple Key Notes).\nUses complementary rhythm (active when Reference Track holds/rests) and contrary motion (3rds/6ths)."
+                "When enabled, generates an independent Counter-Melody based on 1 selected Seed Note (or multiple Key Notes).\nUses complementary rhythm (active when Reference Track holds/rests) and contrary motion (3rds/6ths) folded into your track's Clef!"
             )
         end
 
@@ -220,10 +274,10 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         reaper.ImGui_Spacing(ctx)
 
         -- ==================================================================
-        -- 3. STYLE PROFILE (TRAINED CORPUS) & SCALE / MODE
+        -- 3. STYLE PROFILE (TRAINED CORPUS + FILM COMPOSER STYLES 1-4) & SCALE
         -- ==================================================================
-        local col_w = 295
-        reaper.ImGui_TextColored(ctx, 0xF39C12FF, "1. Musical Style (Trained Score Corpus):")
+        local col_w = 300
+        reaper.ImGui_TextColored(ctx, 0xF39C12FF, "1. Musical & Film Composer Style:")
         reaper.ImGui_SameLine(ctx, col_w + 16)
         reaper.ImGui_TextColored(ctx, 0xF39C12FF, "2. Scale / Mode:")
 
@@ -257,12 +311,15 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
             reaper.ImGui_EndCombo(ctx)
         end
 
-        -- Corpus statistics badge
+        -- Corpus & Compositional Rules badge
         reaper.ImGui_TextColored(ctx, 0x6E7681FF, string.format(
-            "   🧠 Corpus Matrix: %d orchestral scores (%d notes) | Gap-Fill Recovery: %d%%",
+            "   🧠 Corpus: %d scores (%d notes) | Gap-Fill: %d%% | Fanfare: %d%% | Pivot: %d%% | Seq: %d%%",
             cur_style.trained_scores or 300,
             cur_style.trained_notes or 10000,
-            math.floor((cur_style.gap_fill_strength or 0.75) * 100 + 0.5)
+            math.floor((cur_style.gap_fill_strength or 0.75) * 100 + 0.5),
+            math.floor((cur_style.triad_fanfare_bonus or 0.25) * 100 + 0.5),
+            math.floor((cur_style.pivot_return_bonus or 0.20) * 100 + 0.5),
+            math.floor((cur_style.sequence_repeat_bonus or 0.30) * 100 + 0.5)
         ))
 
         reaper.ImGui_Spacing(ctx)
@@ -274,7 +331,6 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         reaper.ImGui_SameLine(ctx, col_w + 16)
         reaper.ImGui_TextColored(ctx, 0x9B59B6FF, "4. Harmonic Consonance Ratio:")
 
-        -- Build Reference Track options
         local ref_entries = {
             { label = "🌐 Auto (All Other Project Tracks)", mode = "auto_all" },
             { label = "🚫 None (Standalone Melody)",        mode = "none" },
@@ -320,7 +376,7 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx,
-                "Controls how consonant the generated melody is relative to MIDI notes on the Reference Track:\n• 80-100%: Pure consonant 3rds, 6ths, 5ths & chord tones\n• 50%: Balanced counterpoint with expressive passing tensions\n• 0-25%: Dark dissonance (minor 2nds, tritones, thriller friction)"
+                "Controls how consonant the generated melody is relative to MIDI notes on the Reference Track:\n• 80-100%: Pure consonant 3rds, 6ths, 5ths & chord tones (folded into your track's Clef octave)\n• 50%: Balanced counterpoint with expressive passing tensions\n• 0-25%: Dark dissonance (minor 2nds, tritones, thriller friction)"
             )
         end
 
@@ -356,7 +412,7 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
             state.mpf_dirty = true
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Directly invert the currently selected notes in the score around the first note (diatonic mirror).")
+            reaper.ImGui_SetTooltip(ctx, "Directly invert the currently selected notes in the score around the first note (diatonic mirror inside Clef register).")
         end
 
         reaper.ImGui_SameLine(ctx, col_w + 16)
@@ -390,8 +446,12 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         local ref_cnt = (preview and preview.ref_notes and #preview.ref_notes) or 0
         local gen_cnt = (preview and preview.notes and #preview.notes) or 0
         reaper.ImGui_TextColored(ctx, 0xCCD6F6FF, string.format(
-            "LIVE MELODIC MAP PREVIEW (%d generated notes | %d reference harmony notes):",
-            gen_cnt, ref_cnt
+            "LIVE MELODIC MAP PREVIEW (%d generated notes in %s [%s–%s] | %d reference harmony notes):",
+            gen_cnt,
+            clef_reg.label or "Clef",
+            pitch_to_name(clef_reg.min_p),
+            pitch_to_name(clef_reg.max_p),
+            ref_cnt
         ))
         reaper.ImGui_TextColored(ctx, 0x8892B0FF, "🟠 Gold = Key Landmarks   🟢 Green = Generated Bridge/Counter-Melody   🟣 Purple = Reference Track Harmony")
 
@@ -435,7 +495,7 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
                         start_qn = math.max(0, n.start_qn - q0),
                         dur_qn = n.dur_qn,
                         vel = n.vel,
-                        chan = n.chan or 0,
+                        chan = 0, -- Always audition on Channel 1 (0) so single-channel VSTis and Reaticulate respond reliably
                     })
                 end
                 local _, _, bpm = reaper.TimeMap_GetTimeSigAtTime(0, reaper.GetCursorPosition())
@@ -454,21 +514,19 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
 
         reaper.ImGui_SameLine(ctx, 0, 10)
 
-        -- Button 3: Apply to Score
+        -- Button 3: Apply / Insert into Score
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x27AE60FF)
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2ECC71FF)
-        if reaper.ImGui_Button(ctx, "✓ Apply Melody to Score", 180, 30) then
+        local apply_lbl = opts.counter_melody_mode and "✓ Insert Counter-Melody" or "✓ Fill Melodic Path"
+        if reaper.ImGui_Button(ctx, apply_lbl, 165, 30) then
             PatternService.stop_preview(audio_preview)
-            local ok, msg = MelodyPathfinderService.apply_generated_melody(state, preview, midi_service, opts)
+            local ok, msg = MelodyPathfinderService.apply_to_score(state, midi_service, preview, opts)
             state.status_msg = msg
-            if ok then
-                state.show_melody_pathfinder_modal = false
-            end
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
 
-        reaper.ImGui_SameLine(ctx, 0, 8)
-        if reaper.ImGui_Button(ctx, "Cancel", 70, 30) then
+        reaper.ImGui_SameLine(ctx, 0, 10)
+        if reaper.ImGui_Button(ctx, "Close", 65, 30) then
             PatternService.stop_preview(audio_preview)
             state.show_melody_pathfinder_modal = false
         end
@@ -478,4 +536,3 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
 end
 
 return MelodyPathfinderModal
-

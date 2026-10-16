@@ -118,17 +118,17 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
 
         reaper.ImGui_Spacing(ctx)
 
-        -- Melodic Pathfinder & Counter-Melody Generator Button
+        -- Melodic Pathfinder Button
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x6C3483FF)
         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x8E44ADFF)
-        if reaper.ImGui_Button(ctx, "🧭 Melodic Pathfinder / Counter-Melody...", width - 24, 28) then
+        if reaper.ImGui_Button(ctx, "🧭 Melodic Pathfinder", width - 24, 28) then
             state.show_melody_pathfinder_modal = true
             state.focus_melody_pathfinder_modal = true
             state.mpf_dirty = true
         end
         reaper.ImGui_PopStyleColor(ctx, 2)
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Melodic Pathfinder & Counter-Melody Generator:\n• Connect selected Key Notes (Waypoints) with style-aware melodies (Cinematic, Classical, Romantic, Punky, Celtic, Thriller)\n• Or select 1 Seed Note and enable 'Counter-Melody' to compose counterpoint against any Reference Track!")
+            reaper.ImGui_SetTooltip(ctx, "Melodic Pathfinder:\n• Connect selected Key Notes (Waypoints) with style-aware melodies (Film Composer Styles 1-4, Cinematic, Classical, Romantic, Punky, Celtic, Thriller)\n• Automatically adapts to your track's active Clef & playable instrument range\n• Or select 1 Seed Note and enable 'Counter-Melody' to compose counterpoint against any Reference Track!")
         end
 
         -- ------------------------------------------------------------------

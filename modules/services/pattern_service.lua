@@ -490,6 +490,11 @@ function PatternService.update_preview(audio_preview)
         local note_time = n.start_qn * p.sec_per_qn
         if elapsed >= (note_time - 0.005) then
             local n_chan = n.chan or 0
+            if not p.cc_woken then
+                p.cc_woken = true
+                reaper.StuffMIDIMessage(0, 0xB0 | n_chan, 1, 96)
+                reaper.StuffMIDIMessage(0, 0xB0 | n_chan, 11, 108)
+            end
             -- If same pitch+channel is already sounding, send Note-Off first and remove old entry so its off_time won't cut off the new note
             for i = #p.active_sounding, 1, -1 do
                 local sn = p.active_sounding[i]

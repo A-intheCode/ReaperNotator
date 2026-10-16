@@ -1,10 +1,16 @@
 -- ==============================================================================
 -- REAPER Native Notator - Service: MelodyPathfinderService
 -- Algorithmic Melodic Waypoint Inpainting & Contrapuntal Counter-Melody Engine
--- Uses Corpus-Trained Markov Interval Weights + Viterbi Pathfinding +
--- Leonard Meyer Gap-Fill + Reference Track Harmonic Consonance & Inversion
+-- Features:
+--   • Clef & Instrument Playable Register Intelligence (Octave-Aware Folding)
+--   • Corpus-Trained Markov Interval Weights + Higher-Order Viterbi Pathfinding
+--   • 4 Film Composer Style Archetypes (Heroic Fanfare, Mysterious Pivot Pulse,
+--     Kinetic Sequence Action, Pastoral Modal Romance) + Leonard Meyer Gap-Fill
+--   • Reference Track Harmonic Consonance & Melodic Inversion / Retrograde
 -- ==============================================================================
 
+local Constants         = require("constants")
+local Engraver          = require("rendering.engraver")
 local MelodyStyleCorpus = require("services.melody_style_corpus")
 local SlurService       = require("services.slur_service")
 
@@ -16,12 +22,12 @@ MelodyPathfinderService.SCALES = {
     { id = "aeolian",          name = "Natural Minor (Aeolian)",                 intervals = { 0, 2, 3, 5, 7, 8, 10 } },
     { id = "harmonic_minor",   name = "Harmonic Minor",                          intervals = { 0, 2, 3, 5, 7, 8, 11 } },
     { id = "melodic_minor",    name = "Melodic Minor",                           intervals = { 0, 2, 3, 5, 7, 9, 11 } },
-    { id = "dorian",           name = "Dorian (Cinematic / Celtic)",             intervals = { 0, 2, 3, 5, 7, 9, 10 } },
-    { id = "phrygian",         name = "Phrygian (Dark / Spanish / Thriller)",    intervals = { 0, 1, 3, 5, 7, 8, 10 } },
-    { id = "lydian",           name = "Lydian (Wonder / Sci-Fi #4)",             intervals = { 0, 2, 4, 6, 7, 9, 11 } },
-    { id = "mixolydian",       name = "Mixolydian (Heroic / Epic b7)",           intervals = { 0, 2, 4, 5, 7, 9, 10 } },
-    { id = "minor_pentatonic", name = "Minor Pentatonic / Rock",                 intervals = { 0, 3, 5, 7, 10 } },
-    { id = "blues_punk",       name = "Blues / Punk (Pentatonic + b5)",          intervals = { 0, 3, 5, 6, 7, 10 } },
+    { id = "dorian",           name = "Dorian (Cinematic / Modal ♮6)",           intervals = { 0, 2, 3, 5, 7, 9, 10 } },
+    { id = "phrygian",         name = "Phrygian (Dark / Thriller ♭2)",           intervals = { 0, 1, 3, 5, 7, 8, 10 } },
+    { id = "lydian",           name = "Lydian (Wonder / Symphonic ♯4)",          intervals = { 0, 2, 4, 6, 7, 9, 11 } },
+    { id = "mixolydian",       name = "Mixolydian (Heroic / Pastoral ♭7)",       intervals = { 0, 2, 4, 5, 7, 9, 10 } },
+    { id = "minor_pentatonic", name = "Minor Pentatonic / Action",               intervals = { 0, 3, 5, 7, 10 } },
+    { id = "blues_punk",       name = "Blues / Punk (Pentatonic + ♭5)",          intervals = { 0, 3, 5, 6, 7, 10 } },
 }
 
 MelodyPathfinderService.TRANSFORMS = {
@@ -29,6 +35,30 @@ MelodyPathfinderService.TRANSFORMS = {
     { id = "inversion",            name = "Melodic Inversion (Mirror Intervals)" },
     { id = "retrograde",           name = "Retrograde (Reverse Motif Flow)" },
     { id = "retrograde_inversion", name = "Retrograde-Inversion (Mirror + Reverse)" },
+}
+
+-- Playable MIDI compass per Clef ID (prevents generating notes in VSTi keyswitch / silent zones)
+local CLEF_RANGES = {
+    bass_15mb    = { min_p = 24, max_p = 50, center_p = 36, label = "Bass 15mb" },
+    bass_8vb     = { min_p = 28, max_p = 55, center_p = 40, label = "Bass 8vb" },
+    tenor_8vb    = { min_p = 36, max_p = 62, center_p = 48, label = "Tenor 8vb" },
+    bass         = { min_p = 36, max_p = 64, center_p = 48, label = "Bass Clef" },
+    baritone_f   = { min_p = 40, max_p = 67, center_p = 53, label = "Baritone Clef" },
+    baritone_c   = { min_p = 40, max_p = 67, center_p = 53, label = "Baritone Clef" },
+    tenor        = { min_p = 45, max_p = 72, center_p = 57, label = "Tenor Clef" },
+    treble_8vb   = { min_p = 45, max_p = 74, center_p = 57, label = "Treble 8vb" },
+    alto         = { min_p = 48, max_p = 76, center_p = 60, label = "Alto Clef" },
+    mezzo        = { min_p = 52, max_p = 79, center_p = 64, label = "Mezzo-Soprano Clef" },
+    soprano      = { min_p = 55, max_p = 81, center_p = 67, label = "Soprano Clef" },
+    treble       = { min_p = 55, max_p = 86, center_p = 67, label = "Treble Clef" },
+    french_violin= { min_p = 57, max_p = 88, center_p = 71, label = "French Violin Clef" },
+    bass_8va     = { min_p = 48, max_p = 74, center_p = 60, label = "Bass 8va" },
+    treble_8va   = { min_p = 67, max_p = 96, center_p = 79, label = "Treble 8va" },
+    treble_15ma  = { min_p = 72, max_p = 103, center_p = 84, label = "Treble 15ma" },
+    grand        = { min_p = 40, max_p = 86, center_p = 60, label = "Grand Staff" },
+    harp_3staff  = { min_p = 38, max_p = 88, center_p = 60, label = "Harp (3 Staves)" },
+    percussion_1 = { min_p = 36, max_p = 72, center_p = 48, label = "Percussion Clef" },
+    percussion_2 = { min_p = 36, max_p = 72, center_p = 48, label = "Percussion Clef" },
 }
 
 local SCALE_BY_ID = {}
@@ -118,6 +148,12 @@ function MelodyPathfinderService.get_selected_waypoints(state, active_tracks_dat
             or reaper.GetTrack(0, 0)
     end
 
+    if not target_take and state and state.selected_take and reaper.ValidatePtr(state.selected_take, "MediaItem_Take*") then
+        if reaper.GetMediaItemTake_Track(state.selected_take) == target_track then
+            target_take = state.selected_take
+        end
+    end
+
     -- Sort by start_qn; if multiple notes share the exact same onset, keep highest melody note
     table.sort(raw, function(a, b)
         if math.abs(a.start_qn - b.start_qn) > 0.02 then
@@ -136,12 +172,160 @@ function MelodyPathfinderService.get_selected_waypoints(state, active_tracks_dat
     return target_track, deduped, target_take
 end
 
+--- Resolves the active Clef & Playable Instrument Register for `target_track` / `target_take`
+--- Ensures generated notes & Audition always stay inside the instrument's real acoustic & Clef compass!
+function MelodyPathfinderService.get_clef_register(state, target_track, target_take, waypoints, octave_shift)
+    local clef_id = nil
+    local trk_name = ""
+
+    if target_track and reaper.ValidatePtr(target_track, "MediaTrack*") then
+        local _, nm = reaper.GetTrackName(target_track)
+        trk_name = nm or ""
+        local trk_guid = reaper.GetTrackGUID(target_track)
+
+        -- 1. Check item-level clef first if a take is active
+        if target_take and reaper.ValidatePtr(target_take, "MediaItem_Take*") then
+            local item = reaper.GetMediaItemTake_Item(target_take)
+            if item and state and state.item_clefs then
+                local ok_g, iguid = reaper.GetSetMediaItemInfo_String(item, "GUID", "", false)
+                if ok_g and iguid and state.item_clefs[iguid] and state.item_clefs[iguid] ~= "auto" then
+                    clef_id = state.item_clefs[iguid]
+                end
+            end
+        end
+
+        -- 2. Check track-level clef or auto-detect from Engraver
+        if not clef_id or clef_id == "auto" then
+            if state and state.track_clefs and trk_guid then
+                local saved = state.track_clefs[trk_guid] or state.track_clefs[trk_guid:upper()] or state.track_clefs[trk_guid:lower()]
+                if saved and saved ~= "auto" then
+                    clef_id = saved
+                end
+            end
+        end
+
+        if not clef_id or clef_id == "auto" then
+            -- Gather existing notes on the target track if no waypoints are selected so auto-clef is accurate
+            local sample_notes = waypoints
+            if not sample_notes or #sample_notes == 0 then
+                sample_notes = {}
+                local icnt = reaper.CountTrackMediaItems(target_track)
+                for ii = 0, math.min(icnt - 1, 3) do
+                    local it = reaper.GetTrackMediaItem(target_track, ii)
+                    local tk = it and reaper.GetActiveTake(it)
+                    if tk and reaper.TakeIsMIDI(tk) then
+                        local _, ncnt = reaper.MIDI_CountEvts(tk)
+                        for ni = 0, math.min((ncnt or 0) - 1, 32) do
+                            local nok, _, muted, _, _, _, p = reaper.MIDI_GetNote(tk, ni)
+                            if nok and not muted then
+                                table.insert(sample_notes, { pitch = p })
+                            end
+                        end
+                    end
+                end
+            end
+            if Engraver and Engraver.get_track_clef then
+                clef_id = Engraver.get_track_clef(target_track, trk_name, sample_notes, state)
+            end
+        end
+    end
+
+    clef_id = clef_id or "treble"
+    local base = CLEF_RANGES[clef_id] or CLEF_RANGES.treble
+    local min_p = base.min_p
+    local max_p = base.max_p
+    local center_p = base.center_p
+    local clef_def = Constants.CLEF_DEFS and Constants.CLEF_DEFS[clef_id]
+    local label = (clef_def and clef_def.name) or base.label or "Treble Clef"
+
+    -- Refine playable VSTi range from instrument keywords in track name (prevents keyswitch triggers!)
+    local name_l = trk_name:lower()
+    if name_l:find("double bass") or name_l:find("kontrabass") or name_l:find("contrabass") or name_l:match("%f[%a]cb%f[%A]") or name_l:match("%f[%a]db%f[%A]") then
+        min_p, max_p, center_p = 28, 57, 41 -- E1 .. A3 (Double Bass playable range)
+    elseif name_l:find("timpani") or name_l:find("pauke") then
+        min_p, max_p, center_p = 38, 57, 48 -- D2 .. A3 (Orchestral Timpani compass)
+    elseif name_l:find("tuba") then
+        min_p, max_p, center_p = 29, 58, 43 -- F1 .. Bb3
+    elseif name_l:find("cell") or name_l:match("%f[%a]vc%f[%A]") or name_l:match("%f[%a]vlc%f[%A]") then
+        if clef_id == "bass" then
+            min_p, max_p, center_p = 36, 67, 48 -- C2 .. G4 (Cello playable range)
+        end
+    elseif name_l:find("bassoon") or name_l:find("fagott") or name_l:match("%f[%a]bsn%f[%A]") then
+        min_p, max_p, center_p = 34, 67, 48 -- Bb1 .. G4
+    elseif name_l:find("trombone") or name_l:find("posaune") or name_l:match("%f[%a]trb%f[%A]") or name_l:match("%f[%a]tbn%f[%A]") then
+        min_p, max_p, center_p = 40, 69, 53 -- E2 .. A4
+    elseif name_l:find("horn") or name_l:find("corno") or name_l:match("%f[%a]hn%f[%A]") then
+        min_p, max_p, center_p = 43, 77, 60 -- G2 .. F5 (French Horn)
+    elseif name_l:find("viola") or name_l:find("bratsche") or name_l:match("%f[%a]vla%f[%A]") then
+        min_p, max_p, center_p = 48, 79, 60 -- C3 .. G5 (Viola lowest string C3 = 48)
+    elseif name_l:find("violin") or name_l:find("violine") or name_l:find("geige") or name_l:match("%f[%a]vln%f[%A]") then
+        min_p, max_p, center_p = 55, 88, 69 -- G3 .. E6 (Violin lowest string G3 = 55!)
+    elseif name_l:find("flute") or name_l:find("flöte") or name_l:match("%f[%a]fl%f[%A]") then
+        min_p, max_p, center_p = 60, 91, 72 -- C4 .. G6 (Concert Flute lowest note C4 = 60!)
+    elseif name_l:find("oboe") or name_l:match("%f[%a]ob%f[%A]") then
+        min_p, max_p, center_p = 58, 86, 69 -- Bb3 .. D6
+    elseif name_l:find("trumpet") or name_l:find("trompete") or name_l:match("%f[%a]tpt%f[%A]") then
+        min_p, max_p, center_p = 54, 84, 67 -- F#3 .. C6
+    end
+
+    -- Apply optional user Octave Shift (-2 .. +2 octaves)
+    local oct_shift = math.floor(tonumber(octave_shift) or 0)
+    if oct_shift ~= 0 then
+        local shift_semi = oct_shift * 12
+        min_p = math.max(12, math.min(108, min_p + shift_semi))
+        max_p = math.max(min_p + 12, math.min(115, max_p + shift_semi))
+        center_p = math.max(min_p, math.min(max_p, center_p + shift_semi))
+    end
+
+    -- If user explicitly selected Waypoints, expand the register window to include their waypoints
+    if waypoints and #waypoints > 0 then
+        local wp_sum = 0
+        for _, wp in ipairs(waypoints) do
+            wp_sum = wp_sum + wp.pitch
+            if wp.pitch - 5 < min_p then min_p = math.max(21, wp.pitch - 5) end
+            if wp.pitch + 5 > max_p then max_p = math.min(108, wp.pitch + 5) end
+        end
+        center_p = math.floor((wp_sum / #waypoints) + 0.5)
+    end
+
+    return {
+        clef_id = clef_id,
+        label = label,
+        min_p = min_p,
+        max_p = max_p,
+        center_p = center_p,
+    }
+end
+
+--- Transposes `pitch` by octaves (±12 semitones) so it preserves its exact pitch class
+--- while landing squarely inside `[min_p, max_p]` as close as possible to `prefer_center`.
+function MelodyPathfinderService.fold_pitch_into_register(pitch, min_p, max_p, prefer_center)
+    local pc = pitch % 12
+    local center = prefer_center or math.floor((min_p + max_p) * 0.5)
+    local best_p = nil
+    local best_dist = 999
+
+    for oct = 1, 9 do
+        local cand = oct * 12 + pc
+        if cand >= min_p and cand <= max_p then
+            local d = math.abs(cand - center)
+            if d < best_dist then
+                best_dist = d
+                best_p = cand
+            end
+        end
+    end
+
+    if best_p then return best_p end
+
+    -- Fallback: clamp by ±12 steps toward [min_p, max_p]
+    local p = pitch
+    while p < min_p do p = p + 12 end
+    while p > max_p do p = p - 12 end
+    return math.max(min_p, math.min(max_p, p))
+end
+
 --- Collects MIDI notes from reference track(s) within [min_qn - 4, max_qn + 8]
---- @param ref_mode string|MediaTrack ("none", "auto_all", or MediaTrack*)
---- @param target_track MediaTrack|nil
---- @param min_qn number
---- @param max_qn number
---- @return table list of { pitch, start_qn, end_qn, dur_qn, vel }
 function MelodyPathfinderService.collect_reference_notes(ref_mode, target_track, min_qn, max_qn)
     local ref_notes = {}
     if not ref_mode or ref_mode == "none" then
@@ -197,7 +381,7 @@ function MelodyPathfinderService.collect_reference_notes(ref_mode, target_track,
     return ref_notes
 end
 
---- Builds a sorted list of scale pitches across MIDI 24..108
+--- Builds a sorted list of scale pitches across MIDI 21..108
 function MelodyPathfinderService.build_scale_pitches(tonic_pc, scale_id, style_obj)
     local resolved_id = scale_id
     if not resolved_id or resolved_id == "auto" then
@@ -212,7 +396,7 @@ function MelodyPathfinderService.build_scale_pitches(tonic_pc, scale_id, style_o
 
     local pitches = {}
     local pitch_to_deg = {}
-    for p = 24, 108 do
+    for p = 21, 108 do
         if pc_set[p % 12] then
             table.insert(pitches, p)
             pitch_to_deg[p] = #pitches
@@ -222,7 +406,6 @@ function MelodyPathfinderService.build_scale_pitches(tonic_pc, scale_id, style_o
 end
 
 --- Evaluates harmonic relationship between candidate pitch `p` and reference notes at `qn`
---- Returns a score in [-1.5 .. +1.5] scaled by `harmony_blend` (0.0 = dissonant/tense, 1.0 = consonant)
 local function score_harmony_at_qn(p, qn, dur_qn, ref_notes, prev_p, harmony_blend, is_counter_melody)
     if not ref_notes or #ref_notes == 0 then return 0.0 end
 
@@ -251,7 +434,7 @@ local function score_harmony_at_qn(p, qn, dur_qn, ref_notes, prev_p, harmony_ble
             -- Perfect 5th
             c_val = 0.85
         elseif iv == 0 then
-            -- Unison / Octave (good in unison orchestration, slightly less independent in counterpoint)
+            -- Unison / Octave
             c_val = is_counter_melody and 0.25 or 0.70
         elseif iv == 5 or iv == 2 or iv == 10 then
             -- 4th, Major 2nd, Minor 7th (suspensions / mild color)
@@ -262,17 +445,12 @@ local function score_harmony_at_qn(p, qn, dur_qn, ref_notes, prev_p, harmony_ble
         end
         raw_consonance = raw_consonance + c_val
 
-        -- Voice crossing & register spacing check in Counter-Melody mode
         if is_counter_melody and math.abs(p - rn.pitch) < 2 then
             raw_consonance = raw_consonance - 0.5
         end
     end
     raw_consonance = raw_consonance / #active_refs
 
-    -- Map harmony_blend [0..1]:
-    -- At 1.0 -> strongly reward consonance (+2.2 * raw_consonance)
-    -- At 0.5 -> mildly reward consonance (+0.7 * raw_consonance)
-    -- At 0.0 -> invert preference to reward tense dissonance (-1.5 * raw_consonance)
     local weight = (harmony_blend - 0.32) * 3.2
     local total_h_score = raw_consonance * weight
 
@@ -283,9 +461,9 @@ local function score_harmony_at_qn(p, qn, dur_qn, ref_notes, prev_p, harmony_ble
         local ref_dir = ref_now - ref_prev
         local mel_dir = p - prev_p
         if (ref_dir > 0 and mel_dir < 0) or (ref_dir < 0 and mel_dir > 0) then
-            total_h_score = total_h_score + 0.65 -- Contrary motion bonus!
+            total_h_score = total_h_score + 0.65
         elseif ref_dir ~= 0 and mel_dir == ref_dir and (math.abs(p - ref_now) % 12 == 0 or math.abs(p - ref_now) % 12 == 7) then
-            total_h_score = total_h_score - 0.90 -- Penalize parallel 5ths/8ves!
+            total_h_score = total_h_score - 0.90
         end
     end
 
@@ -311,7 +489,6 @@ local function subdivide_segment_rhythm(start_qn, end_qn, style_obj, density_lev
     while cur < end_qn - 0.08 do
         local rem = end_qn - cur
 
-        -- In Counter-Melody mode, adapt local density to complement the Reference Track!
         local cell_pool = cells
         if is_counter_melody and ref_notes and #ref_notes > 0 then
             local ref_onsets_in_window = 0
@@ -321,15 +498,12 @@ local function subdivide_segment_rhythm(start_qn, end_qn, style_obj, density_lev
                 end
             end
             if ref_onsets_in_window <= 1 and style_obj.rhythm_cells.dense then
-                -- Reference track holds a long note or rests -> Counter-melody fills the space!
                 cell_pool = (density_level < 0.4) and style_obj.rhythm_cells.medium or style_obj.rhythm_cells.dense
             elseif ref_onsets_in_window >= 5 and style_obj.rhythm_cells.sparse then
-                -- Reference track is very busy -> Counter-melody plays broader, calmer notes!
                 cell_pool = style_obj.rhythm_cells.sparse
             end
         end
 
-        -- Pick cell (reuse memorized_cell 65% of the time for motivic self-similarity)
         local chosen_cell = memorized_cell
         if not chosen_cell or rng() > 0.65 or is_counter_melody then
             local c_idx = math.floor(rng() * #cell_pool) + 1
@@ -352,20 +526,28 @@ local function subdivide_segment_rhythm(start_qn, end_qn, style_obj, density_lev
 end
 
 --- Solves the optimal melodic pitch path from `p_start` to `p_end` across `rhythm_steps`
---- using Viterbi Dynamic Programming + Meyer Gap-Fill + Target Gravity + Reference Harmony
-local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches, style_obj, opts, ref_notes, rng)
+--- using Viterbi Dynamic Programming + Clef Register Clamping + Film Composer Style Rules 1-4
+local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches, style_obj, opts, ref_notes, clef_reg, tonic_pc, rng)
     local K = #rhythm_steps
     if K == 0 then return {} end
 
-    -- Filter candidate pitches within playable range around [min(p_start,p_end)-9 .. max(p_start,p_end)+9]
-    local min_p = math.max(28, math.min(p_start, p_end) - 10)
-    local max_p = math.min(96, math.max(p_start, p_end) + 10)
+    -- Strictly respect the target instrument's Clef & Playable VSTi Register!
+    local reg_min = (clef_reg and clef_reg.min_p) or 36
+    local reg_max = (clef_reg and clef_reg.max_p) or 86
+    local seg_min = math.max(reg_min, math.min(p_start, p_end) - 9)
+    local seg_max = math.min(reg_max, math.max(p_start, p_end) + 9)
+    if seg_max < seg_min + 5 then
+        seg_min = reg_min
+        seg_max = reg_max
+    end
+
     local cands = {}
     for _, sp in ipairs(scale_pitches) do
-        if sp >= min_p and sp <= max_p then
+        if sp >= seg_min and sp <= seg_max then
             table.insert(cands, sp)
         end
     end
+
     -- Ensure p_start and p_end are in candidates
     local has_start, has_end = false, false
     for _, c in ipairs(cands) do
@@ -379,11 +561,23 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
     local N = #cands
     if N == 0 then return {} end
 
-    local leap_pref = tonumber(opts.leap_character) or 0.5
+    local leap_pref     = tonumber(opts.leap_character) or 0.5
     local harmony_blend = tonumber(opts.harmony_blend) or 0.75
-    local is_counter = (opts.counter_melody_mode == true)
+    local is_counter    = (opts.counter_melody_mode == true)
 
-    -- Step 1 is anchored at p_start (if include_start_waypoint) or transitions from p_start
+    -- Higher-order Film Composer Style rule weights
+    local fanfare_w   = tonumber(style_obj.triad_fanfare_bonus) or 0.25
+    local pivot_w     = tonumber(style_obj.pivot_return_bonus) or 0.20
+    local seq_w       = tonumber(style_obj.sequence_repeat_bonus) or 0.30
+    local no_semitone = (style_obj.avoid_semitone_lead == true)
+
+    local modal_color_map = {}
+    if style_obj.modal_color_semitones then
+        for _, semi in ipairs(style_obj.modal_color_semitones) do
+            modal_color_map[((tonic_pc or 0) + semi) % 12] = true
+        end
+    end
+
     local dp = {}
     local backptr = {}
     for k = 1, K do
@@ -395,7 +589,6 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
         end
     end
 
-    -- Initialize k = 1 (first note of the segment IS the start waypoint p_start)
     for i = 1, N do
         if cands[i] == p_start then
             dp[1][i] = 0.0
@@ -404,7 +597,6 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
         end
     end
 
-    -- Choose a cadential approach figure from the style corpus for the final step K
     local cad_list = style_obj.cadence_approaches or { { -1 }, { 1 } }
     local chosen_cad = cad_list[math.floor(rng() * #cad_list) + 1] or { -1 }
     local target_penultimate_semi = chosen_cad[#chosen_cad] or -1
@@ -413,9 +605,9 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
     for k = 2, K do
         local step_info = rhythm_steps[k]
         local frac = (k - 1) / math.max(1, K)
-        -- Ideal linear/arch guide pitch at fraction `frac`
         local arch_offset = math.sin(frac * math.pi) * (opts.arch_height or 3.0)
-        local guide_p = p_start + (p_end - p_start) * frac + arch_offset
+        local guide_p = math.max(reg_min, math.min(reg_max, p_start + (p_end - p_start) * frac + arch_offset))
+        local is_strong_beat = (math.abs(step_info.start_qn % 2.0) < 0.08)
 
         for j = 1, N do
             local p_curr = cands[j]
@@ -424,20 +616,38 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
                 ref_notes, nil, harmony_blend, is_counter
             )
 
-            -- Guide contour attraction (stronger as we get closer to K)
+            -- Guide contour attraction + comfortable Clef center attraction
             local dist_to_guide = math.abs(p_curr - guide_p)
             local guide_score = -dist_to_guide * (0.08 + 0.18 * frac)
+            if clef_reg and clef_reg.center_p then
+                guide_score = guide_score - math.abs(p_curr - clef_reg.center_p) * 0.025
+            end
+
+            -- Modal Color Tone Bonus (e.g. Lydian #4 wonder, Dorian natural 6, Mixolydian b7)
+            local color_bonus = modal_color_map[p_curr % 12] and 0.42 or 0.0
 
             -- Cadential preparation bonus on the final step (k == K) before p_end
             local cad_bonus = 0.0
             if k == K then
                 local diff_to_end = p_end - p_curr
-                if diff_to_end == target_penultimate_semi or math.abs(diff_to_end) == 1 or math.abs(diff_to_end) == 2 then
-                    cad_bonus = 2.4
-                elseif diff_to_end == 0 and (style_obj.anticipation_prob or 0) > 0.3 then
-                    cad_bonus = 1.8 -- Punky/Romantic anticipation of target note!
-                elseif math.abs(diff_to_end) > 7 then
-                    cad_bonus = -3.5 -- Avoid awkward huge jump into the anchor note
+                if no_semitone then
+                    -- Pastoral / Celtic modal cadence: reward whole-step (±2) or minor 3rd (±3), penalize half-step (±1)
+                    if math.abs(diff_to_end) == 2 or math.abs(diff_to_end) == 3 or math.abs(diff_to_end) == 5 then
+                        cad_bonus = 2.8
+                    elseif math.abs(diff_to_end) == 1 then
+                        cad_bonus = -2.2
+                    end
+                else
+                    if diff_to_end == target_penultimate_semi or math.abs(diff_to_end) == 1 or math.abs(diff_to_end) == 2 then
+                        cad_bonus = 2.4
+                    elseif (diff_to_end == -5 or diff_to_end == 5 or diff_to_end == -7) and fanfare_w > 0.6 then
+                        cad_bonus = 2.5 -- Heroic 4th/5th fanfare cadence!
+                    elseif diff_to_end == 0 and (style_obj.anticipation_prob or 0) > 0.3 then
+                        cad_bonus = 1.8
+                    end
+                end
+                if math.abs(diff_to_end) > 7 then
+                    cad_bonus = cad_bonus - 3.5
                 end
             end
 
@@ -453,6 +663,11 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
                     local w = (style_obj.interval_weights and style_obj.interval_weights[iv]) or 0.01
                     local iv_score = math.log(math.max(0.002, w)) * 0.85
 
+                    -- Pastoral / Modal Semitone Suppression (Film Composer Style 4)
+                    if no_semitone and abs_iv == 1 then
+                        iv_score = iv_score - 1.6
+                    end
+
                     -- Adjust for user's Leap Character slider (0 = stepwise, 1 = wide heroic leaps)
                     if abs_iv >= 5 and abs_iv <= 12 then
                         iv_score = iv_score + (leap_pref - 0.45) * 1.6
@@ -462,18 +677,54 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
                         iv_score = iv_score - 4.0
                     end
 
-                    -- 2. Leonard Meyer's Gap-Fill Law (2nd-order check using backptr[k-1][i])
+                    -- 2. Higher-Order Rule Evaluation using 2-step & 3-step history
                     local gap_fill_bonus = 0.0
+                    local style_rule_bonus = 0.0
+
                     if k >= 3 then
                         local prev_prev_idx = backptr[k - 1][i]
                         local p_prev2 = cands[prev_prev_idx] or p_prev
                         local prev_iv = p_prev - p_prev2
-                        if math.abs(prev_iv) >= 5 then
-                            -- Previous step was a leap! Strongly reward contrary stepwise recovery
+                        local abs_prev_iv = math.abs(prev_iv)
+
+                        -- (a) Leonard Meyer's Gap-Fill Law
+                        if abs_prev_iv >= 5 then
                             if (prev_iv > 0 and iv < 0 and abs_iv <= 3) or (prev_iv < 0 and iv > 0 and abs_iv <= 3) then
                                 gap_fill_bonus = (style_obj.gap_fill_strength or 0.75) * 1.8
                             elseif (prev_iv > 0 and iv > 0) or (prev_iv < 0 and iv < 0) then
-                                gap_fill_bonus = -1.2 -- Penalize consecutive leaps in same direction
+                                gap_fill_bonus = -1.2
+                            end
+                        end
+
+                        -- (b) Film Style 1 Rule: Heroic Symphonic Fanfare (Quartal / Triad Outlines + Stepwise Turn)
+                        if fanfare_w > 0.3 then
+                            if (prev_iv == 5 or prev_iv == 7) and (iv == 2 or iv == -1 or iv == -2 or iv == 5 or iv == 4) then
+                                style_rule_bonus = style_rule_bonus + fanfare_w * 1.35
+                            elseif is_strong_beat and (iv == 5 or iv == 7 or iv == 12) then
+                                style_rule_bonus = style_rule_bonus + fanfare_w * 0.95
+                            end
+                        end
+
+                        -- (c) Film Style 2 Rule: Hypnotic Pivot-Tone Return after Neighbor/6th Excursion
+                        if pivot_w > 0.3 then
+                            if p_curr == p_prev2 and (abs_prev_iv == 1 or abs_prev_iv == 2 or abs_prev_iv == 3 or abs_prev_iv == 8) then
+                                style_rule_bonus = style_rule_bonus + pivot_w * 1.30
+                            elseif p_curr == p_start and k % 2 == 1 and abs_iv <= 3 then
+                                style_rule_bonus = style_rule_bonus + pivot_w * 0.75
+                            end
+                        end
+
+                        -- (d) Film Style 3 Rule: Kinetic Rising Motivic Sequence
+                        if seq_w > 0.3 and k >= 4 then
+                            local idx_k3 = backptr[k - 2] and backptr[k - 2][prev_prev_idx]
+                            local p_prev3 = idx_k3 and cands[idx_k3]
+                            if p_prev3 then
+                                local iv_2_ago = p_prev2 - p_prev3
+                                -- Reward repeating a 2-step contour transposed up by +1..+3 semitones
+                                local trans = p_curr - p_prev2
+                                if iv_2_ago ~= 0 and (iv * iv_2_ago > 0) and (trans >= 1 and trans <= 3) then
+                                    style_rule_bonus = style_rule_bonus + seq_w * 1.25
+                                end
                             end
                         end
                     end
@@ -487,7 +738,7 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
                         ) - h_score
                     end
 
-                    local cand_total = dp[k - 1][i] + iv_score + gap_fill_bonus + h_score + cp_bonus + guide_score + cad_bonus + noise
+                    local cand_total = dp[k - 1][i] + iv_score + gap_fill_bonus + style_rule_bonus + color_bonus + h_score + cp_bonus + guide_score + cad_bonus + noise
                     if cand_total > dp[k][j] then
                         dp[k][j] = cand_total
                         backptr[k][j] = i
@@ -517,24 +768,30 @@ local function solve_segment_viterbi(p_start, p_end, rhythm_steps, scale_pitches
     return chosen_pitches
 end
 
---- Applies Melodic Inversion, Retrograde, or Retrograde-Inversion within scale degrees
-local function apply_contour_transform(notes, transform_id, pivot_pitch, scale_pitches)
+--- Applies Melodic Inversion, Retrograde, or Retrograde-Inversion within scale degrees & Clef Register
+local function apply_contour_transform(notes, transform_id, pivot_pitch, scale_pitches, clef_reg)
     if not transform_id or transform_id == "normal" or #notes <= 1 then
         return notes
     end
 
-    -- Helper to snap any inverted pitch to the nearest active scale tone
-    local function snap_to_scale(p)
-        local best_p = p
+    local reg_min = (clef_reg and clef_reg.min_p) or 28
+    local reg_max = (clef_reg and clef_reg.max_p) or 96
+    local reg_center = (clef_reg and clef_reg.center_p) or 60
+
+    local function snap_to_scale_and_clef(p)
+        local folded = MelodyPathfinderService.fold_pitch_into_register(p, reg_min, reg_max, reg_center)
+        local best_p = folded
         local best_d = 999
         for _, sp in ipairs(scale_pitches) do
-            local d = math.abs(sp - p)
-            if d < best_d then
-                best_d = d
-                best_p = sp
+            if sp >= reg_min and sp <= reg_max then
+                local d = math.abs(sp - folded)
+                if d < best_d then
+                    best_d = d
+                    best_p = sp
+                end
             end
         end
-        return math.max(24, math.min(108, best_p))
+        return math.max(reg_min, math.min(reg_max, best_p))
     end
 
     local do_invert = (transform_id == "inversion" or transform_id == "retrograde_inversion")
@@ -545,13 +802,12 @@ local function apply_contour_transform(notes, transform_id, pivot_pitch, scale_p
         for _, n in ipairs(notes) do
             if not n.is_waypoint or transform_id == "inversion" then
                 local mirrored = axis - (n.pitch - axis)
-                n.pitch = snap_to_scale(mirrored)
+                n.pitch = snap_to_scale_and_clef(mirrored)
             end
         end
     end
 
     if do_retro and #notes >= 2 then
-        -- Reverse pitch & duration sequence across the phrase span while keeping start_qn monotonic
         local q0 = notes[1].start_qn
         local rev_pitches = {}
         local rev_durs = {}
@@ -578,10 +834,6 @@ local function apply_contour_transform(notes, transform_id, pivot_pitch, scale_p
 end
 
 --- Generates the complete melody / counter-melody preview from current state & options
---- @param state table
---- @param active_tracks_data table
---- @param opts table
---- @return table result { notes = ..., waypoints = ..., ref_notes = ..., target_track = ..., status = ... }
 function MelodyPathfinderService.generate_preview(state, active_tracks_data, opts)
     opts = opts or {}
     local style_id = opts.style_id or "cinematic"
@@ -589,6 +841,11 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
     local rng = make_rng(opts.seed or 1001)
 
     local target_track, waypoints, target_take = MelodyPathfinderService.get_selected_waypoints(state, active_tracks_data)
+
+    -- Resolve active Clef & Playable Instrument Register for target_track
+    local clef_reg = MelodyPathfinderService.get_clef_register(
+        state, target_track, target_take, waypoints, opts.octave_shift
+    )
 
     -- Determine tonic pitch class from track's Key Signature (or C if 0)
     local key_idx = 0
@@ -620,12 +877,15 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         opts.ref_track_mode, target_track, min_qn, max_qn
     )
 
-    -- If only 1 waypoint (or 0 waypoints) is selected, synthesize musical landmark waypoints
-    -- across `phrase_bars` so Single-Note Counter-Melody / Seed Generation works effortlessly!
+    -- Build effective waypoints anchored inside the Target Track's Clef Register
     local effective_waypoints = {}
     for _, wp in ipairs(waypoints) do
+        local wp_p = wp.pitch
+        if opts.octave_shift and tonumber(opts.octave_shift) ~= 0 then
+            wp_p = math.max(21, math.min(108, wp_p + math.floor(tonumber(opts.octave_shift)) * 12))
+        end
         table.insert(effective_waypoints, {
-            pitch = wp.pitch,
+            pitch = wp_p,
             start_qn = wp.start_qn,
             dur_qn = wp.dur_qn,
             vel = wp.vel,
@@ -635,9 +895,17 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
     end
 
     if #effective_waypoints < 2 then
-        local seed_pitch = (effective_waypoints[1] and effective_waypoints[1].pitch) or 60
-        local seed_chan  = (effective_waypoints[1] and effective_waypoints[1].chan) or 0
-        local seed_vel   = (effective_waypoints[1] and effective_waypoints[1].vel) or 96
+        -- Default seed pitch uses the detected Clef's natural center pitch (e.g. C3=48 for Bass Clef, G4=67 for Treble)
+        local raw_seed = (effective_waypoints[1] and effective_waypoints[1].pitch) or clef_reg.center_p
+        local seed_pitch = raw_seed
+        if #effective_waypoints == 0 then
+            -- Snap default clef center to tonic or 5th of active scale inside clef register
+            seed_pitch = MelodyPathfinderService.fold_pitch_into_register(
+                60 + tonic_pc, clef_reg.min_p, clef_reg.max_p, clef_reg.center_p
+            )
+        end
+        local seed_chan = (effective_waypoints[1] and effective_waypoints[1].chan) or 0
+        local seed_vel  = (effective_waypoints[1] and effective_waypoints[1].vel) or 96
 
         if #effective_waypoints == 0 then
             table.insert(effective_waypoints, {
@@ -650,13 +918,13 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
             })
         end
 
-        -- Create 1 structural waypoint per measure across `phrase_bars`
         local arch_Offsets = { 4, 7, 3, 0, 5, 8, 2, 0 }
         for b = 1, phrase_bars do
             local w_qn = min_qn + (b * qn_per_bar)
             local target_p = seed_pitch + (arch_Offsets[((b - 1) % #arch_Offsets) + 1] or 0)
 
-            -- If Reference Track has notes near `w_qn`, pick a consonant contrapuntal pitch (3rd or 6th above/below)!
+            -- If Reference Track has notes near `w_qn`, pick a consonant contrapuntal pitch class
+            -- AND fold it into the Target Track's Clef & Seed Note octave!
             if #ref_notes > 0 then
                 for _, rn in ipairs(ref_notes) do
                     if math.abs(rn.start_qn - w_qn) < 1.5 then
@@ -668,13 +936,21 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
                 end
             end
 
-            -- Snap `target_p` to scale
+            -- Fold `target_p` into the Target Track's Clef register around `seed_pitch`
+            target_p = MelodyPathfinderService.fold_pitch_into_register(
+                target_p, clef_reg.min_p, clef_reg.max_p, seed_pitch
+            )
+
+            -- Snap `target_p` to scale within Clef register
             local best_sp = seed_pitch
             local best_d = 999
             for _, sp in ipairs(scale_pitches) do
-                if math.abs(sp - target_p) < best_d then
-                    best_d = math.abs(sp - target_p)
-                    best_sp = sp
+                if sp >= clef_reg.min_p and sp <= clef_reg.max_p then
+                    local d = math.abs(sp - target_p)
+                    if d < best_d then
+                        best_d = d
+                        best_sp = sp
+                    end
                 end
             end
 
@@ -684,7 +960,7 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
                 dur_qn = 1.0,
                 vel = seed_vel,
                 chan = seed_chan,
-                is_waypoint = (b == 1 and #waypoints == 1) and false or false,
+                is_waypoint = false,
             })
         end
     end
@@ -705,7 +981,7 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         if not memorized_cell then memorized_cell = used_cell end
 
         local seg_pitches = solve_segment_viterbi(
-            wA.pitch, wB.pitch, seg_steps, scale_pitches, style_obj, opts, ref_notes, rng
+            wA.pitch, wB.pitch, seg_steps, scale_pitches, style_obj, opts, ref_notes, clef_reg, tonic_pc, rng
         )
 
         for k, st in ipairs(seg_steps) do
@@ -713,7 +989,6 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
             local p = is_anchor and wA.pitch or (seg_pitches[k] or wA.pitch)
             local dur = st.dur_qn * (style_obj.legato_ratio or 0.92)
 
-            -- Articulation & dynamic phrasing curve
             local art = "normal"
             local beat_frac = st.start_qn % 1.0
             if not is_anchor then
@@ -727,7 +1002,6 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
                 art = "tenuto"
             end
 
-            -- Shape velocity arch across the segment
             local seg_frac = (k - 1) / math.max(1, #seg_steps)
             local vel_curve = math.sin(seg_frac * math.pi) * 14
             local base_vel = is_anchor and (wA.vel or 100) or 86
@@ -746,7 +1020,6 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         end
     end
 
-    -- Append the final waypoint W_last
     local wLast = effective_waypoints[#effective_waypoints]
     if wLast then
         table.insert(generated, {
@@ -760,10 +1033,10 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         })
     end
 
-    -- Apply optional Melodic Inversion / Retrograde contour transformation
+    -- Apply optional Melodic Inversion / Retrograde contour transformation within Clef Register
     if opts.transform_id and opts.transform_id ~= "normal" then
-        local pivot = (effective_waypoints[1] and effective_waypoints[1].pitch) or 60
-        generated = apply_contour_transform(generated, opts.transform_id, pivot, scale_pitches)
+        local pivot = (effective_waypoints[1] and effective_waypoints[1].pitch) or clef_reg.center_p
+        generated = apply_contour_transform(generated, opts.transform_id, pivot, scale_pitches, clef_reg)
     end
 
     return {
@@ -772,19 +1045,21 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         ref_notes = ref_notes,
         target_track = target_track,
         target_take = target_take,
+        clef_register = clef_reg,
         style = style_obj,
         min_qn = min_qn,
         max_qn = max_qn,
     }
 end
 
---- Directly inverts the currently selected notes in the score around their first note (or average pitch)
+--- Directly inverts the currently selected notes in the score around their first note within Clef Register
 function MelodyPathfinderService.invert_selected_notes_in_place(state, active_tracks_data, scale_id)
     local target_track, waypoints, target_take = MelodyPathfinderService.get_selected_waypoints(state, active_tracks_data)
     if not target_take or #waypoints < 2 then
         return false, "Select at least 2 notes to invert."
     end
 
+    local clef_reg = MelodyPathfinderService.get_clef_register(state, target_track, target_take, waypoints, 0)
     local key_idx = (state and state.get_key_signature_at_qn and state:get_key_signature_at_qn(target_track, waypoints[1].start_qn)) or 0
     local tonic_pc = KEY_IDX_TO_TONIC_PC[key_idx] or 0
     local scale_pitches = MelodyPathfinderService.build_scale_pitches(tonic_pc, scale_id or "auto", nil)
@@ -793,108 +1068,151 @@ function MelodyPathfinderService.invert_selected_notes_in_place(state, active_tr
     reaper.Undo_BeginBlock()
     for _, wp in ipairs(waypoints) do
         local mirrored = axis - (wp.pitch - axis)
-        local best_p = mirrored
+        local folded = MelodyPathfinderService.fold_pitch_into_register(
+            mirrored, clef_reg.min_p, clef_reg.max_p, axis
+        )
+        local best_p = folded
         local best_d = 999
         for _, sp in ipairs(scale_pitches) do
-            if math.abs(sp - mirrored) < best_d then
-                best_d = math.abs(sp - mirrored)
-                best_p = sp
+            if sp >= clef_reg.min_p and sp <= clef_reg.max_p then
+                if math.abs(sp - folded) < best_d then
+                    best_d = math.abs(sp - folded)
+                    best_p = sp
+                end
             end
         end
-        best_p = math.max(12, math.min(115, best_p))
-        if wp.take and wp.idx then
-            reaper.MIDI_SetNote(wp.take, wp.idx, nil, nil, nil, nil, nil, best_p, nil, true)
-        end
+        reaper.MIDI_SetNote(target_take, wp.idx, nil, nil, nil, nil, nil, best_p, nil, true)
     end
     reaper.MIDI_Sort(target_take)
+    if reaper.MarkTrackItemsDirty then
+        reaper.MarkTrackItemsDirty(target_track, reaper.GetMediaItemTake_Item(target_take))
+    end
+    reaper.Undo_EndBlock("Melodic Pathfinder: Invert Selected Notes", -1)
     reaper.UpdateArrange()
-    reaper.Undo_EndBlock("Notator: Melodic Inversion on Selection", -1)
-    return true, string.format("Inverted %d selected notes around pitch %d", #waypoints, axis)
+    return true, string.format("Inverted %d selected notes around pitch %d (%s).", #waypoints, axis, clef_reg.label)
 end
 
---- Commits the generated preview melody into the target REAPER track / MIDI take
-function MelodyPathfinderService.apply_generated_melody(state, preview, midi_service, opts)
+--- Commits the previewed melody / counter-melody into the target track's MIDI item
+function MelodyPathfinderService.apply_to_score(state, midi_service, preview, opts)
     if not preview or not preview.notes or #preview.notes == 0 then
-        return false, "No generated melody notes to insert."
+        return false, "No generated notes to insert."
     end
 
-    local target_track = (opts and opts.output_track and reaper.ValidatePtr(opts.output_track, "MediaTrack*"))
-        and opts.output_track
-        or preview.target_track
-    if not target_track or not reaper.ValidatePtr(target_track, "MediaTrack*") then
+    local track = preview.target_track
+    if not track or not reaper.ValidatePtr(track, "MediaTrack*") then
         return false, "No valid target track found."
     end
 
-    local min_qn = preview.notes[1].start_qn
+    local min_qn = preview.min_qn or preview.notes[1].start_qn
     local last_n = preview.notes[#preview.notes]
-    local max_qn = last_n.start_qn + (last_n.dur_qn or 1.0)
-    local span_qn = math.max(4.0, max_qn - min_qn)
+    local max_qn = math.max(preview.max_qn or 0, last_n.start_qn + last_n.dur_qn)
 
     reaper.Undo_BeginBlock()
 
     local take = preview.target_take
-    if (opts and opts.output_track and opts.output_track ~= preview.target_track) or not (take and reaper.ValidatePtr(take, "MediaItem_Take*")) then
-        local _, new_take = midi_service.get_or_create_item_at_qn(target_track, min_qn, span_qn)
-        take = new_take
+    local item = take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.GetMediaItemTake_Item(take) or nil
+
+    if not item then
+        local icnt = reaper.CountTrackMediaItems(track)
+        for ii = 0, icnt - 1 do
+            local it = reaper.GetTrackMediaItem(track, ii)
+            local tk = it and reaper.GetActiveTake(it)
+            if tk and reaper.TakeIsMIDI(tk) then
+                local pos_s = reaper.GetMediaItemInfo_Value(it, "D_POSITION")
+                local len_s = reaper.GetMediaItemInfo_Value(it, "D_LENGTH")
+                local i_sqn = reaper.TimeMap2_timeToQN(0, pos_s)
+                local i_eqn = reaper.TimeMap2_timeToQN(0, pos_s + len_s)
+                if i_eqn >= min_qn - 0.1 and i_sqn <= max_qn + 0.1 then
+                    item = it
+                    take = tk
+                    break
+                end
+            end
+        end
     end
 
-    if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then
-        reaper.Undo_EndBlock("Notator: Melodic Pathfinder (Failed)", -1)
+    local start_sec = reaper.TimeMap2_QNToTime(0, min_qn)
+    local end_sec   = reaper.TimeMap2_QNToTime(0, max_qn + 0.5)
+
+    if not item or not take then
+        item = reaper.CreateNewMIDIItemInProj(track, start_sec, end_sec, false)
+        take = item and reaper.GetActiveTake(item)
+    else
+        local item_pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+        local item_end = item_pos + reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+        if end_sec > item_end then
+            reaper.MIDI_SetItemExtents(
+                item,
+                reaper.TimeMap2_timeToQN(0, item_pos),
+                reaper.TimeMap2_timeToQN(0, end_sec)
+            )
+        end
+    end
+
+    if not take then
+        reaper.Undo_EndBlock("Melodic Pathfinder (Failed)", -1)
         return false, "Could not resolve or create MIDI take."
     end
 
-    -- Ensure the MIDI item extends far enough to hold the entire generated phrase
-    local item = reaper.GetMediaItemTake_Item(take)
-    if item and reaper.ValidatePtr(item, "MediaItem*") then
-        local item_start_sec = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
-        local item_end_sec = item_start_sec + reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
-        local needed_end_sec = reaper.TimeMap2_QNToTime(0, max_qn + 0.5)
-        if needed_end_sec > item_end_sec then
-            reaper.SetMediaItemInfo_Value(item, "D_LENGTH", needed_end_sec - item_start_sec)
-        end
-    end
-
-    -- If writing onto the same take where waypoints were selected, remove the original waypoints first
-    -- (since `preview.notes` already includes the waypoints at their exact positions with tailored durations)
-    if target_track == preview.target_track and preview.waypoints and #preview.waypoints > 0 then
-        local idxs = {}
-        for _, wp in ipairs(preview.waypoints) do
-            if wp.take == take and wp.idx ~= nil then
-                table.insert(idxs, wp.idx)
+    local target_chan = (preview.notes[1] and preview.notes[1].chan) or 0
+    local _, ncnt = reaper.MIDI_CountEvts(take)
+    for ni = (ncnt or 0) - 1, 0, -1 do
+        local nok, _, _, sppq, eppq, chan = reaper.MIDI_GetNote(take, ni)
+        if nok and chan == target_chan then
+            local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+            local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
+            if sqn >= min_qn - 0.04 and sqn <= max_qn - 0.04 then
+                reaper.MIDI_DeleteNote(take, ni)
             end
         end
-        table.sort(idxs, function(a, b) return a > b end)
-        for _, idx in ipairs(idxs) do
-            reaper.MIDI_DeleteNote(take, idx)
-        end
     end
 
-    -- Insert all generated melody notes (and select them so the user sees them highlighted!)
-    reaper.MIDI_SelectAll(take, false)
     for _, gn in ipairs(preview.notes) do
         local sppq = reaper.MIDI_GetPPQPosFromProjQN(take, gn.start_qn)
         local eppq = reaper.MIDI_GetPPQPosFromProjQN(take, gn.start_qn + gn.dur_qn)
-        local p = math.max(0, math.min(127, math.floor(gn.pitch + 0.5)))
-        local v = math.max(1, math.min(127, math.floor(gn.vel or 90)))
-        local c = math.max(0, math.min(15, math.floor(gn.chan or 0)))
-        reaper.MIDI_InsertNote(take, true, false, sppq, eppq, c, p, v, true)
+        if eppq <= sppq + 10 then eppq = sppq + 60 end
+        reaper.MIDI_InsertNote(take, true, false, sppq, eppq, gn.chan or 0, gn.pitch, gn.vel or 90, true)
+
+        if gn.art and gn.art ~= "normal" then
+            local notation_str = string.format("NOTE %d %d articulation %s", gn.chan or 0, gn.pitch, gn.art)
+            reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, notation_str)
+        end
     end
 
     reaper.MIDI_Sort(take)
 
-    -- Optional Auto-Slur across legato phrases
-    if opts and opts.auto_slur and SlurService and SlurService.add_slur then
-        SlurService.add_slur(state, target_track, min_qn, max_qn, 1)
+    if opts and opts.auto_slur and #preview.notes >= 2 then
+        local trk_guid = reaper.GetTrackGUID(track)
+        SlurService.add_slur(
+            state,
+            trk_guid,
+            preview.notes[1].start_qn,
+            preview.notes[#preview.notes].start_qn,
+            (target_chan or 0) + 1
+        )
     end
 
-    reaper.MarkTrackItemsDirty(target_track, item)
-    reaper.UpdateArrange()
-    state.force_refresh = true
+    if midi_service and midi_service.sync_reaticulate_events then
+        pcall(midi_service.sync_reaticulate_events, take, state)
+    end
 
-    local mode_lbl = (opts and opts.counter_melody_mode) and "Counter-Melody" or "Melodic Pathfinder"
-    reaper.Undo_EndBlock("Notator: " .. mode_lbl .. " (" .. #preview.notes .. " notes)", -1)
-    return true, string.format("Inserted %d notes (%s)", #preview.notes, preview.style and preview.style.name or mode_lbl)
+    if reaper.MarkTrackItemsDirty then
+        reaper.MarkTrackItemsDirty(track, item)
+    end
+    state.cached_measure_map = nil
+    state.cached_measure_map_sig = nil
+
+    local mode_lbl = (opts and opts.counter_melody_mode) and "Counter-Melody" or "Melodic Path"
+    reaper.Undo_EndBlock("Melodic Pathfinder: Generate " .. mode_lbl, -1)
+    reaper.UpdateArrange()
+
+    return true, string.format(
+        "Inserted %d notes (%s, %s, %s) on target track!",
+        #preview.notes,
+        mode_lbl,
+        (preview.style and preview.style.name) or "Custom",
+        (preview.clef_register and preview.clef_register.label) or "Clef"
+    )
 end
 
 return MelodyPathfinderService
-

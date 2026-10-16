@@ -1031,7 +1031,7 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 state.show_divisi_modal = true
                 state.focus_divisi_modal = true
             end
-            if reaper.ImGui_MenuItem(ctx, "🧭 Melodic Pathfinder / Counter-Melody...") then
+            if reaper.ImGui_MenuItem(ctx, "🧭 Melodic Pathfinder") then
                 state.show_melody_pathfinder_modal = true
                 state.focus_melody_pathfinder_modal = true
                 state.mpf_dirty = true
