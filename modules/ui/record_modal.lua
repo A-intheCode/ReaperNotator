@@ -119,6 +119,108 @@ local function pin_metro_hwnd_topmost(hwnd, set_focus)
     return true
 end
 
+local function refresh_open_metro_dialog(state)
+    local hwnd = state._metro_hwnd
+    if not is_hwnd_open(hwnd) then
+        if reaper.APIExists("JS_Window_FindTop") then
+            local main_hwnd = reaper.GetMainHwnd()
+            local h = reaper.JS_Window_FindTop("Metronome", false) or reaper.JS_Window_FindTop("Metronom", false)
+            hwnd = resolve_top_dialog_hwnd(h, main_hwnd, state._notator_hwnd)
+        end
+    end
+    if not is_hwnd_open(hwnd) then return end
+
+    local has_rect, left, top, right, bottom = false, 0, 0, 0, 0
+    if reaper.APIExists("JS_Window_GetRect") then
+        has_rect, left, top, right, bottom = reaper.JS_Window_GetRect(hwnd)
+    end
+
+    state._metro_pin_frames = 10
+    reaper.defer(function()
+        if is_hwnd_open(hwnd) then
+            -- Close and immediately re-open so REAPER repopulates dialog controls from updated config vars
+            reaper.Main_OnCommand(40363, 0)
+            reaper.Main_OnCommand(40363, 0)
+            state._metro_hwnd = nil
+            local new_hwnd = find_metro_hwnd(state)
+            if new_hwnd then
+                state._metro_hwnd = new_hwnd
+                if has_rect and reaper.APIExists("JS_Window_SetPosition") then
+                    local w = math.abs(right - left)
+                    local h_px = math.abs(bottom - top)
+                    if w > 50 and h_px > 50 then
+                        reaper.JS_Window_SetPosition(new_hwnd, left, top, w, h_px)
+                    end
+                end
+                pin_metro_hwnd_topmost(new_hwnd, false)
+            end
+        end
+    end)
+end
+
+local function set_reaper_preroll(state, enable)
+    local rec_state = (reaper.GetToggleCommandState(41819) == 1)
+    local play_state = (reaper.GetToggleCommandState(41818) == 1)
+
+    if enable then
+        if not rec_state then
+            reaper.Main_OnCommand(41819, 0)
+        end
+        if reaper.APIExists("SNM_GetIntConfigVar") and reaper.APIExists("SNM_SetIntConfigVar") then
+            local ok_p, p_val = pcall(reaper.SNM_GetIntConfigVar, "preroll", -1)
+            if ok_p and p_val and p_val >= 0 then
+                pcall(reaper.SNM_SetIntConfigVar, "preroll", p_val | 2)
+            end
+        end
+    else
+        if rec_state then
+            reaper.Main_OnCommand(41819, 0)
+        end
+        if play_state then
+            reaper.Main_OnCommand(41818, 0)
+        end
+        if reaper.APIExists("SNM_GetIntConfigVar") and reaper.APIExists("SNM_SetIntConfigVar") then
+            local ok_p, p_val = pcall(reaper.SNM_GetIntConfigVar, "preroll", -1)
+            if ok_p and p_val and p_val >= 0 then
+                pcall(reaper.SNM_SetIntConfigVar, "preroll", p_val & (~3))
+            end
+        end
+    end
+    reaper.TrackList_AdjustWindows(false)
+    reaper.UpdateTimeline()
+    refresh_open_metro_dialog(state)
+end
+
+local function set_reaper_countin(state, enable)
+    local metro_state = (reaper.GetToggleCommandState(40364) == 1)
+    if enable then
+        if not metro_state then
+            reaper.Main_OnCommand(40364, 0)
+        end
+        if reaper.APIExists("SNM_GetIntConfigVar") and reaper.APIExists("SNM_SetIntConfigVar") then
+            local ok_m, m_val = pcall(reaper.SNM_GetIntConfigVar, "projmetroen", -1)
+            if ok_m and m_val and m_val >= 0 then
+                -- Bit 0 (1): Enable metronome, Bit 2 (4): Run during recording, Bit 4 (16): Count-in before recording
+                pcall(reaper.SNM_SetIntConfigVar, "projmetroen", m_val | 1 | 4 | 16)
+            end
+        end
+    else
+        if metro_state then
+            reaper.Main_OnCommand(40364, 0)
+        end
+        if reaper.APIExists("SNM_GetIntConfigVar") and reaper.APIExists("SNM_SetIntConfigVar") then
+            local ok_m, m_val = pcall(reaper.SNM_GetIntConfigVar, "projmetroen", -1)
+            if ok_m and m_val and m_val >= 0 then
+                -- Clear Bit 0 (1) and Bit 4 (16)
+                pcall(reaper.SNM_SetIntConfigVar, "projmetroen", m_val & (~17))
+            end
+        end
+    end
+    reaper.TrackList_AdjustWindows(false)
+    reaper.UpdateTimeline()
+    refresh_open_metro_dialog(state)
+end
+
 function RecordModal.render(ctx, state, midi_service, project_tracks, active_tracks_data)
     if not state.show_record_modal then return end
 
@@ -176,11 +278,22 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         reaper.ImGui_PopStyleColor(ctx)
         reaper.ImGui_Spacing(ctx)
 
-        -- Pre-roll on Record (Action 41819)
+        -- Clean up any leftover Pre-roll on Play (41818) when Pre-roll on Record (41819) is disabled
         local preroll_active = (reaper.GetToggleCommandState(41819) == 1)
-        local changed_preroll, _ = reaper.ImGui_Checkbox(ctx, "Pre-roll before Recording##PrerollToggle", preroll_active)
+        if not preroll_active and reaper.GetToggleCommandState(41818) == 1 then
+            reaper.Main_OnCommand(41818, 0)
+            if reaper.APIExists("SNM_GetIntConfigVar") and reaper.APIExists("SNM_SetIntConfigVar") then
+                local ok_p, p_val = pcall(reaper.SNM_GetIntConfigVar, "preroll", -1)
+                if ok_p and p_val and p_val >= 0 then
+                    pcall(reaper.SNM_SetIntConfigVar, "preroll", p_val & (~1))
+                end
+            end
+            refresh_open_metro_dialog(state)
+        end
+
+        local changed_preroll, new_preroll_val = reaper.ImGui_Checkbox(ctx, "Pre-roll before Recording##PrerollToggle", preroll_active)
         if changed_preroll then
-            reaper.Main_OnCommand(41819, 0)
+            set_reaper_preroll(state, new_preroll_val)
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Plays preceding measures before recording starts (REAPER Pre-roll on Record).")
@@ -208,16 +321,17 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                         pcall(reaper.SNM_SetDoubleConfigVar, "prerollmeas", tonumber(b) or 1.0)
                     end
                     require("state").save_settings(state)
+                    refresh_open_metro_dialog(state)
                 end
             end
             reaper.ImGui_EndCombo(ctx)
         end
 
-        -- Metronome & Count-in on Record (Action 40364)
+        -- Metronome & Count-in on Record (Action 40364 + projmetroen bitfield)
         local countin_active = (reaper.GetToggleCommandState(40364) == 1)
-        local changed_ci, _ = reaper.ImGui_Checkbox(ctx, "Metronome Count-in before Recording##CountinToggle", countin_active)
+        local changed_ci, new_ci_val = reaper.ImGui_Checkbox(ctx, "Metronome Count-in before Recording##CountinToggle", countin_active)
         if changed_ci then
-            reaper.Main_OnCommand(40364, 0)
+            set_reaper_countin(state, new_ci_val)
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Audible metronome / count-in clicks during and before recording.")
