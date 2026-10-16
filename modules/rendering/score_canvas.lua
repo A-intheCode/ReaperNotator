@@ -2382,6 +2382,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.selected_octave_line = nil
                     state.selected_portamento = nil
                     state.context_portamento = nil
+                    state.selected_glissando = nil
+                    state.context_glissando = nil
                     state.selected_slur = nil
                     state.selected_tie = nil
                     state.context_slur = nil
@@ -2437,6 +2439,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.selected_dynamic = nil
                     state.selected_tempo_marker = nil
                     state.selected_octave_line = nil
+                    state.selected_portamento = nil
+                    state.context_portamento = nil
+                    state.selected_glissando = nil
+                    state.context_glissando = nil
                     state.selected_slur = nil
                     state.selected_tie = nil
                     state.context_slur = nil
@@ -4733,6 +4739,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     AudioPreview.update(state, ctx)
     
     return {
+        is_hovered = is_hovered,
         margin_left = margin_left,
         measure_w = measure_w,
         measure_map = measure_map,

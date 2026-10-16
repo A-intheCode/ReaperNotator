@@ -514,6 +514,8 @@ function State.new()
         self.selected_tie = nil
         self.selected_portamento = nil
         self.context_portamento = nil
+        self.selected_glissando = nil
+        self.context_glissando = nil
         
         -- Multi-selection maps & bounds
         self.selected_dynamics = {}

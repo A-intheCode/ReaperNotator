@@ -658,6 +658,13 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
             name = bank.name or "Bank"
         }
         
+        local already_has_bank = false
+        for _, binfo in ipairs(appdata.banks) do
+            if (has_guid and binfo.v == bank.id) or (binfo.name and binfo.name == bank.name) then
+                already_has_bank = true
+                break
+            end
+        end
         local already_sole_primary = (
             #appdata.banks == 1 and (
                 (has_guid and appdata.banks[1].v == bank.id) or
@@ -665,7 +672,7 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
             )
         )
         
-        if replace_primary or not already_sole_primary then
+        if replace_primary or (not already_has_bank and not already_sole_primary) then
             -- Delete top bank (index 1) and any conflicting Omni (src == 17) or duplicate entries before loading the new bank at index 1
             local kept_banks = {}
             for idx, binfo in ipairs(appdata.banks) do
@@ -679,8 +686,10 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
             table.insert(kept_banks, 1, new_entry)
             appdata.banks = kept_banks
             appdata_modified = true
-        elseif fx_added_or_moved or not appdata.banks[1].h then
-            appdata.banks[1].h = nil
+        elseif fx_added_or_moved or (appdata.banks[1] and not appdata.banks[1].h) then
+            if appdata.banks[1] then
+                appdata.banks[1].h = nil
+            end
             appdata_modified = true
         end
         
@@ -766,6 +775,28 @@ function ReaticulateParser.format_category(raw_cat)
     elseif c:find("trill") or c:find("trem") then return "TRILLS / TREMOLO"
     elseif c:find("fx") or c:find("rip") or c:find("fall") then return "EFFECTS / FX"
     else return "OTHER" end
+end
+
+function ReaticulateParser.categorize_articulation(art_or_cat, opt_name)
+    local raw_cat = type(art_or_cat) == "table" and art_or_cat.category or art_or_cat
+    local raw_name = type(art_or_cat) == "table" and art_or_cat.name or opt_name
+    local cat = ReaticulateParser.format_category(raw_cat)
+    if cat ~= "OTHER" then return cat end
+    if raw_name then
+        local nm = tostring(raw_name):lower()
+        if nm:find("legato") or nm:find("slur") or nm:find("portamento") or nm:find("gliss") then
+            return "LEGATO"
+        elseif nm:find("stacc") or nm:find("spicc") or nm:find("pizz") or nm:find("marc") or nm:find("short") or nm:find("col legno") or nm:find("bartok") then
+            return "SHORT / STACCATO"
+        elseif nm:find("trill") or nm:find("trem") then
+            return "TRILLS / TREMOLO"
+        elseif nm:find("fx") or nm:find("rip") or nm:find("fall") or nm:find("cluster") then
+            return "EFFECTS / FX"
+        elseif nm:find("long") or nm:find("sustain") or nm:find("norm") or nm:find("ord") or nm:find("tenuto") or nm:find("flautando") or nm:find("harm") or nm:find("sord") or nm:find("vibrato") or nm:find("non%-vib") or nm:find("nv") or nm:find("pont") or nm:find("tasto") then
+            return "LONG / SUSTAIN"
+        end
+    end
+    return cat
 end
 
 function ReaticulateParser.get_art_display_name(bank, pc, all_banks)

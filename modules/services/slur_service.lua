@@ -383,15 +383,37 @@ function SlurService.toggle_slur(state, active_tracks_data)
     end
     
     local n1_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n1.start_qn) + 0.5)
+    local n_last_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n_last.start_qn) + 0.5)
     
-    -- 1. Scan for active pre-slur articulation on this channel (e.g. Tremolo / Trill)
+    local function is_pc_momentary(pc_val)
+        if not bank or not bank.articulations or not pc_val then return false end
+        for _, ba in ipairs(bank.articulations) do
+            if ba.pc == pc_val then
+                return MidiService.is_momentary_articulation(ba.name)
+            end
+        end
+        return false
+    end
+
+    -- 1. Scan for active sustained pre-slur articulation on this channel (e.g. Tremolo / Trill, excluding momentary / chase PCs)
+    local chase_ppq_map = {}
+    local _, _, cur_cc_cnt, cur_t_cnt = reaper.MIDI_CountEvts(take)
+    for ti = 0, (cur_t_cnt or 0) - 1 do
+        local ok_t, _, _, t_ppq, etype, msg_t = reaper.MIDI_GetTextSysexEvt(take, ti)
+        if ok_t and etype == 15 then
+            local ch_c, pc_c = msg_t:match("NOTATOR_CHASE%s+(%d+)%s+(%-?%d+)")
+            if ch_c and tonumber(ch_c) == chan and pc_c then
+                table.insert(chase_ppq_map, { ppq = t_ppq, pc = tonumber(pc_c) })
+            end
+        end
+    end
+
     local pre_slur_pc = nil
     local pre_slur_msb = -1
     local pre_slur_lsb = -1
     local latest_pc_ppq = -1
     local cur_msb = -1
     local cur_lsb = -1
-    local _, _, cur_cc_cnt = reaper.MIDI_CountEvts(take)
     for ci = 0, cur_cc_cnt - 1 do
         local ok, _, _, ppq, chanmsg, cchan, msg2, msg3 = reaper.MIDI_GetCC(take, ci)
         if ok and cchan == chan and ppq < n1_sppq - 10 then
@@ -400,7 +422,14 @@ function SlurService.toggle_slur(state, active_tracks_data)
             elseif (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and msg2 == 32 then
                 cur_lsb = msg3
             elseif (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0) then
-                if ppq > latest_pc_ppq then
+                local is_ch = false
+                for _, ce in ipairs(chase_ppq_map) do
+                    if math.abs(ce.ppq - ppq) <= 15 and ce.pc == msg2 then
+                        is_ch = true
+                        break
+                    end
+                end
+                if not is_ch and not is_pc_momentary(msg2) and ppq > latest_pc_ppq then
                     latest_pc_ppq = ppq
                     pre_slur_pc = msg2
                     pre_slur_msb = cur_msb
@@ -432,11 +461,11 @@ function SlurService.toggle_slur(state, active_tracks_data)
     local art_match = bank and MidiService.find_slur_articulation_in_bank(bank, trk, state)
     
     if art_match then
-        -- Remove any conflicting PCs / Bank Selects or NOTATOR_CHASE tags right at n1_sppq
+        -- Remove any conflicting PCs / Bank Selects or NOTATOR_CHASE tags across the slurred phrase [n1_sppq - 25, n_last_sppq + 15]
         local _, _, cc_del_cnt, text_del_cnt = reaper.MIDI_CountEvts(take)
         for ci = (cc_del_cnt or 0) - 1, 0, -1 do
             local ok_c, _, _, c_ppq, chanmsg, c_chan, msg2 = reaper.MIDI_GetCC(take, ci)
-            if ok_c and c_chan == chan and math.abs(c_ppq - n1_sppq) <= 25 then
+            if ok_c and c_chan == chan and c_ppq >= n1_sppq - 25 and c_ppq <= n_last_sppq + 15 then
                 local is_pc = (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0)
                 local is_bank = (chanmsg == 176 or (chanmsg & 0xF0) == 0xB0) and (msg2 == 0 or msg2 == 32)
                 if is_pc or is_bank then
@@ -446,7 +475,7 @@ function SlurService.toggle_slur(state, active_tracks_data)
         end
         for ti = (text_del_cnt or 0) - 1, 0, -1 do
             local ok_t, _, _, t_ppq, etype, msg_t = reaper.MIDI_GetTextSysexEvt(take, ti)
-            if ok_t and math.abs(t_ppq - n1_sppq) <= 25 and msg_t and msg_t:find("NOTATOR_CHASE") then
+            if ok_t and t_ppq >= n1_sppq - 25 and t_ppq <= n_last_sppq + 15 and msg_t and msg_t:find("NOTATOR_CHASE") then
                 reaper.MIDI_DeleteTextSysexEvt(take, ti)
             end
         end

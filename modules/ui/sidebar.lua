@@ -312,12 +312,25 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
     end
     
     local function handle_art_btn(art_id)
-        if (state.selected_articulations and state:count_selected_articulations() > 0) or state.selected_articulation then
+        local has_sel_notes = (state:count_selected_notes() > 0 or state.selected_note ~= nil)
+        local has_sel_arts = ((state.selected_articulations and state:count_selected_articulations() > 0) or state.selected_articulation ~= nil)
+        if art_id == nil then
+            if has_sel_notes then
+                midi_service.toggle_selected_articulation(state, "none")
+            end
+            if has_sel_arts then
+                midi_service.delete_selected_articulations(state)
+            end
+            state.active_articulation = nil
+            if not has_sel_notes and not has_sel_arts then
+                state.status_msg = "Sticky Articulation: Off"
+            end
+        elseif has_sel_notes then
+            midi_service.toggle_selected_articulation(state, art_id)
+            state.active_articulation = (state.selected_note and state.selected_note.articulation) and normalize_art(state.selected_note.articulation) or nil
+        elseif has_sel_arts then
             midi_service.delete_selected_articulations(state)
             state.active_articulation = nil
-        elseif state:count_selected_notes() > 0 or state.selected_note then
-            midi_service.toggle_selected_articulation(state, art_id or "none")
-            state.active_articulation = (art_id and state.selected_note) and normalize_art(state.selected_note.articulation) or nil
         else
             local norm_clicked = normalize_art(art_id)
             state.active_articulation = (cur_art == norm_clicked) and nil or norm_clicked

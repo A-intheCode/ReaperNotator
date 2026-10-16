@@ -313,7 +313,7 @@ function ArticulationsDrawer.render(ctx, state, midi_service, active_tracks_data
                 if bank and bank.articulations and #bank.articulations > 0 then
                     local specific_arts = {}
                     for _, ba in ipairs(bank.articulations) do
-                        local cat = ReaticulateParser.categorize_articulation(ba)
+                        local cat = (ReaticulateParser.categorize_articulation and ReaticulateParser.categorize_articulation(ba)) or ReaticulateParser.format_category(ba.category)
                         if cat == "LEGATO" or cat == "LONG / SUSTAIN" then
                             table.insert(specific_arts, { art = ba, cat = cat })
                         end
