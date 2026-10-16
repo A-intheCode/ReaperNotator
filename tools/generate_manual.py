@@ -30,8 +30,11 @@ def get_version():
             m_suf = re.search(r'suffix\s*=\s*"([^"]*)"', content)
             suf = m_suf.group(1) if m_suf else ""
             if m_maj and m_min and m_pat:
-                return f"{m_maj.group(1)}.{m_min.group(1)}.{m_pat.group(1)}{suf}"
-    return "1.3.6"
+                pat = int(m_pat.group(1))
+                if pat == 0:
+                    return f"{m_maj.group(1)}.{m_min.group(1)}{suf}"
+                return f"{m_maj.group(1)}.{m_min.group(1)}.{pat}{suf}"
+    return "2.15"
 
 VERSION = get_version()
 
@@ -558,7 +561,7 @@ MANUAL_DATA = [
                 "heading": "10.2 One-Click Insertion, Drag & Drop & Audio Audition",
                 "text": "Functions:\n"
                         "- Drag & Drop: Drag any pattern tile directly onto the score canvas with golden ghost-preview.\n"
-                        "- Audio Audition: Audition motifs in real-time through any selected REAPER instrument track.\n"
+                        "- Full-Length Multi-Bar Audio Audition (v2.12 - v2.13): Audition motifs in real time across their complete multi-bar duration through any instrument track. Choose 'Auto (Selected / Focused Track)' or pick any specific project instrument from the Pattern Browser dropdown without altering REAPER's track selection.\n"
                         "- Capture Selection: Select any REAPER MIDI item and click 'Capture REAPER Item' to store it permanently."
             },
             {
@@ -601,6 +604,7 @@ MANUAL_DATA = [
                         "- Auto Voice & Auto Voice on Selection: Polyphonic splitting of selected chords into upper Voice 1 (stems up) and lower Voice 2 (stems down).\n"
                         "- Filter Irregular Notes: Dedicated cleaning and reorganization tool for humanized and live-recorded MIDI tracks. Accurately identifies notes whose onset times deviate from standard metric divisions (whole to 32nd notes, with optional triplet support) outside a configurable tick tolerance. Includes real-time yellow canvas highlighting, regular-note dimming/ghosting, and dual actions: non-destructive note selection or reassignment to a target voice (e.g. Voice 16).\n"
                         "- Divisio Vocum (Voice Distribution): Distributes multi-voice chords from a single track vertically across the visible tracks displayed below in the score viewport (e.g. from Violin 1 down through Contrabass). Features an interactive context modal with live routing preview, target voice count (2-16), chord detection tolerance (5-100 ms), and bass voice gap-filling.\n"
+                        "- Divisi (Split Voices to Duplicated Tracks, v2.15): Splits already assigned polyphonic Voices (Voice 2..16 / MIDI Channels 2..16, e.g. after running Auto-Voice) onto newly duplicated REAPER tracks directly below the source track—cloning the entire FX chain (Kontakt/VSTi instances, Reaticulate banks, sends/routing, folder hierarchy, clefs, and MIDI items) so each voice plays on its own dedicated instrument copy.\n"
                         "- Arpeggio Strums: Realistic harp, guitar, and piano roll simulation. In accordance with classical music engraving standards, noteheads remain strictly vertically aligned on the chord downbeat under a single unified stem, while a wavy arpeggio line is engraved to the left with automatic clearance for accidentals. Playback micro-strumming adaptively scales with note length (e.g. 8-16 ticks for 16th notes up to 30 ticks for sustained chords) to prevent beat spillover, and 'Snap to Grid / Remove Arpeggio' instantly restores notes to the chord downbeat.\n"
                         "- Quantize Tools: Integrated triplet, swing, and 1/4 through 1/64 grid snapping directly inside the Tools drawer."
             },
@@ -630,7 +634,19 @@ MANUAL_DATA = [
                         "- Transactional Undo Safety: The entire multi-track distribution operation is enclosed in a single REAPER undo transaction (Undo_BeginBlock2), ensuring immediate, complete rollback with Ctrl+Z."
             },
             {
-                "heading": "11.5 Filter Irregular Notes (Humanized & Live-Recorded MIDI Cleaner)",
+                "heading": "11.5 Divisi (Split Polyphonic Voices onto Duplicated Instrument Tracks, v2.15)",
+                "text": "Overview & Musical Concept:\n"
+                        "While Divisio Vocum distributes vertical chord pitches across existing different instrument tracks in the score, Divisi (implemented in modules/services/divisi_service.lua and modules/ui/divisi_modal.lua) solves true orchestral section splitting (e.g. Violins I divisi a 2 / a 3). After splitting polyphonic passages into voices via 'Auto-Voice on Selection' or 'Auto-Voice Track Overlaps' (for example: 50 notes in Voice 1, 30 notes in Voice 2, and 5 notes in Voice 3 on a single staff), Divisi keeps Voice 1 on the original source track and duplicates the entire REAPER track once for each additional voice.\n\n"
+                        "Full Track & Instrument Duplication:\n"
+                        "- Complete FX & Sampler Cloning: Uses REAPER's native track duplication (Action 40062) so every Kontakt / VSTi instance, loaded sample patch, Reaticulate JSFX, Reaticulate bank assignment (P_EXT:reaticulate), track color, audio/MIDI send routing, and Notator clef setting is identically cloned onto '<Track Name> (Divisi 2)', '<Track Name> (Divisi 3)', etc.\n"
+                        "- Folder Structure Preservation: If the source track is the closing track of a REAPER folder (I_FOLDERDEPTH < 0), Divisi automatically keeps all newly created Divisi tracks inside the same folder and transfers the folder-closing depth to the last Divisi track.\n"
+                        "- Exact Per-Voice MIDI Filtering & Channel 1 Normalization: On each duplicated track, only the notes (along with matching Type 15 NOTE articulations, slurs, and CCs) of that specific voice are kept, and by default normalized to Voice 1 (MIDI Channel 1) so monophonic legato/kontakt patches respond immediately without channel mismatches.\n\n"
+                        "How to Access Divisi:\n"
+                        "- 1-Click Context Menu: Right-click selected notes or a staff and click 'Divisi (Split Voices to Duplicated Tracks)' for immediate execution.\n"
+                        "- Interactive Preview Modal: Click 'Divisi (Options / Preview)...' in the right-click menu or 'Divisi (Split Voices to Tracks)...' in the Tools Drawer to inspect note counts and pitch ranges per voice, toggle individual voices, switch scope between 'Selected Notes' and 'Entire Staff / Track', or run Auto-Voice directly from the dialog."
+            },
+            {
+                "heading": "11.6 Filter Irregular Notes (Humanized & Live-Recorded MIDI Cleaner)",
                 "text": "Musical Concept & Background:\n"
                         "Live-recorded MIDI keyboard performances and humanized takes inherently feature subtle micro-timing variations. Filter Irregular Notes analyzes note onset positions relative to the musical meter, flags notes that deviate from standard metric subdivisions outside a user-defined tick tolerance, renders a live gold/yellow (#FFD700) preview on the score canvas, and allows you to either select them for manual inspection or reassign them cleanly into a secondary background voice (default Voice 16 / MIDI channel 15).\n\n"
                         "Interactive Dialog Controls & Features:\n"
@@ -642,7 +658,7 @@ MANUAL_DATA = [
                         "- Dual Execution Actions: 'Select Notes' (non-destructively selects irregular notes for inspection) and 'Reassign to Voice' (moves irregular notes to the target voice within a single REAPER undo transaction)."
             },
             {
-                "heading": "11.6 Floating Text Items & In-Place Editing",
+                "heading": "11.7 Floating Text Items & In-Place Editing",
                 "text": "Functions: Pressing Ctrl+T inserts a floating score text item at the cursor. Double-click any text item to open an in-place editing field. Configure font size, standard/italic/bold styling, and staff attachment anchor points."
             }
         ]

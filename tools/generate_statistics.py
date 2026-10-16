@@ -31,10 +31,13 @@ def get_version():
             suffix = re.search(r'suffix\s*=\s*"([^"]*)"', content)
             if major and minor and patch:
                 suf = suffix.group(1) if suffix else ""
-                return f"{major.group(1)}.{minor.group(1)}.{patch.group(1)}{suf}"
+                pat = int(patch.group(1))
+                if pat == 0:
+                    return f"{major.group(1)}.{minor.group(1)}{suf}"
+                return f"{major.group(1)}.{minor.group(1)}.{pat}{suf}"
     except Exception:
         pass
-    return "1.6.2"
+    return "2.15"
 
 VERSION = get_version()
 
@@ -163,9 +166,11 @@ with open(MD_PATH, 'w', encoding='utf-8') as md:
     md.write("| Service File | Subsystem & Musical Responsibility | Code Lines |\n")
     md.write("| :--- | :--- | :---: |\n")
     services_desc = [
+        ("modules/services/divisi_service.lua", "Divisi Engine - Split polyphonic voices onto full duplicated tracks"),
         ("modules/services/divisio_vocum_service.lua", "Divisio Vocum - Orchestral Voice Division across tracks"),
         ("modules/services/dynamics_engine.lua", "Orchestral Dynamics Engine - Bezier/Linear CC automation shaping"),
         ("modules/services/filter_notes_service.lua", "Filter Irregular Notes - Metric onset analysis and voice routing"),
+        ("modules/services/frame_timer_service.lua", "Native High-Refresh Timer - 1ms kernel multimedia timer (60-144 FPS)"),
         ("modules/services/glissando_service.lua", "Glissando Engine - Smooth chromatic / diatonic slide generation"),
         ("modules/services/midi_service.lua", "Core MIDI Engine - Low-latency take I/O and event synchronization"),
         ("modules/services/musicxml_export_service.lua", "MusicXML 4.0 Exporter - Standard score interchange file generation"),

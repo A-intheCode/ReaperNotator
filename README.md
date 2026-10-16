@@ -24,6 +24,17 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
+- **Divisi — Split Voices to Duplicated Instrument Tracks (v2.15)**:
+  - **True Orchestral Section Divisi (`DivisiService` & `DivisiModal`)**: Splits polyphonic voices (`Voice 1..16` / MIDI Channels `1..16`, e.g., after running *Auto-Voice on Selection* or *Auto-Voice Track Overlaps*) onto newly duplicated REAPER tracks directly below the source staff (`<Track Name> (Divisi 2)`, `<Track Name> (Divisi 3)`, ...).
+  - **Full FX, Kontakt/VSTi & Reaticulate Duplication**: Uses REAPER's native track duplication (`Action 40062`) to clone all Kontakt/VSTi instances, Reaticulate JSFX, Reaticulate bank assignments (`P_EXT:reaticulate`), sends/routing, folder hierarchy (`I_FOLDERDEPTH`), Notator clefs, and MIDI items.
+  - **Per-Voice Filtering & Channel 1 Normalization**: Voice 1 remains on the source track while each secondary voice is isolated on its own duplicated track and optionally normalized to Voice 1 (MIDI Channel 1) so monophonic/legato patches respond out of the box.
+  - **1-Click Context Menu & Interactive Preview Modal**: Execute in 1 click from the Note/Staff right-click menu (`✂ Divisi (Split Voices to Duplicated Tracks)`) or open the interactive preview dialog (`✂ Divisi (Options / Preview)...` / Tools Drawer) with per-voice note counts, pitch ranges, and a quick `⚡ Run Auto-Voice Now` button.
+
+- **Pattern Browser Multi-Bar Audition, Multi-Note Staccato & Articulation Auto-Chase (v2.10–v2.14)**:
+  - **Pattern Browser Full-Length Playback & Target Routing**: Auditions multi-bar orchestral patterns across their complete duration through any selected/focused track (`Auto`) or specific target instrument dropdown without altering REAPER's track selection.
+  - **Multi-Note Staccato & Momentary Articulation Auto-Chase**: Applies staccato dots and momentary articulations across all selected notes simultaneously, remembers the preceding base articulation (`pre_staccato_art`), and automatically restores it on subsequent unarticulated notes.
+  - **Shadow-Copied Native Timer DLL**: Loads `notator_timer_x64.dll` from a temporary shadow copy so ReaPack updates never encounter Windows file-lock conflicts even if REAPER Notator is open.
+
 - **Clean Note Audition, Static Canvas Focus, MusicXML Performance Engine & Native 60–144 FPS Timer (v2.0.7)**:
   - **Clean Note Audition Without `● REC` Badge (`AudioPreview.is_track_user_armed`)**: Distinguishes genuine user record-arming from temporary `StuffMIDIMessage` Virtual MIDI Keyboard preview arming (`AudioPreview.track_restore`). Clicking or dragging notes to audition them never displays the red `● REC` pill badge or red recording border on the instrument track header.
   - **Static ScoreCanvas Viewport on Note Click**: Clicking notes, item badges, clefs, or track headers on the ScoreCanvas selects the parent MIDI item and track in REAPER while keeping the ScoreCanvas viewport (`scroll_x` / `scroll_y`) completely stationary unless **Auto-Scroll** (`state.auto_scroll`) is explicitly enabled.
