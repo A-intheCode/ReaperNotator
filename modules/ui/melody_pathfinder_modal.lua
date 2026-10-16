@@ -478,3 +478,4 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
 end
 
 return MelodyPathfinderModal
+
