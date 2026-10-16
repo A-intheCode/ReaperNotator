@@ -147,7 +147,8 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         local target_track, waypoints = MelodyPathfinderService.get_selected_waypoints(state, active_tracks_data)
         local trk_guid = (target_track and reaper.ValidatePtr(target_track, "MediaTrack*") and reaper.GetTrackGUID(target_track)) or ""
         local cur_clef_setting = (state.track_clefs and state.track_clefs[trk_guid]) or "auto"
-        local wp_sig = string.format("%s_%s_%d_%s", trk_guid, cur_clef_setting, #waypoints, waypoints[1] and tostring(waypoints[1].start_qn) or "0")
+        local cur_q_bucket = math.floor((reaper.GetCursorPosition() or 0) * 4)
+        local wp_sig = string.format("%s_%s_%d_%s_%d", trk_guid, cur_clef_setting, #waypoints, waypoints[1] and tostring(waypoints[1].start_qn) or "0", cur_q_bucket)
         if state.mpf_last_wp_sig ~= wp_sig then
             state.mpf_last_wp_sig = wp_sig
             state.mpf_dirty = true
@@ -208,6 +209,9 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
             reaper.ImGui_SetTooltip(ctx, "Shift playable Clef register up by 1 octave (+12 semitones)")
         end
 
+        local bar_start = math.floor(((preview and preview.min_qn) or 0) / 4.0) + 1
+        local bar_end   = bar_start + (opts.phrase_bars or 4) - 1
+
         if #waypoints >= 2 then
             reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format(
                 "✓ %d Key Notes (Waypoints) selected [%s -> %s] — filling %d musical segment(s)",
@@ -218,16 +222,20 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
             ))
         elseif #waypoints == 1 then
             reaper.ImGui_TextColored(ctx, 0xF1C40FFF, string.format(
-                "★ 1 Seed Note selected (%s) — generating %d-Bar %s in %s register!",
+                "★ 1 Seed Note selected (%s) — generating %d-Bar %s (Bars %d–%d) in %s register!",
                 pitch_to_name(waypoints[1].pitch),
                 opts.phrase_bars or 4,
                 opts.counter_melody_mode and "Counter-Melody" or "Melodic Phrase",
+                bar_start,
+                bar_end,
                 clef_reg.label or "Clef"
             ))
         else
             reaper.ImGui_TextColored(ctx, 0xE67E22FF, string.format(
-                "ℹ No notes selected — generating %d-Bar phrase in %s register [%s–%s] at Edit Cursor",
+                "ℹ No notes selected — generating %d-Bar phrase (Bars %d–%d) in %s register [%s–%s] aligned with Reference Track",
                 opts.phrase_bars or 4,
+                bar_start,
+                bar_end,
                 clef_reg.label or "Clef",
                 pitch_to_name(clef_reg.min_p),
                 pitch_to_name(clef_reg.max_p)

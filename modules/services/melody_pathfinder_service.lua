@@ -325,7 +325,76 @@ function MelodyPathfinderService.fold_pitch_into_register(pitch, min_p, max_p, p
     return math.max(min_p, math.min(max_p, p))
 end
 
---- Collects MIDI notes from reference track(s) within [min_qn - 4, max_qn + 8]
+--- Resolves the best bar-aligned start_qn when 0 notes are selected, automatically matching
+--- any active MIDI item on the Target Track or Reference Track (e.g. a 4-Bar Celli pattern)
+function MelodyPathfinderService.resolve_default_start_qn(state, target_track, ref_mode, qn_per_bar)
+    qn_per_bar = qn_per_bar or 4.0
+    local cur_sec = reaper.GetCursorPosition()
+    local cur_qn = reaper.TimeMap2_timeToQN(0, cur_sec)
+
+    -- 1. If a MIDI item is selected on target_track (or covers cur_qn on target_track), use its start_qn
+    if target_track and reaper.ValidatePtr(target_track, "MediaTrack*") then
+        local icnt = reaper.CountTrackMediaItems(target_track)
+        for ii = 0, icnt - 1 do
+            local it = reaper.GetTrackMediaItem(target_track, ii)
+            if it then
+                local pos_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(it, "D_POSITION"))
+                local end_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(it, "D_POSITION") + reaper.GetMediaItemInfo_Value(it, "D_LENGTH"))
+                if it == (state and state.selected_item) or (cur_qn >= pos_qn - 0.1 and cur_qn <= end_qn + 0.1) then
+                    return math.floor(pos_qn / qn_per_bar + 0.1) * qn_per_bar
+                end
+            end
+        end
+    end
+
+    -- 2. Check Reference Track(s): if a Reference Track has a MIDI item covering or near the cursor, align to its start!
+    local ref_tracks = {}
+    if type(ref_mode) == "userdata" and reaper.ValidatePtr(ref_mode, "MediaTrack*") then
+        table.insert(ref_tracks, ref_mode)
+    elseif ref_mode == "auto_all" then
+        local cnt = reaper.CountTracks(0)
+        for ti = 0, cnt - 1 do
+            local tr = reaper.GetTrack(0, ti)
+            if tr and tr ~= target_track then
+                table.insert(ref_tracks, tr)
+            end
+        end
+    end
+
+    local best_ref_start = nil
+    local best_dist = 999999
+    for _, tr in ipairs(ref_tracks) do
+        local icnt = reaper.CountTrackMediaItems(tr)
+        for ii = 0, icnt - 1 do
+            local it = reaper.GetTrackMediaItem(tr, ii)
+            local tk = it and reaper.GetActiveTake(it)
+            if tk and reaper.TakeIsMIDI(tk) then
+                local _, ncnt = reaper.MIDI_CountEvts(tk)
+                if (ncnt or 0) > 0 then
+                    local pos_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(it, "D_POSITION"))
+                    local end_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(it, "D_POSITION") + reaper.GetMediaItemInfo_Value(it, "D_LENGTH"))
+                    if cur_qn >= pos_qn - 0.5 and cur_qn <= end_qn + 0.5 then
+                        return math.floor(pos_qn / qn_per_bar + 0.1) * qn_per_bar
+                    end
+                    local d = math.min(math.abs(cur_qn - pos_qn), math.abs(cur_qn - end_qn))
+                    if d < best_dist then
+                        best_dist = d
+                        best_ref_start = math.floor(pos_qn / qn_per_bar + 0.1) * qn_per_bar
+                    end
+                end
+            end
+        end
+    end
+
+    if best_ref_start ~= nil and best_dist <= 16.0 then
+        return best_ref_start
+    end
+
+    -- 3. Fallback: snap Edit Cursor to the start of its current Measure (Bar 1 beat 1 of that bar)
+    return math.floor(cur_qn / qn_per_bar + 0.05) * qn_per_bar
+end
+
+--- Collects MIDI notes from reference track(s) strictly within [min_qn, max_qn]
 function MelodyPathfinderService.collect_reference_notes(ref_mode, target_track, min_qn, max_qn)
     local ref_notes = {}
     if not ref_mode or ref_mode == "none" then
@@ -345,8 +414,8 @@ function MelodyPathfinderService.collect_reference_notes(ref_mode, target_track,
         end
     end
 
-    local q0 = (min_qn or 0) - 4.0
-    local q1 = (max_qn or 64) + 8.0
+    local q0 = (min_qn or 0) - 0.02
+    local q1 = (max_qn or 16) + 0.02
 
     for _, tr in ipairs(tracks_to_scan) do
         local icnt = reaper.CountTrackMediaItems(tr)
@@ -361,12 +430,14 @@ function MelodyPathfinderService.collect_reference_notes(ref_mode, target_track,
                         if nok and not muted then
                             local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
                             local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
-                            if eqn >= q0 and sqn <= q1 then
+                            if eqn > q0 + 0.04 and sqn < q1 - 0.04 then
+                                local c_sqn = math.max(min_qn or 0, sqn)
+                                local c_eqn = math.min(max_qn or 16, eqn)
                                 table.insert(ref_notes, {
                                     pitch = pitch,
-                                    start_qn = sqn,
-                                    end_qn = eqn,
-                                    dur_qn = math.max(0.1, eqn - sqn),
+                                    start_qn = c_sqn,
+                                    end_qn = c_eqn,
+                                    dur_qn = math.max(0.08, c_eqn - c_sqn),
                                     vel = vel or 90,
                                 })
                             end
@@ -811,22 +882,25 @@ local function apply_contour_transform(notes, transform_id, pivot_pitch, scale_p
         local q0 = notes[1].start_qn
         local rev_pitches = {}
         local rev_durs = {}
+        local rev_step_durs = {}
         local rev_vels = {}
         local rev_arts = {}
         for i = #notes, 1, -1 do
             table.insert(rev_pitches, notes[i].pitch)
             table.insert(rev_durs, notes[i].dur_qn)
+            table.insert(rev_step_durs, notes[i].step_dur_qn or notes[i].dur_qn)
             table.insert(rev_vels, notes[i].vel)
             table.insert(rev_arts, notes[i].art)
         end
         local cur_q = q0
         for i = 1, #notes do
             notes[i].pitch = rev_pitches[i]
-            notes[i].start_qn = cur_q
+            notes[i].start_qn = math.floor(cur_q * 1000 + 0.5) / 1000
             notes[i].dur_qn = rev_durs[i]
+            notes[i].step_dur_qn = rev_step_durs[i]
             notes[i].vel = rev_vels[i]
             notes[i].art = rev_arts[i]
-            cur_q = cur_q + rev_durs[i]
+            cur_q = cur_q + rev_step_durs[i]
         end
     end
 
@@ -868,8 +942,7 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         min_qn = waypoints[1].start_qn
         max_qn = min_qn + (phrase_bars * qn_per_bar)
     else
-        local cur_sec = reaper.GetCursorPosition()
-        min_qn = math.floor(reaper.TimeMap2_timeToQN(0, cur_sec) + 0.5)
+        min_qn = MelodyPathfinderService.resolve_default_start_qn(state, target_track, opts.ref_track_mode, qn_per_bar)
         max_qn = min_qn + (phrase_bars * qn_per_bar)
     end
 
@@ -927,7 +1000,7 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
             -- AND fold it into the Target Track's Clef & Seed Note octave!
             if #ref_notes > 0 then
                 for _, rn in ipairs(ref_notes) do
-                    if math.abs(rn.start_qn - w_qn) < 1.5 then
+                    if math.abs(rn.start_qn - (w_qn - qn_per_bar * 0.5)) < 2.0 then
                         local interval_choices = { 3, 4, 8, 9, -3, -4, 7 }
                         local pick_iv = interval_choices[math.floor(rng() * #interval_choices) + 1]
                         target_p = rn.pitch + pick_iv
@@ -1012,6 +1085,7 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
                 pitch = p,
                 start_qn = math.floor(st.start_qn * 1000 + 0.5) / 1000,
                 dur_qn = math.max(0.1, math.floor(dur * 1000 + 0.5) / 1000),
+                step_dur_qn = st.dur_qn,
                 vel = vel,
                 chan = wA.chan or 0,
                 art = art,
@@ -1022,10 +1096,12 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
 
     local wLast = effective_waypoints[#effective_waypoints]
     if wLast then
+        local last_step_dur = math.max(0.25, wLast.dur_qn or 1.0)
         table.insert(generated, {
             pitch = wLast.pitch,
             start_qn = math.floor(wLast.start_qn * 1000 + 0.5) / 1000,
-            dur_qn = math.max(0.25, wLast.dur_qn or 1.0),
+            dur_qn = last_step_dur,
+            step_dur_qn = last_step_dur,
             vel = wLast.vel or 102,
             chan = wLast.chan or 0,
             art = "tenuto",
