@@ -125,8 +125,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="2.0.9-beta" author="A-intheCode" time="2026-10-16T01:10:39Z">
+      <version name="2.0.10-beta" author="A-intheCode" time="2026-10-16T01:14:47Z">
         <changelog><![CDATA[
++ v2.0.10-beta: v2.0.10-beta: Fix MidiService.is_momentary_articulation call and staccato auto-chase
 + v2.0.9-beta: v2.0.9-beta: Fix staccato dots on all selected/marked notes and immediate return to pre-staccato articulation
 + v2.0.8-beta: Hotfix - Slur Legato/Long Playback, Right-Panel Default Slur Dropdown & Note Preview Articulation Accuracy:
   - Slur Legato / Long Playback & Auto-Heal ('modules/services/slur_service.lua', 'modules/services/midi_service.lua' & 'modules/services/reaticulate_parser.lua'): Fixed 'ReaticulateParser.get_bank_for_track' to resolve user-assigned banks from 'state.track_articulation_banks', separated 'get_default_base_articulation' (strictly Long/Sustain, never Legato) from 'find_slur_articulation_in_bank', and updated 'auto_chase_momentary_articulations' and 'load_slurs' to automatically verify and insert the Slur start Program Change ('CC0 + CC32 + PC') and post-slur chase restoration so slurs reliably trigger Legato (or Long fallback) in Reaticulate.
