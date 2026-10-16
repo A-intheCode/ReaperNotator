@@ -1,6 +1,6 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
-**Version:** 2.15  
+**Version:** 2.16  
 **Date:** 2026-10-16  
 **License:** GNU General Public License v3.0  
 
@@ -65,7 +65,7 @@ REAPER-Notator can run as a floating window or docked directly into any REAPER d
 
 ### 2.1 Title & Version Indicator
 
-Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.15), synchronized directly with modules/version.lua and the main @version header. When running in a Git repository environment, Notator automatically detects and displays the active commit hash via pure-Lua .git/HEAD inspection.
+Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.16), synchronized directly with modules/version.lua and the main @version header. When running in a Git repository environment, Notator automatically detects and displays the active commit hash via pure-Lua .git/HEAD inspection.
 
 ### 2.2 Transport & Playhead Controls
 

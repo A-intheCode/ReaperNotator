@@ -1,14 +1,14 @@
-# REAPER-Notator v2.15 — Codebase & Library Statistics
+# REAPER-Notator v2.16 — Codebase & Library Statistics
 
-**Generated:** 2026-10-16 16:35
+**Generated:** 2026-10-16 16:49
 
 ## Executive Summary
 
-- **Version:** v2.15
+- **Version:** v2.16
 - **Total Source Files:** 82 Lua files
-- **Total Line Count:** 63,513
-- **Executable Code Lines:** 53,746 (84.6%)
-- **Comments & Documentation:** 4,423 (7.0%)
+- **Total Line Count:** 63,543
+- **Executable Code Lines:** 53,771 (84.6%)
+- **Comments & Documentation:** 4,428 (7.0%)
 - **Blank / Formatting Lines:** 5,893 (9.3%)
 - **Orchestral Pattern Library:** 1,200 curated JSON patterns across 8 categories
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
@@ -22,9 +22,9 @@
 | `modules/ui` | 22 | 10,824 | 8,783 | 807 | 1,259 | 81.1% |
 | `modules` | 3 | 2,396 | 2,101 | 443 | 149 | 87.7% |
 | `modules/input` | 2 | 2,043 | 1,780 | 91 | 174 | 87.1% |
-| `Root` | 1 | 1,229 | 1,001 | 125 | 107 | 81.4% |
+| `Root` | 1 | 1,259 | 1,026 | 130 | 107 | 81.5% |
 | `modules/classes` | 15 | 774 | 597 | 110 | 96 | 77.1% |
-| **TOTAL** | **82** | **63,513** | **53,746** | **4,423** | **5,893** | **84.6%** |
+| **TOTAL** | **82** | **63,543** | **53,771** | **4,428** | **5,893** | **84.6%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
@@ -44,7 +44,7 @@
 | `modules/input/mouse_handler.lua` | modules/input | 1,343 | 1,181 | 50 |
 | `modules/state.lua` | modules | 1,299 | 1,133 | 227 |
 | `modules/services/dynamics_engine.lua` | modules/services | 1,275 | 1,128 | 45 |
-| `reaper_native_notator.lua` | Root | 1,229 | 1,001 | 125 |
+| `reaper_native_notator.lua` | Root | 1,259 | 1,026 | 130 |
 
 ## 3. Specialized Orchestral & Engraving Services (`modules/services`)
 

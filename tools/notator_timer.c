@@ -115,14 +115,13 @@ static void __stdcall notator_watchdog_timer_proc(HWND hwnd, UINT uMsg, UINT_PTR
         return;
     }
 
-    /* Self-healing check: only intervene if REAPER's 0x29a timer was reset externally and missed its window */
+    /* Self-healing check: only re-apply SetTimer if REAPER externally reset 0x29a back to 30ms.
+     * Never call SendMessageA(WM_TIMER) synchronously so Win32 input/paint/docker messages are never starved. */
     if (g_target_ms < 28 && hwnd && IsWindow(hwnd)) {
         DWORD elapsed = now - g_last_frame_tick;
-        if (elapsed >= (g_target_ms + 6)) {
+        if (elapsed >= 45 && !g_in_dispatch) {
             g_in_dispatch = TRUE;
-            g_last_frame_tick = now;
             SetTimer(hwnd, REAPER_MISC_TIMER_ID, g_target_ms, NULL);
-            SendMessageA(hwnd, WM_TIMER, (WPARAM)REAPER_MISC_TIMER_ID, 0);
             g_in_dispatch = FALSE;
         }
     }
@@ -145,7 +144,7 @@ static void apply_interval_ms(UINT interval_ms) {
             g_period_active = TRUE;
         }
         SetTimer(hwnd, REAPER_MISC_TIMER_ID, interval_ms, NULL);
-        SetTimer(hwnd, NOTATOR_WATCHDOG_TIMER_ID, interval_ms, notator_watchdog_timer_proc);
+        SetTimer(hwnd, NOTATOR_WATCHDOG_TIMER_ID, 200, notator_watchdog_timer_proc);
         g_watchdog_active = TRUE;
     } else {
         if (g_watchdog_active) {

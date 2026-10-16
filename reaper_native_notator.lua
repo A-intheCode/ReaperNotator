@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.15
+-- @version 2.16
 -- @changelog
+--   + v2.16: Hotfix: Fix severe UI lag when docked in REAPER Docker
 --   + v2.15: New: Divisi (split voices to duplicated tracks)
 --   + v2.14: Hotfix: Fix AudioPreview require in MidiService
 --   + v2.13: Hotfix: Pattern Browser instrument selection & track preview routing
@@ -316,17 +317,27 @@ local function loop()
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FrameRounding(),  4.0)
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(),    8.0, 6.0)
     
-    -- Locate REAPER Notator's own native OS window handle (HWND) for exact per-monitor rect & DPI calibration
+    -- Locate REAPER Notator's own native OS top-level window handle (HWND) for exact per-monitor rect & DPI calibration.
+    -- IMPORTANT: Never call JS_Window_Find (which recursively walks all child HWNDs of all processes on the Windows desktop
+    -- and causes severe lag when the window is docked into REAPER's Docker). Only query JS_Window_FindTop when floating,
+    -- and throttle retries if the top-level window is not currently present (e.g. while docked).
     local function get_notator_hwnd()
+        if state.is_window_docked then
+            state._notator_hwnd = nil
+            return nil
+        end
         if state._notator_hwnd and reaper.APIExists("JS_Window_IsWindow") and reaper.JS_Window_IsWindow(state._notator_hwnd) then
             return state._notator_hwnd
         end
+        state._notator_hwnd = nil
+        local now_t = reaper.time_precise()
+        if state._last_hwnd_lookup_time and (now_t - state._last_hwnd_lookup_time) < 0.5 then
+            return nil
+        end
+        state._last_hwnd_lookup_time = now_t
         local hwnd = nil
         if reaper.APIExists("JS_Window_FindTop") then
             hwnd = reaper.JS_Window_FindTop("REAPER Notator", true)
-        end
-        if not hwnd and reaper.APIExists("JS_Window_Find") then
-            hwnd = reaper.JS_Window_Find("REAPER Notator", true)
         end
         state._notator_hwnd = hwnd
         return hwnd
@@ -485,102 +496,42 @@ local function loop()
     local cur_w = state.cur_win_w or state.prev_win_w or 1000
     local cur_h = state.cur_win_h or state.prev_win_h or 650
 
-    -- Measure current monitor work area at the start of the frame (when OS HWND and state.cur_win_* are 100% in sync)
-    if not state.is_maximized or (state._maximize_stage or 0) > 0 then
-        local svx, svy, svw, svh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
-        if svx and svw then
-            state.screen_work_x = svx
-            state.screen_work_y = svy
-            state.screen_work_w = svw
-            state.screen_work_h = svh
-        end
-    end
-    
     local vx = state.screen_work_x or 0
     local vy = state.screen_work_y or 0
     local vw = state.screen_work_w or 1920
     local vh = state.screen_work_h or 1080
     
-    if state.request_maximize_toggle then
+    if state.is_window_docked then
+        -- When docked into REAPER's Docker, never force floating window pos/size/constraints or maximize stages
         state.request_maximize_toggle = false
-        if not state.is_maximized and (state._maximize_stage or 0) == 0 then
-            -- Step 1 of Maximize: Read maximum possible screen size of target monitor, place window in center first
-            vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
-            state.screen_work_x = vx
-            state.screen_work_y = vy
-            state.screen_work_w = vw
-            state.screen_work_h = vh
-            state._maximize_stage = 1
-        else
-            -- Unmaximize / Restore to centered window on current display
-            state.is_maximized = false
-            state._maximize_stage = 0
-            state.just_restored = true
-            state.status_msg = "Window size restored"
-        end
-    end
-    
-    local min_w = math.min(640, math.max(360, math.floor(vw * 0.35)))
-    local min_h = math.min(420, math.max(260, math.floor(vh * 0.35)))
-
-    if state._maximize_stage == 1 then
-        -- Stage 1: Place window in centered bounds on the target screen so OS monitor & DPI are locked in
-        local rx, ry, rw, rh = get_small_centered_bounds(vx, vy, vw, vh)
-        state.prev_win_x = rx
-        state.prev_win_y = ry
-        state.prev_win_w = rw
-        state.prev_win_h = rh
-        reaper.ImGui_SetNextWindowPos(ctx, rx, ry, reaper.ImGui_Cond_Always())
-        reaper.ImGui_SetNextWindowSize(ctx, rw, rh, reaper.ImGui_Cond_Always())
-        state._maximize_stage = 2
-        state._window_pos_initialized = true
-    elseif state._maximize_stage == 2 then
-        -- Stage 2: Window is now centered on the target monitor -> read live HWND scale & maximize to 100% of monitor work area
-        vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
-        state.screen_work_x = vx
-        state.screen_work_y = vy
-        state.screen_work_w = vw
-        state.screen_work_h = vh
-        state.is_maximized = true
-        state._maximize_stage = 3
-        state._maximize_verify_tries = 0
-        state.status_msg = "Window maximized on current display"
-        reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
-        reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
-        state._window_pos_initialized = true
-    elseif state._maximize_stage == 3 then
-        -- Stage 3: Post-maximize closed-loop verification against OS monitor work area (handles cross-monitor DPI changes)
-        local cvx, cvy, cvw, cvh, is_exact = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
-        state.screen_work_x = cvx
-        state.screen_work_y = cvy
-        state.screen_work_w = cvw
-        state.screen_work_h = cvh
-        vx, vy, vw, vh = cvx, cvy, cvw, cvh
-        state._maximize_verify_tries = (state._maximize_verify_tries or 0) + 1
-        if is_exact or state._maximize_verify_tries >= 3 then
-            state._maximize_stage = 0
-        end
-        reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
-        reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
-        state._window_pos_initialized = true
-    elseif state.is_maximized then
-        reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
-        reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
-        state._window_pos_initialized = true
+        state.is_maximized = false
+        state._maximize_stage = 0
+        state.just_restored = false
     else
-        -- Enforce responsive minimum size without aspect-ratio constraints
-        if reaper.APIExists("ImGui_SetNextWindowSizeConstraints") then
-            reaper.ImGui_SetNextWindowSizeConstraints(ctx, min_w, min_h, 16384, 16384)
+        if state.request_maximize_toggle then
+            state.request_maximize_toggle = false
+            if not state.is_maximized and (state._maximize_stage or 0) == 0 then
+                -- Step 1 of Maximize: Read maximum possible screen size of target monitor, place window in center first
+                vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
+                state.screen_work_x = vx
+                state.screen_work_y = vy
+                state.screen_work_w = vw
+                state.screen_work_h = vh
+                state._maximize_stage = 1
+            else
+                -- Unmaximize / Restore to centered window on current display
+                state.is_maximized = false
+                state._maximize_stage = 0
+                state.just_restored = true
+                state.status_msg = "Window size restored"
+            end
         end
         
-        if state.just_restored or not state._window_pos_initialized or (not state._hwnd_calibrated and get_notator_hwnd() ~= nil) then
-            -- Both on Restore AND on fresh startup (plus one-shot calibration once native HWND is live):
-            -- Read maximum screen work area of target monitor, then place window cleanly in the center of the screen
-            vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
-            state.screen_work_x = vx
-            state.screen_work_y = vy
-            state.screen_work_w = vw
-            state.screen_work_h = vh
+        local min_w = math.min(640, math.max(360, math.floor(vw * 0.35)))
+        local min_h = math.min(420, math.max(260, math.floor(vh * 0.35)))
+
+        if state._maximize_stage == 1 then
+            -- Stage 1: Place window in centered bounds on the target screen so OS monitor & DPI are locked in
             local rx, ry, rw, rh = get_small_centered_bounds(vx, vy, vw, vh)
             state.prev_win_x = rx
             state.prev_win_y = ry
@@ -588,18 +539,76 @@ local function loop()
             state.prev_win_h = rh
             reaper.ImGui_SetNextWindowPos(ctx, rx, ry, reaper.ImGui_Cond_Always())
             reaper.ImGui_SetNextWindowSize(ctx, rw, rh, reaper.ImGui_Cond_Always())
-            if get_notator_hwnd() ~= nil then
-                state._hwnd_calibrated = true
+            state._maximize_stage = 2
+            state._window_pos_initialized = true
+        elseif state._maximize_stage == 2 then
+            -- Stage 2: Window is now centered on the target monitor -> read live HWND scale & maximize to 100% of monitor work area
+            vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
+            state.screen_work_x = vx
+            state.screen_work_y = vy
+            state.screen_work_w = vw
+            state.screen_work_h = vh
+            state.is_maximized = true
+            state._maximize_stage = 3
+            state._maximize_verify_tries = 0
+            state.status_msg = "Window maximized on current display"
+            reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
+            reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
+            state._window_pos_initialized = true
+        elseif state._maximize_stage == 3 then
+            -- Stage 3: Post-maximize closed-loop verification against OS monitor work area (handles cross-monitor DPI changes)
+            local cvx, cvy, cvw, cvh, is_exact = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
+            state.screen_work_x = cvx
+            state.screen_work_y = cvy
+            state.screen_work_w = cvw
+            state.screen_work_h = cvh
+            vx, vy, vw, vh = cvx, cvy, cvw, cvh
+            state._maximize_verify_tries = (state._maximize_verify_tries or 0) + 1
+            if is_exact or state._maximize_verify_tries >= 3 then
+                state._maximize_stage = 0
             end
-            state.just_restored = false
+            reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
+            reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
+            state._window_pos_initialized = true
+        elseif state.is_maximized then
+            reaper.ImGui_SetNextWindowPos(ctx, vx, vy, reaper.ImGui_Cond_Always())
+            reaper.ImGui_SetNextWindowSize(ctx, vw, vh, reaper.ImGui_Cond_Always())
             state._window_pos_initialized = true
         else
-            reaper.ImGui_SetNextWindowSize(ctx, min_w, min_h, reaper.ImGui_Cond_FirstUseEver())
+            -- Enforce responsive minimum size without aspect-ratio constraints (only when floating)
+            if reaper.APIExists("ImGui_SetNextWindowSizeConstraints") then
+                reaper.ImGui_SetNextWindowSizeConstraints(ctx, min_w, min_h, 16384, 16384)
+            end
+            
+            if state.just_restored or not state._window_pos_initialized or (not state._hwnd_calibrated and not reaper.ImGui_IsMouseDown(ctx, 0) and get_notator_hwnd() ~= nil) then
+                -- Both on Restore AND on fresh startup (plus one-shot calibration once native HWND is live):
+                -- Read maximum screen work area of target monitor, then place window cleanly in the center of the screen
+                vx, vy, vw, vh = get_screen_work_area(cur_x, cur_y, cur_w, cur_h)
+                state.screen_work_x = vx
+                state.screen_work_y = vy
+                state.screen_work_w = vw
+                state.screen_work_h = vh
+                local rx, ry, rw, rh = get_small_centered_bounds(vx, vy, vw, vh)
+                state.prev_win_x = rx
+                state.prev_win_y = ry
+                state.prev_win_w = rw
+                state.prev_win_h = rh
+                reaper.ImGui_SetNextWindowPos(ctx, rx, ry, reaper.ImGui_Cond_Always())
+                reaper.ImGui_SetNextWindowSize(ctx, rw, rh, reaper.ImGui_Cond_Always())
+                if get_notator_hwnd() ~= nil then
+                    state._hwnd_calibrated = true
+                end
+                state.just_restored = false
+                state._window_pos_initialized = true
+            else
+                reaper.ImGui_SetNextWindowSize(ctx, min_w, min_h, reaper.ImGui_Cond_FirstUseEver())
+            end
         end
     end
     
-    if reaper.APIExists("ImGui_ConfigVar_WindowsMoveFromTitleBarOnly") and reaper.APIExists("ImGui_SetConfigVar") then
+    if not state._config_var_init and reaper.APIExists("ImGui_ConfigVar_WindowsMoveFromTitleBarOnly") and reaper.APIExists("ImGui_SetConfigVar") then
         reaper.ImGui_SetConfigVar(ctx, reaper.ImGui_ConfigVar_WindowsMoveFromTitleBarOnly(), 1)
+        state._config_var_init = true
     end
     
     local child_border = reaper.APIExists("ImGui_ChildFlags_Borders") and reaper.ImGui_ChildFlags_Borders() or 1
@@ -636,6 +645,27 @@ local function loop()
     
     if visible then
         state._window_pos_initialized = true
+        local is_docked = false
+        if reaper.APIExists("ImGui_IsWindowDocked") then
+            is_docked = reaper.ImGui_IsWindowDocked(ctx)
+        end
+        if not is_docked and reaper.APIExists("ImGui_GetWindowDockID") then
+            local dock_id = reaper.ImGui_GetWindowDockID(ctx)
+            if dock_id and dock_id ~= 0 then
+                is_docked = true
+            end
+        end
+        if state.is_window_docked and not is_docked then
+            -- Just undocked back to floating window -> allow top-level HWND re-lookup without snapping
+            state._notator_hwnd = nil
+            state._last_hwnd_lookup_time = nil
+            state._hwnd_calibrated = true
+        elseif is_docked then
+            state._notator_hwnd = nil
+            state._hwnd_calibrated = true
+        end
+        state.is_window_docked = is_docked
+
         reaper.ImGui_SetScrollY(ctx, 0)
         reaper.ImGui_SetScrollX(ctx, 0)
         local win_x, win_y = reaper.ImGui_GetWindowPos(ctx)
@@ -650,8 +680,8 @@ local function loop()
         local svw = state.screen_work_w or 1920
         local svh = state.screen_work_h or 1080
         
-        -- Remember current unmaximized window size (for clean restoration)
-        if not state.is_maximized and (state._maximize_stage or 0) == 0 then
+        -- Remember current unmaximized floating window size (for clean restoration)
+        if not is_docked and not state.is_maximized and (state._maximize_stage or 0) == 0 then
             if win_w >= 360 and win_h >= 260 and (win_w < (svw - 10) or win_h < (svh - 10)) then
                 state.prev_win_w = win_w
                 state.prev_win_h = win_h
@@ -660,8 +690,8 @@ local function loop()
             end
         end
 
-        -- Periodically persist unmaximized window position to ExtState when moved or resized and mouse is released
-        if not state.is_maximized and (state._maximize_stage or 0) == 0 then
+        -- Periodically persist unmaximized floating window position to ExtState when moved or resized and mouse is released
+        if not is_docked and not state.is_maximized and (state._maximize_stage or 0) == 0 then
             if win_x ~= state._last_saved_win_x or win_y ~= state._last_saved_win_y or win_w ~= state._last_saved_win_w or win_h ~= state._last_saved_win_h then
                 local is_mouse_down = reaper.ImGui_IsMouseDown(ctx, 0)
                 local now = reaper.time_precise()
@@ -689,8 +719,8 @@ local function loop()
             end
         end
         
-        -- Double click title bar toggles maximize
-        if reaper.ImGui_IsMouseDoubleClicked(ctx, 0) and my >= win_y and my <= (win_y + 26) and mx >= win_x and mx <= (win_x + win_w - 60) then
+        -- Double click title bar toggles maximize (only when floating, never when docked)
+        if not is_docked and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) and my >= win_y and my <= (win_y + 26) and mx >= win_x and mx <= (win_x + win_w - 60) then
             state.request_maximize_toggle = true
         end
 
