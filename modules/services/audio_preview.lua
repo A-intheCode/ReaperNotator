@@ -449,8 +449,21 @@ function AudioPreview.find_active_articulation_at_qn(state, track, qn, chan, opt
     end
 
     -- 4. PRIORITY 3: Check Program Change AT or BEFORE the note ("davor") across both cache and raw MIDI take!
+    -- Momentary articulations (Staccato / Short / Spiccato) on earlier notes NEVER persist onto a subsequent note without a dot!
     local persistent_art = nil
     local latest_qn = -100000
+
+    local function is_bank_art_momentary(ba)
+        if not ba then return false end
+        if MidiService.is_momentary_articulation and MidiService.is_momentary_articulation(ba.name) then
+            return true
+        end
+        local mapped = MidiService.art_id_from_reaticulate_art and MidiService.art_id_from_reaticulate_art(ba)
+        if mapped and MidiService.is_momentary_articulation and MidiService.is_momentary_articulation(mapped) then
+            return true
+        end
+        return false
+    end
 
     -- 4a. Search tdata.articulations in cache
     if state and state.active_tracks_cache then
@@ -459,11 +472,16 @@ function AudioPreview.find_active_articulation_at_qn(state, track, qn, chan, opt
                 for _, art in ipairs(tdata.articulations) do
                     local ch_ok = ((art.chan or 0) == target_chan) or (art.chan == nil)
                     if ch_ok and art.qn <= (qn_pos + 0.05) then
+                        local is_at_note = math.abs(art.qn - qn_pos) <= 0.05
                         if art.qn >= latest_qn then
                             for _, ba in ipairs(bank.articulations) do
                                 if ba.pc == art.pc then
-                                    latest_qn = art.qn
-                                    persistent_art = ba
+                                    local is_mom = is_bank_art_momentary(ba)
+                                    -- Only accept a momentary PC if it is AT this exact position AND note_obj wasn't explicitly un-marked
+                                    if not is_mom or (is_at_note and not note_obj and not art.is_auto_return) then
+                                        latest_qn = art.qn
+                                        persistent_art = ba
+                                    end
                                     break
                                 end
                             end
@@ -476,43 +494,50 @@ function AudioPreview.find_active_articulation_at_qn(state, track, qn, chan, opt
     end
 
     -- 4b. ALWAYS also scan the MIDI take directly for 0xC0 Program Changes at or before qn_pos
-    -- (Ensures standalone PCs like PC 70 trill m2 at bar 1 beat 1 are found even if cache is stale or on another channel)
+    -- (Ensures standalone PCs like Legato / Trill at bar 1 beat 1 are found, while skipping earlier momentary Staccato PCs)
     if active_take then
-        local target_ppq = reaper.MIDI_GetPPQPosFromProjQN(active_take, qn_pos) + 25
+        local note_ppq = reaper.MIDI_GetPPQPosFromProjQN(active_take, qn_pos)
+        local target_ppq = note_ppq + 25
         local _, _, cc_cnt = reaper.MIDI_CountEvts(active_take)
         local best_take_ppq = -100000
-        local best_take_pc = nil
+        local best_take_ba = nil
         local fallback_any_chan_ppq = -100000
-        local fallback_any_chan_pc = nil
+        local fallback_any_chan_ba = nil
 
         for ci = 0, cc_cnt - 1 do
             local ok, _, _, ppq, chanmsg, cchan, msg2 = reaper.MIDI_GetCC(active_take, ci)
             if ok and (chanmsg == 192 or (chanmsg & 0xF0) == 0xC0) and ppq <= target_ppq then
-                if cchan == target_chan then
-                    if ppq >= best_take_ppq then
-                        best_take_ppq = ppq
-                        best_take_pc = msg2
+                local matched_ba = nil
+                for _, ba in ipairs(bank.articulations) do
+                    if ba.pc == msg2 then
+                        matched_ba = ba
+                        break
                     end
                 end
-                if ppq >= fallback_any_chan_ppq then
-                    fallback_any_chan_ppq = ppq
-                    fallback_any_chan_pc = msg2
+                if matched_ba then
+                    local is_mom = is_bank_art_momentary(matched_ba)
+                    local is_at_note = math.abs(ppq - note_ppq) <= 25
+                    if not is_mom or (is_at_note and not note_obj) then
+                        if cchan == target_chan and ppq >= best_take_ppq then
+                            best_take_ppq = ppq
+                            best_take_ba = matched_ba
+                        end
+                        if ppq >= fallback_any_chan_ppq then
+                            fallback_any_chan_ppq = ppq
+                            fallback_any_chan_ba = matched_ba
+                        end
+                    end
                 end
             end
         end
 
-        local chosen_ppq = (best_take_pc ~= nil) and best_take_ppq or fallback_any_chan_ppq
-        local chosen_pc  = (best_take_pc ~= nil) and best_take_pc  or fallback_any_chan_pc
-        if chosen_pc ~= nil then
+        local chosen_ppq = (best_take_ba ~= nil) and best_take_ppq or fallback_any_chan_ppq
+        local chosen_ba  = (best_take_ba ~= nil) and best_take_ba  or fallback_any_chan_ba
+        if chosen_ba ~= nil then
             local chosen_qn = reaper.MIDI_GetProjQNFromPPQPos(active_take, chosen_ppq)
             if chosen_qn >= latest_qn - 0.01 then
-                for _, ba in ipairs(bank.articulations) do
-                    if ba.pc == chosen_pc then
-                        persistent_art = ba
-                        latest_qn = chosen_qn
-                        break
-                    end
-                end
+                persistent_art = chosen_ba
+                latest_qn = chosen_qn
             end
         end
     end
