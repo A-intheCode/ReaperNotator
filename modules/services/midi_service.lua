@@ -3772,7 +3772,7 @@ function MidiService.toggle_selected_articulation(state, art_id)
             end
         end
         
-        if not all_have_target and is_momentary_articulation(norm_target) and SlurService and SlurService.remove_slurs_for_notes then
+        if not all_have_target and MidiService.is_momentary_articulation(norm_target) and SlurService and SlurService.remove_slurs_for_notes then
             SlurService.remove_slurs_for_notes(state, targets)
         end
         MidiService.auto_chase_momentary_articulations(take, bank)
@@ -4367,7 +4367,7 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
                     reaper.MIDI_InsertCC(take, false, false, sppq, 0xC0, chan, pc, 0)
                 end
             end
-            if is_momentary_articulation(mapped_id or art_def.name) and SlurService and SlurService.remove_slurs_for_notes then
+            if MidiService.is_momentary_articulation(mapped_id or art_def.name) and SlurService and SlurService.remove_slurs_for_notes then
                 SlurService.remove_slurs_for_notes(state, targets)
             end
             MidiService.auto_chase_momentary_articulations(take, eff_bank)
