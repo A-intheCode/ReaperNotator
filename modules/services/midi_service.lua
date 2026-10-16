@@ -115,6 +115,7 @@ function MidiService.get_project_midi_tracks()
             sel_sig = sel_sig .. "_" .. tostring(reaper.GetSelectedTrack(0, st))
         end
     end
+    local AudioPreview = package.loaded["services.audio_preview"] or require("services.audio_preview")
     for t = 0, num_tracks - 1 do
         local trk = reaper.GetTrack(0, t)
         if trk and AudioPreview.is_track_user_armed(trk) then
