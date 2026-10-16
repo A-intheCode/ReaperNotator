@@ -18,15 +18,40 @@ local function get_dll_path()
     local dir = src:match("^(.*[\\/])") or ""
     -- FrameTimerService lives in modules/services/, so modules/bin/ is ../bin/
     local bin_path = dir .. "../bin/notator_timer_x64.dll"
-    if reaper.file_exists(bin_path) then
-        return bin_path
+    if not reaper.file_exists(bin_path) then
+        local res_path = reaper.GetResourcePath()
+        local fallback1 = res_path .. "/Scripts/REAPER-Notator/Notation/modules/bin/notator_timer_x64.dll"
+        local fallback2 = res_path .. "/Scripts/REAPER-Notator/modules/bin/notator_timer_x64.dll"
+        if reaper.file_exists(fallback1) then
+            bin_path = fallback1
+        elseif reaper.file_exists(fallback2) then
+            bin_path = fallback2
+        else
+            return nil
+        end
     end
-    local res_path = reaper.GetResourcePath()
-    local fallback1 = res_path .. "/Scripts/REAPER-Notator/modules/bin/notator_timer_x64.dll"
-    if reaper.file_exists(fallback1) then
-        return fallback1
+
+    -- Copy DLL to TEMP before loading so Windows never locks the file in ReaPack's Scripts folder during updates
+    local tmp_dir = os.getenv("TEMP") or os.getenv("TMP")
+    if tmp_dir and #tmp_dir > 0 then
+        local runtime_dll = tmp_dir .. "\\notator_timer_x64_runtime.dll"
+        local rf = io.open(bin_path, "rb")
+        if rf then
+            local data = rf:read("*all")
+            rf:close()
+            if data and #data > 0 then
+                local wf = io.open(runtime_dll, "wb")
+                if wf then
+                    wf:write(data)
+                    wf:close()
+                end
+                if reaper.file_exists(runtime_dll) then
+                    return runtime_dll
+                end
+            end
+        end
     end
-    return nil
+    return bin_path
 end
 
 function FrameTimerService.init(state)
