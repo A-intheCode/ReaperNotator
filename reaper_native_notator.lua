@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.0.10
+-- @version 2.10
 -- @changelog
 --   + v2.0.8-beta: Hotfix - Slur Legato/Long Playback, Right-Panel Default Slur Dropdown & Note Preview Articulation Accuracy:
 --             - Slur Legato / Long Playback & Auto-Heal ('modules/services/slur_service.lua', 'modules/services/midi_service.lua' & 'modules/services/reaticulate_parser.lua'): Fixed 'ReaticulateParser.get_bank_for_track' to resolve user-assigned banks from 'state.track_articulation_banks', separated 'get_default_base_articulation' (strictly Long/Sustain, never Legato) from 'find_slur_articulation_in_bank', and updated 'auto_chase_momentary_articulations' and 'load_slurs' to automatically verify and insert the Slur start Program Change ('CC0 + CC32 + PC') and post-slur chase restoration so slurs reliably trigger Legato (or Long fallback) in Reaticulate.

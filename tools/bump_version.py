@@ -58,10 +58,12 @@ def compute_new_version(action, major, minor, patch, suffix):
         else:
             return major, minor, patch + 1, "-beta"
     else:
-        # Explicit version string like 1.2.3 or 1.2.3-beta
-        m = re.match(r"^(\d+)\.(\d+)\.(\d+)(.*)$", action)
+        # Explicit version string like 1.2.3, 2.10, or 2.10-beta
+        m = re.match(r"^(\d+)\.(\d+)(?:\.(\d+))?(.*)$", action)
         if m:
-            return int(m.group(1)), int(m.group(2)), int(m.group(3)), m.group(4)
+            p = int(m.group(3)) if m.group(3) is not None else 0
+            has_three = (m.group(3) is not None)
+            return int(m.group(1)), int(m.group(2)), p, m.group(4), has_three
         else:
             raise ValueError(f"Invalid version argument: '{action}'. Use patch, minor, major, beta, or X.Y.Z")
 
@@ -184,8 +186,16 @@ def main():
     action = sys.argv[1].lower()
     note = " ".join(sys.argv[2:]) if len(sys.argv) > 2 else f"Release v{action}"
     
-    new_major, new_minor, new_patch, new_suffix = compute_new_version(action, major, minor, patch, suffix)
-    new_semver = f"{new_major}.{new_minor}.{new_patch}{new_suffix}"
+    res = compute_new_version(action, major, minor, patch, suffix)
+    if len(res) == 5:
+        new_major, new_minor, new_patch, new_suffix, has_three = res
+        if not has_three:
+            new_semver = f"{new_major}.{new_minor}{new_suffix}"
+        else:
+            new_semver = f"{new_major}.{new_minor}.{new_patch}{new_suffix}"
+    else:
+        new_major, new_minor, new_patch, new_suffix = res
+        new_semver = f"{new_major}.{new_minor}.{new_patch}{new_suffix}"
     
     print(f"Bumping version: v{current_semver} -> v{new_semver}")
     

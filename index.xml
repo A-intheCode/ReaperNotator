@@ -6,9 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.0.10" author="A-intheCode" time="2026-10-16T01:19:36Z">
+      <version name="2.10" author="A-intheCode" time="2026-10-16T01:21:00Z">
         <changelog><![CDATA[
-+ v2.0.10: Release v2.0.10 - Staccato rendering on all selected notes, auto-chase pre-staccato restoration, slur legato playback, and note audition accuracy
++ v2.10: Release v2.10 - Staccato rendering on all selected notes, auto-chase pre-staccato restoration, slur legato playback, and note audition accuracy
 + v2.0.7: Official Production Release - Clean Note Audition, Static Canvas Focus, MusicXML Performance Engine, Multi-Monitor 4K HiDPI Maximize & Native 60-144 FPS Timer:
   - Suppress '● REC' Badge During Note Audition / Preview ('modules/services/audio_preview.lua', 'modules/rendering/score_canvas.lua', 'modules/ui/record_modal.lua' & 'modules/services/record_quantize_service.lua'): Added 'AudioPreview.is_track_user_armed(track)' to distinguish genuine user record-arming from temporary 'StuffMIDIMessage' Virtual MIDI Keyboard preview arming ('AudioPreview.track_restore'). Clicking or dragging notes to audition them no longer displays the red '● REC' pill badge or red recording border on the instrument track header.
   - No Canvas Movement or Focus Jump on Note Click Unless Auto-Scroll Is Active ('modules/rendering/score_canvas.lua', 'modules/input/mouse_handler.lua', 'modules/services/midi_service.lua' & 'modules/state.lua'): Clicking notes, item badges, clefs, or track headers on the ScoreCanvas now synchronizes 'last_reaper_sel_item' and 'last_reaper_sel_track' immediately and suppresses 'jump_to_item', keeping the ScoreCanvas viewport ('scroll_x' / 'scroll_y') completely stationary unless 'Auto-Scroll' ('state.auto_scroll') is explicitly enabled.
@@ -126,8 +126,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="2.0.10-beta" author="A-intheCode" time="2026-10-16T01:14:47Z">
+      <version name="2.10-beta" author="A-intheCode" time="2026-10-16T01:20:54Z">
         <changelog><![CDATA[
++ v2.10-beta: v2.10-beta: Fix MidiService.is_momentary_articulation call and staccato auto-chase
 + v2.0.10-beta: v2.0.10-beta: Fix MidiService.is_momentary_articulation call and staccato auto-chase
 + v2.0.9-beta: v2.0.9-beta: Fix staccato dots on all selected/marked notes and immediate return to pre-staccato articulation
 + v2.0.8-beta: Hotfix - Slur Legato/Long Playback, Right-Panel Default Slur Dropdown & Note Preview Articulation Accuracy:
