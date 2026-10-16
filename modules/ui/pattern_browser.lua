@@ -183,6 +183,18 @@ local function draw_mini_score(draw_list, pattern, x, y, w, h, font_music, zoom)
             reaper.ImGui_DrawList_AddCircleFilled(draw_list, nx, dot_y, math.max(0.8, 1.0 * z), staccato_col)
         end
     end
+    
+    -- Live playhead across all bars during preview playback
+    local ap = PatternService.active_preview
+    if ap and ap.pattern and ap.pattern.id == pattern.id then
+        local elapsed = math.max(0, reaper.time_precise() - (ap.start_time or 0))
+        local total_dur = (ap.total_time and ap.total_time > 0) and ap.total_time or (total_qn * (ap.sec_per_qn or 0.5))
+        if total_dur > 0 then
+            local frac = math.max(0, math.min(1.0, elapsed / total_dur))
+            local px = score_x0 + frac * score_w
+            reaper.ImGui_DrawList_AddLine(draw_list, px, treble_top_y - 2, px, bass_bot_y + 2, 0x2ECC71FF, 1.5)
+        end
+    end
 end
 
 --- Renders the complete bottom pane of the Pattern Browser

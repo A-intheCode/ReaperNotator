@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.11" author="A-intheCode" time="2026-10-16T13:23:30Z">
+      <version name="2.12" author="A-intheCode" time="2026-10-16T13:35:35Z">
         <changelog><![CDATA[
++ v2.12: Hotfix: Pattern Browser full-length playback
 + v2.11: Hotfix: Multi-note selection preserved on right-click (Filter Selection & context menu)
 + v2.10: Staccato dots on all selected notes, pre-staccato articulation auto-chase, slur legato playback & note audition accuracy
 + v2.0.7: Clean note audition (no REC badge), static canvas focus on click, MusicXML performance optimization, 4K HiDPI maximize & 60-144 FPS native timer

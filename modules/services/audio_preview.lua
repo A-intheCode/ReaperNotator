@@ -1180,8 +1180,10 @@ function AudioPreview.update(state, ctx)
             AudioPreview.stop_note(state)
         end
     else
-        -- 3. Inactivity delay: if no notes played or armed for >= 2.0 seconds, restore original input device
-        if not AudioPreview.pending_note and not AudioPreview.pending_release_note and not AudioPreview.arm_click_note and next(AudioPreview.track_restore) ~= nil then
+        -- 3. Inactivity delay: if no notes played or armed for >= 2.0 seconds (and no pattern preview active), restore original input device
+        local pat_svc = package.loaded["services.pattern_service"]
+        local pat_playing = (pat_svc and pat_svc.active_preview ~= nil)
+        if not pat_playing and not AudioPreview.pending_note and not AudioPreview.pending_release_note and not AudioPreview.arm_click_note and next(AudioPreview.track_restore) ~= nil then
             local idle_dur = now - (AudioPreview.last_activity_time or 0)
             if idle_dur >= 2.0 then
                 AudioPreview.restore_all_tracks()

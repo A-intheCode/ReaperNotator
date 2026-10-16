@@ -82,7 +82,17 @@ function PatternService.scan_library()
                         if pattern and pattern.id and pattern.name and pattern.notes then
                             pattern.filepath = full_file
                             pattern.category = sub_dir
-                            pattern.bars = math.max(1, math.min(64, tonumber(pattern.bars) or 4))
+                            local ts_num = (pattern.time_sig and pattern.time_sig.num) or 4
+                            local ts_denom = (pattern.time_sig and pattern.time_sig.denom) or 4
+                            local qn_per_bar = ts_num * (4.0 / ts_denom)
+                            local max_note_qn = 0
+                            for _, pn in ipairs(pattern.notes) do
+                                local eq = (pn.start_qn or 0) + (pn.dur_qn or 0.25)
+                                if eq > max_note_qn then max_note_qn = eq end
+                            end
+                            local needed_bars = (qn_per_bar > 0) and math.ceil((max_note_qn - 0.01) / qn_per_bar) or 1
+                            local raw_bars = math.max(1, math.min(128, tonumber(pattern.bars) or 4))
+                            pattern.bars = math.max(raw_bars, needed_bars)
                             
                             table.insert(PatternService.patterns, pattern)
                             PatternService.patterns_by_id[pattern.id] = pattern
@@ -199,7 +209,8 @@ function PatternService.capture_reaper_item(item, name, category, max_bars)
     timesig_denom = (timesig_denom and timesig_denom > 0) and timesig_denom or 4
     local qn_per_measure = timesig_num * (4.0 / timesig_denom)
     
-    local bars = math.max(1, math.min(64, tonumber(max_bars) or 4))
+    local is_entire_item = (tonumber(max_bars) or 4) >= 64
+    local bars = math.max(1, math.min(128, tonumber(max_bars) or 4))
     local max_qn = bars * qn_per_measure
     
     -- Find first note for relative origin adjustment
@@ -232,10 +243,14 @@ function PatternService.capture_reaper_item(item, name, category, max_bars)
     
     -- Normalize notes to 0.0 QN and clamp to max_bars
     local notes = {}
+    local max_rel_end_qn = 0
     for _, rn in ipairs(raw_notes) do
         local rel_qn = rn.qn - first_qn
         if rel_qn < (max_qn - 0.01) then
             local note_dur = math.min(rn.dur, max_qn - rel_qn)
+            if rel_qn + note_dur > max_rel_end_qn then
+                max_rel_end_qn = rel_qn + note_dur
+            end
             table.insert(notes, {
                 pitch = rn.pitch,
                 start_qn = math.floor(rel_qn * 1000 + 0.5) / 1000,
@@ -245,6 +260,10 @@ function PatternService.capture_reaper_item(item, name, category, max_bars)
                 art = (note_dur <= 0.3) and "staccato" or nil
             })
         end
+    end
+    
+    if is_entire_item and qn_per_measure > 0 and max_rel_end_qn > 0 then
+        bars = math.max(1, math.ceil((max_rel_end_qn - 0.01) / qn_per_measure))
     end
     
     table.sort(notes, function(a, b) return a.start_qn < b.start_qn end)
@@ -365,32 +384,50 @@ function PatternService.start_preview(pattern, track, audio_preview)
     
     PatternService.stop_preview(audio_preview)
     
-    audio_preview.prepare_track(track)
+    local just_switched = audio_preview.prepare_track(track)
     
     local sorted_notes = {}
+    local max_note_end_qn = 0
     for _, n in ipairs(pattern.notes or {}) do
+        local sqn = tonumber(n.start_qn) or 0
+        local dqn = tonumber(n.dur_qn) or 0.25
+        if sqn + dqn > max_note_end_qn then
+            max_note_end_qn = sqn + dqn
+        end
         table.insert(sorted_notes, {
             pitch = n.pitch,
-            start_qn = n.start_qn,
-            dur_qn = n.dur_qn,
+            start_qn = sqn,
+            dur_qn = dqn,
             vel = n.vel or 90,
             chan = n.chan or 0
         })
     end
     table.sort(sorted_notes, function(a, b) return a.start_qn < b.start_qn end)
     
-    local tempo = pattern.tempo_hint or 120
+    local tempo = tonumber(pattern.tempo_hint) or 120
+    if tempo <= 0 then tempo = 120 end
     local sec_per_qn = 60.0 / tempo
+    
+    local timesig_num = (pattern.time_sig and tonumber(pattern.time_sig.num)) or 4
+    local timesig_denom = (pattern.time_sig and tonumber(pattern.time_sig.denom)) or 4
+    if timesig_num <= 0 then timesig_num = 4 end
+    if timesig_denom <= 0 then timesig_denom = 4 end
+    local qn_per_bar = timesig_num * (4.0 / timesig_denom)
+    local total_qn = math.max((tonumber(pattern.bars) or 4) * qn_per_bar, max_note_end_qn)
+    
+    local now = reaper.time_precise()
+    audio_preview.last_activity_time = now
     
     PatternService.active_preview = {
         pattern = pattern,
         track = track,
-        start_time = reaper.time_precise(),
+        start_time = now + (just_switched and 0.055 or 0.0),
         sec_per_qn = sec_per_qn,
         notes = sorted_notes,
         next_note_idx = 1,
         active_sounding = {}, -- { { pitch = ..., off_time = ... } }
-        total_time = (pattern.bars or 4) * 4.0 * sec_per_qn
+        total_qn = total_qn,
+        total_time = total_qn * sec_per_qn
     }
 end
 
@@ -400,6 +437,7 @@ function PatternService.stop_preview(audio_preview)
     if not PatternService.active_preview then return end
     
     local p = PatternService.active_preview
+    PatternService.active_preview = nil
     if p.track and reaper.ValidatePtr(p.track, "MediaTrack*") then
         -- Send Note-Off for all sounding notes
         for _, n in ipairs(p.active_sounding or {}) do
@@ -409,8 +447,6 @@ function PatternService.stop_preview(audio_preview)
             audio_preview.restore_track(p.track)
         end
     end
-    
-    PatternService.active_preview = nil
 end
 
 --- Updates pattern audio preview every loop frame
@@ -425,7 +461,13 @@ function PatternService.update_preview(audio_preview)
     end
     
     local now = reaper.time_precise()
+    -- Keep AudioPreview's inactivity timer alive for the entire multi-bar pattern duration!
+    if audio_preview then
+        audio_preview.last_activity_time = now
+    end
+    
     local elapsed = now - p.start_time
+    if elapsed < 0 then return end
     
     -- Check expired notes and send Note-Off
     local remaining_sounding = {}
@@ -443,12 +485,21 @@ function PatternService.update_preview(audio_preview)
         local n = p.notes[p.next_note_idx]
         local note_time = n.start_qn * p.sec_per_qn
         if elapsed >= (note_time - 0.005) then
+            local n_chan = n.chan or 0
+            -- If same pitch+channel is already sounding, send Note-Off first and remove old entry so its off_time won't cut off the new note
+            for i = #p.active_sounding, 1, -1 do
+                local sn = p.active_sounding[i]
+                if sn.pitch == n.pitch and (sn.chan or 0) == n_chan then
+                    reaper.StuffMIDIMessage(0, 0x80 | n_chan, sn.pitch, 0)
+                    table.remove(p.active_sounding, i)
+                end
+            end
             -- Send Note-On
-            reaper.StuffMIDIMessage(0, 0x90 | (n.chan or 0), n.pitch, n.vel)
+            reaper.StuffMIDIMessage(0, 0x90 | n_chan, n.pitch, n.vel)
             local dur_sec = math.max(0.08, n.dur_qn * p.sec_per_qn)
             table.insert(p.active_sounding, {
                 pitch = n.pitch,
-                chan = n.chan or 0,
+                chan = n_chan,
                 off_time = now + dur_sec
             })
             p.next_note_idx = p.next_note_idx + 1
@@ -457,8 +508,8 @@ function PatternService.update_preview(audio_preview)
         end
     end
     
-    -- Stop when entire pattern duration has completed
-    if elapsed >= (p.total_time + 0.5) and #p.active_sounding == 0 then
+    -- Stop when entire pattern duration and all notes have completed
+    if p.next_note_idx > #p.notes and elapsed >= (p.total_time + 0.25) and #p.active_sounding == 0 then
         PatternService.stop_preview(audio_preview)
     end
 end
