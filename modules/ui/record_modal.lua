@@ -90,14 +90,14 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         reaper.ImGui_PopStyleColor(ctx)
         reaper.ImGui_Spacing(ctx)
 
-        -- Pre-roll on Record (Action 41818)
-        local preroll_active = (reaper.GetToggleCommandState(41818) == 1)
+        -- Pre-roll on Record (Action 41819)
+        local preroll_active = (reaper.GetToggleCommandState(41819) == 1)
         local changed_preroll, _ = reaper.ImGui_Checkbox(ctx, "Pre-roll before Recording##PrerollToggle", preroll_active)
         if changed_preroll then
-            reaper.Main_OnCommand(41818, 0)
+            reaper.Main_OnCommand(41819, 0)
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Plays preceding measures before recording starts (REAPER Pre-roll).")
+            reaper.ImGui_SetTooltip(ctx, "Plays preceding measures before recording starts (REAPER Pre-roll on Record).")
         end
 
         -- Pre-roll Length (Bars)
@@ -127,19 +127,19 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
             reaper.ImGui_EndCombo(ctx)
         end
 
-        -- Count-in on Record (Action 40364)
+        -- Metronome & Count-in on Record (Action 40364)
         local countin_active = (reaper.GetToggleCommandState(40364) == 1)
         local changed_ci, _ = reaper.ImGui_Checkbox(ctx, "Metronome Count-in before Recording##CountinToggle", countin_active)
         if changed_ci then
             reaper.Main_OnCommand(40364, 0)
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "Audible metronome count-in clicks before recording starts.")
+            reaper.ImGui_SetTooltip(ctx, "Audible metronome / count-in clicks during and before recording.")
         end
 
         reaper.ImGui_SameLine(ctx, 0, 16)
         if reaper.ImGui_Button(ctx, "⚙ Metronome Settings...##MetroBtn", 170, 22) then
-            reaper.Main_OnCommand(40049, 0)
+            reaper.Main_OnCommand(40363, 0)
         end
         if reaper.ImGui_IsItemHovered(ctx) then
             reaper.ImGui_SetTooltip(ctx, "Opens REAPER's native Metronome and Pre-roll settings dialog.")
