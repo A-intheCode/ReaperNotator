@@ -5,12 +5,12 @@
 
 local Version = {
     major = 2,
-    minor = 0,
-    patch = 10,
+    minor = 10,
+    patch = 0,
     suffix = "-beta", -- 2.0.8-beta Slur Legato/Long Playback, Default Slur Dropdown & Note Preview Articulation Hotfix
 }
 
-Version.SEMVER = string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)
+Version.SEMVER = (Version.patch == 0) and string.format("%d.%d%s", Version.major, Version.minor, Version.suffix) or string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)
 
 -- Cache for dynamic git hash
 local cached_display = nil
