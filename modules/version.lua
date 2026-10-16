@@ -5,9 +5,9 @@
 
 local Version = {
     major = 2,
-    minor = 10,
+    minor = 11,
     patch = 0,
-    suffix = "", -- 2.10 Release
+    suffix = "", -- 2.0.8-beta Slur Legato/Long Playback, Default Slur Dropdown & Note Preview Articulation Hotfix
 }
 
 Version.SEMVER = (Version.patch == 0) and string.format("%d.%d%s", Version.major, Version.minor, Version.suffix) or string.format("%d.%d.%d%s", Version.major, Version.minor, Version.patch, Version.suffix)

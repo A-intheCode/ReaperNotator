@@ -1283,6 +1283,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
         state.selected_note = nil
         state.selected_articulations = {}
         state.selected_articulation = nil
+        state.selection_bounds = nil
+        state.selection_is_to_end = false
 
         if (state.marquee_add_mode or is_ctrl) and state.marquee_initial_selection then
             for k, sn in pairs(state.marquee_initial_selection) do
@@ -1299,7 +1301,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
 
         for _, rd in ipairs(canvas_info.all_note_render_data or {}) do
             if rd.nx >= x0 and rd.nx <= x1 and rd.ny >= y0 and rd.ny <= y1 then
-                if rd.note then state:select_note(rd.note) end
+                local n_obj = rd.note or rd.orig
+                if n_obj then state:select_note(n_obj) end
             end
         end
 

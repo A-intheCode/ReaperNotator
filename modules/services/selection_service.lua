@@ -208,9 +208,26 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
     if state.selection_bounds then
         min_qn = state.selection_bounds.start_qn
         max_qn = state.selection_bounds.end_qn
+        target_tracks = state.selection_bounds.target_tracks
     else
+        local init_keys = {}
+        local has_init_notes = false
+        if state.selected_notes then
+            for k, sn in pairs(state.selected_notes) do
+                local nk = k or (sn.get_key and sn:get_key()) or sn.key
+                if nk then
+                    init_keys[nk] = true
+                    has_init_notes = true
+                end
+            end
+        end
         min_qn, max_qn, target_tracks = SelectionService.get_selection_bounds(state)
-        state.selection_bounds = { start_qn = min_qn, end_qn = max_qn }
+        state.selection_bounds = {
+            start_qn = min_qn,
+            end_qn = max_qn,
+            target_tracks = target_tracks,
+            initial_note_keys = has_init_notes and init_keys or nil
+        }
     end
     if not target_tracks or next(target_tracks) == nil then
         target_tracks = {}
@@ -224,6 +241,7 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
     local flt = state.selection_filter
 
     local is_measure = (state.selection_bounds and state.selection_bounds.is_measure_selection)
+    local init_note_keys = state.selection_bounds and state.selection_bounds.initial_note_keys
     local function in_range(pos_qn)
         if not pos_qn then return false end
         if is_measure then
@@ -241,7 +259,14 @@ function SelectionService.apply_filter(state, active_tracks_data, midi_service)
         for _, td in ipairs(active_tracks_data) do
             if target_tracks[td.guid] then
                 for _, n in ipairs(td.notes or {}) do
-                    if in_range(n.start_qn) then
+                    local nk = n.key or (n.get_key and n:get_key())
+                    local note_matches = false
+                    if init_note_keys and not is_measure and not state.selection_is_to_end then
+                        note_matches = (nk and init_note_keys[nk]) or false
+                    else
+                        note_matches = in_range(n.start_qn)
+                    end
+                    if note_matches then
                         if not flt.articulations_only or (n.articulation and n.articulation ~= "") then
                             state:select_note(n)
                             n_cnt = n_cnt + 1

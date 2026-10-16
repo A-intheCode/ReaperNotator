@@ -1901,6 +1901,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     vn.ny = vn.vis_ny
                     vn.stem_x = vn.vis_nx
                     vn.stem_end_y = vn.vis_ny
+                    vn.note = vn.orig
                     
                     table.insert(all_note_render_data, vn)
                     all_note_render_by_key[vn.key] = vn
@@ -2433,29 +2434,20 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.status_msg = string.format("Selected: %d note(s) | Focus: %s%d [Voice %d / Ch %d] (Vel %d)", state:count_selected_notes(), Constants.PITCH_MAP[n.pitch % 12].name, math.floor(n.pitch/12)-1, note_v, note_v, n.vel)
                 end
                 
-                -- Note right-click: open context menu (quantize, legato, delete)
+                -- Note right-click: open context menu (quantize, legato, filter, delete)
                 if is_the_closest and reaper.ImGui_IsMouseClicked(ctx, 1) and state.input_mode_type ~= "draw" then
                     note_right_clicked_this_frame = true
-                    state.selected_dynamic = nil
-                    state.selected_tempo_marker = nil
-                    state.selected_octave_line = nil
-                    state.selected_portamento = nil
-                    state.context_portamento = nil
-                    state.selected_glissando = nil
-                    state.context_glissando = nil
-                    state.selected_slur = nil
-                    state.selected_tie = nil
-                    state.context_slur = nil
-                    state.context_tie = nil
                     state.focused_track = n.track
                     if n.track and reaper.ValidatePtr(n.track, "MediaTrack*") then
                         reaper.SetOnlyTrackSelected(n.track)
                     end
                     AudioPreview.play_note(state, n.pitch, n.vel, n.chan, n.track, n.start_qn, n)
-                    if state:count_selected_notes() > 1 or not state:is_note_selected(n) then
+                    if not is_sel and not (is_shift or is_ctrl) then
                         state:clear_selection()
+                        state:select_note(n)
+                    else
+                        state:select_note(n)
                     end
-                    state:select_note(n)
                     midi_service.sync_selection_to_reaper(state, active_tracks_data)
                     state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
                     state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
