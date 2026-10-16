@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.17
+-- @version 2.18-beta
 -- @changelog
+--   + v2.18-beta: New: Melodic Pathfinder & Counter-Melody Generator (Corpus-trained Viterbi inpainting, Inversion & Reference Track Harmony)
 --   + v2.17: New: 300 Percussion & Low Strings patterns (1,500 total) + Pattern Browser UI refinements
 --   + v2.16: Hotfix: Fix severe UI lag when docked in REAPER Docker
 --   + v2.15: New: Divisi (split voices to duplicated tracks)
@@ -149,6 +150,7 @@ end
 
 local DivisioVocumModal     = safe_require("ui.divisio_vocum_modal", { render = function() end })
 local DivisiModal           = safe_require("ui.divisi_modal", { render = function() end })
+local MelodyPathfinderModal = safe_require("ui.melody_pathfinder_modal", { render = function() end })
 local ExplodeChordsModal    = DivisioVocumModal
 local FilterIrregularModal  = safe_require("ui.filter_irregular_modal", { render = function() end })
 local RecordModal           = safe_require("ui.record_modal", { render = function() end })
@@ -750,6 +752,7 @@ local function loop()
         MusicXmlModal.render(ctx, state, project_tracks)
         DivisioVocumModal.render(ctx, state, MidiService, state.active_tracks_cache)
         DivisiModal.render(ctx, state, MidiService, state.active_tracks_cache)
+        MelodyPathfinderModal.render(ctx, state, MidiService, AudioPreview, state.active_tracks_cache)
         FilterIrregularModal.render(ctx, state, MidiService, state.active_tracks_cache)
         RecordModal.render(ctx, state, MidiService, project_tracks, state.active_tracks_cache)
         ArticulationsDrawer.render_last_resort_modal(ctx, state, state.active_tracks_cache)
