@@ -634,17 +634,13 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                     local tguid = reaper.GetTrackGUID(trk)
                     local is_armed = AudioPreview.is_track_user_armed(trk)
                     RecordQuantizeService._tracked_armed_guids = RecordQuantizeService._tracked_armed_guids or {}
-                    if is_armed then
-                        if tguid then RecordQuantizeService._tracked_armed_guids[tguid] = true end
-                    elseif tguid and RecordQuantizeService._tracked_armed_guids[tguid] then
-                        -- Track was disarmed externally in REAPER TCP/MCP -> turn off monitoring
-                        RecordQuantizeService._tracked_armed_guids[tguid] = nil
-                        reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
-                        if AudioPreview.track_restore and AudioPreview.track_restore[trk] then
-                            AudioPreview.track_restore[trk].orig_arm = 0
-                            AudioPreview.track_restore[trk].changed_arm = false
-                            AudioPreview.track_restore[trk].orig_mon = 0
-                            AudioPreview.track_restore[trk].changed_mon = false
+                    if not (AudioPreview.track_restore and AudioPreview.track_restore[trk]) then
+                        if is_armed then
+                            if tguid then RecordQuantizeService._tracked_armed_guids[tguid] = true end
+                        elseif tguid and RecordQuantizeService._tracked_armed_guids[tguid] then
+                            -- Track was disarmed externally in REAPER TCP/MCP -> turn off monitoring
+                            RecordQuantizeService._tracked_armed_guids[tguid] = nil
+                            reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
                         end
                     end
                     local in_label, is_midi_in = RecordQuantizeService.format_track_midi_input(trk)

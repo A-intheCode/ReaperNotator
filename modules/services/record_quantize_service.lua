@@ -192,18 +192,19 @@ function RecordQuantizeService.sync_all_tracks_monitoring()
     for ti = 0, trk_cnt - 1 do
         local trk = reaper.GetTrack(0, ti)
         if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
-            local guid = reaper.GetTrackGUID(trk)
-            local is_armed = (ap and ap.is_track_user_armed and ap.is_track_user_armed(trk)) or (reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1)
-            if is_armed then
-                if guid then RecordQuantizeService._tracked_armed_guids[guid] = true end
-            elseif guid and RecordQuantizeService._tracked_armed_guids[guid] then
-                RecordQuantizeService._tracked_armed_guids[guid] = nil
-                reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
-                if ap and ap.track_restore and ap.track_restore[trk] then
-                    ap.track_restore[trk].orig_arm = 0
-                    ap.track_restore[trk].changed_arm = false
-                    ap.track_restore[trk].orig_mon = 0
-                    ap.track_restore[trk].changed_mon = false
+            if not (ap and ap.track_restore and ap.track_restore[trk]) then
+                local guid = reaper.GetTrackGUID(trk)
+                local is_armed
+                if ap and ap.is_track_user_armed then
+                    is_armed = ap.is_track_user_armed(trk)
+                else
+                    is_armed = (reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1)
+                end
+                if is_armed then
+                    if guid then RecordQuantizeService._tracked_armed_guids[guid] = true end
+                elseif guid and RecordQuantizeService._tracked_armed_guids[guid] then
+                    RecordQuantizeService._tracked_armed_guids[guid] = nil
+                    reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
                 end
             end
         end

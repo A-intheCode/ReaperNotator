@@ -386,11 +386,18 @@ function PatternService.start_preview(pattern, track, audio_preview)
         return
     end
     
-    PatternService.stop_preview(audio_preview)
+    PatternService.stop_preview(audio_preview, true)
+    if audio_preview.stop_note then
+        audio_preview.stop_note(nil, true)
+    end
     
     local just_switched = audio_preview.prepare_track(track)
     
-    local sorted_notes = {}
+    local tempo = tonumber(pattern.tempo_hint) or 120
+    if tempo <= 0 then tempo = 120 end
+    local sec_per_qn = 60.0 / tempo
+    
+    local raw_sorted = {}
     local max_note_end_qn = 0
     for _, n in ipairs(pattern.notes or {}) do
         local sqn = tonumber(n.start_qn) or 0
@@ -398,19 +405,66 @@ function PatternService.start_preview(pattern, track, audio_preview)
         if sqn + dqn > max_note_end_qn then
             max_note_end_qn = sqn + dqn
         end
-        table.insert(sorted_notes, {
-            pitch = n.pitch,
+        table.insert(raw_sorted, {
+            pitch = math.max(0, math.min(127, math.floor(tonumber(n.pitch) or 60))),
             start_qn = sqn,
             dur_qn = dqn,
-            vel = n.vel or 90,
-            chan = n.chan or 0
+            vel = math.max(1, math.min(127, math.floor(tonumber(n.vel) or 90))),
+            chan = math.max(0, math.min(15, math.floor(tonumber(n.chan) or 0)))
         })
     end
-    table.sort(sorted_notes, function(a, b) return a.start_qn < b.start_qn end)
+    table.sort(raw_sorted, function(a, b)
+        if math.abs(a.start_qn - b.start_qn) > 0.001 then
+            return a.start_qn < b.start_qn
+        end
+        if a.pitch ~= b.pitch then
+            return a.pitch < b.pitch
+        end
+        return a.dur_qn > b.dur_qn
+    end)
     
-    local tempo = tonumber(pattern.tempo_hint) or 120
-    if tempo <= 0 then tempo = 120 end
-    local sec_per_qn = 60.0 / tempo
+    -- 1. Deduplicate simultaneous notes of the exact same (pitch, chan) at the same timestamp
+    local sorted_notes = {}
+    local used_channels = {}
+    local used_notes_map = {}
+    local used_notes_list = {}
+    for _, n in ipairs(raw_sorted) do
+        local prev = sorted_notes[#sorted_notes]
+        if prev and prev.pitch == n.pitch and prev.chan == n.chan and math.abs(n.start_qn - prev.start_qn) < 0.02 then
+            if n.dur_qn > prev.dur_qn then prev.dur_qn = n.dur_qn end
+            if n.vel > prev.vel then prev.vel = n.vel end
+        else
+            table.insert(sorted_notes, n)
+            used_channels[n.chan] = true
+            local nk = (n.chan << 8) | n.pitch
+            if not used_notes_map[nk] then
+                used_notes_map[nk] = true
+                table.insert(used_notes_list, { pitch = n.pitch, chan = n.chan })
+            end
+        end
+    end
+    
+    -- 2. Pre-calculate safe note duration (dur_sec) with a guaranteed >= 40ms gate gap
+    -- before any subsequent note of the SAME (pitch, chan) so Note-Off and Note-On never collide in the same audio block
+    for i = 1, #sorted_notes do
+        local ni = sorted_notes[i]
+        local raw_dur_sec = math.max(0.06, ni.dur_qn * sec_per_qn)
+        -- Slight natural release gap (15ms) so back-to-back legato notes don't overlap on the exact same frame
+        local safe_dur_sec = math.max(0.05, raw_dur_sec - 0.015)
+        for j = i + 1, #sorted_notes do
+            local nj = sorted_notes[j]
+            if nj.pitch == ni.pitch and nj.chan == ni.chan then
+                local delta_sec = (nj.start_qn - ni.start_qn) * sec_per_qn
+                -- Leave at least 40ms (~2-3 frames / audio blocks) between Note-Off and same-pitch Note-On
+                local max_allowed = math.max(0.025, delta_sec - 0.040)
+                if safe_dur_sec > max_allowed then
+                    safe_dur_sec = max_allowed
+                end
+                break
+            end
+        end
+        ni.dur_sec = safe_dur_sec
+    end
     
     local timesig_num = (pattern.time_sig and tonumber(pattern.time_sig.num)) or 4
     local timesig_denom = (pattern.time_sig and tonumber(pattern.time_sig.denom)) or 4
@@ -429,26 +483,78 @@ function PatternService.start_preview(pattern, track, audio_preview)
         sec_per_qn = sec_per_qn,
         notes = sorted_notes,
         next_note_idx = 1,
-        active_sounding = {}, -- { { pitch = ..., off_time = ... } }
+        active_sounding = {}, -- { { pitch = ..., chan = ..., off_time = ... } }
+        used_channels = used_channels,
+        used_notes = used_notes_list,
         total_qn = total_qn,
-        total_time = total_qn * sec_per_qn
+        total_time = total_qn * sec_per_qn,
+        all_notes_ended_time = nil,
+        flush_stage = 0
     }
 end
 
---- Stops active pattern preview
+--- Stops active pattern preview and flushes all active MIDI notes cleanly before track restoration
 --- @param audio_preview table
-function PatternService.stop_preview(audio_preview)
+--- @param keep_track boolean|nil If true, keeps track prepared for immediate next pattern
+function PatternService.stop_preview(audio_preview, keep_track)
     if not PatternService.active_preview then return end
     
     local p = PatternService.active_preview
     PatternService.active_preview = nil
+    local now = reaper.time_precise()
+    if audio_preview then
+        audio_preview.last_activity_time = now
+    end
+    
     if p.track and reaper.ValidatePtr(p.track, "MediaTrack*") then
-        -- Send Note-Off for all sounding notes
+        -- 1. Send explicit Note-Off for all currently sounding notes
         for _, n in ipairs(p.active_sounding or {}) do
-            reaper.StuffMIDIMessage(0, 0x80 | (n.chan or 0), n.pitch, 0)
+            local ch = (n.chan or 0) & 0x0F
+            reaper.StuffMIDIMessage(0, 0x80 | ch, n.pitch, 0)
         end
-        if audio_preview and audio_preview.restore_track then
-            audio_preview.restore_track(p.track)
+        -- 2. Send explicit Note-Off for every pitch used in the pattern + All Notes Off (CC 123)
+        for _, un in ipairs(p.used_notes or {}) do
+            local ch = (un.chan or 0) & 0x0F
+            reaper.StuffMIDIMessage(0, 0x80 | ch, un.pitch, 0)
+        end
+        for ch, _ in pairs(p.used_channels or { [0] = true }) do
+            local c = ch & 0x0F
+            reaper.StuffMIDIMessage(0, 0xB0 | c, 64, 0)  -- Sustain Pedal Off
+            reaper.StuffMIDIMessage(0, 0xB0 | c, 123, 0) -- All Notes Off
+        end
+        
+        -- IMPORTANT: Never call audio_preview.restore_track(p.track) synchronously in the same frame!
+        -- Disarming / switching I_RECINPUT away from Virtual MIDI Keyboard (6080) in the same frame
+        -- drops the queued StuffMIDIMessage Note-Off events before REAPER's audio thread processes them.
+        if not keep_track then
+            local used_notes = p.used_notes or {}
+            local used_channels = p.used_channels or { [0] = true }
+            local flush_start = now
+            local function deferred_note_off_flush()
+                local t = reaper.time_precise()
+                if audio_preview then
+                    audio_preview.last_activity_time = t
+                end
+                if (t - flush_start) < 0.045 then
+                    reaper.defer(deferred_note_off_flush)
+                    return
+                end
+                -- Second safety wave in a subsequent audio buffer block while track is still on VKB (6080)
+                if not PatternService.active_preview then
+                    for _, un in ipairs(used_notes) do
+                        local ch = (un.chan or 0) & 0x0F
+                        reaper.StuffMIDIMessage(0, 0x80 | ch, un.pitch, 0)
+                    end
+                    for ch, _ in pairs(used_channels) do
+                        local c = ch & 0x0F
+                        reaper.StuffMIDIMessage(0, 0xB0 | c, 123, 0)
+                    end
+                end
+                if audio_preview and audio_preview.start_sequence_loop then
+                    audio_preview.start_sequence_loop()
+                end
+            end
+            reaper.defer(deferred_note_off_flush)
         end
     end
 end
@@ -473,39 +579,54 @@ function PatternService.update_preview(audio_preview)
     local elapsed = now - p.start_time
     if elapsed < 0 then return end
     
-    -- Check expired notes and send Note-Off
+    -- 1. Check expired notes and send Note-Off
+    -- Track which (chan, pitch) received a Note-Off on THIS frame so we never send a Note-On
+    -- for the same pitch in the exact same audio buffer block!
+    local off_sent_this_frame = {}
     local remaining_sounding = {}
     for _, sn in ipairs(p.active_sounding) do
         if now >= sn.off_time then
-            reaper.StuffMIDIMessage(0, 0x80 | (sn.chan or 0), sn.pitch, 0)
+            local ch = (sn.chan or 0) & 0x0F
+            reaper.StuffMIDIMessage(0, 0x80 | ch, sn.pitch, 0)
+            off_sent_this_frame[(ch << 8) | sn.pitch] = true
         else
             table.insert(remaining_sounding, sn)
         end
     end
     p.active_sounding = remaining_sounding
     
-    -- Trigger new notes whose timestamp is reached
+    -- 2. Trigger new notes whose timestamp is reached
     while p.next_note_idx <= #p.notes do
         local n = p.notes[p.next_note_idx]
         local note_time = n.start_qn * p.sec_per_qn
         if elapsed >= (note_time - 0.005) then
-            local n_chan = n.chan or 0
+            local n_chan = (n.chan or 0) & 0x0F
+            local nk = (n_chan << 8) | n.pitch
+            
+            -- If same pitch+channel is still sounding, send Note-Off first and wait until next frame for Note-On
+            for i = #p.active_sounding, 1, -1 do
+                local sn = p.active_sounding[i]
+                if sn.pitch == n.pitch and ((sn.chan or 0) & 0x0F) == n_chan then
+                    reaper.StuffMIDIMessage(0, 0x80 | n_chan, sn.pitch, 0)
+                    table.remove(p.active_sounding, i)
+                    off_sent_this_frame[nk] = true
+                end
+            end
+            
+            -- Never send Note-Off and Note-On for the same pitch in the same defer tick / audio block!
+            if off_sent_this_frame[nk] then
+                break
+            end
+            
             if not p.cc_woken then
                 p.cc_woken = true
                 reaper.StuffMIDIMessage(0, 0xB0 | n_chan, 1, 96)
                 reaper.StuffMIDIMessage(0, 0xB0 | n_chan, 11, 108)
             end
-            -- If same pitch+channel is already sounding, send Note-Off first and remove old entry so its off_time won't cut off the new note
-            for i = #p.active_sounding, 1, -1 do
-                local sn = p.active_sounding[i]
-                if sn.pitch == n.pitch and (sn.chan or 0) == n_chan then
-                    reaper.StuffMIDIMessage(0, 0x80 | n_chan, sn.pitch, 0)
-                    table.remove(p.active_sounding, i)
-                end
-            end
+            
             -- Send Note-On
             reaper.StuffMIDIMessage(0, 0x90 | n_chan, n.pitch, n.vel)
-            local dur_sec = math.max(0.08, n.dur_qn * p.sec_per_qn)
+            local dur_sec = n.dur_sec or math.max(0.06, n.dur_qn * p.sec_per_qn)
             table.insert(p.active_sounding, {
                 pitch = n.pitch,
                 chan = n_chan,
@@ -517,9 +638,26 @@ function PatternService.update_preview(audio_preview)
         end
     end
     
-    -- Stop when entire pattern duration and all notes have completed
-    if p.next_note_idx > #p.notes and elapsed >= (p.total_time + 0.25) and #p.active_sounding == 0 then
-        PatternService.stop_preview(audio_preview)
+    -- 3. Post-playback safety flush & clean completion after all notes have turned off
+    if p.next_note_idx > #p.notes and #p.active_sounding == 0 then
+        if not p.all_notes_ended_time then
+            p.all_notes_ended_time = now
+            p.flush_stage = 0
+        end
+        local since_ended = now - p.all_notes_ended_time
+        if p.flush_stage == 0 and since_ended >= 0.035 then
+            p.flush_stage = 1
+            for _, un in ipairs(p.used_notes or {}) do
+                local ch = (un.chan or 0) & 0x0F
+                reaper.StuffMIDIMessage(0, 0x80 | ch, un.pitch, 0)
+            end
+            for ch, _ in pairs(p.used_channels or { [0] = true }) do
+                reaper.StuffMIDIMessage(0, 0xB0 | (ch & 0x0F), 123, 0)
+            end
+        end
+        if elapsed >= (p.total_time + 0.25) and since_ended >= 0.25 then
+            PatternService.stop_preview(audio_preview)
+        end
     end
 end
 
