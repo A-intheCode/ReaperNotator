@@ -791,9 +791,9 @@ end
 -- ==============================================================================
 
 local AUTO_DIVISI_JSFX_FILENAME = "notator_auto_divisi_input.jsfx"
-local AUTO_DIVISI_JSFX_VERSION  = "2.37"
-local AUTO_DIVISI_JSFX_SOURCE   = [[desc:REAPER Notator Auto-Divisi Live Input Router
-// VERSION: 2.37
+local AUTO_DIVISI_JSFX_VERSION  = "2.38"
+local AUTO_DIVISI_JSFX_SOURCE   = [=====[desc:REAPER Notator Auto-Divisi Live Input Router
+// VERSION: 2.38
 options:gmem=REAPER_Notator_Divisi
 
 slider1:1<1,32,1>Voice Rank (1=Highest .. M=Lowest)
@@ -1044,7 +1044,7 @@ while (midirecv(offset, msg1, msg2, msg3)) (
       loop(128,
         kb_held[p] ? (
           ((ev_sample - kb_onset[p]) > chord_window_samples && locked_rank[p] >= 1 && locked_rank[p] <= M) ? (
-            is_sustained[locked_rank[p]] = 1;
+            is_sustained[ locked_rank[p] ] = 1;
           ) : (
             cluster_notes[N] = p;
             N += 1;
@@ -1086,7 +1086,7 @@ while (midirecv(offset, msg1, msg2, msg3)) (
 );
 
 running_samples += samplesblock;
-]]
+]=====]
 
 local function ensure_auto_divisi_jsfx_file()
     if RecordQuantizeService._jsfx_file_verified then

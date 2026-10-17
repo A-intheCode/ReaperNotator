@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.37-beta
+-- @version 2.38-beta
 -- @changelog
+--   + v2.38-beta: Hotfix: Block all keyboard shortcuts while renaming Annotation Layers + fix multiline string syntax in Auto-Divisi JSFX router
 --   + v2.37-beta: Improvement: Live Audible Auto-Divisi Input FX Router (1 played note = 1 instrument heard in both Smart Register & Top-Down modes, C2 -> Double Bass) + Recording Modal footer gap
 --   + v2.36-beta: New: Auto-Divisi Recording Mode (Smart Register & Voice Split across armed tracks with Tick-based chord & legato transition tolerance) + responsive Recording Modal layout
 --   + v2.35-beta: New: Replace Tracks modal button with wider View-style Tracks dropdown featuring Auto-Detect Tracks, Check/Uncheck All buttons & crash-safe project-scoped persistence

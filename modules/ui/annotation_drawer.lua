@@ -8,7 +8,8 @@ local AnnotationService = require("services.annotation_service")
 
 local AnnotationDrawer = {
     renaming_layer_id = nil,
-    rename_buf = ""
+    rename_buf = "",
+    rename_just_opened = false
 }
 
 local function resolve_target_track(state)
@@ -40,7 +41,13 @@ local function resolve_target_track(state)
 end
 
 function AnnotationDrawer.render(ctx, state, active_tracks_data, width, height, child_border, sidebar_flags)
-    if not state.show_annotations_drawer then return end
+    if not state.show_annotations_drawer then
+        AnnotationDrawer.renaming_layer_id = nil
+        AnnotationDrawer.rename_just_opened = false
+        state.editing_annotation_layer = nil
+        return
+    end
+    state.editing_annotation_layer = AnnotationDrawer.renaming_layer_id
     AnnotationService.ensure_state(state)
 
     if not reaper.ImGui_BeginChild(ctx, "AnnotationDrawer", width, height, child_border, sidebar_flags) then
@@ -54,6 +61,9 @@ function AnnotationDrawer.render(ctx, state, active_tracks_data, width, height, 
     reaper.ImGui_SameLine(ctx, width - 28)
     if reaper.ImGui_SmallButton(ctx, "✕##CloseAnnotationDrawer") then
         state.show_annotations_drawer = false
+        AnnotationDrawer.renaming_layer_id = nil
+        AnnotationDrawer.rename_just_opened = false
+        state.editing_annotation_layer = nil
         if state.annotation_tool == "pen" or state.annotation_tool == "eraser" then
             state.annotation_tool = "select"
         end
@@ -334,17 +344,28 @@ function AnnotationDrawer.render(ctx, state, active_tracks_data, width, height, 
             -- 3. Layer Name / Inline Rename / Selection
             reaper.ImGui_SameLine(ctx, 0, 5)
             if AnnotationDrawer.renaming_layer_id == layer.id then
+                state.editing_annotation_layer = layer.id
                 reaper.ImGui_SetNextItemWidth(ctx, avail_w - 75)
+                if AnnotationDrawer.rename_just_opened then
+                    reaper.ImGui_SetKeyboardFocusHere(ctx)
+                    AnnotationDrawer.rename_just_opened = false
+                end
                 local enter_pressed, new_txt = reaper.ImGui_InputText(ctx, "##rename_inp", AnnotationDrawer.rename_buf, reaper.ImGui_InputTextFlags_EnterReturnsTrue() | reaper.ImGui_InputTextFlags_AutoSelectAll())
                 if new_txt ~= nil then
                     AnnotationDrawer.rename_buf = new_txt
                 end
-                if enter_pressed or (reaper.ImGui_IsMouseClicked(ctx, 0) and not reaper.ImGui_IsItemHovered(ctx)) then
+                if reaper.APIExists("ImGui_Key_Escape") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape()) then
+                    AnnotationDrawer.renaming_layer_id = nil
+                    AnnotationDrawer.rename_just_opened = false
+                    state.editing_annotation_layer = nil
+                elseif enter_pressed or (reaper.ImGui_IsMouseClicked(ctx, 0) and not reaper.ImGui_IsItemHovered(ctx)) then
                     if AnnotationDrawer.rename_buf ~= "" then
                         layer.name = AnnotationDrawer.rename_buf
                         AnnotationService.save_metadata(state)
                     end
                     AnnotationDrawer.renaming_layer_id = nil
+                    AnnotationDrawer.rename_just_opened = false
+                    state.editing_annotation_layer = nil
                 end
             else
                 local row_lbl = string.format("%s  (%d bar%s)", layer.name or "Layer", bar_cnt, bar_cnt == 1 and "" or "s")
@@ -363,6 +384,8 @@ function AnnotationDrawer.render(ctx, state, active_tracks_data, width, height, 
                 if reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
                     AnnotationDrawer.renaming_layer_id = layer.id
                     AnnotationDrawer.rename_buf = layer.name or "Layer"
+                    AnnotationDrawer.rename_just_opened = true
+                    state.editing_annotation_layer = layer.id
                 end
                 if reaper.ImGui_IsItemHovered(ctx) then
                     reaper.ImGui_SetTooltip(ctx, string.format("%s\n• Painted Bars (PNG Sub-Tiles): %d\n• Double-click to rename", layer.name or "Layer", bar_cnt))

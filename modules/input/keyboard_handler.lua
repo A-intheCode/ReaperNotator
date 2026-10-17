@@ -7,8 +7,17 @@ local KeyboardHandler = {}
 local ShortcutManager = require("services.shortcut_manager")
 
 function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dynamics_engine, active_tracks_data)
-    -- When a shortcut is being captured in settings, or a text/chord/rehearsal item is being edited, do not execute shortcuts!
-    if state.capturing_action or state.editing_text_item or state.editing_chord_item or state.editing_rehearsal_mark then return end
+    -- When a shortcut is being captured in settings, or a text/chord/rehearsal/annotation layer item is being edited, do not execute ANY shortcuts!
+    local ann_drawer = package.loaded["ui.annotation_drawer"]
+    if state.capturing_action
+        or state.editing_text_item
+        or state.editing_chord_item
+        or state.editing_rehearsal_mark
+        or state.editing_annotation_layer
+        or (ann_drawer and ann_drawer.renaming_layer_id ~= nil)
+    then
+        return
+    end
     
     -- Modifier key detection (Ctrl, Shift, Alt)
     local is_ctrl = false
