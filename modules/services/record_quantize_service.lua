@@ -791,9 +791,9 @@ end
 -- ==============================================================================
 
 local AUTO_DIVISI_JSFX_FILENAME = "notator_auto_divisi_input.jsfx"
-local AUTO_DIVISI_JSFX_VERSION  = "2.39"
+local AUTO_DIVISI_JSFX_VERSION  = "2.40"
 local AUTO_DIVISI_JSFX_SOURCE   = [=====[desc:REAPER Notator Auto-Divisi Live Input Router
-// VERSION: 2.39
+// VERSION: 2.40
 options:gmem=REAPER_Notator_Divisi
 
 slider1:1<1,32,1>-Voice Rank (1=Highest .. M=Lowest)
@@ -810,17 +810,18 @@ kb_onset = 384;
 locked_rank = 512;
 my_sounding = 640;
 my_sounding_chan = 768;
+preempted_rank = 896;
 cluster_notes = 1024;
 is_sustained = 1200;
+sust_pitch = 1264;
 dp = 2000;
 parent = 3024;
 
 running_samples = 0;
 prev_single_k = 0;
 prev_single_pitch = -1;
-last_reset_id = -1;
 
-function single_note_cost(pitch, k, is_solo) local(base, min_p, max_p, center_p, is_prim, dist, out_pen, sust_pen, lead_bonus) (
+function single_note_cost(pitch, k, is_solo) local(base, min_p, max_p, center_p, is_prim, dist, out_pen, sust_pen, cross_pen, k2, sp, lead_bonus) (
   base = 1010 + (k - 1) * 8;
   min_p = gmem[base + 0];
   max_p = gmem[base + 1];
@@ -838,7 +839,28 @@ function single_note_cost(pitch, k, is_solo) local(base, min_p, max_p, center_p,
       out_pen = 42.0 + (pitch - max_p) * 3.5;
     );
   );
-  sust_pen = is_sustained[k] ? 34.0 : 0.0;
+  // Strictly protect already-sustaining voices whenever free tracks exist
+  sust_pen = is_sustained[k] ? 100000.0 : 0.0;
+
+  // Penalize voice-crossing against any currently sustained voices
+  cross_pen = 0.0;
+  k2 = 1;
+  loop(M,
+    (k2 != k && is_sustained[k2]) ? (
+      sp = sust_pitch[k2];
+      sp >= 0 ? (
+        (k2 < k && pitch > sp) ? (
+          cross_pen += 500.0 + (pitch - sp) * 10.0;
+        ) : (
+          (k2 > k && pitch < sp) ? (
+            cross_pen += 500.0 + (sp - pitch) * 10.0;
+          );
+        );
+      );
+    );
+    k2 += 1;
+  );
+
   lead_bonus = 0.0;
   is_solo ? (
     is_prim ? ( lead_bonus -= 1.5; );
@@ -846,12 +868,19 @@ function single_note_cost(pitch, k, is_solo) local(base, min_p, max_p, center_p,
       lead_bonus -= 2.0;
     );
   );
-  dist + out_pen + sust_pen + lead_bonus;
+  dist + out_pen + sust_pen + cross_pen + lead_bonus;
 );
 
-function assign_cluster(N, M, mode) local(p0, best_k, best_cost, k, c_val, best_start_k, best_total, start_k, tot, i, p_cur, p_prev, pitch_gap, max_k, base_c, prev_k, step_adj, cand, best_last_k, cur_k, rem_notes, min_rem, max_allowed_k, best_c) (
+function assign_cluster(N, M, mode) local(p0, best_k, best_cost, k, c_val, best_start_k, best_total, start_k, tot, i, p_cur, p_prev, pitch_gap, max_k, base_c, prev_k, step_adj, cand, best_last_k, cur_k, rem_notes, min_rem, max_allowed_k, best_c, has_sust) (
+  has_sust = 0;
+  k = 1;
+  loop(M,
+    is_sustained[k] ? has_sust = 1;
+    k += 1;
+  );
+
   N == 1 ? (
-    // Single note played: in BOTH Smart Register AND Top-Down modes, route to the single best matching register instrument!
+    // Single note (or single moving voice while other voices sustain): pick best free voice slot
     p0 = cluster_notes[0];
     best_k = 1;
     best_cost = 1000000000;
@@ -867,8 +896,8 @@ function assign_cluster(N, M, mode) local(p0, best_k, best_cost, k, c_val, best_
     locked_rank[p0] = best_k;
     prev_single_k = best_k;
     prev_single_pitch = p0;
-  ) : (mode == 1 && N <= M) ? (
-    // Top-Down Mode (2 <= N <= M): pick best contiguous N-track register window in strict top-down order
+  ) : (mode == 1 && N <= M && !has_sust) ? (
+    // Top-Down Mode (2 <= N <= M, no sustained voices blocking middle slots): contiguous N-track register window
     best_start_k = 1;
     best_total = 1000000000;
     start_k = 1;
@@ -893,7 +922,7 @@ function assign_cluster(N, M, mode) local(p0, best_k, best_cost, k, c_val, best_
     );
     prev_single_k = 0;
   ) : (N <= M) ? (
-    // Smart Register Mode (2 <= N <= M): Exact Monotonic DP (1 <= k_0 < k_1 < ... < k_{N-1} <= M)
+    // Exact Monotonic DP (1 <= k_0 < k_1 < ... < k_{N-1} <= M), automatically routing around sustained tracks
     i = 0;
     loop(N,
       k = 1;
@@ -989,6 +1018,37 @@ function assign_cluster(N, M, mode) local(p0, best_k, best_cost, k, c_val, best_
   );
 );
 
+function reconcile_my_output(offset, reattack_pitch) local(p) (
+  // 1. Send Note-Off FIRST for any pitch on this track that was released, preempted, or moved to another voice rank
+  p = 0;
+  loop(128,
+    my_sounding[p] ? (
+      (!kb_held[p] || locked_rank[p] != my_rank) ? (
+        midisend(offset, 0x80 | my_sounding_chan[p], p, 0);
+        my_sounding[p] = 0;
+      );
+    );
+    p += 1;
+  );
+
+  // 2. Send Note-On for any pitch now assigned to this track
+  p = 0;
+  loop(128,
+    (kb_held[p] && locked_rank[p] == my_rank) ? (
+      !my_sounding[p] ? (
+        midisend(offset, 0x90 | kb_chan[p], p, kb_vel[p]);
+        my_sounding[p] = 1;
+        my_sounding_chan[p] = kb_chan[p];
+      ) : (p == reattack_pitch) ? (
+        midisend(offset, 0x80 | my_sounding_chan[p], p, 0);
+        midisend(offset, 0x90 | kb_chan[p], p, kb_vel[p]);
+        my_sounding_chan[p] = kb_chan[p];
+      );
+    );
+    p += 1;
+  );
+);
+
 @block
 my_rank = max(1, floor(slider1 + 0.5));
 M = gmem[1000] > 0 ? floor(gmem[1000] + 0.5) : max(1, floor(slider2 + 0.5));
@@ -1013,18 +1073,50 @@ while (midirecv(offset, msg1, msg2, msg3)) (
     (status == 0x80 || (status == 0x90 && vel == 0)) ? (
       kb_held[pitch] = 0;
       locked_rank[pitch] = 0;
+      preempted_rank[pitch] = 0;
       my_sounding[pitch] = 0;
     );
     midisend(offset, msg1, msg2, msg3);
   ) : (
     (status == 0x80 || (status == 0x90 && vel == 0)) ? (
-      // Note-Off: close on this track if currently sounding; never reassign remaining held notes on release!
+      // Note-Off: close on this track if sounding, and perform Note-On handover if a held key was waiting for this voice!
+      freed_rank = locked_rank[pitch];
       kb_held[pitch] = 0;
       locked_rank[pitch] = 0;
-      my_sounding[pitch] ? (
-        midisend(offset, 0x80 | my_sounding_chan[pitch], pitch, 0);
-        my_sounding[pitch] = 0;
+      preempted_rank[pitch] = 0;
+
+      (freed_rank >= 1 && freed_rank <= M) ? (
+        // Check if another note is already assigned to freed_rank
+        rank_busy = 0;
+        p = 0;
+        loop(128,
+          (kb_held[p] && locked_rank[p] == freed_rank) ? rank_busy = 1;
+          p += 1;
+        );
+        !rank_busy ? (
+          // Hand over freed_rank to any still-held key waiting in standby (e.g. trill or legato overlap release)
+          best_wait_p = -1;
+          best_wait_dist = 1000000000;
+          p = 0;
+          loop(128,
+            (kb_held[p] && locked_rank[p] == 0) ? (
+              w_dist = abs(p - pitch);
+              preempted_rank[p] == freed_rank ? ( w_dist -= 1000.0; );
+              w_dist < best_wait_dist ? (
+                best_wait_dist = w_dist;
+                best_wait_p = p;
+              );
+            );
+            p += 1;
+          );
+          best_wait_p >= 0 ? (
+            locked_rank[best_wait_p] = freed_rank;
+            preempted_rank[best_wait_p] = 0;
+          );
+        );
       );
+
+      reconcile_my_output(offset, -1);
     ) : (
       // Note-On (vel > 0)
       kb_held[pitch] = 1;
@@ -1032,55 +1124,106 @@ while (midirecv(offset, msg1, msg2, msg3)) (
       kb_chan[pitch] = chan;
       kb_onset[pitch] = ev_sample;
       locked_rank[pitch] = 0;
+      preempted_rank[pitch] = 0;
 
       // 1. Identify older sustained notes vs. current chord attack cluster (sorted Highest -> Lowest pitch)
       k = 1;
       loop(M + 2,
         is_sustained[k] = 0;
+        sust_pitch[k] = -1;
         k += 1;
       );
+      sust_cnt = 0;
       N = 0;
       p = 127;
       loop(128,
         kb_held[p] ? (
           ((ev_sample - kb_onset[p]) > chord_window_samples && locked_rank[p] >= 1 && locked_rank[p] <= M) ? (
-            is_sustained[ locked_rank[p] ] = 1;
+            rk = locked_rank[p];
+            !is_sustained[rk] ? (
+              is_sustained[rk] = 1;
+              sust_pitch[rk] = p;
+              sust_cnt += 1;
+            ) : (
+              // Safety: never allow two sustained notes to occupy the same rank
+              locked_rank[p] = 0;
+              preempted_rank[p] = rk;
+            );
           ) : (
-            cluster_notes[N] = p;
-            N += 1;
+            // Only include active attack notes (not older preempted standby keys)
+            preempted_rank[p] == 0 ? (
+              cluster_notes[N] = p;
+              N += 1;
+            );
           );
         );
         p -= 1;
       );
 
+      // 2. Legato Finger-Change Voice Handover:
+      // If sustained voices + new attack notes exceed M (e.g. 5 keys held on 5 tracks and 1 finger moves to a new key
+      // before lifting the old key), preempt the sustained voice that the moving finger is replacing!
+      ni = 0;
+      loop(N,
+        (sust_cnt > 0 && (sust_cnt + N) > M) ? (
+          p_new = cluster_notes[ni];
+          best_rep_k = 0;
+          best_rep_cost = 1000000000;
+          k = 1;
+          loop(M,
+            is_sustained[k] ? (
+              p_old = sust_pitch[k];
+              rep_c = abs(p_new - p_old);
+              // Penalize voice crossing relative to the other sustained voices
+              k2 = 1;
+              loop(M,
+                (k2 != k && is_sustained[k2]) ? (
+                  sp2 = sust_pitch[k2];
+                  (k2 < k && p_new > sp2) ? ( rep_c += 500.0 + (p_new - sp2) * 10.0; );
+                  (k2 > k && p_new < sp2) ? ( rep_c += 500.0 + (sp2 - p_new) * 10.0; );
+                );
+                k2 += 1;
+              );
+              rep_c < best_rep_cost ? (
+                best_rep_cost = rep_c;
+                best_rep_k = k;
+              );
+            );
+            k += 1;
+          );
+          best_rep_k >= 1 ? (
+            p_pre = sust_pitch[best_rep_k];
+            p_pre >= 0 ? (
+              locked_rank[p_pre] = 0;
+              preempted_rank[p_pre] = best_rep_k;
+            );
+            is_sustained[best_rep_k] = 0;
+            sust_pitch[best_rep_k] = -1;
+            sust_cnt -= 1;
+          );
+        );
+        ni += 1;
+      );
+
       N > 0 ? (
         assign_cluster(N, M, mode);
-
-        // 2. Reconcile sounding notes for all pitches in the current chord cluster
+        // Ensure strict 1-note-per-rank: if any newly assigned note took a rank that still had another note, preempt the old one
         i = 0;
         loop(N,
           cp = cluster_notes[i];
-          locked_rank[cp] == my_rank ? (
-            !my_sounding[cp] ? (
-              midisend(offset, 0x90 | kb_chan[cp], cp, kb_vel[cp]);
-              my_sounding[cp] = 1;
-              my_sounding_chan[cp] = kb_chan[cp];
-            ) : (cp == pitch) ? (
-              // Re-attack on same pitch already assigned to this track
-              midisend(offset, 0x80 | my_sounding_chan[cp], cp, 0);
-              midisend(offset, 0x90 | kb_chan[cp], cp, kb_vel[cp]);
-              my_sounding_chan[cp] = kb_chan[cp];
-            );
-          ) : (
-            my_sounding[cp] ? (
-              // Provisional note shifted to another voice rank during chord attack -> close immediately
-              midisend(offset, 0x80 | my_sounding_chan[cp], cp, 0);
-              my_sounding[cp] = 0;
-            );
+          rk = locked_rank[cp];
+          (rk >= 1 && rk <= M && sust_pitch[rk] >= 0 && sust_pitch[rk] != cp) ? (
+            p_pre = sust_pitch[rk];
+            locked_rank[p_pre] = 0;
+            preempted_rank[p_pre] = rk;
+            is_sustained[rk] = 0;
+            sust_pitch[rk] = -1;
           );
           i += 1;
         );
       );
+
+      reconcile_my_output(offset, pitch);
     );
   );
 );
@@ -1090,7 +1233,7 @@ running_samples += samplesblock;
 
 local function ensure_auto_divisi_jsfx_file()
     if RecordQuantizeService._jsfx_file_verified then
-        return RecordQuantizeService._jsfx_file_path
+        return RecordQuantizeService._jsfx_file_path, false
     end
     local fx_dir = reaper.GetResourcePath() .. "/Effects"
     local fx_path = fx_dir .. "/" .. AUTO_DIVISI_JSFX_FILENAME
@@ -1112,7 +1255,7 @@ local function ensure_auto_divisi_jsfx_file()
     end
     RecordQuantizeService._jsfx_file_verified = true
     RecordQuantizeService._jsfx_file_path = fx_path
-    return fx_path
+    return fx_path, need_write
 end
 
 local function find_auto_divisi_rec_fx(trk)
@@ -1179,7 +1322,7 @@ function RecordQuantizeService.sync_auto_divisi_input_fx(state, force)
     end
 
     -- 2. Build state signature so TrackFX API calls only run when armed tracks or Divisi settings change
-    local sig_parts = { active and "1" or "0", tostring(mode_num), tostring(tol_ticks), tostring(reaper.CountTracks(0)) }
+    local sig_parts = { AUTO_DIVISI_JSFX_VERSION, active and "1" or "0", tostring(mode_num), tostring(tol_ticks), tostring(reaper.CountTracks(0)) }
     for k = 1, M do
         local p = armed_profiles[k]
         table.insert(sig_parts, string.format("%s:%d:%.1f", p.guid or "", k, p.effective_center or 60))
@@ -1202,8 +1345,10 @@ function RecordQuantizeService.sync_auto_divisi_input_fx(state, force)
     end
     RecordQuantizeService._last_divisi_fx_sig = sig
 
+    local jsfx_updated = false
     if active then
-        ensure_auto_divisi_jsfx_file()
+        local _, updated = ensure_auto_divisi_jsfx_file()
+        jsfx_updated = (updated == true)
     end
 
     if reaper.PreventUIRefresh then reaper.PreventUIRefresh(1) end
@@ -1224,6 +1369,14 @@ function RecordQuantizeService.sync_auto_divisi_input_fx(state, force)
             local rec_fx = find_auto_divisi_rec_fx(trk)
 
             if prof then
+                if jsfx_updated and rec_fx >= 0 then
+                    if reaper.TrackFX_Show then
+                        reaper.TrackFX_Show(trk, rec_fx, 2)
+                        reaper.TrackFX_Show(trk, rec_fx, 0)
+                    end
+                    reaper.TrackFX_Delete(trk, rec_fx)
+                    rec_fx = -1
+                end
                 local newly_added = false
                 if rec_fx < 0 then
                     local added = reaper.TrackFX_AddByName(trk, AUTO_DIVISI_JSFX_FILENAME, true, -1000)
@@ -1448,19 +1601,66 @@ function RecordQuantizeService.compute_auto_divisi_assignment(raw_notes, armed_p
     end
 
     -- 6. Monotonic Register & Voice Assignment across Armed Tracks
-    local sustained_by_track = {} -- k -> { pitch = number, raw_eqn = number }
+    local sustained_by_track = {} -- k -> { pitch = number, raw_eqn = number, note = table }
     local prev_single_track_k = nil
     local prev_single_pitch = nil
 
     for _, c in ipairs(clusters) do
         local N = #c.notes
         local is_sustained = {}
+        local sust_cnt = 0
         for k = 1, M do
             local st = sustained_by_track[k]
             if st and st.raw_eqn > (c.raw_sqn + legato_release_window) then
                 is_sustained[k] = true
+                sust_cnt = sust_cnt + 1
             else
                 sustained_by_track[k] = nil
+            end
+        end
+
+        -- Legato Finger-Change Preemption when sustained_cnt + N > M (e.g. 5 held notes and 1 finger moves to a new note)
+        for ni = 1, N do
+            if sust_cnt > 0 and (sust_cnt + N) > M then
+                local p_new = c.notes[ni].pitch
+                local best_rep_k = nil
+                local best_rep_cost = 1e9
+                for k = 1, M do
+                    if is_sustained[k] and sustained_by_track[k] then
+                        local p_old = sustained_by_track[k].pitch
+                        local rep_c = math.abs(p_new - p_old)
+                        for k2 = 1, M do
+                            if k2 ~= k and is_sustained[k2] and sustained_by_track[k2] then
+                                local sp2 = sustained_by_track[k2].pitch
+                                if k2 < k and p_new > sp2 then
+                                    rep_c = rep_c + 500.0 + (p_new - sp2) * 10.0
+                                elseif k2 > k and p_new < sp2 then
+                                    rep_c = rep_c + 500.0 + (sp2 - p_new) * 10.0
+                                end
+                            end
+                        end
+                        if rep_c < best_rep_cost then
+                            best_rep_cost = rep_c
+                            best_rep_k = k
+                        end
+                    end
+                end
+                if best_rep_k then
+                    local st_note = sustained_by_track[best_rep_k] and sustained_by_track[best_rep_k].note
+                    if st_note and st_note.eqn > c.sqn and c.sqn >= st_note.sqn + 0.04 then
+                        st_note.eqn = c.sqn
+                        st_note.raw_eqn = c.raw_sqn
+                        st_note._trimmed_eqn = c.sqn
+                        if st_note.orig then
+                            st_note.orig.end_qn = c.sqn
+                            st_note.orig.dur_qn = math.max(0.05, c.sqn - (st_note.orig.start_qn or st_note.sqn))
+                            st_note.orig._trimmed_eqn = c.sqn
+                        end
+                    end
+                    is_sustained[best_rep_k] = nil
+                    sustained_by_track[best_rep_k] = nil
+                    sust_cnt = sust_cnt - 1
+                end
             end
         end
 
@@ -1473,7 +1673,18 @@ function RecordQuantizeService.compute_auto_divisi_assignment(raw_notes, armed_p
             elseif pitch > prof.max_p then
                 out_pen = 42.0 + (pitch - prof.max_p) * 3.5
             end
-            local sust_pen = is_sustained[k] and 34.0 or 0.0
+            local sust_pen = is_sustained[k] and 100000.0 or 0.0
+            local cross_pen = 0.0
+            for k2 = 1, M do
+                if k2 ~= k and is_sustained[k2] and sustained_by_track[k2] then
+                    local sp = sustained_by_track[k2].pitch
+                    if k2 < k and pitch > sp then
+                        cross_pen = cross_pen + 500.0 + (pitch - sp) * 10.0
+                    elseif k2 > k and pitch < sp then
+                        cross_pen = cross_pen + 500.0 + (sp - pitch) * 10.0
+                    end
+                end
+            end
             local lead_bonus = 0.0
             if is_solo_cluster then
                 if prof.is_primary_section_voice ~= false then
@@ -1483,7 +1694,7 @@ function RecordQuantizeService.compute_auto_divisi_assignment(raw_notes, armed_p
                     lead_bonus = lead_bonus - 2.0
                 end
             end
-            return dist + out_pen + sust_pen + lead_bonus
+            return dist + out_pen + sust_pen + cross_pen + lead_bonus
         end
 
         if N == 1 then
@@ -1503,7 +1714,7 @@ function RecordQuantizeService.compute_auto_divisi_assignment(raw_notes, armed_p
             if cn.orig then cn.orig.assigned_guid = cn.assigned_guid end
             prev_single_track_k = best_k
             prev_single_pitch = cn.pitch
-        elseif mode == "top_down" and N <= M then
+        elseif mode == "top_down" and N <= M and sust_cnt == 0 then
             -- Top-Down Voice Split (2 <= N <= M): pick best contiguous N-track register window in strict top-down order
             local best_start_k = 1
             local best_total = 1e9
@@ -1615,7 +1826,7 @@ function RecordQuantizeService.compute_auto_divisi_assignment(raw_notes, armed_p
             if rk then
                 local cur_st = sustained_by_track[rk]
                 if not cur_st or cn.raw_eqn > cur_st.raw_eqn then
-                    sustained_by_track[rk] = { pitch = cn.pitch, raw_eqn = cn.raw_eqn }
+                    sustained_by_track[rk] = { pitch = cn.pitch, raw_eqn = cn.raw_eqn, note = cn }
                 end
             end
         end
