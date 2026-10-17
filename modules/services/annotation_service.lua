@@ -156,16 +156,19 @@ function AnnotationService.encode_rgba_png(pixels, w, h, tile)
     local row_strs, row_ds1, row_ws2, dirty_rows
     if tile then
         if not tile._row_strs or #tile._row_strs ~= h or tile._cached_w ~= w then
+            local keep_dirty = (tile._cached_w == w and tile._dirty_rows) or nil
             tile._cached_w = w
             tile._row_strs = {}
             tile._row_ds1  = {}
             tile._row_ws2  = {}
-            tile._dirty_rows = {}
+            tile._dirty_rows = keep_dirty or {}
             for y = 1, h do
                 tile._row_strs[y] = empty_row
                 tile._row_ds1[y]  = 0
                 tile._row_ws2[y]  = 0
-                tile._dirty_rows[y] = true
+                if not keep_dirty then
+                    tile._dirty_rows[y] = true
+                end
             end
         end
         row_strs   = tile._row_strs
@@ -517,10 +520,11 @@ end
 -- 4. PIXEL BUFFER, RASTERIZATION & AUTO-CLEANUP OF EMPTY BAR TILES
 -- ==============================================================================
 
-local function create_empty_pixels(w, h)
+local function create_empty_pixels(w, h, rgb_mask)
     local total = (w or AnnotationService.TILE_W) * (h or AnnotationService.TILE_H)
+    local fill = (rgb_mask and (rgb_mask & 0xFFFFFF00)) or 0
     local px = {}
-    for i = 1, total do px[i] = 0 end
+    for i = 1, total do px[i] = fill end
     return px
 end
 
@@ -603,13 +607,16 @@ end
 
 -- Draws an aspect-corrected elliptical stamp into tile.pixels at (cx, cy) in tile pixel coordinates
 -- so that when the (w x h) tile is rendered onto a (bar_w x ref_band_h) screen quad, the brush is a true circle on screen!
+-- Also writes a 3.5px transparent color-bleed guard ring (RGB = brush color, Alpha = 0) around the stroke so GPU
+-- straight-alpha bilinear filtering (MIN_MAG_MIP_LINEAR) never mixes transparent black (0,0,0,0) into the stroke edge!
 local function draw_circle_stamp(pixels, w, h, cx, cy, rad_x, rad_y, r_col, g_col, b_col, a_col, is_eraser, dirty_rows)
     local rx = math.max(0.8, rad_x)
     local ry = math.max(0.8, rad_y or rad_x)
-    local x0 = math.max(0, math.floor(cx - rx - 1))
-    local x1 = math.min(w - 1, math.ceil(cx + rx + 1))
-    local y0 = math.max(0, math.floor(cy - ry - 1))
-    local y1 = math.min(h - 1, math.ceil(cy + ry + 1))
+    local pad = is_eraser and 1 or 4
+    local x0 = math.max(0, math.floor(cx - rx - pad))
+    local x1 = math.min(w - 1, math.ceil(cx + rx + pad))
+    local y0 = math.max(0, math.floor(cy - ry - pad))
+    local y1 = math.min(h - 1, math.ceil(cy + ry + pad))
     local rgb_mask = (r_col << 24) | (g_col << 16) | (b_col << 8)
     local inv_rx = 1.0 / rx
     local inv_ry = 1.0 / ry
@@ -636,16 +643,17 @@ local function draw_circle_stamp(pixels, w, h, cx, cy, rad_x, rad_y, r_col, g_co
             if edge_px_dist <= 0.22 then
                 local idx = row_base + px + 1
                 if is_eraser then
+                    local cur = pixels[idx] or 0
                     if edge_px_dist <= -0.15 then
-                        pixels[idx] = 0
+                        -- Preserve RGB in A=0 pixel so adjacent remaining stroke pixels never bleed into black (0,0,0)!
+                        pixels[idx] = cur & 0xFFFFFF00
                     else
                         -- Crisp 0.35px edge on eraser
-                        local cur = pixels[idx] or 0
                         local cur_a = cur & 0xFF
                         if cur_a > 0 then
                             local keep = math.max(0.0, math.min(1.0, (edge_px_dist + 0.15) / 0.37))
                             local new_a = math.floor(cur_a * keep)
-                            pixels[idx] = (new_a > 4) and ((cur & 0xFFFFFF00) | new_a) or 0
+                            pixels[idx] = (cur & 0xFFFFFF00) | ((new_a > 4) and new_a or 0)
                         end
                     end
                 else
@@ -680,6 +688,14 @@ local function draw_circle_stamp(pixels, w, h, cx, cy, rad_x, rad_y, r_col, g_co
                         end
                     end
                 end
+            elseif not is_eraser and edge_px_dist <= 3.5 then
+                -- Transparent color-bleed guard collar (Alpha = 0, RGB = stroke color):
+                -- Prevents GPU bilinear texture filtering from interpolating stroke RGB with (0,0,0) black!
+                local idx = row_base + px + 1
+                local dst = pixels[idx] or 0
+                if (dst & 0xFF) == 0 then
+                    pixels[idx] = rgb_mask
+                end
             end
         end
     end
@@ -699,6 +715,7 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
     end
 
     local w, h, res_scale = AnnotationService.get_track_resolution(state, track_guid)
+    local col = state.annotation_color or 0xE74C3CFF
 
     local tile = layer.bars[bar_idx]
     if not tile then
@@ -707,9 +724,11 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
             return false
         end
         tile = {
-            pixels = create_empty_pixels(w, h),
+            pixels = create_empty_pixels(w, h, 0),
             w = w,
             h = h,
+            _cached_w = w,
+            _dirty_rows = {},
             png_path = AnnotationService.get_tile_png_path(track_guid, layer.id, bar_idx),
             tex_dirty = true,
             disk_dirty = true
@@ -717,17 +736,15 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
         layer.bars[bar_idx] = tile
     else
         ensure_tile_pixels_loaded(track_guid, layer.id, bar_idx, tile, w, h)
-    end
-
-    if not tile._dirty_rows or #tile._dirty_rows ~= h then
-        tile._dirty_rows = {}
-        for y = 1, h do tile._dirty_rows[y] = true end
+        if not tile._dirty_rows then
+            tile._dirty_rows = {}
+            for y = 1, h do tile._dirty_rows[y] = true end
+        end
     end
 
     local x0, y0 = u0 * w, v0 * h
     local x1, y1 = u1 * w, v1 * h
 
-    local col = state.annotation_color or 0xE74C3CFF
     local r_col = (col >> 24) & 0xFF
     local g_col = (col >> 16) & 0xFF
     local b_col = (col >> 8)  & 0xFF
