@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.33-beta
+-- @version 2.34-beta
 -- @changelog
+--   + v2.34-beta: Improvement: Match tile aspect ratio to portrait bar-band geometry (280x420 to 840x1260 px) + Analytical Capsule SDF & 1.25px Smoothstep AA + Quadratic Bezier curve smoothing
 --   + v2.33-beta: Hotfix: Eliminate dark bilinear alpha-bleed fringe (Saum / Premultiply effect) via 3.5px transparent color-bleed guard collar around strokes
 --   + v2.32-beta: Hotfix: Aspect-correct annotation brush stamps per bar width so vertical and horizontal strokes have identical screen thickness
 --   + v2.31-beta: Fix IDAT CRC error & missing-file crash on stroke; add 4-step per-instrument tile resolution selector (1x/1.5x/2x/3x) & 0-latency vector pen preview

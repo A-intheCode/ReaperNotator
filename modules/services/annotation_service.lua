@@ -5,20 +5,21 @@
 
 local AnnotationService = {}
 
-AnnotationService.BASE_TILE_W = 320
-AnnotationService.BASE_TILE_H = 200
-AnnotationService.TILE_W = 480
-AnnotationService.TILE_H = 300
-AnnotationService.RES_SCALE = 1.5
+AnnotationService.BASE_TILE_W = 280
+AnnotationService.BASE_TILE_H = 420
+AnnotationService.TILE_W = 560
+AnnotationService.TILE_H = 840
+AnnotationService.RES_SCALE = 2.0
+AnnotationService.DEFAULT_RES_STEP = 3
 AnnotationService.MAX_TRACK_SPACING = 320.0
 AnnotationService.MAX_TRACK_SPACING_REF = 320.0
 
--- 4-Step Per-Track Resolution Factor Presets
+-- 4-Step Per-Track Resolution Factor Presets (2:3 Portrait aspect ratio matching 1 Bar × Track Band geometry for 1:1 square texels!)
 AnnotationService.RESOLUTION_STEPS = {
-    { step = 1, label = "1x Eco",   short = "1x",   scale = 1.0, w = 320, h = 200, desc = "320 × 200 px per Bar (Compact / Low RAM)" },
-    { step = 2, label = "1.5x Std", short = "1.5x", scale = 1.5, w = 480, h = 300, desc = "480 × 300 px per Bar (Balanced Standard)" },
-    { step = 3, label = "2x High",  short = "2x",   scale = 2.0, w = 640, h = 400, desc = "640 × 400 px per Bar (High Definition)" },
-    { step = 4, label = "3x Ultra", short = "3x",   scale = 3.0, w = 960, h = 600, desc = "960 × 600 px per Bar (Ultra 4K Sharpness)" },
+    { step = 1, label = "1x Eco",   short = "1x",   scale = 1.0, w = 280, h = 420,  desc = "280 × 420 px per Bar (1:1 Square Texels / Low RAM)" },
+    { step = 2, label = "1.5x Std", short = "1.5x", scale = 1.5, w = 420, h = 630,  desc = "420 × 630 px per Bar (1.5x Supersampled)" },
+    { step = 3, label = "2x High",  short = "2x",   scale = 2.0, w = 560, h = 840,  desc = "560 × 840 px per Bar (2x Retina High Definition)" },
+    { step = 4, label = "3x Ultra", short = "3x",   scale = 3.0, w = 840, h = 1260, desc = "840 × 1260 px per Bar (3x Ultra 4K Sharpness)" },
 }
 
 -- 12 Curated High-Contrast Color Presets (0xRRGGBBFF)
@@ -375,7 +376,7 @@ function AnnotationService.get_track_stack(state, track_guid)
     if not stack then
         stack = {
             track_guid = track_guid,
-            res_step = 2, -- Default Step 2: 1.5x Std (480x300 px)
+            res_step = AnnotationService.DEFAULT_RES_STEP or 3, -- Default Step 3: 2x High (560x840 px)
             next_layer_num = 2,
             active_layer_id = "L1",
             layers = {
@@ -391,16 +392,16 @@ function AnnotationService.get_track_stack(state, track_guid)
         }
         state.track_annotations[track_guid] = stack
     elseif not stack.res_step then
-        stack.res_step = 2
+        stack.res_step = AnnotationService.DEFAULT_RES_STEP or 3
     end
     return stack
 end
 
 function AnnotationService.get_track_resolution(state, track_guid)
     local stack = track_guid and AnnotationService.get_track_stack(state, track_guid) or nil
-    local step_idx = (stack and tonumber(stack.res_step)) or 2
+    local step_idx = (stack and tonumber(stack.res_step)) or (AnnotationService.DEFAULT_RES_STEP or 3)
     step_idx = math.max(1, math.min(#AnnotationService.RESOLUTION_STEPS, math.floor(step_idx)))
-    local info = AnnotationService.RESOLUTION_STEPS[step_idx] or AnnotationService.RESOLUTION_STEPS[2]
+    local info = AnnotationService.RESOLUTION_STEPS[step_idx] or AnnotationService.RESOLUTION_STEPS[3]
     return info.w, info.h, info.scale, info
 end
 
@@ -605,71 +606,89 @@ function AnnotationService.set_track_resolution_step(state, track_guid, new_step
     AnnotationService.save_metadata(state)
 end
 
--- Draws an aspect-corrected elliptical stamp into tile.pixels at (cx, cy) in tile pixel coordinates
--- so that when the (w x h) tile is rendered onto a (bar_w x ref_band_h) screen quad, the brush is a true circle on screen!
--- Also writes a 3.5px transparent color-bleed guard ring (RGB = brush color, Alpha = 0) around the stroke so GPU
--- straight-alpha bilinear filtering (MIN_MAG_MIP_LINEAR) never mixes transparent black (0,0,0,0) into the stroke edge!
-local function draw_circle_stamp(pixels, w, h, cx, cy, rad_x, rad_y, r_col, g_col, b_col, a_col, is_eraser, dirty_rows)
+-- Rasterizes an aspect-corrected analytical Capsule Signed Distance Field (SDF) from (x0, y0) to (x1, y1)
+-- in a single bounding-box pass with 1.25px Cubic Hermite Smoothstep anti-aliasing and a 3.5px transparent
+-- color-bleed guard collar (RGB = brush color, Alpha = 0) so GPU bilinear filtering is 100% halo-free and stair-free!
+local function draw_capsule_sdf(pixels, w, h, x0, y0, x1, y1, rad_x, rad_y, r_col, g_col, b_col, a_col, is_eraser, dirty_rows)
     local rx = math.max(0.8, rad_x)
     local ry = math.max(0.8, rad_y or rad_x)
-    local pad = is_eraser and 1 or 4
-    local x0 = math.max(0, math.floor(cx - rx - pad))
-    local x1 = math.min(w - 1, math.ceil(cx + rx + pad))
-    local y0 = math.max(0, math.floor(cy - ry - pad))
-    local y1 = math.min(h - 1, math.ceil(cy + ry + pad))
+    local pad = is_eraser and 2 or 4
+    local px_min = math.max(0, math.floor(math.min(x0, x1) - rx - pad))
+    local px_max = math.min(w - 1, math.ceil(math.max(x0, x1) + rx + pad))
+    local py_min = math.max(0, math.floor(math.min(y0, y1) - ry - pad))
+    local py_max = math.min(h - 1, math.ceil(math.max(y0, y1) + ry + pad))
+    if px_min > px_max or py_min > py_max then return end
+
     local rgb_mask = (r_col << 24) | (g_col << 16) | (b_col << 8)
     local inv_rx = 1.0 / rx
     local inv_ry = 1.0 / ry
 
-    for py = y0, y1 do
+    -- Segment endpoints in isotropic unit-radius brush space
+    local ax = x0 * inv_rx
+    local ay = y0 * inv_ry
+    local bx = x1 * inv_rx
+    local by = y1 * inv_ry
+    local abx = bx - ax
+    local aby = by - ay
+    local ab_len_sq = abx * abx + aby * aby
+
+    for py = py_min, py_max do
         if dirty_rows then dirty_rows[py + 1] = true end
-        local dy = (py + 0.5) - cy
-        local ny = dy * inv_ry
-        local ny_ry = ny * inv_ry
+        local uy = (py + 0.5) * inv_ry
+        local vay = uy - ay
         local row_base = py * w
-        for px = x0, x1 do
-            local dx = (px + 0.5) - cx
-            local nx = dx * inv_rx
+        for px = px_min, px_max do
+            local ux = (px + 0.5) * inv_rx
+            local vax = ux - ax
+            local t = 0.0
+            if ab_len_sq > 1e-8 then
+                t = (vax * abx + vay * aby) / ab_len_sq
+                if t < 0.0 then t = 0.0 elseif t > 1.0 then t = 1.0 end
+            end
+            local nx = vax - t * abx
+            local ny = vay - t * aby
             local norm_dist = math.sqrt(nx * nx + ny * ny)
             local edge_px_dist
             if norm_dist < 1e-5 then
                 edge_px_dist = -math.min(rx, ry)
             else
                 local nx_rx = nx * inv_rx
+                local ny_ry = ny * inv_ry
                 local grad_len = math.sqrt(nx_rx * nx_rx + ny_ry * ny_ry) / norm_dist
                 edge_px_dist = (norm_dist - 1.0) / math.max(1e-5, grad_len)
             end
 
-            if edge_px_dist <= 0.22 then
+            if edge_px_dist <= 0.65 then
                 local idx = row_base + px + 1
                 if is_eraser then
                     local cur = pixels[idx] or 0
-                    if edge_px_dist <= -0.15 then
+                    if edge_px_dist <= -0.60 then
                         -- Preserve RGB in A=0 pixel so adjacent remaining stroke pixels never bleed into black (0,0,0)!
                         pixels[idx] = cur & 0xFFFFFF00
                     else
-                        -- Crisp 0.35px edge on eraser
                         local cur_a = cur & 0xFF
                         if cur_a > 0 then
-                            local keep = math.max(0.0, math.min(1.0, (edge_px_dist + 0.15) / 0.37))
-                            local new_a = math.floor(cur_a * keep)
-                            pixels[idx] = (cur & 0xFFFFFF00) | ((new_a > 4) and new_a or 0)
+                            local t_er = math.max(0.0, math.min(1.0, (edge_px_dist + 0.60) / 1.25))
+                            local keep = t_er * t_er * (3.0 - 2.0 * t_er)
+                            local new_a = math.floor(cur_a * keep + 0.5)
+                            pixels[idx] = (cur & 0xFFFFFF00) | ((new_a > 3) and new_a or 0)
                         end
                     end
                 else
-                    -- Crisp 0.35px anti-aliased edge (prevents heavy/blurry AA halo)
+                    -- Smooth 1.25px Cubic Hermite (smoothstep) anti-aliased edge
                     local cov = 1.0
-                    if edge_px_dist > -0.15 then
-                        cov = math.max(0.0, math.min(1.0, (0.20 - edge_px_dist) / 0.35))
+                    if edge_px_dist > -0.60 then
+                        local t_aa = math.max(0.0, math.min(1.0, (0.65 - edge_px_dist) / 1.25))
+                        cov = t_aa * t_aa * (3.0 - 2.0 * t_aa)
                     end
                     local src_a = math.floor(a_col * cov + 0.5)
                     if src_a > 0 then
                         local dst = pixels[idx] or 0
                         local dst_a = dst & 0xFF
-                        if dst_a == 0 or src_a >= 252 then
+                        if dst_a == 0 or src_a >= 253 then
                             pixels[idx] = rgb_mask | src_a
                         elseif (dst & 0xFFFFFF00) == rgb_mask then
-                            -- Same color within a continuous stroke: use max alpha so overlapping stamps never bloat the AA edge!
+                            -- Same color within a continuous stroke: use max alpha so segment joints never double-darken!
                             if src_a > dst_a then
                                 pixels[idx] = rgb_mask | src_a
                             end
@@ -709,13 +728,22 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
     local layer = AnnotationService.get_active_layer(state, track_guid)
     if not layer or layer.locked or not layer.visible then return false end
 
-    -- Clamp UV check: ignore if segment is completely outside [0..1]
-    if (u0 < 0 and u1 < 0) or (u0 > 1 and u1 > 1) or (v0 < 0 and v1 < 0) or (v0 > 1 and v1 > 1) then
-        return false
+    local w, h = AnnotationService.get_track_resolution(state, track_guid)
+    local col = state.annotation_color or 0xE74C3CFF
+    local tool_sz = is_eraser and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)
+    local rad_y = math.max(1.0, (tool_sz * 0.5) * (h / 200.0))
+    local rad_x = rad_y
+    if bar_w and bar_w > 1.0 and ref_band_h and ref_band_h > 1.0 then
+        local screen_rad = rad_y * (ref_band_h / h)
+        rad_x = math.max(1.0, screen_rad * (w / bar_w))
     end
 
-    local w, h, res_scale = AnnotationService.get_track_resolution(state, track_guid)
-    local col = state.annotation_color or 0xE74C3CFF
+    local pad_u = (rad_x + 4.0) / w
+    local pad_v = (rad_y + 4.0) / h
+    if (u0 < -pad_u and u1 < -pad_u) or (u0 > 1.0 + pad_u and u1 > 1.0 + pad_u)
+        or (v0 < -pad_v and v1 < -pad_v) or (v0 > 1.0 + pad_v and v1 > 1.0 + pad_v) then
+        return false
+    end
 
     local tile = layer.bars[bar_idx]
     if not tile then
@@ -750,23 +778,7 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
     local b_col = (col >> 8)  & 0xFF
     local a_col = col & 0xFF
 
-    local rad_y = math.max(0.8, (is_eraser and ((state.annotation_eraser_size or 14.0) * 0.5) or ((state.annotation_brush_size or 4.0) * 0.5)) * res_scale)
-    local rad_x = rad_y
-    if bar_w and bar_w > 1.0 and ref_band_h and ref_band_h > 1.0 then
-        -- Match horizontal screen thickness (rad_x * bar_w / w) to vertical screen thickness (rad_y * ref_band_h / h)
-        local screen_rad = rad_y * (ref_band_h / h)
-        rad_x = math.max(0.8, screen_rad * (w / bar_w))
-    end
-
-    local norm_seg_len = math.sqrt(((x1 - x0) / rad_x)^2 + ((y1 - y0) / rad_y)^2)
-    local steps = math.max(1, math.ceil(norm_seg_len / 0.28))
-
-    for i = 0, steps do
-        local t = (steps == 0) and 0 or (i / steps)
-        local cx = x0 + (x1 - x0) * t
-        local cy = y0 + (y1 - y0) * t
-        draw_circle_stamp(tile.pixels, w, h, cx, cy, rad_x, rad_y, r_col, g_col, b_col, a_col, is_eraser, tile._dirty_rows)
-    end
+    draw_capsule_sdf(tile.pixels, w, h, x0, y0, x1, y1, rad_x, rad_y, r_col, g_col, b_col, a_col, is_eraser, tile._dirty_rows)
 
     tile.tex_dirty = true
     tile.disk_dirty = true
@@ -1058,50 +1070,25 @@ function AnnotationService.stroke_canvas_segment(state, tdata, x0, y0, x1, y1, m
         return m, bx0, bx1
     end
 
-    local _, th, res_scale = AnnotationService.get_track_resolution(state, tdata.guid)
-    local dist = math.sqrt((x1 - x0)^2 + (y1 - y0)^2)
-    local max_step_px = math.max(1.5, 2.5 * s)
-    local steps = math.max(1, math.ceil(dist / max_step_px))
     local tool_half = (is_eraser and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)) * 0.5
-    local screen_rad = (tool_half * res_scale) * (ref_band_h / th)
+    local screen_rad = tool_half * (ref_band_h / 200.0)
+    local min_sx = math.min(x0, x1) - screen_rad - 3.0
+    local max_sx = math.max(x0, x1) + screen_rad + 3.0
+    local m0 = find_bar_at_x(min_sx)
+    local m1 = find_bar_at_x(max_sx)
+    if m0 > m1 then m0, m1 = m1, m0 end
+
+    local v0 = (y0 - tdata.band_y0) / ref_band_h
+    local v1 = (y1 - tdata.band_y0) / ref_band_h
     local any_modified = false
 
-    for i = 0, steps - 1 do
-        local t0 = i / steps
-        local t1 = (i + 1) / steps
-        local sx0 = x0 + (x1 - x0) * t0
-        local sy0 = y0 + (y1 - y0) * t0
-        local sx1 = x0 + (x1 - x0) * t1
-        local sy1 = y0 + (y1 - y0) * t1
-
-        local mid_x = (sx0 + sx1) * 0.5
-        local m, bx0, bx1 = find_bar_at_x(mid_x)
+    for m = m0, m1 do
+        local bx0, bx1 = get_bar_bounds(m)
         local bw = math.max(1.0, bx1 - bx0)
-        local rad_u = (screen_rad + 1.5) / bw
-
-        local u0 = (sx0 - bx0) / bw
-        local u1 = (sx1 - bx0) / bw
-        local v0 = (sy0 - tdata.band_y0) / ref_band_h
-        local v1 = (sy1 - tdata.band_y0) / ref_band_h
-
+        local u0 = (x0 - bx0) / bw
+        local u1 = (x1 - bx0) / bw
         if AnnotationService.rasterize_bar_segment(state, tdata.guid, m, u0, v0, u1, v1, is_eraser, bw, ref_band_h) then
             any_modified = true
-        end
-
-        -- Seamless barline crossing when the brush radius overlaps the adjacent bar
-        if math.min(u0, u1) - rad_u < 0.0 and m > 0 then
-            local p_bx0, p_bx1 = get_bar_bounds(m - 1)
-            local p_bw = math.max(1.0, p_bx1 - p_bx0)
-            if AnnotationService.rasterize_bar_segment(state, tdata.guid, m - 1, (sx0 - p_bx0) / p_bw, v0, (sx1 - p_bx0) / p_bw, v1, is_eraser, p_bw, ref_band_h) then
-                any_modified = true
-            end
-        end
-        if math.max(u0, u1) + rad_u > 1.0 then
-            local n_bx0, n_bx1 = get_bar_bounds(m + 1)
-            local n_bw = math.max(1.0, n_bx1 - n_bx0)
-            if AnnotationService.rasterize_bar_segment(state, tdata.guid, m + 1, (sx0 - n_bx0) / n_bw, v0, (sx1 - n_bx0) / n_bw, v1, is_eraser, n_bw, ref_band_h) then
-                any_modified = true
-            end
         end
     end
 

@@ -3835,11 +3835,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local staff_h_annot = tdata.is_harp and 224 or (tdata.is_grand and 148 or 80)
                 local ref_band_h = (staff_h_annot + (AnnotationService.MAX_TRACK_SPACING or 320.0)) * s
                 local is_eraser_tool = (state.annotation_tool == "eraser")
-                local _, trk_th, trk_res_scale = AnnotationService.get_track_resolution(state, tdata.guid)
                 local tool_sz = is_eraser_tool and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)
-                local cursor_rad = math.max(2.0, (tool_sz * 0.5 * trk_res_scale) * (ref_band_h / trk_th))
+                local cursor_rad = math.max(2.0, (tool_sz * 0.5) * (ref_band_h / 200.0))
 
-                -- 1. Live Pen / Eraser Stroke Input (before tile rendering for 0-frame latency)
+                -- 1. Live Pen / Eraser Stroke Input (with Midpoint Quadratic Bezier Smoothing)
                 if is_annotation_paint_mode and not is_playing and (state.show_annotations_layer ~= false) then
                     local in_band = (mouse_x >= margin_left and mouse_x <= staff_end_x and mouse_y >= band_y0 and mouse_y <= band_y1)
                     if is_hovered_raw and in_band and reaper.ImGui_IsMouseClicked(ctx, 0) then
@@ -3850,8 +3849,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         if active_l and not active_l.locked and active_l.visible then
                             state._annot_stroke_active = true
                             state._annot_stroke_guid = tdata.guid
-                            state._annot_last_x = mouse_x
-                            state._annot_last_y = mouse_y
+                            state._annot_raw_x = mouse_x
+                            state._annot_raw_y = mouse_y
+                            state._annot_mid_x = mouse_x
+                            state._annot_mid_y = mouse_y
                             state._annot_live_points = (not is_eraser_tool) and { { x = mouse_x, y = mouse_y } } or nil
                             AnnotationService.stroke_canvas_segment(
                                 state, tdata,
@@ -3867,20 +3868,38 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     elseif state._annot_stroke_active and state._annot_stroke_guid == tdata.guid and reaper.ImGui_IsMouseDown(ctx, 0) then
                         local clamped_x = math.max(margin_left, math.min(staff_end_x, mouse_x))
                         local clamped_y = math.max(band_y0, math.min(band_y1, mouse_y))
-                        local lx = state._annot_last_x or clamped_x
-                        local ly = state._annot_last_y or clamped_y
-                        if math.abs(clamped_x - lx) >= 0.5 or math.abs(clamped_y - ly) >= 0.5 then
-                            AnnotationService.stroke_canvas_segment(
-                                state, tdata,
-                                lx, ly, clamped_x, clamped_y,
-                                margin_left, s, qn_per_measure, measure_map,
-                                is_eraser_tool, Engraver
-                            )
-                            if state._annot_live_points then
-                                state._annot_live_points[#state._annot_live_points + 1] = { x = clamped_x, y = clamped_y }
+                        local rx = state._annot_raw_x or clamped_x
+                        local ry = state._annot_raw_y or clamped_y
+                        local dx = clamped_x - rx
+                        local dy = clamped_y - ry
+                        local d = math.sqrt(dx * dx + dy * dy)
+                        if d >= 1.2 then
+                            local mx0 = state._annot_mid_x or rx
+                            local my0 = state._annot_mid_y or ry
+                            local mx1 = (rx + clamped_x) * 0.5
+                            local my1 = (ry + clamped_y) * 0.5
+                            local sub_steps = math.max(1, math.min(8, math.ceil(d / 3.0)))
+                            local prev_bx, prev_by = mx0, my0
+                            for si = 1, sub_steps do
+                                local bt = si / sub_steps
+                                local inv_bt = 1.0 - bt
+                                local bx = inv_bt * inv_bt * mx0 + 2.0 * inv_bt * bt * rx + bt * bt * mx1
+                                local by = inv_bt * inv_bt * my0 + 2.0 * inv_bt * bt * ry + bt * bt * my1
+                                AnnotationService.stroke_canvas_segment(
+                                    state, tdata,
+                                    prev_bx, prev_by, bx, by,
+                                    margin_left, s, qn_per_measure, measure_map,
+                                    is_eraser_tool, Engraver
+                                )
+                                if state._annot_live_points then
+                                    state._annot_live_points[#state._annot_live_points + 1] = { x = bx, y = by }
+                                end
+                                prev_bx, prev_by = bx, by
                             end
-                            state._annot_last_x = clamped_x
-                            state._annot_last_y = clamped_y
+                            state._annot_mid_x = mx1
+                            state._annot_mid_y = my1
+                            state._annot_raw_x = clamped_x
+                            state._annot_raw_y = clamped_y
                         end
                     end
                 end
