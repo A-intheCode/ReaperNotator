@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.25-beta" author="A-intheCode" time="2026-10-17T00:22:39Z">
+      <version name="2.26-beta" author="A-intheCode" time="2026-10-17T09:50:00Z">
         <changelog><![CDATA[
++ v2.26-beta: Hotfix: Fix chord/dyad beam grouping, middle-line stem direction & move Tracks button right of All Notes dropdown
 + v2.25-beta: Hotfix: Fix stuck last note / MIDI overload in Pattern Browser & Melodic Pathfinder preview
 + v2.24-beta: Hotfix: Synchronize Pre-roll (41818/41819) & Metronome Count-in (projmetroen) with live REAPER dialog refresh
 + v2.23-beta: Hotfix: Pin Metronome Settings dialog TopMost above Notator & disable I_RECMON when disarming tracks

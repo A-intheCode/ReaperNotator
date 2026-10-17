@@ -501,6 +501,8 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
     -- Compute measure-local voice counts on each staff (Gould "Behind Bars" p. 301):
     -- Stems split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist!
     local measure_staff_voices = {}
+    local measure_staff_pitch_balance = {}
+    local staff_pitch_balance = {}
     for _, vn in ipairs(visual_notes) do
         local m = math.floor((vn.start_qn + 0.001) / bpi)
         local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
@@ -508,6 +510,30 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         if not measure_staff_voices[key] then measure_staff_voices[key] = {} end
         local v = (vn.orig and vn.orig.chan) or (vn.chan or 0)
         measure_staff_voices[key][v] = true
+        if not measure_staff_pitch_balance[key] then measure_staff_pitch_balance[key] = { below = 0, above = 0 } end
+        if not staff_pitch_balance[st] then staff_pitch_balance[st] = { below = 0, above = 0 } end
+        local ds = vn.dstep or 4
+        if ds < 4 then
+            measure_staff_pitch_balance[key].below = measure_staff_pitch_balance[key].below + 1
+            staff_pitch_balance[st].below = staff_pitch_balance[st].below + 1
+        elseif ds > 4 then
+            measure_staff_pitch_balance[key].above = measure_staff_pitch_balance[key].above + 1
+            staff_pitch_balance[st].above = staff_pitch_balance[st].above + 1
+        end
+    end
+    for _, vn in ipairs(visual_notes) do
+        local m = math.floor((vn.start_qn + 0.001) / bpi)
+        local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
+        local key = string.format("%d_%s", m, st)
+        local bal = measure_staff_pitch_balance[key]
+        local sbal = staff_pitch_balance[st]
+        if bal and bal.below ~= bal.above then
+            vn._measure_prefer_stem_up = (bal.below > bal.above)
+        elseif sbal and sbal.below ~= sbal.above then
+            vn._measure_prefer_stem_up = (sbal.below > sbal.above)
+        else
+            vn._measure_prefer_stem_up = false
+        end
     end
     local measure_staff_voice_counts = {}
     for k, vset in pairs(measure_staff_voices) do
@@ -562,7 +588,11 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         local max_dist = -1
         local chord_stem_down = false
         local manual_stem_dir = nil
+        local prefer_stem_up = false
         for _, vn in ipairs(cnotes) do
+            if vn._measure_prefer_stem_up then
+                prefer_stem_up = true
+            end
             local sdir = Engraver.get_note_stem_direction(vn, state)
             if sdir then
                 manual_stem_dir = sdir
@@ -571,8 +601,11 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
             local dist = math.abs(vn.dstep - mid_step)
             if dist > max_dist then
                 max_dist = dist
-                chord_stem_down = (vn.dstep >= mid_step)
+                chord_stem_down = (vn.dstep > mid_step)
             end
+        end
+        if max_dist == 0 then
+            chord_stem_down = not prefer_stem_up
         end
         
         local m = math.floor((cluster.start_qn + 0.001) / bpi)
@@ -2080,6 +2113,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end)
             
             local live_measure_staff_voices = {}
+            local live_measure_staff_pitch_balance = {}
+            local live_staff_pitch_balance = {}
             for _, vn in ipairs(visual_notes) do
                 local m = math.floor((vn.start_qn + 0.001) / bpi)
                 local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
@@ -2087,6 +2122,30 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 if not live_measure_staff_voices[key] then live_measure_staff_voices[key] = {} end
                 local v = (vn.orig and vn.orig.chan) or (vn.chan or 0)
                 live_measure_staff_voices[key][v] = true
+                if not live_measure_staff_pitch_balance[key] then live_measure_staff_pitch_balance[key] = { below = 0, above = 0 } end
+                if not live_staff_pitch_balance[st] then live_staff_pitch_balance[st] = { below = 0, above = 0 } end
+                local ds = vn.dstep or 4
+                if ds < 4 then
+                    live_measure_staff_pitch_balance[key].below = live_measure_staff_pitch_balance[key].below + 1
+                    live_staff_pitch_balance[st].below = live_staff_pitch_balance[st].below + 1
+                elseif ds > 4 then
+                    live_measure_staff_pitch_balance[key].above = live_measure_staff_pitch_balance[key].above + 1
+                    live_staff_pitch_balance[st].above = live_staff_pitch_balance[st].above + 1
+                end
+            end
+            for _, vn in ipairs(visual_notes) do
+                local m = math.floor((vn.start_qn + 0.001) / bpi)
+                local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
+                local key = string.format("%d_%s", m, st)
+                local bal = live_measure_staff_pitch_balance[key]
+                local sbal = live_staff_pitch_balance[st]
+                if bal and bal.below ~= bal.above then
+                    vn._measure_prefer_stem_up = (bal.below > bal.above)
+                elseif sbal and sbal.below ~= sbal.above then
+                    vn._measure_prefer_stem_up = (sbal.below > sbal.above)
+                else
+                    vn._measure_prefer_stem_up = false
+                end
             end
             local live_measure_staff_voice_counts = {}
             for k, vset in pairs(live_measure_staff_voices) do
@@ -2139,15 +2198,22 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local max_dist = -1
                 local chord_stem_down = false
                 local manual_stem_dir = nil
+                local prefer_stem_up = false
                 for _, vn in ipairs(cnotes) do
+                    if vn._measure_prefer_stem_up then
+                        prefer_stem_up = true
+                    end
                     local sdir = Engraver.get_note_stem_direction(vn, state)
                     if sdir then manual_stem_dir = sdir end
                     local mid_step = 4
                     local dist = math.abs(vn.dstep - mid_step)
                     if dist > max_dist then
                         max_dist = dist
-                        chord_stem_down = (vn.dstep >= mid_step)
+                        chord_stem_down = (vn.dstep > mid_step)
                     end
+                end
+                if max_dist == 0 then
+                    chord_stem_down = not prefer_stem_up
                 end
                 
                 local m = math.floor((cluster.start_qn + 0.001) / bpi)

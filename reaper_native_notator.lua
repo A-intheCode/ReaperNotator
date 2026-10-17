@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.25-beta
+-- @version 2.26-beta
 -- @changelog
+--   + v2.26-beta: Hotfix: Fix chord/dyad beam grouping, middle-line stem direction & move Tracks button right of All Notes dropdown
 --   + v2.19-beta: Melodic Pathfinder: Clef Register Intelligence, Audition Wakeup & Film Composer Styles 1-4
 --   + v2.18-beta: New: Melodic Pathfinder & Counter-Melody Generator (Corpus-trained Viterbi inpainting, Inversion & Reference Track Harmony)
 --   + v2.17: New: 300 Percussion & Low Strings patterns (1,500 total) + Pattern Browser UI refinements

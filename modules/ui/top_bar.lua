@@ -171,18 +171,8 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     reaper.ImGui_SameLine(ctx, 0, 10)
     reaper.ImGui_TextColored(ctx, 0xDDDDDDFF, string.format("%.1f BPM  %d/%d", bpm, timesig_num, timesig_denom))
     
-    -- Track selection (Track picker modal toggle)
-    reaper.ImGui_SameLine(ctx, 0, 14)
-    local act_cnt = active_tracks_data and #active_tracks_data or 1
-    if toggle_btn(ctx, string.format("🎼 Tracks (%d)", act_cnt), state.show_track_picker, 115, 28, 0x8E44ADFF) then
-        state.show_track_picker = not state.show_track_picker
-    end
-    if reaper.ImGui_IsItemHovered(ctx) then
-        reaper.ImGui_SetTooltip(ctx, "Tracks Picker: Click to open multi-track selection dialog")
-    end
-    
     -- View dropdown (show/hide layers and elements)
-    reaper.ImGui_SameLine(ctx, 0, 10)
+    reaper.ImGui_SameLine(ctx, 0, 14)
     reaper.ImGui_SetNextItemWidth(ctx, 110)
     if reaper.ImGui_BeginCombo(ctx, "##ViewFilterSelect", "👁 View") then
         local function view_item(label, flag_key)
@@ -312,6 +302,16 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
             if nm and nm ~= "" then trk_name = nm end
         end
         reaper.ImGui_SetTooltip(ctx, string.format("Voice Filter & Active Note Channel\nTrack: %s\nSelect 'All Notes' or Voice 1..16\nRight-click notes to assign voice.", trk_name))
+    end
+
+    -- Track selection (Track picker modal toggle) positioned right next to All Notes (Voice) dropdown
+    reaper.ImGui_SameLine(ctx, 0, 8)
+    local act_cnt = active_tracks_data and #active_tracks_data or 1
+    if toggle_btn(ctx, string.format("🎼 Tracks (%d)", act_cnt), state.show_track_picker, 115, 28, 0x8E44ADFF) then
+        state.show_track_picker = not state.show_track_picker
+    end
+    if reaper.ImGui_IsItemHovered(ctx) then
+        reaper.ImGui_SetTooltip(ctx, "Tracks Picker: Click to open multi-track selection dialog")
     end
     
     -- Horizontal scroll zone for all additional tools & buttons behind the layout dropdown

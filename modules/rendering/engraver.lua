@@ -1819,12 +1819,25 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
         group_size = 1.0 -- Standard: per beat (quarter note in 4/4)
     end
     
-    local function has_multiple_onsets(notes_grp)
-        if not notes_grp or #notes_grp < 2 then return false end
-        local first_qn = notes_grp[1].display_qn or notes_grp[1].start_qn
-        for i = 2, #notes_grp do
-            local cur_qn = notes_grp[i].display_qn or notes_grp[i].start_qn
-            if math.abs(cur_qn - first_qn) > 0.04 then
+    local function is_genuine_tuplet_step(step, tn)
+        -- Exclude standard binary / dotted-binary note spacings:
+        -- 8th (0.50), dotted 16th (0.375), 16th (0.25), dotted 32nd (0.1875), 32nd (0.125), 64th (0.0625)
+        local binary_steps = { 0.50, 0.375, 0.25, 0.1875, 0.125, 0.0625 }
+        for _, bs in ipairs(binary_steps) do
+            if math.abs(step - bs) < 0.025 then
+                return false
+            end
+        end
+        local expected_steps = {
+            [3] = { 2/3, 1/3, 1/6, 1/12 },
+            [5] = { 4/5, 2/5, 1/5, 1/10 },
+            [6] = { 1/3, 1/6, 1/12 },
+            [7] = { 4/7, 2/7, 1/7, 1/14 },
+        }
+        local list = expected_steps[tn]
+        if not list then return false end
+        for _, exp_s in ipairs(list) do
+            if math.abs(step - exp_s) < 0.02 then
                 return true
             end
         end
@@ -1832,6 +1845,34 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
     end
 
     local function group_staff_notes(notes_list)
+        -- Compute per-measure and whole-staff pitch balance around middle line (dstep = 4)
+        -- so middle-line notes follow surrounding stem direction in the measure/staff.
+        local measure_balance = {}
+        local staff_below, staff_above = 0, 0
+        for _, vn in ipairs(notes_list) do
+            local qn = vn.display_qn or vn.start_qn
+            local m = math.floor((qn + 0.001) / qn_per_measure)
+            if not measure_balance[m] then measure_balance[m] = { below = 0, above = 0 } end
+            local ds = vn.dstep or 4
+            if ds < 4 then
+                measure_balance[m].below = measure_balance[m].below + 1
+                staff_below = staff_below + 1
+            elseif ds > 4 then
+                measure_balance[m].above = measure_balance[m].above + 1
+                staff_above = staff_above + 1
+            end
+        end
+        for _, vn in ipairs(notes_list) do
+            local qn = vn.display_qn or vn.start_qn
+            local m = math.floor((qn + 0.001) / qn_per_measure)
+            local bal = measure_balance[m]
+            if bal and bal.below ~= bal.above then
+                vn._measure_prefer_stem_up = (bal.below > bal.above)
+            else
+                vn._measure_prefer_stem_up = (staff_below >= staff_above)
+            end
+        end
+
         local beamable = {}
         for _, vn in ipairs(notes_list) do
             if Engraver.get_flag_count(vn.dur_qn) > 0 then
@@ -1845,62 +1886,110 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
             return a.pitch < b.pitch
         end)
         
-        -- Detection of tuplet sequences (e.g. eighth-note quintuplets across 2 beats or triplets),
-        -- so they remain continuous as a cohesive beam group and are not severed at beats:
+        -- Condense simultaneous notes (chords / dyads) into atomic temporal onsets FIRST
+        -- so a chord is NEVER split across two different beam groups!
+        local onsets = {}
+        for _, vn in ipairs(beamable) do
+            local vn_qn = vn.display_qn or vn.start_qn
+            local last_o = onsets[#onsets]
+            if last_o and math.abs(vn_qn - last_o.qn) <= 0.04 then
+                table.insert(last_o.notes, vn)
+                if vn.dur_qn < last_o.dur_qn then last_o.dur_qn = vn.dur_qn end
+                if vn.dur_qn > last_o.max_dur_qn then last_o.max_dur_qn = vn.dur_qn end
+            else
+                table.insert(onsets, {
+                    qn = vn_qn,
+                    start_qn = vn.start_qn,
+                    dur_qn = vn.dur_qn,
+                    max_dur_qn = vn.dur_qn,
+                    notes = { vn }
+                })
+            end
+        end
+
+        -- Detection of genuine tuplet onset sequences (e.g. triplets, quintuplets, sextuplets, septuplets)
+        -- without false-matching binary rhythms or splitting chords:
         local tuplet_assigned = {}
-        local num_b = #beamable
-        local b_idx = 1
+        local num_o = #onsets
+        local o_idx = 1
         local tup_counter = 0
-        while b_idx <= num_b do
+        while o_idx <= num_o do
             local found_tup = false
-            for _, tn in ipairs({ 8, 7, 6, 5, 3 }) do
-                if b_idx + tn - 1 <= num_b then
-                    local first_b = beamable[b_idx]
-                    local last_b = beamable[b_idx + tn - 1]
-                    local m_first = math.floor((first_b.start_qn + 0.001) / qn_per_measure)
-                    local m_last  = math.floor((last_b.start_qn + 0.001) / qn_per_measure)
+            for _, tn in ipairs({ 7, 6, 5, 3 }) do
+                if o_idx + tn - 1 <= num_o then
+                    local first_o = onsets[o_idx]
+                    local last_o = onsets[o_idx + tn - 1]
+                    local m_first = math.floor((first_o.qn + 0.001) / qn_per_measure)
+                    local m_last  = math.floor((last_o.qn + 0.001) / qn_per_measure)
                     if m_first == m_last then
-                        local span = last_b.start_qn - first_b.start_qn
+                        local span = last_o.qn - first_o.qn
                         local step = span / (tn - 1)
-                        local is_uniform = true
-                        for k = 1, tn - 1 do
-                            local diff = beamable[b_idx + k].start_qn - beamable[b_idx + k - 1].start_qn
-                            if math.abs(diff - step) > 0.05 then is_uniform = false break end
-                        end
-                        if is_uniform and step > 0.06 and step < 0.65 then
-                            tup_counter = tup_counter + 1
-                            local g_tag = "tup_" .. tostring(tup_counter)
-                            for k = 0, tn - 1 do
-                                tuplet_assigned[beamable[b_idx + k]] = g_tag
+                        if is_genuine_tuplet_step(step, tn) then
+                            local is_uniform = true
+                            for k = 1, tn - 1 do
+                                local prev_o = onsets[o_idx + k - 1]
+                                local cur_o  = onsets[o_idx + k]
+                                local diff = cur_o.qn - prev_o.qn
+                                -- Must be uniformly spaced AND contiguous (no intervening rest)
+                                if math.abs(diff - step) > 0.025 or diff > (prev_o.max_dur_qn + 0.04) then
+                                    is_uniform = false
+                                    break
+                                end
                             end
-                            b_idx = b_idx + tn
-                            found_tup = true
-                            break
+                            if is_uniform then
+                                tup_counter = tup_counter + 1
+                                local g_tag = "tup_" .. tostring(tup_counter)
+                                for k = 0, tn - 1 do
+                                    tuplet_assigned[onsets[o_idx + k]] = g_tag
+                                end
+                                o_idx = o_idx + tn
+                                found_tup = true
+                                break
+                            end
                         end
                     end
                 end
             end
             if not found_tup then
-                b_idx = b_idx + 1
+                o_idx = o_idx + 1
             end
         end
 
         local cur_group = {}
+        local cur_group_onsets = 0
         local cur_group_start = nil
-        for _, vn in ipairs(beamable) do
-            local vn_qn = vn.display_qn or vn.start_qn
-            local g_idx = tuplet_assigned[vn] or math.floor(vn_qn / group_size)
-            if cur_group_start == nil or g_idx ~= cur_group_start then
-                if has_multiple_onsets(cur_group) then
+        local prev_onset = nil
+        for _, o in ipairs(onsets) do
+            local m_idx = math.floor((o.qn + 0.001) / qn_per_measure)
+            local beat_idx = math.floor((o.qn + 0.001) / group_size)
+            local g_idx = tuplet_assigned[o] or string.format("%d_%d", m_idx, beat_idx)
+            -- Break beam group if separated by a quarter rest or longer gap (when grouping by half-bar/bar)
+            local has_large_rest_gap = false
+            if prev_onset and not tuplet_assigned[o] then
+                local gap = o.qn - (prev_onset.qn + prev_onset.max_dur_qn)
+                if gap >= 0.95 then
+                    has_large_rest_gap = true
+                end
+            end
+            if cur_group_start == nil or g_idx ~= cur_group_start or has_large_rest_gap then
+                if cur_group_onsets >= 2 then
                     table.insert(groups, cur_group)
                 end
-                cur_group = { vn }
+                cur_group = {}
+                for _, vn in ipairs(o.notes) do
+                    table.insert(cur_group, vn)
+                end
+                cur_group_onsets = 1
                 cur_group_start = g_idx
             else
-                table.insert(cur_group, vn)
+                for _, vn in ipairs(o.notes) do
+                    table.insert(cur_group, vn)
+                end
+                cur_group_onsets = cur_group_onsets + 1
             end
+            prev_onset = o
         end
-        if has_multiple_onsets(cur_group) then
+        if cur_group_onsets >= 2 then
             table.insert(groups, cur_group)
         end
     end
@@ -1934,8 +2023,9 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     -- 1. Condense notes by temporal onsets (chord notes share the same stem/beam step)
     local onsets = {}
     for _, vn in ipairs(group) do
+        local vn_qn = vn.display_qn or vn.start_qn
         local last_onset = onsets[#onsets]
-        if last_onset and math.abs(vn.start_qn - last_onset.start_qn) < 0.02 then
+        if last_onset and math.abs(vn_qn - last_onset.qn) <= 0.04 then
             table.insert(last_onset.notes, vn)
             if vn.dur_qn < last_onset.dur_qn then last_onset.dur_qn = vn.dur_qn end
             if vn.vis_ny < last_onset.min_ny then last_onset.min_ny = vn.vis_ny end
@@ -1945,6 +2035,7 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
         else
             local onset_base_x = (vn.vis_nx or vn.nominal_nx) - (vn.head_x_offset or 0)
             table.insert(onsets, {
+                qn = vn_qn,
                 start_qn = vn.start_qn,
                 dur_qn = vn.dur_qn,
                 notes = { vn },
@@ -1969,19 +2060,41 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     local max_dist = -1
     local group_stem_down = false
     local manual_stem_dir = nil
+    local below_mid_cnt = 0
+    local above_mid_cnt = 0
+    local prefer_stem_up = false
     for _, onset in ipairs(onsets) do
         for _, vn in ipairs(onset.notes) do
+            if vn._measure_prefer_stem_up then
+                prefer_stem_up = true
+            end
             local sdir = Engraver.get_note_stem_direction(vn, state)
             if sdir then
                 manual_stem_dir = sdir
             end
             local mid_step = 4 -- Middle line of 5-line staff (B4 in treble clef, D3 in bass clef, C4 in alto clef)
             local dist = math.abs(vn.dstep - mid_step)
+            if vn.dstep < mid_step then
+                below_mid_cnt = below_mid_cnt + 1
+            elseif vn.dstep > mid_step then
+                above_mid_cnt = above_mid_cnt + 1
+            end
             if dist > max_dist then
                 max_dist = dist
-                group_stem_down = (vn.dstep >= mid_step)
+                group_stem_down = (vn.dstep > mid_step)
+            elseif dist == max_dist and dist > 0 then
+                if below_mid_cnt > above_mid_cnt then
+                    group_stem_down = false
+                elseif above_mid_cnt > below_mid_cnt then
+                    group_stem_down = true
+                end
             end
         end
+    end
+    if max_dist == 0 then
+        -- All notes in this beam group sit on the middle line (dstep == 4):
+        -- follow the measure/staff stem preference (stems UP when surrounding notes are below the middle line)
+        group_stem_down = not prefer_stem_up
     end
     if manual_stem_dir == "up" then
         group_stem_down = false
@@ -2014,13 +2127,13 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     local x2 = last_onset.stem_x
     local dx = math.max(1.0, x2 - x1)
     
-    -- 4. Melodic slope according to Gardner Read / Elaine Gould:
-    -- Allows dynamic slant up to 0.42 for wide intervals and extended runs,
-    -- avoiding artificial flatness without flattening immediately on minor contour undulations:
+    -- 4. Melodic slope according to Elaine Gould ("Behind Bars", p. 17–21):
+    -- Damped beam slant (max 0.25 and max 10*s vertical rise) prevents beams from shooting steeply into the air:
     local y_first = group_stem_down and first_onset.max_ny or first_onset.min_ny
     local y_last  = group_stem_down and last_onset.max_ny or last_onset.min_ny
-    local raw_slope = (y_last - y_first) / dx
-    local slope = math.max(-0.42, math.min(0.42, raw_slope))
+    local raw_slope = ((y_last - y_first) * 0.5) / dx
+    local max_slope = math.min(0.25, (10.0 * s) / dx)
+    local slope = math.max(-max_slope, math.min(max_slope, raw_slope))
     
     -- If melody fluctuates strongly (sharp direction changes without contour trend), keep horizontal
     local span_y = math.abs(y_last - y_first)
@@ -2030,7 +2143,7 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
         if mid_y < math.min(y_first, y_last) - 8*s then has_higher = true end
         if mid_y > math.max(y_first, y_last) + 8*s then has_lower = true end
     end
-    if (has_higher and has_lower) or (span_y < 3 * s and #onsets > 2) then
+    if (has_higher and has_lower) or (span_y < 3 * s) then
         slope = 0
     end
     
