@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.31-beta
+-- @version 2.32-beta
 -- @changelog
+--   + v2.32-beta: Hotfix: Aspect-correct annotation brush stamps per bar width so vertical and horizontal strokes have identical screen thickness
 --   + v2.31-beta: Fix IDAT CRC error & missing-file crash on stroke; add 4-step per-instrument tile resolution selector (1x/1.5x/2x/3x) & 0-latency vector pen preview
 --   + v2.30-beta: Improvement: Upgrade per-bar annotation tile resolution to 640x440 px (4.4x pixels) with crisp 0.35px brush edge & row-cached PNG encoding
 --   + v2.29-beta: Hotfix: Define AnnotationService.MAX_TRACK_SPACING constant in ScoreCanvas & AnnotationService

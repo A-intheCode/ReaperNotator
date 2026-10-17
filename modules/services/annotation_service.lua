@@ -601,33 +601,49 @@ function AnnotationService.set_track_resolution_step(state, track_guid, new_step
     AnnotationService.save_metadata(state)
 end
 
--- Draws a filled circle stamp into tile.pixels at (cx, cy) in tile pixel coordinates
-local function draw_circle_stamp(pixels, w, h, cx, cy, radius, r_col, g_col, b_col, a_col, is_eraser, dirty_rows)
-    local rad = math.max(0.8, radius)
-    local x0 = math.max(0, math.floor(cx - rad - 1))
-    local x1 = math.min(w - 1, math.ceil(cx + rad + 1))
-    local y0 = math.max(0, math.floor(cy - rad - 1))
-    local y1 = math.min(h - 1, math.ceil(cy + rad + 1))
+-- Draws an aspect-corrected elliptical stamp into tile.pixels at (cx, cy) in tile pixel coordinates
+-- so that when the (w x h) tile is rendered onto a (bar_w x ref_band_h) screen quad, the brush is a true circle on screen!
+local function draw_circle_stamp(pixels, w, h, cx, cy, rad_x, rad_y, r_col, g_col, b_col, a_col, is_eraser, dirty_rows)
+    local rx = math.max(0.8, rad_x)
+    local ry = math.max(0.8, rad_y or rad_x)
+    local x0 = math.max(0, math.floor(cx - rx - 1))
+    local x1 = math.min(w - 1, math.ceil(cx + rx + 1))
+    local y0 = math.max(0, math.floor(cy - ry - 1))
+    local y1 = math.min(h - 1, math.ceil(cy + ry + 1))
     local rgb_mask = (r_col << 24) | (g_col << 16) | (b_col << 8)
+    local inv_rx = 1.0 / rx
+    local inv_ry = 1.0 / ry
 
     for py = y0, y1 do
         if dirty_rows then dirty_rows[py + 1] = true end
         local dy = (py + 0.5) - cy
+        local ny = dy * inv_ry
+        local ny_ry = ny * inv_ry
         local row_base = py * w
         for px = x0, x1 do
             local dx = (px + 0.5) - cx
-            local dist = math.sqrt(dx * dx + dy * dy)
-            if dist <= rad + 0.22 then
+            local nx = dx * inv_rx
+            local norm_dist = math.sqrt(nx * nx + ny * ny)
+            local edge_px_dist
+            if norm_dist < 1e-5 then
+                edge_px_dist = -math.min(rx, ry)
+            else
+                local nx_rx = nx * inv_rx
+                local grad_len = math.sqrt(nx_rx * nx_rx + ny_ry * ny_ry) / norm_dist
+                edge_px_dist = (norm_dist - 1.0) / math.max(1e-5, grad_len)
+            end
+
+            if edge_px_dist <= 0.22 then
                 local idx = row_base + px + 1
                 if is_eraser then
-                    if dist <= rad - 0.15 then
+                    if edge_px_dist <= -0.15 then
                         pixels[idx] = 0
                     else
                         -- Crisp 0.35px edge on eraser
                         local cur = pixels[idx] or 0
                         local cur_a = cur & 0xFF
                         if cur_a > 0 then
-                            local keep = math.max(0.0, math.min(1.0, (dist - (rad - 0.15)) / 0.37))
+                            local keep = math.max(0.0, math.min(1.0, (edge_px_dist + 0.15) / 0.37))
                             local new_a = math.floor(cur_a * keep)
                             pixels[idx] = (new_a > 4) and ((cur & 0xFFFFFF00) | new_a) or 0
                         end
@@ -635,8 +651,8 @@ local function draw_circle_stamp(pixels, w, h, cx, cy, radius, r_col, g_col, b_c
                 else
                     -- Crisp 0.35px anti-aliased edge (prevents heavy/blurry AA halo)
                     local cov = 1.0
-                    if dist > rad - 0.15 then
-                        cov = math.max(0.0, math.min(1.0, ((rad + 0.20) - dist) / 0.35))
+                    if edge_px_dist > -0.15 then
+                        cov = math.max(0.0, math.min(1.0, (0.20 - edge_px_dist) / 0.35))
                     end
                     local src_a = math.floor(a_col * cov + 0.5)
                     if src_a > 0 then
@@ -673,7 +689,7 @@ end
 -- Strictly obeys:
 -- 1. If is_eraser and layer.bars[bar_idx] does NOT exist -> do nothing (never allocate empty tile!).
 -- 2. If Pen and layer.bars[bar_idx] does NOT exist -> lazily create the tile at the track's resolution step.
-function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0, v0, u1, v1, is_eraser)
+function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0, v0, u1, v1, is_eraser, bar_w, ref_band_h)
     local layer = AnnotationService.get_active_layer(state, track_guid)
     if not layer or layer.locked or not layer.visible then return false end
 
@@ -717,16 +733,22 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
     local b_col = (col >> 8)  & 0xFF
     local a_col = col & 0xFF
 
-    local radius = (is_eraser and ((state.annotation_eraser_size or 14.0) * 0.5) or ((state.annotation_brush_size or 4.0) * 0.5)) * res_scale
-    local dist = math.sqrt((x1 - x0)^2 + (y1 - y0)^2)
-    local step = math.max(0.6, radius * 0.35)
-    local steps = math.max(1, math.ceil(dist / step))
+    local rad_y = math.max(0.8, (is_eraser and ((state.annotation_eraser_size or 14.0) * 0.5) or ((state.annotation_brush_size or 4.0) * 0.5)) * res_scale)
+    local rad_x = rad_y
+    if bar_w and bar_w > 1.0 and ref_band_h and ref_band_h > 1.0 then
+        -- Match horizontal screen thickness (rad_x * bar_w / w) to vertical screen thickness (rad_y * ref_band_h / h)
+        local screen_rad = rad_y * (ref_band_h / h)
+        rad_x = math.max(0.8, screen_rad * (w / bar_w))
+    end
+
+    local norm_seg_len = math.sqrt(((x1 - x0) / rad_x)^2 + ((y1 - y0) / rad_y)^2)
+    local steps = math.max(1, math.ceil(norm_seg_len / 0.28))
 
     for i = 0, steps do
         local t = (steps == 0) and 0 or (i / steps)
         local cx = x0 + (x1 - x0) * t
         local cy = y0 + (y1 - y0) * t
-        draw_circle_stamp(tile.pixels, w, h, cx, cy, radius, r_col, g_col, b_col, a_col, is_eraser, tile._dirty_rows)
+        draw_circle_stamp(tile.pixels, w, h, cx, cy, rad_x, rad_y, r_col, g_col, b_col, a_col, is_eraser, tile._dirty_rows)
     end
 
     tile.tex_dirty = true
@@ -1019,11 +1041,12 @@ function AnnotationService.stroke_canvas_segment(state, tdata, x0, y0, x1, y1, m
         return m, bx0, bx1
     end
 
-    local tw, _, res_scale = AnnotationService.get_track_resolution(state, tdata.guid)
+    local _, th, res_scale = AnnotationService.get_track_resolution(state, tdata.guid)
     local dist = math.sqrt((x1 - x0)^2 + (y1 - y0)^2)
     local max_step_px = math.max(1.5, 2.5 * s)
     local steps = math.max(1, math.ceil(dist / max_step_px))
-    local rad_u = ((is_eraser and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)) * 0.5 * res_scale) / tw
+    local tool_half = (is_eraser and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)) * 0.5
+    local screen_rad = (tool_half * res_scale) * (ref_band_h / th)
     local any_modified = false
 
     for i = 0, steps - 1 do
@@ -1037,13 +1060,14 @@ function AnnotationService.stroke_canvas_segment(state, tdata, x0, y0, x1, y1, m
         local mid_x = (sx0 + sx1) * 0.5
         local m, bx0, bx1 = find_bar_at_x(mid_x)
         local bw = math.max(1.0, bx1 - bx0)
+        local rad_u = (screen_rad + 1.5) / bw
 
         local u0 = (sx0 - bx0) / bw
         local u1 = (sx1 - bx0) / bw
         local v0 = (sy0 - tdata.band_y0) / ref_band_h
         local v1 = (sy1 - tdata.band_y0) / ref_band_h
 
-        if AnnotationService.rasterize_bar_segment(state, tdata.guid, m, u0, v0, u1, v1, is_eraser) then
+        if AnnotationService.rasterize_bar_segment(state, tdata.guid, m, u0, v0, u1, v1, is_eraser, bw, ref_band_h) then
             any_modified = true
         end
 
@@ -1051,14 +1075,14 @@ function AnnotationService.stroke_canvas_segment(state, tdata, x0, y0, x1, y1, m
         if math.min(u0, u1) - rad_u < 0.0 and m > 0 then
             local p_bx0, p_bx1 = get_bar_bounds(m - 1)
             local p_bw = math.max(1.0, p_bx1 - p_bx0)
-            if AnnotationService.rasterize_bar_segment(state, tdata.guid, m - 1, (sx0 - p_bx0) / p_bw, v0, (sx1 - p_bx0) / p_bw, v1, is_eraser) then
+            if AnnotationService.rasterize_bar_segment(state, tdata.guid, m - 1, (sx0 - p_bx0) / p_bw, v0, (sx1 - p_bx0) / p_bw, v1, is_eraser, p_bw, ref_band_h) then
                 any_modified = true
             end
         end
         if math.max(u0, u1) + rad_u > 1.0 then
             local n_bx0, n_bx1 = get_bar_bounds(m + 1)
             local n_bw = math.max(1.0, n_bx1 - n_bx0)
-            if AnnotationService.rasterize_bar_segment(state, tdata.guid, m + 1, (sx0 - n_bx0) / n_bw, v0, (sx1 - n_bx0) / n_bw, v1, is_eraser) then
+            if AnnotationService.rasterize_bar_segment(state, tdata.guid, m + 1, (sx0 - n_bx0) / n_bw, v0, (sx1 - n_bx0) / n_bw, v1, is_eraser, n_bw, ref_band_h) then
                 any_modified = true
             end
         end
