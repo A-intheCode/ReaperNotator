@@ -3923,7 +3923,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             reaper.ImGui_DrawList_AddLine(draw_list, guide_x0, band_y1 - 1, guide_x1, band_y1 - 1, 0xFF6B3555, 1.0)
                         end
                         local tool_sz = is_eraser_tool and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)
-                        local cursor_rad = math.max(2.5, (tool_sz * 0.5) * (ref_band_h / AnnotationService.TILE_H))
+                        local res_scale = AnnotationService.RES_SCALE or 2.0
+                        local cursor_rad = math.max(2.0, (tool_sz * 0.5 * res_scale) * (ref_band_h / AnnotationService.TILE_H))
                         if is_eraser_tool then
                             reaper.ImGui_DrawList_AddCircle(draw_list, mouse_x, mouse_y, cursor_rad + 1.0, 0x000000AA, 24, 1.5)
                             reaper.ImGui_DrawList_AddCircle(draw_list, mouse_x, mouse_y, cursor_rad, 0xE74C3CFF, 24, 1.5)

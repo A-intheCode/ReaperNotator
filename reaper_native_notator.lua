@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.29-beta
+-- @version 2.30-beta
 -- @changelog
+--   + v2.30-beta: Improvement: Upgrade per-bar annotation tile resolution to 640x440 px (4.4x pixels) with crisp 0.35px brush edge & row-cached PNG encoding
 --   + v2.29-beta: Hotfix: Define AnnotationService.MAX_TRACK_SPACING constant in ScoreCanvas & AnnotationService
 --   + v2.28-beta: New: Per-Track Annotation Layer System (12 color presets, freehand Pen & Eraser, lazy 320x200 per-bar PNG tiles & auto-cleanup)
 --   + v2.27-beta: Hotfix: Persist manual stem flips (X) via NOTATOR_STEM / NOTE stem tags & ProjExtState, and align 3rd-space stems in low-weighted measures

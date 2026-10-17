@@ -5,8 +5,9 @@
 
 local AnnotationService = {}
 
-AnnotationService.TILE_W = 320
-AnnotationService.TILE_H = 200
+AnnotationService.TILE_W = 640
+AnnotationService.TILE_H = 440
+AnnotationService.RES_SCALE = 2.0
 AnnotationService.MAX_TRACK_SPACING = 320.0
 AnnotationService.MAX_TRACK_SPACING_REF = 320.0
 
@@ -52,56 +53,119 @@ local function crc32(data)
     return c ~ 0xFFFFFFFF
 end
 
-local function make_png_chunk(chunk_type, data)
+local function make_png_chunk(chunk_type, data, skip_crc)
     local len_bytes = string.pack(">I4", #data)
     local type_and_data = chunk_type .. data
-    local crc_bytes = string.pack(">I4", crc32(type_and_data))
+    local crc_val = skip_crc and 0 or crc32(type_and_data)
+    local crc_bytes = string.pack(">I4", crc_val)
     return len_bytes .. type_and_data .. crc_bytes
 end
 
--- Encodes a flat pixel array (w * h integers in 0xRRGGBBAA format) into a valid RGBA PNG binary string
-function AnnotationService.encode_rgba_png(pixels, w, h)
-    local png_sig = "\137PNG\r\n\26\n"
-    -- IHDR: width (4), height (4), bit_depth=8, color_type=6 (RGBA), compression=0, filter=0, interlace=0
-    local ihdr_data = string.pack(">I4I4BBBBB", w, h, 8, 6, 0, 0, 0)
-    local ihdr_chunk = make_png_chunk("IHDR", ihdr_data)
+local EMPTY_ROW_CACHE = {}
+local CHUNK64_FMT = string.rep(">I4", 64)
 
-    -- Build raw scanlines (each row starts with filter byte 0x00 followed by w * 4 RGBA bytes)
-    -- Simultaneously compute Adler-32 checksum over the uncompressed scanline stream
+local function pack_single_row(pixels, row_base, w)
+    local ds1 = 0
+    local ws2 = 0
+    local weight = w * 4
+    local parts = { "\0" }
+    local x = 1
+    while x <= w do
+        local rem = w - x + 1
+        if rem >= 64 then
+            for k = 0, 63 do
+                local px = pixels[row_base + x + k] or 0
+                if px ~= 0 then
+                    local r = (px >> 24) & 0xFF
+                    local g = (px >> 16) & 0xFF
+                    local b = (px >> 8)  & 0xFF
+                    local a = px & 0xFF
+                    ds1 = ds1 + r + g + b + a
+                    ws2 = ws2 + r * weight + g * (weight - 1) + b * (weight - 2) + a * (weight - 3)
+                end
+                weight = weight - 4
+            end
+            parts[#parts + 1] = string.pack(CHUNK64_FMT, table.unpack(pixels, row_base + x, row_base + x + 63))
+            x = x + 64
+        else
+            local fmt = string.rep(">I4", rem)
+            for k = 0, rem - 1 do
+                local px = pixels[row_base + x + k] or 0
+                if px ~= 0 then
+                    local r = (px >> 24) & 0xFF
+                    local g = (px >> 16) & 0xFF
+                    local b = (px >> 8)  & 0xFF
+                    local a = px & 0xFF
+                    ds1 = ds1 + r + g + b + a
+                    ws2 = ws2 + r * weight + g * (weight - 1) + b * (weight - 2) + a * (weight - 3)
+                end
+                weight = weight - 4
+            end
+            parts[#parts + 1] = string.pack(fmt, table.unpack(pixels, row_base + x, row_base + x + rem - 1))
+            x = x + rem
+        end
+    end
+    return table.concat(parts), ds1 % 65521, ws2 % 65521
+end
+
+-- Encodes a flat pixel array (w * h integers in 0xRRGGBBAA format) into a valid RGBA PNG binary string.
+-- Uses per-row scanline caching on `tile` so live brush strokes only re-pack modified rows.
+function AnnotationService.encode_rgba_png(pixels, w, h, tile, skip_crc)
+    local png_sig = "\137PNG\r\n\26\n"
+    local ihdr_data = string.pack(">I4I4BBBBB", w, h, 8, 6, 0, 0, 0)
+    local ihdr_chunk = make_png_chunk("IHDR", ihdr_data, false)
+
+    local empty_row = EMPTY_ROW_CACHE[w]
+    if not empty_row then
+        empty_row = string.rep("\0", 1 + w * 4)
+        EMPTY_ROW_CACHE[w] = empty_row
+    end
+
+    local row_strs, row_ds1, row_ws2, dirty_rows
+    if tile then
+        if not tile._row_strs or #tile._row_strs ~= h then
+            tile._row_strs = {}
+            tile._row_ds1  = {}
+            tile._row_ws2  = {}
+            tile._dirty_rows = {}
+            for y = 1, h do
+                tile._row_strs[y] = empty_row
+                tile._row_ds1[y]  = 0
+                tile._row_ws2[y]  = 0
+                tile._dirty_rows[y] = true
+            end
+        end
+        row_strs   = tile._row_strs
+        row_ds1    = tile._row_ds1
+        row_ws2    = tile._row_ws2
+        dirty_rows = tile._dirty_rows
+    else
+        row_strs, row_ds1, row_ws2, dirty_rows = {}, {}, {}, {}
+        for y = 1, h do dirty_rows[y] = true end
+    end
+
     local s1 = 1
     local s2 = 0
     local MOD_ADLER = 65521
-    local rows = {}
-    local row_Format = "B" .. string.rep(">I4", w)
-    local idx = 1
+    local row_len = 1 + w * 4
 
     for y = 1, h do
-        -- Update Adler-32 for filter byte 0
-        s2 = (s2 + s1) % MOD_ADLER
-        for x = 1, w do
-            local px = pixels[idx] or 0
-            idx = idx + 1
-            local r = (px >> 24) & 0xFF
-            local g = (px >> 16) & 0xFF
-            local b = (px >> 8)  & 0xFF
-            local a = px & 0xFF
-            s1 = s1 + r; s2 = s2 + s1
-            s1 = s1 + g; s2 = s2 + s1
-            s1 = s1 + b; s2 = s2 + s1
-            s1 = s1 + a; s2 = s2 + s1
+        if dirty_rows[y] then
+            local r_str, d1, w2 = pack_single_row(pixels, (y - 1) * w, w)
+            row_strs[y] = r_str
+            row_ds1[y]  = d1
+            row_ws2[y]  = w2
+            dirty_rows[y] = false
         end
-        s1 = s1 % MOD_ADLER
-        s2 = s2 % MOD_ADLER
-
-        local row_base = (y - 1) * w
-        rows[y] = string.pack(row_Format, 0, table.unpack(pixels, row_base + 1, row_base + w))
+        s2 = (s2 + row_len * s1 + row_ws2[y]) % MOD_ADLER
+        s1 = (s1 + row_ds1[y]) % MOD_ADLER
     end
 
-    local raw_data = table.concat(rows)
+    local raw_data = table.concat(row_strs)
     local total_len = #raw_data
 
     -- Wrap in ZLIB stream with uncompressed DEFLATE blocks (max 65535 bytes per block)
-    local deflate_parts = { "\x78\x01" } -- ZLIB header (CMF=0x78, FLG=0x01)
+    local deflate_parts = { "\x78\x01" }
     local pos = 1
     local max_block = 65535
     while pos <= total_len do
@@ -109,20 +173,21 @@ function AnnotationService.encode_rgba_png(pixels, w, h)
         local blk_len = math.min(max_block, rem)
         local is_final = (pos + blk_len > total_len) and 1 or 0
         local nlen = (~blk_len) & 0xFFFF
-        table.insert(deflate_parts, string.pack("<BI2I2", is_final, blk_len, nlen))
-        table.insert(deflate_parts, string.sub(raw_data, pos, pos + blk_len - 1))
+        deflate_parts[#deflate_parts + 1] = string.pack("<BI2I2", is_final, blk_len, nlen)
+        deflate_parts[#deflate_parts + 1] = string.sub(raw_data, pos, pos + blk_len - 1)
         pos = pos + blk_len
     end
 
     local adler32 = (s2 << 16) | s1
-    table.insert(deflate_parts, string.pack(">I4", adler32))
-    local idat_chunk = make_png_chunk("IDAT", table.concat(deflate_parts))
-    local iend_chunk = make_png_chunk("IEND", "")
+    deflate_parts[#deflate_parts + 1] = string.pack(">I4", adler32)
+    local idat_chunk = make_png_chunk("IDAT", table.concat(deflate_parts), skip_crc)
+    local iend_chunk = make_png_chunk("IEND", "", false)
 
     return png_sig .. ihdr_chunk .. idat_chunk .. iend_chunk
 end
 
--- Decodes an RGBA PNG file created by encode_rgba_png back into a flat pixel array (0xRRGGBBAA)
+-- Decodes an RGBA PNG file created by encode_rgba_png back into a flat pixel array (0xRRGGBBAA).
+-- Automatically resamples legacy lower-resolution tiles (e.g. 320x200) to (expected_w x expected_h).
 function AnnotationService.decode_rgba_png(png_bytes, expected_w, expected_h)
     if not png_bytes or #png_bytes < 40 then return nil end
     if png_bytes:sub(1, 8) ~= "\137PNG\r\n\26\n" then return nil end
@@ -149,19 +214,17 @@ function AnnotationService.decode_rgba_png(png_bytes, expected_w, expected_h)
         pos = data_end + 5 -- skip 4-byte CRC
     end
 
-    if w ~= expected_w or h ~= expected_h then return nil end
+    if not w or not h or w <= 0 or h <= 0 then return nil end
     local zlib_stream = table.concat(idat_parts)
     if #zlib_stream < 7 then return nil end
 
-    -- Parse stored DEFLATE blocks starting after 2-byte ZLIB header
     local raw_parts = {}
     local zpos = 3
-    local zlen = #zlib_stream - 4 -- exclude 4-byte Adler32 trailer
+    local zlen = #zlib_stream - 4
     while zpos + 4 <= zlen do
         local bheader, blk_len, _ = string.unpack("<BI2I2", zlib_stream, zpos)
         zpos = zpos + 5
         if (bheader & 0x06) ~= 0 then
-            -- Compressed block (not stored): cannot unpack in pure stored-block reader
             return nil
         end
         if zpos + blk_len - 1 > zlen + 4 then break end
@@ -174,17 +237,34 @@ function AnnotationService.decode_rgba_png(png_bytes, expected_w, expected_h)
     local row_bytes = 1 + w * 4
     if #raw_data < row_bytes * h then return nil end
 
-    local pixels = {}
+    local src_pixels = {}
     local p_idx = 1
     for y = 0, h - 1 do
-        local row_offset = y * row_bytes + 2 -- skip filter byte at +1
+        local row_offset = y * row_bytes + 2
         for x = 0, w - 1 do
             local px_offset = row_offset + x * 4
-            pixels[p_idx] = string.unpack(">I4", raw_data, px_offset)
+            src_pixels[p_idx] = string.unpack(">I4", raw_data, px_offset)
             p_idx = p_idx + 1
         end
     end
-    return pixels
+
+    if w == expected_w and h == expected_h then
+        return src_pixels
+    end
+
+    -- Resample legacy tile dimensions to expected_w x expected_h
+    local dst_pixels = {}
+    local d_idx = 1
+    for dy = 0, expected_h - 1 do
+        local sy = math.min(h - 1, math.floor((dy / expected_h) * h))
+        local s_row = sy * w
+        for dx = 0, expected_w - 1 do
+            local sx = math.min(w - 1, math.floor((dx / expected_w) * w))
+            dst_pixels[d_idx] = src_pixels[s_row + sx + 1] or 0
+            d_idx = d_idx + 1
+        end
+    end
+    return dst_pixels
 end
 
 -- ==============================================================================
@@ -415,46 +495,53 @@ local function ensure_tile_pixels_loaded(track_guid, layer_id, bar_idx, tile)
 end
 
 -- Draws a filled circle stamp into tile.pixels at (cx, cy) in tile pixel coordinates
-local function draw_circle_stamp(pixels, w, h, cx, cy, radius, r_col, g_col, b_col, a_col, is_eraser)
+local function draw_circle_stamp(pixels, w, h, cx, cy, radius, r_col, g_col, b_col, a_col, is_eraser, dirty_rows)
     local rad = math.max(0.8, radius)
     local x0 = math.max(0, math.floor(cx - rad - 1))
     local x1 = math.min(w - 1, math.ceil(cx + rad + 1))
     local y0 = math.max(0, math.floor(cy - rad - 1))
     local y1 = math.min(h - 1, math.ceil(cy + rad + 1))
+    local rgb_mask = (r_col << 24) | (g_col << 16) | (b_col << 8)
 
     for py = y0, y1 do
+        if dirty_rows then dirty_rows[py + 1] = true end
         local dy = (py + 0.5) - cy
         local row_base = py * w
         for px = x0, x1 do
             local dx = (px + 0.5) - cx
             local dist = math.sqrt(dx * dx + dy * dy)
-            if dist <= rad + 0.65 then
+            if dist <= rad + 0.22 then
                 local idx = row_base + px + 1
                 if is_eraser then
-                    if dist <= rad then
+                    if dist <= rad - 0.15 then
                         pixels[idx] = 0
                     else
-                        -- Soft edge on eraser
+                        -- Crisp 0.35px edge on eraser
                         local cur = pixels[idx] or 0
                         local cur_a = cur & 0xFF
                         if cur_a > 0 then
-                            local keep = math.max(0.0, math.min(1.0, dist - rad))
+                            local keep = math.max(0.0, math.min(1.0, (dist - (rad - 0.15)) / 0.37))
                             local new_a = math.floor(cur_a * keep)
                             pixels[idx] = (new_a > 4) and ((cur & 0xFFFFFF00) | new_a) or 0
                         end
                     end
                 else
-                    -- Smooth 1px anti-aliased edge
+                    -- Crisp 0.35px anti-aliased edge (prevents heavy/blurry AA halo)
                     local cov = 1.0
-                    if dist > rad - 0.5 then
-                        cov = math.max(0.0, math.min(1.0, (rad + 0.5) - dist))
+                    if dist > rad - 0.15 then
+                        cov = math.max(0.0, math.min(1.0, ((rad + 0.20) - dist) / 0.35))
                     end
                     local src_a = math.floor(a_col * cov + 0.5)
                     if src_a > 0 then
                         local dst = pixels[idx] or 0
                         local dst_a = dst & 0xFF
-                        if dst_a == 0 or src_a >= 250 then
-                            pixels[idx] = (r_col << 24) | (g_col << 16) | (b_col << 8) | src_a
+                        if dst_a == 0 or src_a >= 252 then
+                            pixels[idx] = rgb_mask | src_a
+                        elseif (dst & 0xFFFFFF00) == rgb_mask then
+                            -- Same color within a continuous stroke: use max alpha so overlapping stamps never bloat the AA edge!
+                            if src_a > dst_a then
+                                pixels[idx] = rgb_mask | src_a
+                            end
                         else
                             local inv_a = 255 - src_a
                             local out_a = src_a + math.floor((dst_a * inv_a) / 255)
@@ -478,7 +565,7 @@ end
 -- Rasterizes a stroke segment (u0, v0) -> (u1, v1) in [0..1] into bar_idx of the active layer.
 -- Strictly obeys:
 -- 1. If is_eraser and layer.bars[bar_idx] does NOT exist -> do nothing (never allocate empty tile!).
--- 2. If Pen and layer.bars[bar_idx] does NOT exist -> lazily create the 320x200 tile.
+-- 2. If Pen and layer.bars[bar_idx] does NOT exist -> lazily create the 640x440 tile.
 function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0, v0, u1, v1, is_eraser)
     local layer = AnnotationService.get_active_layer(state, track_guid)
     if not layer or layer.locked or not layer.visible then return false end
@@ -506,6 +593,11 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
     end
 
     local w, h = AnnotationService.TILE_W, AnnotationService.TILE_H
+    if not tile._dirty_rows then
+        tile._dirty_rows = {}
+        for y = 1, h do tile._dirty_rows[y] = true end
+    end
+
     local x0, y0 = u0 * w, v0 * h
     local x1, y1 = u1 * w, v1 * h
 
@@ -515,16 +607,17 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
     local b_col = (col >> 8)  & 0xFF
     local a_col = col & 0xFF
 
-    local radius = is_eraser and ((state.annotation_eraser_size or 14.0) * 0.5) or ((state.annotation_brush_size or 4.0) * 0.5)
+    local res_scale = AnnotationService.RES_SCALE or 2.0
+    local radius = (is_eraser and ((state.annotation_eraser_size or 14.0) * 0.5) or ((state.annotation_brush_size or 4.0) * 0.5)) * res_scale
     local dist = math.sqrt((x1 - x0)^2 + (y1 - y0)^2)
-    local step = math.max(0.5, radius * 0.35)
+    local step = math.max(0.6, radius * 0.35)
     local steps = math.max(1, math.ceil(dist / step))
 
     for i = 0, steps do
         local t = (steps == 0) and 0 or (i / steps)
         local cx = x0 + (x1 - x0) * t
         local cy = y0 + (y1 - y0) * t
-        draw_circle_stamp(tile.pixels, w, h, cx, cy, radius, r_col, g_col, b_col, a_col, is_eraser)
+        draw_circle_stamp(tile.pixels, w, h, cx, cy, radius, r_col, g_col, b_col, a_col, is_eraser, tile._dirty_rows)
     end
 
     tile.tex_dirty = true
@@ -543,7 +636,7 @@ function AnnotationService.update_dirty_textures(state)
                     for _, tile in pairs(layer.bars) do
                         if tile.tex_dirty and tile.pixels then
                             tile.tex_dirty = false
-                            local png_bytes = AnnotationService.encode_rgba_png(tile.pixels, AnnotationService.TILE_W, AnnotationService.TILE_H)
+                            local png_bytes = AnnotationService.encode_rgba_png(tile.pixels, AnnotationService.TILE_W, AnnotationService.TILE_H, tile, true)
                             tile.png_bytes = png_bytes
                             if reaper.APIExists("ImGui_CreateImageFromMem") then
                                 local ok, img = pcall(reaper.ImGui_CreateImageFromMem, png_bytes)
@@ -579,11 +672,12 @@ function AnnotationService.commit_dirty_tiles(state, write_to_disk)
                                 if p then os.remove(p) end
                                 any_saved = true
                             else
-                                if tile.tex_dirty or not tile.png_bytes then
-                                    tile.png_bytes = AnnotationService.encode_rgba_png(tile.pixels, AnnotationService.TILE_W, AnnotationService.TILE_H)
+                                local full_png_bytes = AnnotationService.encode_rgba_png(tile.pixels, AnnotationService.TILE_W, AnnotationService.TILE_H, tile, false)
+                                tile.png_bytes = full_png_bytes
+                                if tile.tex_dirty then
                                     tile.tex_dirty = false
                                     if reaper.APIExists("ImGui_CreateImageFromMem") then
-                                        local ok, img = pcall(reaper.ImGui_CreateImageFromMem, tile.png_bytes)
+                                        local ok, img = pcall(reaper.ImGui_CreateImageFromMem, full_png_bytes)
                                         if ok and img then
                                             tile.imgui_img = img
                                         end
@@ -594,7 +688,7 @@ function AnnotationService.commit_dirty_tiles(state, write_to_disk)
                                     tile.png_path = p
                                     local f = io.open(p, "wb")
                                     if f then
-                                        f:write(tile.png_bytes)
+                                        f:write(full_png_bytes)
                                         f:close()
                                     end
                                     if not tile.imgui_img and reaper.APIExists("ImGui_CreateImage") then
@@ -809,9 +903,10 @@ function AnnotationService.stroke_canvas_segment(state, tdata, x0, y0, x1, y1, m
     end
 
     local dist = math.sqrt((x1 - x0)^2 + (y1 - y0)^2)
-    local max_step_px = math.max(2.0, 4.0 * s)
+    local max_step_px = math.max(1.5, 2.5 * s)
     local steps = math.max(1, math.ceil(dist / max_step_px))
-    local rad_u = ((is_eraser and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)) * 0.5) / AnnotationService.TILE_W
+    local res_scale = AnnotationService.RES_SCALE or 2.0
+    local rad_u = ((is_eraser and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)) * 0.5 * res_scale) / AnnotationService.TILE_W
     local any_modified = false
 
     for i = 0, steps - 1 do
