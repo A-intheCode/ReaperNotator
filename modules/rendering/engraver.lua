@@ -615,14 +615,28 @@ function Engraver.get_note_stem_direction(vn, state)
     end
     if not (state and state.note_stem_directions) then return nil end
     local k = (orig and (orig.key or (orig.get_key and orig:get_key()))) or vn.key
-    local pref = state.note_stem_directions[k]
+    local pref = k and state.note_stem_directions[k]
     if pref ~= nil then return pref end
+    local eff_sqn = (orig and orig.start_qn) or vn.start_qn or 0
+    local eff_pitch = (orig and orig.pitch) or vn.pitch or 0
+    local eff_chan = (orig and orig.chan) or vn.chan or 0
     if orig and orig.take then
-        local id_k = string.format("%s_%s_%.3f", tostring(orig.take or "0"), tostring(orig.idx or 0), orig.start_qn or 0)
+        local id_k = string.format("%s_%s_%.3f", tostring(orig.take or "0"), tostring(orig.idx or 0), eff_sqn)
         pref = state.note_stem_directions[id_k]
         if pref ~= nil then return pref end
-        local pos_k = string.format("%s_%.3f_%d", tostring(orig.take or "0"), orig.start_qn or 0, orig.pitch or 0)
-        return state.note_stem_directions[pos_k]
+        local pos_k = string.format("%s_%.3f_%d", tostring(orig.take or "0"), eff_sqn, eff_pitch)
+        pref = state.note_stem_directions[pos_k]
+        if pref ~= nil then return pref end
+    end
+    local trk = (orig and orig.track) or vn.track
+    local trk_guid = vn.track_guid or (trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.GetTrackGUID(trk)) or nil
+    if trk_guid then
+        local trk_k = string.format("trk_%s_%.3f_%d_%d", tostring(trk_guid), eff_sqn, eff_pitch, eff_chan)
+        pref = state.note_stem_directions[trk_k]
+        if pref ~= nil then return pref end
+        local trk_pos_k = string.format("trk_%s_%.2f_%d", tostring(trk_guid), eff_sqn, eff_pitch)
+        pref = state.note_stem_directions[trk_pos_k]
+        if pref ~= nil then return pref end
     end
     return nil
 end
@@ -1773,6 +1787,7 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 item_obj = active_n.item_obj or first_n.item_obj,
                                 take = active_n.take or first_n.take,
                                 track = active_n.track or first_n.track,
+                                stem_dir = target_orig and target_orig.stem_dir or nil,
                                 is_tied_chain = (#chain > 1),
                                 chain_notes = (#chain > 1) and chain or nil
                             }
@@ -1845,8 +1860,8 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
     end
 
     local function group_staff_notes(notes_list)
-        -- Compute per-measure and whole-staff pitch balance around middle line (dstep = 4)
-        -- so middle-line notes follow surrounding stem direction in the measure/staff.
+        -- Compute per-measure and whole-staff distance-weighted pitch balance around middle line (dstep = 4)
+        -- so middle-line and third-space notes follow surrounding stem direction in the measure/staff.
         local measure_balance = {}
         local staff_below, staff_above = 0, 0
         for _, vn in ipairs(notes_list) do
@@ -1855,11 +1870,13 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
             if not measure_balance[m] then measure_balance[m] = { below = 0, above = 0 } end
             local ds = vn.dstep or 4
             if ds < 4 then
-                measure_balance[m].below = measure_balance[m].below + 1
-                staff_below = staff_below + 1
+                local w = (4 - ds)
+                measure_balance[m].below = measure_balance[m].below + w
+                staff_below = staff_below + w
             elseif ds > 4 then
-                measure_balance[m].above = measure_balance[m].above + 1
-                staff_above = staff_above + 1
+                local w = (ds - 4)
+                measure_balance[m].above = measure_balance[m].above + w
+                staff_above = staff_above + w
             end
         end
         for _, vn in ipairs(notes_list) do
@@ -2063,10 +2080,14 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     local below_mid_cnt = 0
     local above_mid_cnt = 0
     local prefer_stem_up = false
+    local group_max_dstep = -999
     for _, onset in ipairs(onsets) do
         for _, vn in ipairs(onset.notes) do
             if vn._measure_prefer_stem_up then
                 prefer_stem_up = true
+            end
+            if vn.dstep and vn.dstep > group_max_dstep then
+                group_max_dstep = vn.dstep
             end
             local sdir = Engraver.get_note_stem_direction(vn, state)
             if sdir then
@@ -2091,9 +2112,9 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
             end
         end
     end
-    if max_dist == 0 then
-        -- All notes in this beam group sit on the middle line (dstep == 4):
-        -- follow the measure/staff stem preference (stems UP when surrounding notes are below the middle line)
+    if max_dist == 0 or (prefer_stem_up and group_max_dstep <= 5) then
+        -- All notes in this beam group sit on the middle line (dstep == 4) or 3rd space (dstep == 5)
+        -- in a measure strongly weighted below the middle line: keep stem direction consistent (UP)
         group_stem_down = not prefer_stem_up
     end
     if manual_stem_dir == "up" then
@@ -2179,6 +2200,9 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
             vn.beam_stem_x = cur_x
             vn.beam_stem_end_y = cur_beam_y
             vn.beam_stem_down = group_stem_down
+            if vn.orig then
+                vn.orig._rendered_stem_down = group_stem_down
+            end
             
             if all_note_render_by_key and all_note_render_by_key[vn.key] then
                 local rdata = all_note_render_by_key[vn.key]

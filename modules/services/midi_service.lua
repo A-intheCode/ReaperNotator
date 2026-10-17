@@ -590,10 +590,20 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 end
             end
             local sp, sch, sdir = msg:match("NOTE%s+(%d+)%s+(%d+)%s+stem%s+([%a]+)")
+            local sqn_str = nil
+            if not (sp and sdir) then
+                sp, sch, sdir, sqn_str = msg:match("NOTATOR_STEM%s+(%d+)%s+(%d+)%s+([%a]+)%s*([%d%.]*)")
+            end
             if sp and sdir then
                 sdir = sdir:lower()
                 if sdir == "up" or sdir == "down" then
-                    table.insert(note_stems_list, { ppq = ppq, pitch = tonumber(sp), chan = tonumber(sch) or 0, stem_dir = sdir })
+                    table.insert(note_stems_list, {
+                        ppq = ppq,
+                        pitch = tonumber(sp),
+                        chan = tonumber(sch) or 0,
+                        stem_dir = sdir,
+                        start_qn = (sqn_str and sqn_str ~= "") and tonumber(sqn_str) or nil
+                    })
                 end
             end
             local stp, stch, sstf = msg:match("NOTE%s+(%d+)%s+(%d+)%s+staff%s+([%a]+)")
@@ -755,6 +765,34 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             end
         end
     end
+
+    -- Dual persistence fallback: read manual stem directions from ProjExtState
+    local _, raw_stem_dirs = reaper.GetProjExtState(0, "REAPER_Notator", "note_stem_directions")
+    if raw_stem_dirs and raw_stem_dirs ~= "" then
+        local trk_guid = track and reaper.GetTrackGUID(track)
+        local single_trk_proj = (reaper.CountTracks(0) <= 1)
+        for entry in raw_stem_dirs:gmatch("([^;]+)") do
+            local sp = {}
+            for field in (entry .. "|"):gmatch("([^|]*)|") do table.insert(sp, field) end
+            local s_guid = sp[1]
+            local s_sqn  = tonumber(sp[2])
+            local s_pit  = tonumber(sp[3])
+            local s_ch   = tonumber(sp[4]) or 0
+            local s_dir  = sp[5]
+            if s_sqn and s_pit and (s_dir == "up" or s_dir == "down") then
+                if (s_guid ~= "" and trk_guid and s_guid == trk_guid) or (s_guid == "" and single_trk_proj) then
+                    local s_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, s_sqn) + 0.5)
+                    table.insert(note_stems_list, {
+                        ppq = s_ppq,
+                        pitch = s_pit,
+                        chan = s_ch,
+                        stem_dir = s_dir,
+                        start_qn = s_sqn
+                    })
+                end
+            end
+        end
+    end
     
     local function find_tie_master(p, ch, sppq, opt_sqn)
         for _, tm in ipairs(tie_masters) do
@@ -883,9 +921,11 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                         
                         local stem_dir = nil
                         for _, ns in ipairs(note_stems_list) do
-                            if ns.pitch == pitch and math.abs(ns.ppq - sppq) <= 25 then
-                                stem_dir = ns.stem_dir
-                                break
+                            if ns.pitch == pitch then
+                                if (ns.ppq and math.abs(ns.ppq - sppq) <= 45) or (ns.start_qn and math.abs(ns.start_qn - cl_sqn) <= 0.06) then
+                                    stem_dir = ns.stem_dir
+                                    break
+                                end
                             end
                         end
                         
@@ -3927,6 +3967,113 @@ function MidiService.toggle_arpeggio_on_selected(state, direction)
     state.status_msg = has_arp and "Removed Arpeggio (Snapped to Grid)" or string.format("Applied Arpeggio (%s)", direction)
 end
 
+function MidiService.save_stem_directions(state)
+    if not state then return end
+    local records = state._persistent_stem_records or {}
+    local parts = {}
+    for _, rec in pairs(records) do
+        if rec and rec.dir and (rec.dir == "up" or rec.dir == "down") and rec.sqn and rec.pitch then
+            table.insert(parts, string.format("%s|%.4f|%d|%d|%s",
+                tostring(rec.guid or ""),
+                tonumber(rec.sqn) or 0,
+                tonumber(rec.pitch) or 60,
+                tonumber(rec.chan) or 0,
+                tostring(rec.dir)
+            ))
+        end
+    end
+    reaper.SetProjExtState(0, "REAPER_Notator", "note_stem_directions", table.concat(parts, ";"))
+end
+
+function MidiService.load_stem_directions(state)
+    if not state then return end
+    state.note_stem_directions = {}
+    state._persistent_stem_records = {}
+
+    local function register_stem_record(trk_guid, sqn, pitch, chan, sdir, take, item, idx)
+        if not (sqn and pitch and (sdir == "up" or sdir == "down")) then return end
+        local ch = tonumber(chan) or 0
+        local g_str = tostring(trk_guid or "")
+        local rec_key = string.format("%s_%.3f_%d_%d", g_str, sqn, pitch, ch)
+        state._persistent_stem_records[rec_key] = {
+            guid = g_str,
+            sqn = sqn,
+            pitch = pitch,
+            chan = ch,
+            dir = sdir
+        }
+        if g_str ~= "" then
+            local trk_k = string.format("trk_%s_%.3f_%d_%d", g_str, sqn, pitch, ch)
+            local trk_pos_k = string.format("trk_%s_%.2f_%d", g_str, sqn, pitch)
+            state.note_stem_directions[trk_k] = sdir
+            state.note_stem_directions[trk_pos_k] = sdir
+        end
+        if take then
+            local pos_k = string.format("%s_%.3f_%d", tostring(take), sqn, pitch)
+            state.note_stem_directions[pos_k] = sdir
+            if idx ~= nil then
+                local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(idx), sqn)
+                state.note_stem_directions[id_k] = sdir
+            end
+            if item then
+                local full_k = string.format("%s_%s_%.3f_%d_%d", tostring(item), tostring(take), sqn, pitch, ch)
+                state.note_stem_directions[full_k] = sdir
+            end
+        end
+    end
+
+    -- 1. Load from ProjExtState
+    local _, raw_stem_dirs = reaper.GetProjExtState(0, "REAPER_Notator", "note_stem_directions")
+    if raw_stem_dirs and raw_stem_dirs ~= "" then
+        for entry in raw_stem_dirs:gmatch("([^;]+)") do
+            local sp = {}
+            for field in (entry .. "|"):gmatch("([^|]*)|") do table.insert(sp, field) end
+            local s_guid = sp[1] or ""
+            local s_sqn  = tonumber(sp[2])
+            local s_pit  = tonumber(sp[3])
+            local s_ch   = tonumber(sp[4]) or 0
+            local s_dir  = sp[5]
+            if s_sqn and s_pit and (s_dir == "up" or s_dir == "down") then
+                register_stem_record(s_guid, s_sqn, s_pit, s_ch, s_dir, nil, nil, nil)
+            end
+        end
+    end
+
+    -- 2. Scan all MIDI takes in project for Type 15 NOTATOR_STEM and NOTE ... stem events
+    local num_tracks = reaper.CountTracks(0)
+    for ti = 0, num_tracks - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+            local trk_guid = reaper.GetTrackGUID(trk)
+            local num_items = reaper.CountTrackMediaItems(trk)
+            for ii = 0, num_items - 1 do
+                local item = reaper.GetTrackMediaItem(trk, ii)
+                local take = item and reaper.GetActiveTake(item)
+                if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                    for tx = 0, text_cnt - 1 do
+                        local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, tx)
+                        if ok and etype == 15 and msg then
+                            local sp, sch, sdir = msg:match("NOTE%s+(%d+)%s+(%d+)%s+stem%s+([%a]+)")
+                            local sqn_str = nil
+                            if not (sp and sdir) then
+                                sp, sch, sdir, sqn_str = msg:match("NOTATOR_STEM%s+(%d+)%s+(%d+)%s+([%a]+)%s*([%d%.]*)")
+                            end
+                            if sp and sdir then
+                                sdir = sdir:lower()
+                                if sdir == "up" or sdir == "down" then
+                                    local sqn = (sqn_str and sqn_str ~= "") and tonumber(sqn_str) or reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                                    register_stem_record(trk_guid, sqn, tonumber(sp), tonumber(sch) or 0, sdir, take, item, nil)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
 function MidiService.invert_selected_notes_stem_direction(state, target_dir)
     local targets = {}
     for _, sn in pairs(state.selected_notes) do table.insert(targets, sn) end
@@ -3939,7 +4086,7 @@ function MidiService.invert_selected_notes_stem_direction(state, target_dir)
     reaper.Undo_BeginBlock2(0)
     local by_take = {}
     for _, sn in ipairs(targets) do
-        local take = sn.take or MidiService.get_active_midi_take()
+        local take = sn.take or (sn.orig and sn.orig.take) or MidiService.get_active_midi_take()
         if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
             if not by_take[take] then by_take[take] = {} end
             table.insert(by_take[take], sn)
@@ -3949,46 +4096,125 @@ function MidiService.invert_selected_notes_stem_direction(state, target_dir)
     if not state.note_stem_directions then
         state.note_stem_directions = {}
     end
+    if not state._persistent_stem_records then
+        state._persistent_stem_records = {}
+    end
     
-    -- Determine default direction if invert was chosen for group
+    -- Determine default direction if invert was chosen for group:
+    -- Check manual stem_dir first, then actual rendered stem direction (_rendered_stem_down)
     local default_target = nil
     if target_dir == "invert" or not target_dir then
         local has_any_up = false
         for _, sn in ipairs(targets) do
-            local k = sn:get_key()
-            local cur_s = sn.stem_dir or state.note_stem_directions[k]
+            local ref = sn.orig or sn
+            local k = (ref.get_key and ref:get_key()) or ref.key or (sn.get_key and sn:get_key()) or sn.key
+            local cur_s = ref.stem_dir or sn.stem_dir or (k and state.note_stem_directions[k])
+            if not cur_s then
+                local trk = ref.track or sn.track or (ref.take and get_track_from_take(ref.take))
+                local trk_guid = trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.GetTrackGUID(trk)
+                local sqn = ref.start_qn or sn.start_qn or 0
+                local pit = ref.pitch or sn.pitch or 60
+                local ch  = ref.chan or sn.chan or 0
+                if trk_guid then
+                    cur_s = state.note_stem_directions[string.format("trk_%s_%.3f_%d_%d", trk_guid, sqn, pit, ch)]
+                         or state.note_stem_directions[string.format("trk_%s_%.2f_%d", trk_guid, sqn, pit)]
+                end
+            end
+            if not cur_s then
+                local rend_down = (ref._rendered_stem_down ~= nil) and ref._rendered_stem_down or sn._rendered_stem_down
+                if rend_down ~= nil then
+                    cur_s = rend_down and "down" or "up"
+                else
+                    cur_s = ((ref.pitch or sn.pitch or 60) < 71) and "up" or "down"
+                end
+            end
             if cur_s == "up" then
                 has_any_up = true
                 break
             end
         end
-        -- If already set to Up, flip to Down, otherwise Up
+        -- If currently Up, flip to Down, otherwise Up
         default_target = has_any_up and "down" or "up"
     end
     
     for take, n_list in pairs(by_take) do
+        local item = reaper.GetMediaItemTake_Item(take)
+        local trk = get_track_from_take(take)
+        local trk_guid = (trk and reaper.ValidatePtr(trk, "MediaTrack*")) and reaper.GetTrackGUID(trk) or ""
+        local loop_src = item and (reaper.GetMediaItemInfo_Value(item, "B_LOOPSRC") ~= 0)
+        local item_pos = item and reaper.GetMediaItemInfo_Value(item, "D_POSITION") or 0
+        local item_sqn = item and reaper.TimeMap2_timeToQN(0, item_pos) or 0
+        local src = reaper.GetMediaItemTake_Source(take)
+        local src_len_qn = 0
+        if src and item then
+            local slen, is_qn = reaper.GetMediaSourceLength(src)
+            if is_qn then src_len_qn = slen
+            else src_len_qn = reaper.TimeMap2_timeToQN(0, item_pos + slen) - item_sqn end
+        end
+
         reaper.MIDI_DisableSort(take)
+        local _, raw_notecnt = reaper.MIDI_CountEvts(take)
         for _, sn in ipairs(n_list) do
-            local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn) + 0.5)
-            local chan = sn.chan or 0
-            
-            -- Search existing type 15 stem event
-            local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
-            local found_ti = nil
-            for ti = text_cnt - 1, 0, -1 do
-                local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
-                if ok and etype == 15 then
-                    local p, ch, sdir = msg:match("NOTE%s+(%d+)%s+(%d+)%s+stem%s+([%a]+)")
-                    if p and tonumber(p) == sn.pitch and math.abs(ppq - sppq) <= 25 then
-                        found_ti = ti
-                        reaper.MIDI_DeleteTextSysexEvt(take, ti)
+            local ref = sn.orig or sn
+            local eff_sqn = ref.start_qn or sn.start_qn or 0
+            local base_qn = eff_sqn
+            if loop_src and src_len_qn > 0.01 and eff_sqn >= (item_sqn + src_len_qn - 0.005) then
+                base_qn = item_sqn + ((eff_sqn - item_sqn) % src_len_qn)
+            end
+            local est_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, base_qn) + 0.5)
+            local sppq = est_sppq
+            local resolved = false
+            local check_idx = ref.idx or sn.idx
+            if check_idx and check_idx >= 0 then
+                local ok_n, _, _, s_ppq, _, _, n_pitch = reaper.MIDI_GetNote(take, check_idx)
+                if ok_n and s_ppq and n_pitch == (ref.pitch or sn.pitch) and math.abs(s_ppq - est_sppq) <= 45 then
+                    sppq = s_ppq
+                    resolved = true
+                end
+            end
+            if not resolved then
+                local best_dist = 60
+                for ni = 0, raw_notecnt - 1 do
+                    local ok_n, _, muted_n, s_ppq, _, _, n_pitch = reaper.MIDI_GetNote(take, ni)
+                    if ok_n and not muted_n and n_pitch == (ref.pitch or sn.pitch) then
+                        local d = math.abs(s_ppq - est_sppq)
+                        if d <= best_dist then
+                            best_dist = d
+                            sppq = s_ppq
+                        end
                     end
                 end
             end
-            
-            local k = sn:get_key()
-            local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(sn.idx or 0), sn.start_qn or 0)
-            local pos_k = string.format("%s_%.3f_%d", tostring(take), sn.start_qn or 0, sn.pitch)
+
+            local chan = ref.chan or sn.chan or 0
+            -- Also collect simultaneous chord notes in this take/voice at the same onset PPQ
+            -- so flipping one note in a chord updates the whole chord's stem direction cleanly
+            local chord_pitches = { [ref.pitch or sn.pitch] = true }
+            for ni = 0, raw_notecnt - 1 do
+                local ok_n, _, muted_n, s_ppq, _, n_ch, n_pitch = reaper.MIDI_GetNote(take, ni)
+                if ok_n and not muted_n and n_ch == chan and math.abs(s_ppq - sppq) <= 15 then
+                    chord_pitches[n_pitch] = true
+                end
+            end
+
+            -- Delete existing Type 15 stem events (both NOTE ... stem and NOTATOR_STEM) for these chord pitches at sppq
+            local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+            for ti = text_cnt - 1, 0, -1 do
+                local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
+                if ok and etype == 15 and msg then
+                    local p = msg:match("NOTE%s+(%d+)%s+%d+%s+stem%s+[%a]+")
+                    local sqn_tag = nil
+                    if not p then
+                        p, _, _, sqn_tag = msg:match("NOTATOR_STEM%s+(%d+)%s+(%d+)%s+([%a]+)%s*([%d%.]*)")
+                    end
+                    if p and chord_pitches[tonumber(p)] then
+                        local qn_match = (sqn_tag and sqn_tag ~= "" and math.abs((tonumber(sqn_tag) or -999) - eff_sqn) <= 0.06)
+                        if math.abs(ppq - sppq) <= 45 or qn_match then
+                            reaper.MIDI_DeleteTextSysexEvt(take, ti)
+                        end
+                    end
+                end
+            end
             
             local new_dir = nil
             if target_dir == "invert" or not target_dir then
@@ -4000,22 +4226,69 @@ function MidiService.invert_selected_notes_stem_direction(state, target_dir)
             elseif target_dir == "auto" then
                 new_dir = nil
             end
-            
+
+            for c_pitch in pairs(chord_pitches) do
+                local k = string.format("%s_%s_%.3f_%d_%d", tostring(item or ref.item or "0"), tostring(take), eff_sqn, c_pitch, chan)
+                local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(ref.idx or sn.idx or 0), eff_sqn)
+                local pos_k = string.format("%s_%.3f_%d", tostring(take), eff_sqn, c_pitch)
+                local trk_k = (trk_guid ~= "") and string.format("trk_%s_%.3f_%d_%d", trk_guid, eff_sqn, c_pitch, chan) or nil
+                local trk_pos_k = (trk_guid ~= "") and string.format("trk_%s_%.2f_%d", trk_guid, eff_sqn, c_pitch) or nil
+                local rec_key = string.format("%s_%.3f_%d_%d", trk_guid, eff_sqn, c_pitch, chan)
+
+                if new_dir then
+                    reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, string.format("NOTATOR_STEM %d %d %s %.4f", c_pitch, chan, new_dir, eff_sqn))
+                    reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, string.format("NOTE %d %d stem %s", c_pitch, chan, new_dir))
+                    state.note_stem_directions[k] = new_dir
+                    if c_pitch == (ref.pitch or sn.pitch) then
+                        state.note_stem_directions[id_k] = new_dir
+                    end
+                    state.note_stem_directions[pos_k] = new_dir
+                    if trk_k then state.note_stem_directions[trk_k] = new_dir end
+                    if trk_pos_k then state.note_stem_directions[trk_pos_k] = new_dir end
+                    state._persistent_stem_records[rec_key] = {
+                        guid = trk_guid,
+                        sqn = eff_sqn,
+                        pitch = c_pitch,
+                        chan = chan,
+                        dir = new_dir
+                    }
+                else
+                    state.note_stem_directions[k] = nil
+                    if c_pitch == (ref.pitch or sn.pitch) then
+                        state.note_stem_directions[id_k] = nil
+                    end
+                    state.note_stem_directions[pos_k] = nil
+                    if trk_k then state.note_stem_directions[trk_k] = nil end
+                    if trk_pos_k then state.note_stem_directions[trk_pos_k] = nil end
+                    state._persistent_stem_records[rec_key] = nil
+                end
+            end
+
+            local own_k = (ref.get_key and ref:get_key()) or ref.key or (sn.get_key and sn:get_key()) or sn.key
+            if own_k then state.note_stem_directions[own_k] = new_dir end
+            sn.stem_dir = new_dir
+            if sn.orig then
+                sn.orig.stem_dir = new_dir
+                if new_dir then
+                    sn.orig._rendered_stem_down = (new_dir == "down")
+                end
+            end
             if new_dir then
-                reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, string.format("NOTE %d %d stem %s", sn.pitch, chan, new_dir))
-                sn.stem_dir = new_dir
-                state.note_stem_directions[k] = new_dir
-                state.note_stem_directions[id_k] = new_dir
-                state.note_stem_directions[pos_k] = new_dir
-            else
-                sn.stem_dir = nil
-                state.note_stem_directions[k] = nil
-                state.note_stem_directions[id_k] = nil
-                state.note_stem_directions[pos_k] = nil
+                sn._rendered_stem_down = (new_dir == "down")
             end
         end
         reaper.MIDI_Sort(take)
+        if item and reaper.ValidatePtr(item, "MediaItem*") then
+            reaper.UpdateItemInProject(item)
+            if trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.APIExists("MarkTrackItemsDirty") then
+                reaper.MarkTrackItemsDirty(trk, item)
+            end
+        end
     end
+
+    MidiService.save_stem_directions(state)
+    state.accidental_change_cnt = (state.accidental_change_cnt or 0) + 1
+    if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
     
     local undo_title = "Notator: Change Stem Direction"
     if target_dir == "invert" then undo_title = "Notator: Invert Stem Direction"
@@ -4326,7 +4599,7 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
                 for ti = text_cnt - 1, 0, -1 do
                     local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
                     if ok and etype == 15 then
-                        local p = msg:match("NOTE%s+(%d+)")
+                        local p = msg:match("NOTE%s+(%d+)%s+%d+%s+a%s+")
                         if p and tonumber(p) == sn.pitch and math.abs(ppq - sppq) <= 35 then
                             reaper.MIDI_DeleteTextSysexEvt(take, ti)
                         elseif msg:match("^NOTATOR_CHASE%s+" .. tostring(chan)) and math.abs(ppq - sppq) <= 35 then
@@ -4472,7 +4745,7 @@ function MidiService.apply_reaticulate_art(state, art_def, bank, track, active_t
                         for ti = text_cnt - 1, 0, -1 do
                             local ok_t, _, _, t_ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
                             if ok_t and etype == 15 then
-                                local p = msg:match("NOTE%s+(%d+)")
+                                local p = msg:match("NOTE%s+(%d+)%s+%d+%s+a%s+")
                                 if p and tonumber(p) == cn.pt and math.abs(t_ppq - cn.sp) <= 35 then
                                     reaper.MIDI_DeleteTextSysexEvt(take, ti)
                                 end

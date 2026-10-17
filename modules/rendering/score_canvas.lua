@@ -514,11 +514,13 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         if not staff_pitch_balance[st] then staff_pitch_balance[st] = { below = 0, above = 0 } end
         local ds = vn.dstep or 4
         if ds < 4 then
-            measure_staff_pitch_balance[key].below = measure_staff_pitch_balance[key].below + 1
-            staff_pitch_balance[st].below = staff_pitch_balance[st].below + 1
+            local w = (4 - ds)
+            measure_staff_pitch_balance[key].below = measure_staff_pitch_balance[key].below + w
+            staff_pitch_balance[st].below = staff_pitch_balance[st].below + w
         elseif ds > 4 then
-            measure_staff_pitch_balance[key].above = measure_staff_pitch_balance[key].above + 1
-            staff_pitch_balance[st].above = staff_pitch_balance[st].above + 1
+            local w = (ds - 4)
+            measure_staff_pitch_balance[key].above = measure_staff_pitch_balance[key].above + w
+            staff_pitch_balance[st].above = staff_pitch_balance[st].above + w
         end
     end
     for _, vn in ipairs(visual_notes) do
@@ -589,9 +591,13 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         local chord_stem_down = false
         local manual_stem_dir = nil
         local prefer_stem_up = false
+        local cluster_max_dstep = -999
         for _, vn in ipairs(cnotes) do
             if vn._measure_prefer_stem_up then
                 prefer_stem_up = true
+            end
+            if vn.dstep and vn.dstep > cluster_max_dstep then
+                cluster_max_dstep = vn.dstep
             end
             local sdir = Engraver.get_note_stem_direction(vn, state)
             if sdir then
@@ -604,7 +610,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 chord_stem_down = (vn.dstep > mid_step)
             end
         end
-        if max_dist == 0 then
+        if max_dist == 0 or (prefer_stem_up and cluster_max_dstep <= 5) then
             chord_stem_down = not prefer_stem_up
         end
         
@@ -626,6 +632,9 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         else
             -- Monophonic measure on this staff: standard pitch-based stem direction!
             cluster.stem_down = chord_stem_down
+        end
+        for _, vn in ipairs(cnotes) do
+            if vn.orig then vn.orig._rendered_stem_down = cluster.stem_down end
         end
         
         local note_w = 10.8 * s
@@ -2025,15 +2034,32 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
             end
             
-            -- Synchronize chord clusters with beamed stem directions
+            -- Synchronize chord clusters with beamed and manual stem directions
             for _, cluster in ipairs(chord_clusters) do
                 local in_vis_cluster = (not vis_min_qn or not vis_max_qn) or (cluster.start_qn and cluster.start_qn >= vis_min_qn - 4.0 and cluster.start_qn <= vis_max_qn + 4.0)
                 if in_vis_cluster then
+                    local has_beam = false
                     for _, cvn in ipairs(cluster.notes) do
                         if cvn.beam_stem_down ~= nil then
                             cluster.stem_down = cvn.beam_stem_down
+                            has_beam = true
                             break
                         end
+                    end
+                    if not has_beam then
+                        for _, cvn in ipairs(cluster.notes) do
+                            local sdir = Engraver.get_note_stem_direction(cvn, state)
+                            if sdir == "up" then
+                                cluster.stem_down = false
+                                break
+                            elseif sdir == "down" then
+                                cluster.stem_down = true
+                                break
+                            end
+                        end
+                    end
+                    for _, cvn in ipairs(cluster.notes) do
+                        if cvn.orig then cvn.orig._rendered_stem_down = cluster.stem_down end
                     end
                 end
             end
@@ -2126,11 +2152,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 if not live_staff_pitch_balance[st] then live_staff_pitch_balance[st] = { below = 0, above = 0 } end
                 local ds = vn.dstep or 4
                 if ds < 4 then
-                    live_measure_staff_pitch_balance[key].below = live_measure_staff_pitch_balance[key].below + 1
-                    live_staff_pitch_balance[st].below = live_staff_pitch_balance[st].below + 1
+                    local w = (4 - ds)
+                    live_measure_staff_pitch_balance[key].below = live_measure_staff_pitch_balance[key].below + w
+                    live_staff_pitch_balance[st].below = live_staff_pitch_balance[st].below + w
                 elseif ds > 4 then
-                    live_measure_staff_pitch_balance[key].above = live_measure_staff_pitch_balance[key].above + 1
-                    live_staff_pitch_balance[st].above = live_staff_pitch_balance[st].above + 1
+                    local w = (ds - 4)
+                    live_measure_staff_pitch_balance[key].above = live_measure_staff_pitch_balance[key].above + w
+                    live_staff_pitch_balance[st].above = live_staff_pitch_balance[st].above + w
                 end
             end
             for _, vn in ipairs(visual_notes) do
@@ -2199,9 +2227,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local chord_stem_down = false
                 local manual_stem_dir = nil
                 local prefer_stem_up = false
+                local cluster_max_dstep = -999
                 for _, vn in ipairs(cnotes) do
                     if vn._measure_prefer_stem_up then
                         prefer_stem_up = true
+                    end
+                    if vn.dstep and vn.dstep > cluster_max_dstep then
+                        cluster_max_dstep = vn.dstep
                     end
                     local sdir = Engraver.get_note_stem_direction(vn, state)
                     if sdir then manual_stem_dir = sdir end
@@ -2212,7 +2244,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         chord_stem_down = (vn.dstep > mid_step)
                     end
                 end
-                if max_dist == 0 then
+                if max_dist == 0 or (prefer_stem_up and cluster_max_dstep <= 5) then
                     chord_stem_down = not prefer_stem_up
                 end
                 
@@ -2232,6 +2264,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 else
                     cluster.stem_down = chord_stem_down
+                end
+                for _, vn in ipairs(cnotes) do
+                    if vn.orig then vn.orig._rendered_stem_down = cluster.stem_down end
                 end
                 
                 local note_w = 10.8 * s
@@ -2412,6 +2447,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         cluster.stem_down = cvn.beam_stem_down
                         break
                     end
+                end
+                for _, cvn in ipairs(cluster.notes) do
+                    if cvn.orig then cvn.orig._rendered_stem_down = cluster.stem_down end
                 end
             end
         end

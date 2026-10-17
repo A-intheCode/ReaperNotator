@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.26-beta
+-- @version 2.27-beta
 -- @changelog
+--   + v2.27-beta: Hotfix: Persist manual stem flips (X) via NOTATOR_STEM / NOTE stem tags & ProjExtState, and align 3rd-space stems in low-weighted measures
 --   + v2.26-beta: Hotfix: Fix chord/dyad beam grouping, middle-line stem direction & move Tracks button right of All Notes dropdown
 --   + v2.19-beta: Melodic Pathfinder: Clef Register Intelligence, Audition Wakeup & Film Composer Styles 1-4
 --   + v2.18-beta: New: Melodic Pathfinder & Counter-Melody Generator (Corpus-trained Viterbi inpainting, Inversion & Reference Track Harmony)
@@ -181,6 +182,7 @@ KeySignatureService.load(state)
 SlurService.load_slurs(state)
 PortamentoService.load_portamentos(state)
 GlissandoService.load_glissandos(state)
+MidiService.load_stem_directions(state)
 MidiService.cleanup_orphaned_score_elements(state)
 state.current_reaproject, state.current_proj_fn = reaper.EnumProjects(-1)
 state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
@@ -215,6 +217,7 @@ reaper.atexit(function()
     SlurService.save_slurs(state)
     PortamentoService.save_portamentos(state)
     GlissandoService.save_glissandos(state)
+    MidiService.save_stem_directions(state)
     state:save_settings()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end)
@@ -285,6 +288,7 @@ local function loop()
         SlurService.load_slurs(state)
         PortamentoService.load_portamentos(state)
         GlissandoService.load_glissandos(state)
+        MidiService.load_stem_directions(state)
         MidiService.cleanup_orphaned_score_elements(state)
         state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
         state._last_total_tracks_cleanup = reaper.CountTracks(0)
