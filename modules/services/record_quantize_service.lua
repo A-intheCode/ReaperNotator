@@ -791,16 +791,16 @@ end
 -- ==============================================================================
 
 local AUTO_DIVISI_JSFX_FILENAME = "notator_auto_divisi_input.jsfx"
-local AUTO_DIVISI_JSFX_VERSION  = "2.38"
+local AUTO_DIVISI_JSFX_VERSION  = "2.39"
 local AUTO_DIVISI_JSFX_SOURCE   = [=====[desc:REAPER Notator Auto-Divisi Live Input Router
-// VERSION: 2.38
+// VERSION: 2.39
 options:gmem=REAPER_Notator_Divisi
 
-slider1:1<1,32,1>Voice Rank (1=Highest .. M=Lowest)
-slider2:1<1,32,1>Total Armed Tracks (M)
-slider3:0<0,1,1{Smart Register,Top-Down}>Divisi Mode
-slider4:45<5,240,1>Transition Tolerance (Ticks)
-slider5:1<0,1,1{Bypass,Active}>Auto-Divisi Enabled
+slider1:1<1,32,1>-Voice Rank (1=Highest .. M=Lowest)
+slider2:1<1,32,1>-Total Armed Tracks (M)
+slider3:0<0,1,1{Smart Register,Top-Down}>-Divisi Mode
+slider4:45<5,240,1>-Transition Tolerance (Ticks)
+slider5:1<0,1,1{Bypass,Active}>-Auto-Divisi Enabled
 
 @init
 kb_held = 0;
@@ -1117,10 +1117,6 @@ end
 
 local function find_auto_divisi_rec_fx(trk)
     if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then return -1 end
-    local idx = reaper.TrackFX_AddByName(trk, AUTO_DIVISI_JSFX_FILENAME, true, 0)
-    if idx and idx >= 0 then
-        return (idx < 0x1000000) and (0x1000000 + idx) or idx
-    end
     local rec_cnt = reaper.TrackFX_GetRecCount and reaper.TrackFX_GetRecCount(trk) or 0
     for i = 0, rec_cnt - 1 do
         local r_idx = 0x1000000 + i
@@ -1144,6 +1140,10 @@ function RecordQuantizeService.cleanup_all_auto_divisi_input_fx()
         if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
             local rec_fx = find_auto_divisi_rec_fx(trk)
             if rec_fx >= 0 then
+                if reaper.TrackFX_Show then
+                    reaper.TrackFX_Show(trk, rec_fx, 2)
+                    reaper.TrackFX_Show(trk, rec_fx, 0)
+                end
                 reaper.TrackFX_Delete(trk, rec_fx)
             end
         end
@@ -1186,12 +1186,33 @@ function RecordQuantizeService.sync_auto_divisi_input_fx(state, force)
     end
     local sig = table.concat(sig_parts, "|")
     if not force and RecordQuantizeService._last_divisi_fx_sig == sig then
+        if active and reaper.TrackFX_GetFloatingWindow and reaper.TrackFX_Show then
+            for k = 1, M do
+                local p = armed_profiles[k]
+                if p and p.track and reaper.ValidatePtr(p.track, "MediaTrack*") then
+                    local rfx = find_auto_divisi_rec_fx(p.track)
+                    if rfx >= 0 and reaper.TrackFX_GetFloatingWindow(p.track, rfx) then
+                        reaper.TrackFX_Show(p.track, rfx, 2)
+                        reaper.TrackFX_Show(p.track, rfx, 0)
+                    end
+                end
+            end
+        end
         return
     end
     RecordQuantizeService._last_divisi_fx_sig = sig
 
     if active then
         ensure_auto_divisi_jsfx_file()
+    end
+
+    if reaper.PreventUIRefresh then reaper.PreventUIRefresh(1) end
+    local saved_fxfloat = nil
+    if reaper.SNM_GetIntConfigVar and reaper.SNM_SetIntConfigVar then
+        saved_fxfloat = reaper.SNM_GetIntConfigVar("fxfloat_focus", -999)
+        if saved_fxfloat ~= -999 then
+            reaper.SNM_SetIntConfigVar("fxfloat_focus", 0)
+        end
     end
 
     local trk_cnt = reaper.CountTracks(0)
@@ -1203,6 +1224,7 @@ function RecordQuantizeService.sync_auto_divisi_input_fx(state, force)
             local rec_fx = find_auto_divisi_rec_fx(trk)
 
             if prof then
+                local newly_added = false
                 if rec_fx < 0 then
                     local added = reaper.TrackFX_AddByName(trk, AUTO_DIVISI_JSFX_FILENAME, true, -1000)
                     if not added or added < 0 then
@@ -1210,9 +1232,17 @@ function RecordQuantizeService.sync_auto_divisi_input_fx(state, force)
                     end
                     if added and added >= 0 then
                         rec_fx = (added < 0x1000000) and (0x1000000 + added) or added
+                        newly_added = true
                     end
                 end
                 if rec_fx and rec_fx >= 0 then
+                    -- Never allow this internal background router FX to pop up as a floating or chain window
+                    if newly_added or (reaper.TrackFX_GetFloatingWindow and reaper.TrackFX_GetFloatingWindow(trk, rec_fx)) then
+                        if reaper.TrackFX_Show then
+                            reaper.TrackFX_Show(trk, rec_fx, 2) -- hide floating window
+                            reaper.TrackFX_Show(trk, rec_fx, 0) -- hide input FX chain window
+                        end
+                    end
                     reaper.TrackFX_SetParam(trk, rec_fx, 0, prof.voice_rank or 1)
                     reaper.TrackFX_SetParam(trk, rec_fx, 1, M)
                     reaper.TrackFX_SetParam(trk, rec_fx, 2, mode_num)
@@ -1224,11 +1254,19 @@ function RecordQuantizeService.sync_auto_divisi_input_fx(state, force)
                 end
             else
                 if rec_fx >= 0 then
+                    if reaper.TrackFX_Show then
+                        reaper.TrackFX_Show(trk, rec_fx, 2)
+                    end
                     reaper.TrackFX_Delete(trk, rec_fx)
                 end
             end
         end
     end
+
+    if saved_fxfloat and saved_fxfloat ~= -999 and reaper.SNM_SetIntConfigVar then
+        reaper.SNM_SetIntConfigVar("fxfloat_focus", saved_fxfloat)
+    end
+    if reaper.PreventUIRefresh then reaper.PreventUIRefresh(-1) end
 end
 
 --- Assigns a chronological session note list across `armed_profiles` using:
