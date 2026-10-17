@@ -240,7 +240,10 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         state.focus_record_modal = nil
     end
 
-    reaper.ImGui_SetNextWindowSize(ctx, 590, 760, reaper.ImGui_Cond_FirstUseEver())
+    if reaper.APIExists("ImGui_SetNextWindowSizeConstraints") then
+        reaper.ImGui_SetNextWindowSizeConstraints(ctx, 590, 620, 1200, 1600)
+    end
+    reaper.ImGui_SetNextWindowSize(ctx, 620, 810, reaper.ImGui_Cond_FirstUseEver())
     local s_vis, s_open = reaper.ImGui_Begin(ctx, "⚡ Recording, MIDI Input & Auto-Quantize###RecordModalWindow", true, flags)
 
     if not s_open then
@@ -615,10 +618,80 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
 
         reaper.ImGui_Spacing(ctx)
 
-        -- Track Selection List Child Window (Always shows ALL REAPER tracks!)
-        local child_h = 155
+        -- Auto-Divisi Recording Mode (Multi-Track Register & Polyphonic Voice Distribution)
+        local chk_div, new_div = reaper.ImGui_Checkbox(ctx, "🎼 Auto-Divisi Mode (Distribute Simultaneous Notes & Registers across Armed Tracks)##RecAutoDivisi", state.rec_auto_divisi == true)
+        if chk_div then
+            state.rec_auto_divisi = new_div
+            require("state").save_settings(state)
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "When 2 or more tracks are armed, chords & polyphonic lines played on your MIDI keyboard are automatically distributed across the armed instruments:\n• Low Register → Cello & Double Bass\n• Mid Register → Viola / Horns\n• High Register → Violin 1 & Violin 2")
+        end
+
+        if state.rec_auto_divisi then
+            reaper.ImGui_Text(ctx, "Distribution:")
+            reaper.ImGui_SameLine(ctx, 0, 8)
+            reaper.ImGui_SetNextItemWidth(ctx, 360)
+            local div_mode = state.rec_auto_divisi_mode or "smart_register"
+            local div_mode_lbl = (div_mode == "top_down")
+                and "Top-Down Voice Split (1st Note → Track #1, 2nd → #2, ...)"
+                or "Smart Register & Voice Split (High → Vln 1/2 • Mid → Vla • Low → Vc/Cb)"
+            if reaper.ImGui_BeginCombo(ctx, "##RecAutoDivisiModeCombo", div_mode_lbl) then
+                if reaper.ImGui_Selectable(ctx, "Smart Register & Voice Split (High → Vln 1/2 • Mid → Vla • Low → Vc/Cb)", div_mode == "smart_register") then
+                    state.rec_auto_divisi_mode = "smart_register"
+                    require("state").save_settings(state)
+                end
+                if reaper.ImGui_Selectable(ctx, "Top-Down Voice Split (1st Note → Track #1, 2nd → #2, ...)", div_mode == "top_down") then
+                    state.rec_auto_divisi_mode = "top_down"
+                    require("state").save_settings(state)
+                end
+                reaper.ImGui_EndCombo(ctx)
+            end
+
+            -- Tick-Based Chord Attack & Legato Transition Tolerance
+            local div_tol = state.rec_divisi_tol_ticks or 45
+            reaper.ImGui_Text(ctx, string.format("Divisi Chord & Transition Tolerance: ±%d Ticks", div_tol))
+            reaper.ImGui_SetNextItemWidth(ctx, 240)
+            local chg_dtol, new_dtol = reaper.ImGui_SliderInt(ctx, "##RecDivisiTolSlider", div_tol, 10, 160, "±%d Ticks")
+            if chg_dtol then
+                state.rec_divisi_tol_ticks = new_dtol
+                require("state").save_settings(state)
+            end
+            if reaper.ImGui_IsItemHovered(ctx) then
+                reaper.ImGui_SetTooltip(ctx, "Tick-Based Chord & Legato Transition Guard (960 PPQ):\n• Groups chord finger attacks within ±N Ticks into one simultaneous chord\n• Trims brief legato finger-release overlaps (≤ N Ticks) when switching notes so melodies stay on the same instrument without false Divisi jumps\n• Filters out accidental micro-splinter notes (< N Ticks) during hand transitions")
+            end
+
+            reaper.ImGui_SameLine(ctx, 0, 8)
+            local function dtol_btn(val)
+                if reaper.ImGui_Button(ctx, string.format("%d##DTol%d", val, val), 36, 22) then
+                    state.rec_divisi_tol_ticks = val
+                    require("state").save_settings(state)
+                end
+                reaper.ImGui_SameLine(ctx, 0, 4)
+            end
+            dtol_btn(20)
+            dtol_btn(35)
+            dtol_btn(45)
+            dtol_btn(60)
+            dtol_btn(90)
+            reaper.ImGui_NewLine(ctx)
+        end
+
+        reaper.ImGui_Spacing(ctx)
+
+        local _, armed_by_guid = nil, {}
+        if state.rec_auto_divisi and RecordQuantizeService.get_armed_tracks_divisi_profile then
+            _, armed_by_guid = RecordQuantizeService.get_armed_tracks_divisi_profile(state)
+        end
+
+        -- Track Selection List Child Window (Dynamically expands with window height; Footer stays pinned at bottom!)
+        local avail_w, avail_h = reaper.ImGui_GetContentRegionAvail(ctx)
+        local footer_reserve_h = 48
+        local child_h = math.max(95, avail_h - footer_reserve_h)
         local child_flags = reaper.APIExists("ImGui_ChildFlags_Border") and reaper.ImGui_ChildFlags_Border() or 1
         if reaper.ImGui_BeginChild(ctx, "##RecordTracksChild", 0, child_h, child_flags) then
+            local inner_avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
+            local right_btn_x = math.max(330, inner_avail_w - 195)
             local trk_cnt = reaper.CountTracks(0)
             if trk_cnt == 0 then
                 reaper.ImGui_TextDisabled(ctx, "No tracks in current REAPER project.")
@@ -662,8 +735,15 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                         reaper.ImGui_PopStyleColor(ctx)
                     end
 
+                    -- Show Auto-Divisi Voice Rank & Register Badge when armed and Auto-Divisi is active
+                    if is_armed and state.rec_auto_divisi and tguid and armed_by_guid[tguid] then
+                        local prof = armed_by_guid[tguid]
+                        reaper.ImGui_SameLine(ctx, 0, 8)
+                        reaper.ImGui_TextColored(ctx, 0xF1C40FFF, string.format("[#%d %s]", prof.voice_rank or 1, prof.role_label or "Voice"))
+                    end
+
                     -- Per-track MIDI Input status button on the right
-                    reaper.ImGui_SameLine(ctx, 310)
+                    reaper.ImGui_SameLine(ctx, right_btn_x)
                     if not is_midi_in then
                         reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0xF39C12FF)
                     else

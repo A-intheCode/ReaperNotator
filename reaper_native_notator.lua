@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.35-beta
+-- @version 2.36-beta
 -- @changelog
+--   + v2.36-beta: New: Auto-Divisi Recording Mode (Smart Register & Voice Split across armed tracks with Tick-based chord & legato transition tolerance) + responsive Recording Modal layout
 --   + v2.35-beta: New: Replace Tracks modal button with wider View-style Tracks dropdown featuring Auto-Detect Tracks, Check/Uncheck All buttons & crash-safe project-scoped persistence
 --   + v2.34-beta: Improvement: Match tile aspect ratio to portrait bar-band geometry (280x420 to 840x1260 px) + Analytical Capsule SDF & 1.25px Smoothstep AA + Quadratic Bezier curve smoothing
 --   + v2.33-beta: Hotfix: Eliminate dark bilinear alpha-bleed fringe (Saum / Premultiply effect) via 3.5px transparent color-bleed guard collar around strokes

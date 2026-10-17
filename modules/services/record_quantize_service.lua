@@ -549,6 +549,566 @@ local function is_note_pre_existing(take, pitch, sqn, chan, min_rec_qn)
     return false
 end
 
+-- ==============================================================================
+-- 2B. AUTO-DIVISI REGISTER INTELLIGENCE & MONOTONIC VOICE ASSIGNMENT ENGINE
+-- ==============================================================================
+
+local CLEF_REGISTER_DEFAULTS = {
+    treble_15ma   = { min_p = 69, max_p = 103, center_p = 84, family = "high_15ma", role_label = "15ma (A4–G7)",     rank_bias = 10 },
+    treble_8va    = { min_p = 64, max_p = 96,  center_p = 78, family = "high_8va",  role_label = "8va (E4–C7)",      rank_bias = 7 },
+    french_violin = { min_p = 57, max_p = 89,  center_p = 71, family = "treble",    role_label = "High (A3–F6)",     rank_bias = 3 },
+    treble        = { min_p = 55, max_p = 88,  center_p = 68, family = "treble",    role_label = "Treble (G3–E6)",   rank_bias = 2 },
+    soprano       = { min_p = 55, max_p = 84,  center_p = 67, family = "treble",    role_label = "Soprano (G3–C6)",  rank_bias = 2 },
+    mezzo         = { min_p = 52, max_p = 81,  center_p = 64, family = "mid_high",  role_label = "Mezzo (E3–A5)",    rank_bias = 1 },
+    alto          = { min_p = 48, max_p = 79,  center_p = 58, family = "alto",      role_label = "Alto/Mid (C3–G5)", rank_bias = 0 },
+    treble_8vb    = { min_p = 45, max_p = 76,  center_p = 57, family = "tenor",     role_label = "Tenor (A2–E5)",    rank_bias = -1 },
+    tenor         = { min_p = 43, max_p = 74,  center_p = 55, family = "tenor",     role_label = "Tenor (G2–D5)",    rank_bias = -1 },
+    baritone_c    = { min_p = 40, max_p = 69,  center_p = 52, family = "baritone",  role_label = "Baritone (E2–A4)", rank_bias = -2 },
+    baritone_f    = { min_p = 40, max_p = 69,  center_p = 52, family = "baritone",  role_label = "Baritone (E2–A4)", rank_bias = -2 },
+    bass          = { min_p = 36, max_p = 67,  center_p = 48, family = "bass",      role_label = "Bass (C2–G4)",     rank_bias = -3 },
+    tenor_8vb     = { min_p = 36, max_p = 64,  center_p = 48, family = "bass",      role_label = "Bass (C2–E4)",     rank_bias = -3 },
+    bass_8vb      = { min_p = 24, max_p = 55,  center_p = 38, family = "sub_bass",  role_label = "Sub-Bass (C1–G3)", rank_bias = -6 },
+    bass_15mb     = { min_p = 21, max_p = 50,  center_p = 34, family = "sub_bass",  role_label = "Sub-Bass (A0–D3)", rank_bias = -8 },
+    grand         = { min_p = 36, max_p = 88,  center_p = 60, family = "grand",     role_label = "Grand (C2–E6)",    rank_bias = 0 },
+}
+
+--- Resolves the acoustic register, Clef, and role profile for a single REAPER track
+--- @param state table
+--- @param trk userdata MediaTrack*
+--- @return table profile
+function RecordQuantizeService.get_track_register_profile(state, trk)
+    if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then
+        return { min_p = 48, max_p = 84, center_p = 60, effective_center = 60, family = "mid", role_label = "Mid (C3–C6)", rank_bias = 0 }
+    end
+
+    local guid = reaper.GetTrackGUID(trk)
+    local track_idx = math.floor(reaper.GetMediaTrackInfo_Value(trk, "IP_TRACKNUMBER") or 1)
+    local _, raw_name = reaper.GetTrackName(trk)
+    local tname = (raw_name and raw_name ~= "") and raw_name or string.format("Track %d", track_idx)
+    local name_l = tname:lower()
+
+    -- 1. Resolve Clef ID
+    local clef_id = nil
+    if state and state.track_clefs and guid then
+        local saved = state.track_clefs[guid] or state.track_clefs[guid:upper()] or state.track_clefs[guid:lower()]
+        if saved and saved ~= "auto" then
+            clef_id = saved
+        end
+    end
+    if not clef_id or clef_id == "auto" then
+        local ok_eng, Engraver = pcall(require, "rendering.engraver")
+        if ok_eng and Engraver and Engraver.get_track_clef then
+            clef_id = Engraver.get_track_clef(guid, tname, nil, state)
+        end
+    end
+    clef_id = clef_id or "treble"
+
+    local base = CLEF_REGISTER_DEFAULTS[clef_id] or CLEF_REGISTER_DEFAULTS.treble
+    local min_p = base.min_p
+    local max_p = base.max_p
+    local center_p = base.center_p
+    local family = base.family
+    local role_label = base.role_label
+    local rank_bias = base.rank_bias or 0
+    local is_primary_section_voice = true
+
+    -- 2. Refine from instrument name keywords (Strings, Woodwinds, Brass, Choir)
+    if name_l:find("double bass") or name_l:find("kontrabass") or name_l:find("contrabass") or name_l:find("string bass") or name_l:find("bassi") or name_l:match("%f[%a]cb%f[%A]") or name_l:match("%f[%a]db%f[%A]") or name_l:match("%f[%a]kb%f[%A]") then
+        min_p, max_p, center_p = 24, 55, 38 -- C1 .. G3 (Double Bass)
+        family, role_label, rank_bias = "double_bass", "D.Bass (C1–G3)", -7
+    elseif name_l:find("contrabassoon") or name_l:find("kontrafagott") or name_l:match("%f[%a]cbsn%f[%A]") then
+        min_p, max_p, center_p = 22, 53, 36
+        family, role_label, rank_bias = "double_bass", "CBsn (Bb0–F3)", -7
+    elseif name_l:find("tuba") or name_l:find("cimbasso") then
+        min_p, max_p, center_p = 26, 58, 40
+        family, role_label, rank_bias = "tuba", "Tuba (D1–Bb3)", -6
+    elseif name_l:find("cell") or name_l:match("%f[%a]vc%f[%A]") or name_l:match("%f[%a]vlc%f[%A]") then
+        min_p, max_p, center_p = 36, 69, 48 -- C2 .. A4 (Cello)
+        family, role_label, rank_bias = "cello", "Cello (C2–A4)", -3
+        if name_l:match("2") or name_l:match("%f[%a]ii%f[%A]") then
+            center_p = 45
+            rank_bias = -4
+            role_label = "Cello 2 (C2–A4)"
+            is_primary_section_voice = false
+        end
+    elseif name_l:find("bassoon") or name_l:find("fagott") or name_l:match("%f[%a]bsn%f[%A]") or name_l:match("%f[%a]fg%f[%A]") then
+        min_p, max_p, center_p = 34, 67, 48
+        family, role_label, rank_bias = "bassoon", "Bsn (Bb1–G4)", -3
+    elseif name_l:find("trombone") or name_l:find("posaune") or name_l:match("%f[%a]trb%f[%A]") or name_l:match("%f[%a]tbn%f[%A]") then
+        min_p, max_p, center_p = 38, 69, 50
+        family, role_label, rank_bias = "trombone", "Tbn (D2–A4)", -2
+    elseif name_l:find("viola") or name_l:find("bratsche") or name_l:match("%f[%a]vla%f[%A]") or name_l:match("%f[%a]va%f[%A]") then
+        min_p, max_p, center_p = 48, 79, 58 -- C3 .. G5 (Viola)
+        family, role_label, rank_bias = "viola", "Viola (C3–G5)", 0
+    elseif name_l:find("horn") or name_l:find("corno") or name_l:match("%f[%a]hn%f[%A]") then
+        min_p, max_p, center_p = 43, 77, 57
+        family, role_label, rank_bias = "horn", "Horn (G2–F5)", 0
+    elseif name_l:find("clarinet") or name_l:find("klarinette") or name_l:match("%f[%a]cl%f[%A]") then
+        min_p, max_p, center_p = 50, 86, 63
+        family, role_label, rank_bias = "clarinet", "Clar (D3–D6)", 1
+    elseif name_l:find("violin") or name_l:find("violine") or name_l:find("geige") or name_l:match("%f[%a]vln%f[%A]") or name_l:match("%f[%a]vl%f[%A]") then
+        if name_l:match("2") or name_l:match("%f[%a]ii%f[%A]") or name_l:find("2nd") or name_l:find("second") then
+            min_p, max_p, center_p = 55, 88, 65 -- G3 .. E6 (Violin 2)
+            family, role_label, rank_bias = "violin2", "Vln 2 (G3–E6)", 2
+            is_primary_section_voice = false
+        elseif name_l:match("1") or name_l:match("%f[%a]i%f[%A]") or name_l:find("1st") or name_l:find("first") then
+            min_p, max_p, center_p = 55, 93, 72 -- G3 .. A6 (Violin 1)
+            family, role_label, rank_bias = "violin1", "Vln 1 (G3–A6)", 5
+        else
+            min_p, max_p, center_p = 55, 91, 69 -- G3 .. G6 (Generic Violin)
+            family, role_label, rank_bias = "violin", "Violin (G3–G6)", 3
+        end
+    elseif name_l:find("piccolo") or name_l:match("%f[%a]picc%f[%A]") then
+        min_p, max_p, center_p = 62, 98, 80
+        family, role_label, rank_bias = "piccolo", "Picc (D4–D7)", 9
+    elseif name_l:find("flute") or name_l:find("flöte") or name_l:find("floete") or name_l:match("%f[%a]fl%f[%A]") then
+        min_p, max_p, center_p = 60, 93, 74
+        family, role_label, rank_bias = "flute", "Flute (C4–A6)", 6
+    elseif name_l:find("oboe") or name_l:match("%f[%a]ob%f[%A]") then
+        min_p, max_p, center_p = 58, 88, 70
+        family, role_label, rank_bias = "oboe", "Oboe (Bb3–E6)", 4
+    elseif name_l:find("trumpet") or name_l:find("trompete") or name_l:match("%f[%a]tpt%f[%A]") or name_l:match("%f[%a]trp%f[%A]") then
+        min_p, max_p, center_p = 54, 84, 67
+        family, role_label, rank_bias = "trumpet", "Tpt (F#3–C6)", 3
+    elseif name_l:find("bass") and not name_l:find("bassoon") then
+        min_p, max_p, center_p = 26, 57, 40
+        family, role_label, rank_bias = "double_bass", "Bass (D1–A3)", -6
+    end
+
+    return {
+        track = trk,
+        guid = guid,
+        track_idx = track_idx,
+        name = tname,
+        clef_id = clef_id,
+        min_p = min_p,
+        max_p = max_p,
+        center_p = center_p,
+        effective_center = center_p,
+        family = family,
+        role_label = role_label,
+        rank_bias = rank_bias,
+        is_primary_section_voice = is_primary_section_voice,
+        voice_rank = 1
+    }
+end
+
+--- Collects and sorts all currently armed tracks from Highest Register (#1) to Lowest Register (#M)
+--- @param state table
+--- @return table armed_profiles, table by_guid
+function RecordQuantizeService.get_armed_tracks_divisi_profile(state)
+    local profiles = {}
+    local by_guid = {}
+    local ap = package.loaded["services.audio_preview"]
+    local trk_cnt = reaper.CountTracks(0)
+
+    for ti = 0, trk_cnt - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+            local is_armed
+            if ap and ap.is_track_user_armed then
+                is_armed = ap.is_track_user_armed(trk)
+            else
+                is_armed = (reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1)
+            end
+            if is_armed then
+                local prof = RecordQuantizeService.get_track_register_profile(state, trk)
+                table.insert(profiles, prof)
+                if prof.guid then
+                    by_guid[prof.guid] = prof
+                end
+            end
+        end
+    end
+
+    -- Stagger tracks that share the exact same family & center_p (e.g. two generic "Violin" or two "Treble" tracks)
+    local by_fam = {}
+    for _, p in ipairs(profiles) do
+        local fkey = string.format("%s_%d", p.family or "gen", p.center_p or 60)
+        by_fam[fkey] = by_fam[fkey] or {}
+        table.insert(by_fam[fkey], p)
+    end
+    for _, group in pairs(by_fam) do
+        if #group > 1 then
+            for idx, p in ipairs(group) do
+                local offset = ((#group + 1) * 0.5 - idx) * 4.5
+                p.effective_center = p.center_p + offset
+                if idx > 1 then
+                    p.is_primary_section_voice = false
+                end
+            end
+        end
+    end
+
+    -- Sort from highest register to lowest register; tie-break by top-to-bottom track index
+    table.sort(profiles, function(a, b)
+        local score_a = (a.effective_center or 60) + (a.rank_bias or 0)
+        local score_b = (b.effective_center or 60) + (b.rank_bias or 0)
+        if math.abs(score_a - score_b) > 0.25 then
+            return score_a > score_b
+        end
+        return (a.track_idx or 1) < (b.track_idx or 1)
+    end)
+
+    for rank, p in ipairs(profiles) do
+        p.voice_rank = rank
+    end
+
+    return profiles, by_guid
+end
+
+--- Assigns a chronological session note list across `armed_profiles` using:
+--- 1. Tick-based micro-splinter suppression (`rec_divisi_tol_ticks`)
+--- 2. Tick-based chord attack grouping (`|raw_sqn_2 - raw_sqn_1| <= tol_qn`)
+--- 3. Tick-based legato finger-overlap trimming (`overlap <= 1.65 * tol_qn`)
+--- 4. Monotonic Register-Aware Dynamic Programming Assignment (no voice crossing)
+--- @param raw_notes table Array of { pitch, sqn, eqn, raw_sqn, raw_eqn, vel, chan, is_held, ... }
+--- @param armed_profiles table Sorted array of armed track profiles (#1 Highest .. #M Lowest)
+--- @param state table
+--- @return table unique_assigned_notes
+function RecordQuantizeService.compute_auto_divisi_assignment(raw_notes, armed_profiles, state)
+    if not raw_notes or #raw_notes == 0 then return {} end
+    local M = (armed_profiles and #armed_profiles) or 0
+    if M == 0 then return raw_notes end
+
+    local tol_ticks = math.max(5, tonumber(state and state.rec_divisi_tol_ticks) or 45)
+    local tol_qn = tol_ticks / 960.0
+    local min_splinter_qn = math.min(45, tol_ticks * 0.80) / 960.0
+    local mode = (state and state.rec_auto_divisi_mode) or "smart_register"
+    local do_quantize = (not state) or (state.rec_auto_quantize ~= false)
+
+    -- 1. Copy and sort chronologically by raw_sqn
+    local sorted = {}
+    for _, n in ipairs(raw_notes) do
+        local r_sqn = n.raw_sqn or n.raw_start_qn or n.sqn or n.start_qn or 0
+        local s_sqn = n.sqn or n.start_qn or r_sqn
+        local s_eqn = n.eqn or n.end_qn or (s_sqn + 0.25)
+        local r_eqn = n.raw_eqn or s_eqn
+        table.insert(sorted, {
+            orig = n,
+            pitch = n.pitch or 60,
+            vel = n.vel or 96,
+            chan = n.chan or 0,
+            sqn = s_sqn,
+            eqn = s_eqn,
+            raw_sqn = r_sqn,
+            raw_eqn = r_eqn,
+            is_held = (n.is_held == true),
+            _divisi_drop = false,
+            assigned_guid = armed_profiles[1].guid,
+            assigned_rank = 1
+        })
+    end
+
+    table.sort(sorted, function(a, b)
+        if math.abs(a.raw_sqn - b.raw_sqn) > 0.001 then
+            return a.raw_sqn < b.raw_sqn
+        end
+        if math.abs(a.sqn - b.sqn) > 0.001 then
+            return a.sqn < b.sqn
+        end
+        return a.pitch > b.pitch
+    end)
+
+    -- 2. Deduplicate identical physical notes across armed takes (same pitch & within ±max(18 ticks, 0.5*tol))
+    local unique = {}
+    local dedup_qn = math.max(18.0 / 960.0, tol_qn * 0.55)
+    for _, item in ipairs(sorted) do
+        local merged_existing = false
+        for k = #unique, math.max(1, #unique - 16), -1 do
+            local prev = unique[k]
+            if (item.raw_sqn - prev.raw_sqn) > dedup_qn * 1.5 then
+                break
+            end
+            if prev.pitch == item.pitch and math.abs(item.raw_sqn - prev.raw_sqn) <= dedup_qn then
+                if item.vel > prev.vel then prev.vel = item.vel end
+                if item.raw_eqn > prev.raw_eqn then prev.raw_eqn = item.raw_eqn end
+                if item.eqn > prev.eqn then prev.eqn = item.eqn end
+                if item.is_held then prev.is_held = true end
+                merged_existing = true
+                break
+            end
+        end
+        if not merged_existing then
+            table.insert(unique, item)
+        end
+    end
+
+    if M == 1 then
+        for _, u in ipairs(unique) do
+            u.assigned_guid = armed_profiles[1].guid
+            u.assigned_rank = 1
+            if u.orig then
+                u.orig.assigned_guid = u.assigned_guid
+            end
+        end
+        return unique
+    end
+
+    -- 3. Micro-Splinter Filter: suppress accidental grazing keys (< min_splinter_qn) during note transitions
+    if #unique > 1 then
+        for i = 1, #unique do
+            local u = unique[i]
+            local raw_dur = u.raw_eqn - u.raw_sqn
+            if not u.is_held and raw_dur < min_splinter_qn then
+                local has_neighbor = false
+                if i > 1 and math.abs(u.raw_sqn - unique[i - 1].raw_sqn) <= (tol_qn * 2.5) then
+                    has_neighbor = true
+                elseif i < #unique and math.abs(unique[i + 1].raw_sqn - u.raw_sqn) <= (tol_qn * 2.5) then
+                    has_neighbor = true
+                elseif i > 1 and math.abs(u.raw_sqn - unique[i - 1].raw_eqn) <= (tol_qn * 1.5) then
+                    has_neighbor = true
+                end
+                if has_neighbor then
+                    u._divisi_drop = true
+                    if u.orig then u.orig._divisi_drop = true end
+                end
+            end
+        end
+    end
+
+    -- 4. Group non-dropped notes into Simultaneous Chord Attack Clusters within tol_qn
+    local clusters = {}
+    for _, u in ipairs(unique) do
+        if not u._divisi_drop then
+            local last_c = clusters[#clusters]
+            local join_cluster = false
+            if last_c then
+                local raw_diff = math.abs(u.raw_sqn - last_c.raw_sqn)
+                local snap_same = do_quantize and (math.abs(u.sqn - last_c.sqn) <= 0.004) and (raw_diff <= tol_qn * 1.75)
+                if raw_diff <= tol_qn or snap_same then
+                    join_cluster = true
+                end
+            end
+
+            if join_cluster then
+                -- Check if same pitch already exists in this chord cluster
+                local dup_in_c = false
+                for _, cn in ipairs(last_c.notes) do
+                    if cn.pitch == u.pitch then
+                        if u.raw_eqn > cn.raw_eqn then cn.raw_eqn = u.raw_eqn end
+                        if u.eqn > cn.eqn then cn.eqn = u.eqn end
+                        if u.vel > cn.vel then cn.vel = u.vel end
+                        u._divisi_drop = true
+                        if u.orig then u.orig._divisi_drop = true end
+                        dup_in_c = true
+                        break
+                    end
+                end
+                if not dup_in_c then
+                    table.insert(last_c.notes, u)
+                end
+            else
+                table.insert(clusters, {
+                    raw_sqn = u.raw_sqn,
+                    sqn = u.sqn,
+                    notes = { u }
+                })
+            end
+        end
+    end
+
+    -- Sort notes within each chord cluster strictly from Highest Pitch to Lowest Pitch
+    for _, c in ipairs(clusters) do
+        table.sort(c.notes, function(a, b) return a.pitch > b.pitch end)
+    end
+
+    -- 5. Tick-Based Legato Finger-Overlap Guard between Consecutive Clusters
+    -- If a note in cluster[ci] overlaps the attack of cluster[ci+1] by <= 1.65 * tol_qn,
+    -- trim its tail to cluster[ci+1] so releasing fingers don't trigger false Divisi splits!
+    local legato_release_window = tol_qn * 1.65
+    for ci = 1, #clusters - 1 do
+        local cur_c = clusters[ci]
+        local next_c = clusters[ci + 1]
+        for _, un in ipairs(cur_c.notes) do
+            local raw_ov = un.raw_eqn - next_c.raw_sqn
+            if raw_ov > 0 and raw_ov <= legato_release_window then
+                un.raw_eqn = next_c.raw_sqn
+                if un.eqn > next_c.sqn and next_c.sqn >= un.sqn + 0.04 then
+                    un.eqn = next_c.sqn
+                    un._trimmed_eqn = next_c.sqn
+                    if un.orig then
+                        un.orig.end_qn = next_c.sqn
+                        un.orig.dur_qn = math.max(0.05, next_c.sqn - (un.orig.start_qn or un.sqn))
+                        un.orig._trimmed_eqn = next_c.sqn
+                    end
+                end
+            end
+        end
+    end
+
+    -- 6. Monotonic Register & Voice Assignment across Armed Tracks
+    local sustained_by_track = {} -- k -> { pitch = number, raw_eqn = number }
+    local prev_single_track_k = nil
+    local prev_single_pitch = nil
+
+    for _, c in ipairs(clusters) do
+        local N = #c.notes
+        local is_sustained = {}
+        for k = 1, M do
+            local st = sustained_by_track[k]
+            if st and st.raw_eqn > (c.raw_sqn + legato_release_window) then
+                is_sustained[k] = true
+            else
+                sustained_by_track[k] = nil
+            end
+        end
+
+        local function single_note_cost(pitch, k, is_solo_cluster)
+            local prof = armed_profiles[k]
+            local dist = math.abs(pitch - (prof.effective_center or prof.center_p or 60))
+            local out_pen = 0
+            if pitch < prof.min_p then
+                out_pen = 42.0 + (prof.min_p - pitch) * 3.5
+            elseif pitch > prof.max_p then
+                out_pen = 42.0 + (pitch - prof.max_p) * 3.5
+            end
+            local sust_pen = is_sustained[k] and 34.0 or 0.0
+            local lead_bonus = 0.0
+            if is_solo_cluster then
+                if prof.is_primary_section_voice ~= false then
+                    lead_bonus = -5.5
+                end
+                if prev_single_track_k == k and prev_single_pitch and math.abs(pitch - prev_single_pitch) <= 7 and out_pen == 0 and not is_sustained[k] then
+                    lead_bonus = lead_bonus - 5.0
+                end
+            end
+            return dist + out_pen + sust_pen + lead_bonus
+        end
+
+        if mode == "top_down" then
+            -- Pure Top-Down Voice Split (1st Note -> Track 1, 2nd -> Track 2, ...)
+            local used_k = 0
+            for i = 1, N do
+                local target_k = math.min(M, i)
+                for cand_k = used_k + 1, M do
+                    if not is_sustained[cand_k] then
+                        target_k = cand_k
+                        break
+                    end
+                end
+                used_k = target_k
+                local cn = c.notes[i]
+                cn.assigned_rank = target_k
+                cn.assigned_guid = armed_profiles[target_k].guid
+                if cn.orig then cn.orig.assigned_guid = cn.assigned_guid end
+            end
+        elseif N == 1 then
+            -- Single melodic/bass note: pick lowest-cost register track with melodic continuity
+            local cn = c.notes[1]
+            local best_k = 1
+            local best_cost = 1e9
+            for k = 1, M do
+                local cost = single_note_cost(cn.pitch, k, true)
+                if cost < best_cost then
+                    best_cost = cost
+                    best_k = k
+                end
+            end
+            cn.assigned_rank = best_k
+            cn.assigned_guid = armed_profiles[best_k].guid
+            if cn.orig then cn.orig.assigned_guid = cn.assigned_guid end
+            prev_single_track_k = best_k
+            prev_single_pitch = cn.pitch
+        elseif N <= M then
+            -- Chord with N <= M notes: Exact Monotonic DP (1 <= k_1 < k_2 < ... < k_N <= M)
+            local dp = {}
+            local parent = {}
+            for i = 1, N do
+                dp[i] = {}
+                parent[i] = {}
+                for k = 1, M do
+                    dp[i][k] = 1e9
+                end
+            end
+
+            for k = 1, M - N + 1 do
+                dp[1][k] = single_note_cost(c.notes[1].pitch, k, false)
+            end
+
+            for i = 2, N do
+                local p_cur = c.notes[i].pitch
+                local p_prev = c.notes[i - 1].pitch
+                local pitch_gap = p_prev - p_cur
+                for k = i, M - (N - i) do
+                    local base_c = single_note_cost(p_cur, k, false)
+                    for prev_k = i - 1, k - 1 do
+                        local step_adj = 0.0
+                        if pitch_gap <= 9 and (k == prev_k + 1) then
+                            -- Close interval (<= 6th): reward pairing adjacent Divisi instruments (e.g. Vln 1+2 or Vc+Cb)
+                            step_adj = -4.5
+                        elseif pitch_gap >= 14 and (k == prev_k + 1) and M > N then
+                            step_adj = 2.5
+                        end
+                        local cand = dp[i - 1][prev_k] + base_c + step_adj
+                        if cand < dp[i][k] then
+                            dp[i][k] = cand
+                            parent[i][k] = prev_k
+                        end
+                    end
+                end
+            end
+
+            local best_last_k = N
+            local best_total = 1e9
+            for k = N, M do
+                if dp[N][k] < best_total then
+                    best_total = dp[N][k]
+                    best_last_k = k
+                end
+            end
+
+            local cur_k = best_last_k
+            for i = N, 1, -1 do
+                local cn = c.notes[i]
+                cn.assigned_rank = cur_k
+                cn.assigned_guid = armed_profiles[cur_k].guid
+                if cn.orig then cn.orig.assigned_guid = cn.assigned_guid end
+                cur_k = parent[i][cur_k] or math.max(1, cur_k - 1)
+            end
+            prev_single_track_k = nil
+        else
+            -- Chord with N > M notes (more simultaneous notes than armed tracks):
+            -- Monotonic non-decreasing assignment (1 <= k_1 <= k_2 <= ... <= k_N <= M)
+            local prev_k = 1
+            for i = 1, N do
+                local cn = c.notes[i]
+                local remaining_notes = N - i
+                local max_allowed_k = math.min(M, M - math.min(M - prev_k, remaining_notes))
+                if max_allowed_k < prev_k then max_allowed_k = prev_k end
+
+                local best_k = prev_k
+                local best_c = 1e9
+                for k = prev_k, M do
+                    local cost = single_note_cost(cn.pitch, k, false)
+                    if cost < best_c then
+                        best_c = cost
+                        best_k = k
+                    end
+                end
+                prev_k = best_k
+                cn.assigned_rank = best_k
+                cn.assigned_guid = armed_profiles[best_k].guid
+                if cn.orig then cn.orig.assigned_guid = cn.assigned_guid end
+            end
+            prev_single_track_k = nil
+        end
+
+        -- Record sustained notes on their assigned tracks
+        for _, cn in ipairs(c.notes) do
+            local rk = cn.assigned_rank
+            if rk then
+                local cur_st = sustained_by_track[rk]
+                if not cur_st or cn.raw_eqn > cur_st.raw_eqn then
+                    sustained_by_track[rk] = { pitch = cn.pitch, raw_eqn = cn.raw_eqn }
+                end
+            end
+        end
+    end
+
+    return unique
+end
+
 --- Returns merged note list (pre-existing take notes + real-time quantized session notes) for a track during recording
 --- @param state table
 --- @param tdata table Track data entry in ScoreCanvas
@@ -625,6 +1185,7 @@ function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
                     track = tdata.track
                 })
                 live_copy.raw_start_qn = n.start_qn
+                live_copy.raw_eqn = raw_eqn
                 live_copy.is_live_recording = true
                 live_copy.is_held = is_still_held
                 table.insert(session_notes, live_copy)
@@ -666,6 +1227,7 @@ function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
                         track = tdata.track
                     })
                     preview_note.raw_start_qn = ln.raw_start_qn
+                    preview_note.raw_eqn = clamped_eqn
                     preview_note.is_live_recording = true
                     preview_note.is_held = ln.is_held
                     table.insert(session_notes, preview_note)
@@ -674,6 +1236,23 @@ function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
                     end
                 end
             end
+        end
+    end
+
+    -- 2b. Live Auto-Divisi Filtering: when multiple tracks are armed and Auto-Divisi is enabled,
+    -- show only the notes assigned to THIS track's register/voice on the live ScoreCanvas!
+    if state.rec_auto_divisi and #session_notes > 0 then
+        local armed_profiles = RecordQuantizeService.get_armed_tracks_divisi_profile(state)
+        if #armed_profiles >= 2 then
+            local trk_guid = tdata.guid or reaper.GetTrackGUID(tdata.track)
+            RecordQuantizeService.compute_auto_divisi_assignment(session_notes, armed_profiles, state)
+            local divisi_filtered = {}
+            for _, sn in ipairs(session_notes) do
+                if not sn._divisi_drop and sn.assigned_guid == trk_guid then
+                    table.insert(divisi_filtered, sn)
+                end
+            end
+            session_notes = divisi_filtered
         end
     end
 
@@ -745,7 +1324,7 @@ function RecordQuantizeService.get_merged_live_notes_for_track(state, tdata)
 end
 
 -- ==============================================================================
--- 3. POST-RECORD TAKE QUANTIZATION & INFINITE-NOTE CLAMPING ENGINE
+-- 3. POST-RECORD TAKE QUANTIZATION, AUTO-DIVISI & INFINITE-NOTE CLAMPING ENGINE
 -- ==============================================================================
 
 --- Resolves all MIDI takes recorded during the session on armed tracks
@@ -760,7 +1339,7 @@ function RecordQuantizeService.get_recorded_takes(state, start_time, stop_time)
     start_time = start_time or (reaper.GetCursorPosition() - 60.0)
     stop_time = stop_time or (reaper.GetCursorPosition() + 2.0)
     if stop_time < start_time then
-        start_time, stop_time = stop_time, start_time
+        start_time, stop_time = stop_time, stop_time
     end
 
     local trk_cnt = reaper.CountTracks(0)
@@ -796,22 +1375,88 @@ function RecordQuantizeService.get_recorded_takes(state, start_time, stop_time)
     return takes
 end
 
---- Core quantization pass on a single take when recording stops
+--- Builds a cross-track Auto-Divisi assignment list from all newly recorded takes
+local function build_post_record_divisi_plan(state, takes, armed_profiles, min_rec_qn, max_rec_qn)
+    if not state or not state.rec_auto_divisi or not armed_profiles or #armed_profiles < 2 then
+        return nil
+    end
+
+    local eff_grid = get_effective_grid_qn(state)
+    local do_quantize = (state.rec_auto_quantize ~= false)
+    local tolerance_ticks = state.rec_tolerance_ticks or 25
+    local outlier_mode = state.rec_outlier_mode or "snap"
+
+    local raw_all = {}
+    for _, take in ipairs(takes) do
+        local _, notecnt = reaper.MIDI_CountEvts(take)
+        for i = 0, notecnt - 1 do
+            local ok, _, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, i)
+            if ok and not muted then
+                local raw_sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+                local raw_eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
+                if not is_note_pre_existing(take, pitch, raw_sqn, chan, min_rec_qn) then
+                    if max_rec_qn and raw_eqn > max_rec_qn + 0.10 then
+                        raw_eqn = math.max(raw_sqn + eff_grid, max_rec_qn)
+                    end
+                    local sqn = raw_sqn
+                    local eqn = raw_eqn
+                    if do_quantize then
+                        local orig_dur_qn = math.max(0.05, raw_eqn - raw_sqn)
+                        local _, qn_measure_start, _ = reaper.TimeMap_QNToMeasures(0, raw_sqn)
+                        local rel_qn = raw_sqn - qn_measure_start
+                        local nearest_k = math.floor((rel_qn / eff_grid) + 0.5)
+                        local nearest_grid_qn = qn_measure_start + (nearest_k * eff_grid)
+                        local diff_ticks = math.abs(raw_sqn - nearest_grid_qn) * 960.0
+                        if diff_ticks <= (tolerance_ticks + 0.05) or outlier_mode == "snap" then
+                            sqn = math.max(0, nearest_grid_qn)
+                            local snapped_dur = math.max(eff_grid, math.floor((orig_dur_qn / eff_grid) + 0.5) * eff_grid)
+                            eqn = sqn + snapped_dur
+                        end
+                    end
+                    table.insert(raw_all, {
+                        pitch = pitch,
+                        vel = vel,
+                        chan = chan,
+                        raw_sqn = raw_sqn,
+                        raw_eqn = raw_eqn,
+                        sqn = sqn,
+                        eqn = eqn,
+                        is_held = false
+                    })
+                end
+            end
+        end
+    end
+
+    if #raw_all == 0 then
+        return nil
+    end
+
+    return RecordQuantizeService.compute_auto_divisi_assignment(raw_all, armed_profiles, state)
+end
+
+--- Core quantization & Auto-Divisi filtering pass on a single take when recording stops
 --- @param state table
 --- @param take userdata MediaItem_Take*
 --- @param min_rec_qn number Minimum QN where current recording started
 --- @param max_rec_qn number Maximum QN where current recording stopped
---- @return number notecnt, number snapped, number cleaned, number outliers, boolean modified
-local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
+--- @param divisi_plan table|nil Optional Auto-Divisi assignment list
+--- @return number notecnt, number snapped, number cleaned, number outliers, boolean modified, number divisi_kept
+local function quantize_single_take(state, take, min_rec_qn, max_rec_qn, divisi_plan)
     local eff_grid = get_effective_grid_qn(state)
     local do_quantize = (not state) or (state.rec_auto_quantize ~= false)
     local tolerance_ticks = (state and state.rec_tolerance_ticks) or 25
     local clean_overlaps = (not state) or (state.rec_clean_overlaps ~= false)
     local outlier_mode = (state and state.rec_outlier_mode) or "snap"
+    local divisi_tol_ticks = math.max(5, tonumber(state and state.rec_divisi_tol_ticks) or 45)
+    local divisi_match_qn = math.max(24.0 / 960.0, (divisi_tol_ticks / 960.0) * 0.75)
+
+    local take_trk = reaper.GetMediaItemTake_Track(take)
+    local take_trk_guid = (take_trk and reaper.ValidatePtr(take_trk, "MediaTrack*")) and reaper.GetTrackGUID(take_trk) or nil
 
     local _, notecnt = reaper.MIDI_CountEvts(take)
     if notecnt == 0 then
-        return 0, 0, 0, 0, false
+        return 0, 0, 0, 0, false, 0
     end
 
     local notes = {}
@@ -830,6 +1475,7 @@ local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
                 eppq = eppq,
                 sqn = sqn,
                 eqn = eqn,
+                raw_sqn = sqn,
                 chan = chan,
                 pitch = pitch,
                 vel = vel,
@@ -842,7 +1488,41 @@ local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
     local snapped_cnt = 0
     local cleaned_cnt = 0
     local outlier_cnt = 0
+    local divisi_kept = 0
     local any_modified = false
+
+    -- 0. Apply Auto-Divisi Track Assignment & Legato Transition Trimming
+    if divisi_plan and take_trk_guid then
+        for _, n in ipairs(notes) do
+            if n.in_session and n.action ~= "delete" then
+                local matched_u = nil
+                local best_diff = 1e9
+                for _, u in ipairs(divisi_plan) do
+                    if u.pitch == n.pitch then
+                        local d = math.abs(n.raw_sqn - u.raw_sqn)
+                        if d <= divisi_match_qn and d < best_diff then
+                            best_diff = d
+                            matched_u = u
+                        end
+                    end
+                end
+
+                if not matched_u or matched_u._divisi_drop or matched_u.assigned_guid ~= take_trk_guid then
+                    n.action = "delete"
+                    any_modified = true
+                else
+                    divisi_kept = divisi_kept + 1
+                    -- Apply legato finger-overlap trim if computed by the Tick-Tolerance transition guard
+                    if matched_u.raw_eqn and matched_u.raw_eqn < n.eqn - 0.01 then
+                        n.eqn = math.max(n.sqn + 0.05, matched_u.raw_eqn)
+                        n.eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, n.eqn) + 0.5)
+                        n.action = "modify"
+                        any_modified = true
+                    end
+                end
+            end
+        end
+    end
 
     -- 1. Clamp any unclosed/infinite session notes to max_rec_qn & apply Metric Grid Snapping + Outlier Handling
     for _, n in ipairs(notes) do
@@ -964,10 +1644,10 @@ local function quantize_single_take(state, take, min_rec_qn, max_rec_qn)
         reaper.MIDI_Sort(take)
     end
 
-    return notecnt, snapped_cnt, cleaned_cnt, outlier_cnt, any_modified
+    return notecnt, snapped_cnt, cleaned_cnt, outlier_cnt, any_modified, divisi_kept
 end
 
---- Final quantization & note-end clamping pass when recording stops
+--- Final quantization, Auto-Divisi distribution & note-end clamping pass when recording stops
 --- @param state table
 --- @param start_time number
 --- @param stop_time number
@@ -997,22 +1677,34 @@ function RecordQuantizeService.process_recording(state, start_time, stop_time)
         max_rec_qn = nil
     end
 
+    local armed_profiles = nil
+    local divisi_plan = nil
+    if state and state.rec_auto_divisi then
+        armed_profiles = RecordQuantizeService.get_armed_tracks_divisi_profile(state)
+        if armed_profiles and #armed_profiles >= 2 then
+            divisi_plan = build_post_record_divisi_plan(state, takes, armed_profiles, min_rec_qn, max_rec_qn)
+        end
+    end
+
     reaper.Undo_BeginBlock2(0)
 
     local total_notes = 0
     local total_snapped = 0
     local total_cleaned = 0
     local total_outliers = 0
+    local total_divisi_kept = 0
 
     for _, take in ipairs(takes) do
-        local n_cnt, s_cnt, c_cnt, o_cnt = quantize_single_take(state, take, min_rec_qn, max_rec_qn)
+        local n_cnt, s_cnt, c_cnt, o_cnt, _, d_kept = quantize_single_take(state, take, min_rec_qn, max_rec_qn, divisi_plan)
         total_notes = total_notes + n_cnt
         total_snapped = total_snapped + s_cnt
         total_cleaned = total_cleaned + c_cnt
         total_outliers = total_outliers + o_cnt
+        total_divisi_kept = total_divisi_kept + (d_kept or 0)
     end
 
-    reaper.Undo_EndBlock2(0, "Real-Time Auto-Quantize Recorded MIDI", -1)
+    local undo_lbl = divisi_plan and "Auto-Divisi & Real-Time Quantize Recorded MIDI" or "Real-Time Auto-Quantize Recorded MIDI"
+    reaper.Undo_EndBlock2(0, undo_lbl, -1)
 
     RecordQuantizeService._pre_existing_notes = {}
     MidiService.invalidate_cache()
@@ -1021,12 +1713,18 @@ function RecordQuantizeService.process_recording(state, start_time, stop_time)
         total_notes = total_notes,
         snapped = total_snapped,
         cleaned = total_cleaned,
-        outliers_handled = total_outliers
+        outliers_handled = total_outliers,
+        divisi_kept = total_divisi_kept
     }
 
-    if state and state.rec_auto_quantize ~= false and total_notes > 0 then
-        state.status_msg = string.format("⚡ Real-Time Auto-Quantize: %d notes processed (%d snapped to %s, %d overlaps cleaned)",
-            total_notes, total_snapped, state.rec_quantize_grid_label or "1/8", total_cleaned)
+    if state and total_notes > 0 then
+        if divisi_plan and armed_profiles then
+            state.status_msg = string.format("🎼 Auto-Divisi Recording: Distributed %d notes across %d armed tracks (±%d Ticks transition guard)",
+                total_divisi_kept, #armed_profiles, state.rec_divisi_tol_ticks or 45)
+        elseif state.rec_auto_quantize ~= false then
+            state.status_msg = string.format("⚡ Real-Time Auto-Quantize: %d notes processed (%d snapped to %s, %d overlaps cleaned)",
+                total_notes, total_snapped, state.rec_quantize_grid_label or "1/8", total_cleaned)
+        end
     end
 
     return stats

@@ -481,6 +481,9 @@ function State.new()
         rec_mode = 7,                      -- 7 = MIDI Overdub (no Save prompt, direct live MIDI), 0 = Standard Input
         rec_auto_monitor = true,           -- Automatically enable Record Monitoring (I_RECMON = 1) when arming
         rec_live_preview = true,           -- Show live notes on canvas in real time while recording
+        rec_auto_divisi = false,           -- Distribute simultaneous notes & registers across armed tracks
+        rec_auto_divisi_mode = "smart_register", -- "smart_register" | "top_down"
+        rec_divisi_tol_ticks = 45,         -- Tick tolerance (960 PPQ) for chord attack grouping & legato transition de-overlap
         _was_recording = false,            -- Internal edge detector for record stop
         _rec_start_time = 0,
         
@@ -909,6 +912,9 @@ function State:load_settings()
     self.rec_mode = load_num("rec_mode", 7)
     self.rec_auto_monitor = load_bool("rec_auto_monitor", true)
     self.rec_live_preview = load_bool("rec_live_preview", true)
+    self.rec_auto_divisi = load_bool("rec_auto_divisi", false)
+    self.rec_auto_divisi_mode = load_str("rec_auto_divisi_mode", "smart_register")
+    self.rec_divisi_tol_ticks = load_num("rec_divisi_tol_ticks", 45)
     self.beam_grouping = load_str("beam_grouping", "beat")
     self.dyn_cc_a = load_num("dyn_cc_a", 1)
     self.dyn_cc_b = load_num("dyn_cc_b", 11)
@@ -1236,6 +1242,9 @@ function State.save_settings(self)
     save_val("rec_mode", math.floor(self.rec_mode or 7))
     save_val("rec_auto_monitor", self.rec_auto_monitor ~= false)
     save_val("rec_live_preview", self.rec_live_preview ~= false)
+    save_val("rec_auto_divisi", self.rec_auto_divisi == true)
+    save_val("rec_auto_divisi_mode", self.rec_auto_divisi_mode or "smart_register")
+    save_val("rec_divisi_tol_ticks", math.floor(self.rec_divisi_tol_ticks or 45))
     save_val("beam_grouping", self.beam_grouping or "beat")
     save_val("dyn_cc_a", self.dyn_cc_a or 1)
     save_val("dyn_cc_b", self.dyn_cc_b or 11)
