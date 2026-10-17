@@ -5,7 +5,7 @@
 
 local Version = {
     major = 2,
-    minor = 30,
+    minor = 31,
     patch = 0,
     suffix = "-beta",
 }

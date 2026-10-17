@@ -5,11 +5,21 @@
 
 local AnnotationService = {}
 
-AnnotationService.TILE_W = 640
-AnnotationService.TILE_H = 440
-AnnotationService.RES_SCALE = 2.0
+AnnotationService.BASE_TILE_W = 320
+AnnotationService.BASE_TILE_H = 200
+AnnotationService.TILE_W = 480
+AnnotationService.TILE_H = 300
+AnnotationService.RES_SCALE = 1.5
 AnnotationService.MAX_TRACK_SPACING = 320.0
 AnnotationService.MAX_TRACK_SPACING_REF = 320.0
+
+-- 4-Step Per-Track Resolution Factor Presets
+AnnotationService.RESOLUTION_STEPS = {
+    { step = 1, label = "1x Eco",   short = "1x",   scale = 1.0, w = 320, h = 200, desc = "320 × 200 px per Bar (Compact / Low RAM)" },
+    { step = 2, label = "1.5x Std", short = "1.5x", scale = 1.5, w = 480, h = 300, desc = "480 × 300 px per Bar (Balanced Standard)" },
+    { step = 3, label = "2x High",  short = "2x",   scale = 2.0, w = 640, h = 400, desc = "640 × 400 px per Bar (High Definition)" },
+    { step = 4, label = "3x Ultra", short = "3x",   scale = 3.0, w = 960, h = 600, desc = "960 × 600 px per Bar (Ultra 4K Sharpness)" },
+}
 
 -- 12 Curated High-Contrast Color Presets (0xRRGGBBFF)
 AnnotationService.COLOR_PRESETS = {
@@ -46,18 +56,40 @@ end
 
 local function crc32(data)
     local c = 0xFFFFFFFF
-    for i = 1, #data do
+    local len = #data
+    local i = 1
+    while i + 15 <= len do
+        local b1, b2, b3, b4, b5, b6, b7, b8, b9, b10, b11, b12, b13, b14, b15, b16 = string.byte(data, i, i + 15)
+        c = crc_table[(c ~ b1)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b2)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b3)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b4)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b5)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b6)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b7)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b8)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b9)  & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b10) & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b11) & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b12) & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b13) & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b14) & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b15) & 0xFF] ~ (c >> 8)
+        c = crc_table[(c ~ b16) & 0xFF] ~ (c >> 8)
+        i = i + 16
+    end
+    while i <= len do
         local b = string.byte(data, i)
         c = crc_table[(c ~ b) & 0xFF] ~ (c >> 8)
+        i = i + 1
     end
     return c ~ 0xFFFFFFFF
 end
 
-local function make_png_chunk(chunk_type, data, skip_crc)
+local function make_png_chunk(chunk_type, data)
     local len_bytes = string.pack(">I4", #data)
     local type_and_data = chunk_type .. data
-    local crc_val = skip_crc and 0 or crc32(type_and_data)
-    local crc_bytes = string.pack(">I4", crc_val)
+    local crc_bytes = string.pack(">I4", crc32(type_and_data))
     return len_bytes .. type_and_data .. crc_bytes
 end
 
@@ -110,10 +142,10 @@ end
 
 -- Encodes a flat pixel array (w * h integers in 0xRRGGBBAA format) into a valid RGBA PNG binary string.
 -- Uses per-row scanline caching on `tile` so live brush strokes only re-pack modified rows.
-function AnnotationService.encode_rgba_png(pixels, w, h, tile, skip_crc)
+function AnnotationService.encode_rgba_png(pixels, w, h, tile)
     local png_sig = "\137PNG\r\n\26\n"
     local ihdr_data = string.pack(">I4I4BBBBB", w, h, 8, 6, 0, 0, 0)
-    local ihdr_chunk = make_png_chunk("IHDR", ihdr_data, false)
+    local ihdr_chunk = make_png_chunk("IHDR", ihdr_data)
 
     local empty_row = EMPTY_ROW_CACHE[w]
     if not empty_row then
@@ -123,7 +155,8 @@ function AnnotationService.encode_rgba_png(pixels, w, h, tile, skip_crc)
 
     local row_strs, row_ds1, row_ws2, dirty_rows
     if tile then
-        if not tile._row_strs or #tile._row_strs ~= h then
+        if not tile._row_strs or #tile._row_strs ~= h or tile._cached_w ~= w then
+            tile._cached_w = w
             tile._row_strs = {}
             tile._row_ds1  = {}
             tile._row_ws2  = {}
@@ -180,8 +213,8 @@ function AnnotationService.encode_rgba_png(pixels, w, h, tile, skip_crc)
 
     local adler32 = (s2 << 16) | s1
     deflate_parts[#deflate_parts + 1] = string.pack(">I4", adler32)
-    local idat_chunk = make_png_chunk("IDAT", table.concat(deflate_parts), skip_crc)
-    local iend_chunk = make_png_chunk("IEND", "", false)
+    local idat_chunk = make_png_chunk("IDAT", table.concat(deflate_parts))
+    local iend_chunk = make_png_chunk("IEND", "")
 
     return png_sig .. ihdr_chunk .. idat_chunk .. iend_chunk
 end
@@ -339,6 +372,7 @@ function AnnotationService.get_track_stack(state, track_guid)
     if not stack then
         stack = {
             track_guid = track_guid,
+            res_step = 2, -- Default Step 2: 1.5x Std (480x300 px)
             next_layer_num = 2,
             active_layer_id = "L1",
             layers = {
@@ -348,13 +382,39 @@ function AnnotationService.get_track_stack(state, track_guid)
                     visible = true,
                     locked = false,
                     opacity = 1.0,
-                    bars = {} -- Sparse table: [bar_idx] = { pixels, png_bytes, imgui_img, png_path, dirty }
+                    bars = {} -- Sparse table: [bar_idx] = { pixels, w, h, png_bytes, imgui_img, png_path, tex_dirty, disk_dirty }
                 }
             }
         }
         state.track_annotations[track_guid] = stack
+    elseif not stack.res_step then
+        stack.res_step = 2
     end
     return stack
+end
+
+function AnnotationService.get_track_resolution(state, track_guid)
+    local stack = track_guid and AnnotationService.get_track_stack(state, track_guid) or nil
+    local step_idx = (stack and tonumber(stack.res_step)) or 2
+    step_idx = math.max(1, math.min(#AnnotationService.RESOLUTION_STEPS, math.floor(step_idx)))
+    local info = AnnotationService.RESOLUTION_STEPS[step_idx] or AnnotationService.RESOLUTION_STEPS[2]
+    return info.w, info.h, info.scale, info
+end
+
+local function resample_pixel_array(src_pixels, src_w, src_h, dst_w, dst_h)
+    if src_w == dst_w and src_h == dst_h then return src_pixels end
+    local dst = {}
+    local d_idx = 1
+    for dy = 0, dst_h - 1 do
+        local sy = math.min(src_h - 1, math.floor((dy / dst_h) * src_h))
+        local s_row = sy * src_w
+        for dx = 0, dst_w - 1 do
+            local sx = math.min(src_w - 1, math.floor((dx / dst_w) * src_w))
+            dst[d_idx] = src_pixels[s_row + sx + 1] or 0
+            d_idx = d_idx + 1
+        end
+    end
+    return dst
 end
 
 function AnnotationService.get_active_layer(state, track_guid)
@@ -419,7 +479,6 @@ end
 function AnnotationService.delete_layer(state, track_guid, layer_id)
     local stack = AnnotationService.get_track_stack(state, track_guid)
     if not stack or #stack.layers <= 1 then
-        -- If only 1 layer remains, just clear its tiles and reset it
         if stack and stack.layers[1] then
             AnnotationService.clear_layer(state, track_guid, stack.layers[1].id)
         end
@@ -458,8 +517,8 @@ end
 -- 4. PIXEL BUFFER, RASTERIZATION & AUTO-CLEANUP OF EMPTY BAR TILES
 -- ==============================================================================
 
-local function create_empty_pixels()
-    local total = AnnotationService.TILE_W * AnnotationService.TILE_H
+local function create_empty_pixels(w, h)
+    local total = (w or AnnotationService.TILE_W) * (h or AnnotationService.TILE_H)
     local px = {}
     for i = 1, total do px[i] = 0 end
     return px
@@ -476,22 +535,70 @@ function AnnotationService.has_visible_pixels(tile)
     return false
 end
 
--- Ensures tile.pixels is loaded in RAM (decoding from disk if tile was loaded lazily)
-local function ensure_tile_pixels_loaded(track_guid, layer_id, bar_idx, tile)
-    if tile.pixels then return tile.pixels end
+-- Ensures tile.pixels is loaded in RAM at target (tw, th) resolution
+local function ensure_tile_pixels_loaded(track_guid, layer_id, bar_idx, tile, tw, th)
+    tw = tw or tile.w or AnnotationService.TILE_W
+    th = th or tile.h or AnnotationService.TILE_H
+    if tile.pixels then
+        if tile.w and tile.h and (tile.w ~= tw or tile.h ~= th) then
+            tile.pixels = resample_pixel_array(tile.pixels, tile.w, tile.h, tw, th)
+            tile.w = tw
+            tile.h = th
+            tile._row_strs = nil
+            tile._dirty_rows = nil
+        end
+        tile.w = tw
+        tile.h = th
+        return tile.pixels
+    end
     local path = tile.png_path or AnnotationService.get_tile_png_path(track_guid, layer_id, bar_idx)
-    local f = path and io.open(path, "rb")
-    if f then
-        local bytes = f:read("*a")
-        f:close()
-        local decoded = AnnotationService.decode_rgba_png(bytes, AnnotationService.TILE_W, AnnotationService.TILE_H)
+    local bytes = tile.png_bytes
+    if not bytes and path then
+        local f = io.open(path, "rb")
+        if f then
+            bytes = f:read("*a")
+            f:close()
+        end
+    end
+    if bytes then
+        local decoded = AnnotationService.decode_rgba_png(bytes, tw, th)
         if decoded then
             tile.pixels = decoded
+            tile.w = tw
+            tile.h = th
             return tile.pixels
         end
     end
-    tile.pixels = create_empty_pixels()
+    tile.pixels = create_empty_pixels(tw, th)
+    tile.w = tw
+    tile.h = th
     return tile.pixels
+end
+
+-- Changes the resolution step (1..4) for a track and resamples any existing bar tiles on that track
+function AnnotationService.set_track_resolution_step(state, track_guid, new_step)
+    local stack = AnnotationService.get_track_stack(state, track_guid)
+    if not stack then return end
+    new_step = math.max(1, math.min(#AnnotationService.RESOLUTION_STEPS, math.floor(tonumber(new_step) or 2)))
+    if stack.res_step == new_step then return end
+    stack.res_step = new_step
+    local tw, th = AnnotationService.get_track_resolution(state, track_guid)
+
+    if stack.layers then
+        for _, layer in ipairs(stack.layers) do
+            if layer.bars then
+                for b_idx, tile in pairs(layer.bars) do
+                    ensure_tile_pixels_loaded(track_guid, layer.id, b_idx, tile, tw, th)
+                    tile._row_strs = nil
+                    tile._dirty_rows = nil
+                    tile.tex_dirty = true
+                    tile.disk_dirty = true
+                end
+            end
+        end
+    end
+    AnnotationService.commit_dirty_tiles(state, true)
+    AnnotationService.save_metadata(state)
 end
 
 -- Draws a filled circle stamp into tile.pixels at (cx, cy) in tile pixel coordinates
@@ -565,7 +672,7 @@ end
 -- Rasterizes a stroke segment (u0, v0) -> (u1, v1) in [0..1] into bar_idx of the active layer.
 -- Strictly obeys:
 -- 1. If is_eraser and layer.bars[bar_idx] does NOT exist -> do nothing (never allocate empty tile!).
--- 2. If Pen and layer.bars[bar_idx] does NOT exist -> lazily create the 640x440 tile.
+-- 2. If Pen and layer.bars[bar_idx] does NOT exist -> lazily create the tile at the track's resolution step.
 function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0, v0, u1, v1, is_eraser)
     local layer = AnnotationService.get_active_layer(state, track_guid)
     if not layer or layer.locked or not layer.visible then return false end
@@ -575,6 +682,8 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
         return false
     end
 
+    local w, h, res_scale = AnnotationService.get_track_resolution(state, track_guid)
+
     local tile = layer.bars[bar_idx]
     if not tile then
         if is_eraser then
@@ -582,18 +691,19 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
             return false
         end
         tile = {
-            pixels = create_empty_pixels(),
+            pixels = create_empty_pixels(w, h),
+            w = w,
+            h = h,
             png_path = AnnotationService.get_tile_png_path(track_guid, layer.id, bar_idx),
             tex_dirty = true,
             disk_dirty = true
         }
         layer.bars[bar_idx] = tile
     else
-        ensure_tile_pixels_loaded(track_guid, layer.id, bar_idx, tile)
+        ensure_tile_pixels_loaded(track_guid, layer.id, bar_idx, tile, w, h)
     end
 
-    local w, h = AnnotationService.TILE_W, AnnotationService.TILE_H
-    if not tile._dirty_rows then
+    if not tile._dirty_rows or #tile._dirty_rows ~= h then
         tile._dirty_rows = {}
         for y = 1, h do tile._dirty_rows[y] = true end
     end
@@ -607,7 +717,6 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
     local b_col = (col >> 8)  & 0xFF
     local a_col = col & 0xFF
 
-    local res_scale = AnnotationService.RES_SCALE or 2.0
     local radius = (is_eraser and ((state.annotation_eraser_size or 14.0) * 0.5) or ((state.annotation_brush_size or 4.0) * 0.5)) * res_scale
     local dist = math.sqrt((x1 - x0)^2 + (y1 - y0)^2)
     local step = math.max(0.6, radius * 0.35)
@@ -626,17 +735,18 @@ function AnnotationService.rasterize_bar_segment(state, track_guid, bar_idx, u0,
     return true
 end
 
--- Updates in-memory ReaImGui textures for any tiles modified on the current frame (zero disk I/O)
+-- Updates in-memory ReaImGui textures for any tiles modified on the current frame (always with valid CRC-32)
 function AnnotationService.update_dirty_textures(state)
     if not state or not state.track_annotations then return end
-    for _, stack in pairs(state.track_annotations) do
+    for track_guid, stack in pairs(state.track_annotations) do
         if stack and stack.layers then
+            local tw, th = AnnotationService.get_track_resolution(state, track_guid)
             for _, layer in ipairs(stack.layers) do
                 if layer.bars then
                     for _, tile in pairs(layer.bars) do
                         if tile.tex_dirty and tile.pixels then
                             tile.tex_dirty = false
-                            local png_bytes = AnnotationService.encode_rgba_png(tile.pixels, AnnotationService.TILE_W, AnnotationService.TILE_H, tile, true)
+                            local png_bytes = AnnotationService.encode_rgba_png(tile.pixels, tile.w or tw, tile.h or th, tile)
                             tile.png_bytes = png_bytes
                             if reaper.APIExists("ImGui_CreateImageFromMem") then
                                 local ok, img = pcall(reaper.ImGui_CreateImageFromMem, png_bytes)
@@ -660,6 +770,7 @@ function AnnotationService.commit_dirty_tiles(state, write_to_disk)
 
     for track_guid, stack in pairs(state.track_annotations) do
         if stack and stack.layers then
+            local tw, th = AnnotationService.get_track_resolution(state, track_guid)
             for _, layer in ipairs(stack.layers) do
                 if layer.bars then
                     local to_remove = {}
@@ -672,12 +783,11 @@ function AnnotationService.commit_dirty_tiles(state, write_to_disk)
                                 if p then os.remove(p) end
                                 any_saved = true
                             else
-                                local full_png_bytes = AnnotationService.encode_rgba_png(tile.pixels, AnnotationService.TILE_W, AnnotationService.TILE_H, tile, false)
-                                tile.png_bytes = full_png_bytes
-                                if tile.tex_dirty then
+                                if tile.tex_dirty or not tile.png_bytes then
+                                    tile.png_bytes = AnnotationService.encode_rgba_png(tile.pixels, tile.w or tw, tile.h or th, tile)
                                     tile.tex_dirty = false
                                     if reaper.APIExists("ImGui_CreateImageFromMem") then
-                                        local ok, img = pcall(reaper.ImGui_CreateImageFromMem, full_png_bytes)
+                                        local ok, img = pcall(reaper.ImGui_CreateImageFromMem, tile.png_bytes)
                                         if ok and img then
                                             tile.imgui_img = img
                                         end
@@ -688,7 +798,7 @@ function AnnotationService.commit_dirty_tiles(state, write_to_disk)
                                     tile.png_path = p
                                     local f = io.open(p, "wb")
                                     if f then
-                                        f:write(full_png_bytes)
+                                        f:write(tile.png_bytes)
                                         f:close()
                                     end
                                     if not tile.imgui_img and reaper.APIExists("ImGui_CreateImage") then
@@ -752,11 +862,12 @@ function AnnotationService.save_metadata(state)
                 )
                 table.insert(layer_strs, l_str)
             end
-            local t_str = string.format("%s|%s|%d|%s",
+            local t_str = string.format("%s|%s|%d|%s|%d",
                 tostring(track_guid),
                 escape_str(stack.active_layer_id or "L1"),
                 tonumber(stack.next_layer_num) or (#stack.layers + 1),
-                table.concat(layer_strs, "~")
+                table.concat(layer_strs, "~"),
+                tonumber(stack.res_step) or 2
             )
             table.insert(track_entries, t_str)
         end
@@ -777,6 +888,7 @@ function AnnotationService.load_metadata(state)
         local active_id  = parts[2]
         local next_num   = tonumber(parts[3]) or 2
         local layers_raw = parts[4] or ""
+        local res_step   = math.max(1, math.min(#AnnotationService.RESOLUTION_STEPS, tonumber(parts[5]) or 2))
 
         if track_guid and track_guid ~= "" then
             local layers = {}
@@ -814,7 +926,8 @@ function AnnotationService.load_metadata(state)
                                         png_bytes = png_bytes,
                                         imgui_img = img,
                                         png_path = p,
-                                        dirty = false
+                                        tex_dirty = false,
+                                        disk_dirty = false
                                     }
                                 end
                             end
@@ -833,6 +946,7 @@ function AnnotationService.load_metadata(state)
             if #layers > 0 then
                 state.track_annotations[track_guid] = {
                     track_guid = track_guid,
+                    res_step = res_step,
                     active_layer_id = active_id or layers[1].id,
                     next_layer_num = next_num,
                     layers = layers
@@ -842,7 +956,7 @@ function AnnotationService.load_metadata(state)
     end
 end
 
--- Ensures the ReaImGui texture pointer is valid (ReaImGui destroys unreferenced images across frames unless recreated or attached)
+-- Ensures the ReaImGui texture pointer is valid (never calls ImGui_CreateImage on non-existent files)
 function AnnotationService.get_valid_tile_image(ctx, track_guid, layer_id, bar_idx, tile)
     if not tile then return nil end
     if tile.imgui_img then
@@ -860,24 +974,27 @@ function AnnotationService.get_valid_tile_image(ctx, track_guid, layer_id, bar_i
     end
     local p = tile.png_path or AnnotationService.get_tile_png_path(track_guid, layer_id, bar_idx)
     if p and reaper.APIExists("ImGui_CreateImage") then
-        local ok, img = pcall(reaper.ImGui_CreateImage, p)
-        if ok and img then
-            tile.imgui_img = img
-            return img
+        local f = io.open(p, "rb")
+        if f then
+            f:close()
+            local ok, img = pcall(reaper.ImGui_CreateImage, p)
+            if ok and img then
+                tile.imgui_img = img
+                return img
+            end
         end
     end
     return nil
 end
 
--- Maps a screen-space stroke segment (x0, y0) -> (x1, y1) inside a track band to bar tiles
--- and updates in-memory textures immediately for 60+ FPS live visual feedback.
+-- Maps a screen-space stroke segment (x0, y0) -> (x1, y1) inside a track band to bar tiles.
 function AnnotationService.stroke_canvas_segment(state, tdata, x0, y0, x1, y1, margin_left, s, qn_per_measure, measure_map, is_eraser, Engraver)
     if not tdata or not tdata.guid or not tdata.band_y0 then return false end
     local layer = AnnotationService.get_active_layer(state, tdata.guid)
     if not layer or layer.locked or not layer.visible then return false end
 
     local staff_h = tdata.is_harp and 224 or (tdata.is_grand and 148 or 80)
-    local ref_band_h = (staff_h + AnnotationService.MAX_TRACK_SPACING) * s
+    local ref_band_h = (staff_h + (AnnotationService.MAX_TRACK_SPACING or 320.0)) * s
     if ref_band_h <= 1.0 then return false end
 
     local function get_bar_bounds(m)
@@ -902,11 +1019,11 @@ function AnnotationService.stroke_canvas_segment(state, tdata, x0, y0, x1, y1, m
         return m, bx0, bx1
     end
 
+    local tw, _, res_scale = AnnotationService.get_track_resolution(state, tdata.guid)
     local dist = math.sqrt((x1 - x0)^2 + (y1 - y0)^2)
     local max_step_px = math.max(1.5, 2.5 * s)
     local steps = math.max(1, math.ceil(dist / max_step_px))
-    local res_scale = AnnotationService.RES_SCALE or 2.0
-    local rad_u = ((is_eraser and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)) * 0.5 * res_scale) / AnnotationService.TILE_W
+    local rad_u = ((is_eraser and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)) * 0.5 * res_scale) / tw
     local any_modified = false
 
     for i = 0, steps - 1 do
@@ -947,8 +1064,13 @@ function AnnotationService.stroke_canvas_segment(state, tdata, x0, y0, x1, y1, m
         end
     end
 
-    if any_modified then
-        AnnotationService.update_dirty_textures(state)
+    if any_modified and is_eraser then
+        -- For eraser, throttle live texture refresh to ~22 FPS so erased pixels disappear smoothly
+        local now_t = reaper.time_precise()
+        if not state._last_eraser_tex_time or (now_t - state._last_eraser_tex_time) >= 0.045 then
+            state._last_eraser_tex_time = now_t
+            AnnotationService.update_dirty_textures(state)
+        end
     end
     return any_modified
 end

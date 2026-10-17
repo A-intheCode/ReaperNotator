@@ -3835,6 +3835,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local staff_h_annot = tdata.is_harp and 224 or (tdata.is_grand and 148 or 80)
                 local ref_band_h = (staff_h_annot + (AnnotationService.MAX_TRACK_SPACING or 320.0)) * s
                 local is_eraser_tool = (state.annotation_tool == "eraser")
+                local _, trk_th, trk_res_scale = AnnotationService.get_track_resolution(state, tdata.guid)
+                local tool_sz = is_eraser_tool and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)
+                local cursor_rad = math.max(2.0, (tool_sz * 0.5 * trk_res_scale) * (ref_band_h / trk_th))
 
                 -- 1. Live Pen / Eraser Stroke Input (before tile rendering for 0-frame latency)
                 if is_annotation_paint_mode and not is_playing and (state.show_annotations_layer ~= false) then
@@ -3849,6 +3852,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             state._annot_stroke_guid = tdata.guid
                             state._annot_last_x = mouse_x
                             state._annot_last_y = mouse_y
+                            state._annot_live_points = (not is_eraser_tool) and { { x = mouse_x, y = mouse_y } } or nil
                             AnnotationService.stroke_canvas_segment(
                                 state, tdata,
                                 mouse_x, mouse_y, mouse_x, mouse_y,
@@ -3872,6 +3876,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 margin_left, s, qn_per_measure, measure_map,
                                 is_eraser_tool, Engraver
                             )
+                            if state._annot_live_points then
+                                state._annot_live_points[#state._annot_live_points + 1] = { x = clamped_x, y = clamped_y }
+                            end
                             state._annot_last_x = clamped_x
                             state._annot_last_y = clamped_y
                         end
@@ -3911,6 +3918,28 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
 
+                -- 2b. Zero-Latency Live Pen Stroke Vector Preview (committed to PNG tile on MouseReleased)
+                if state._annot_stroke_active and state._annot_stroke_guid == tdata.guid and not is_eraser_tool and state._annot_live_points then
+                    local active_l = AnnotationService.get_active_layer(state, tdata.guid)
+                    local l_op = (active_l and tonumber(active_l.opacity)) or 1.0
+                    local base_col = state.annotation_color or 0xE74C3CFF
+                    local base_a = ((base_col & 0xFF) / 255.0) * l_op
+                    local stroke_col = (base_col & 0xFFFFFF00) | math.max(1, math.min(255, math.floor(base_a * 255 + 0.5)))
+                    local pts = state._annot_live_points
+                    local stroke_thick = math.max(1.5, cursor_rad * 2.0)
+                    if #pts == 1 then
+                        reaper.ImGui_DrawList_AddCircleFilled(draw_list, pts[1].x, pts[1].y, cursor_rad, stroke_col, 16)
+                    else
+                        for pi = 1, #pts - 1 do
+                            local p1, p2 = pts[pi], pts[pi + 1]
+                            reaper.ImGui_DrawList_AddLine(draw_list, p1.x, p1.y, p2.x, p2.y, stroke_col, stroke_thick)
+                            reaper.ImGui_DrawList_AddCircleFilled(draw_list, p1.x, p1.y, cursor_rad * 0.9, stroke_col, 12)
+                        end
+                        local plast = pts[#pts]
+                        reaper.ImGui_DrawList_AddCircleFilled(draw_list, plast.x, plast.y, cursor_rad * 0.9, stroke_col, 12)
+                    end
+                end
+
                 -- 3. Visual Track Band Canvas Guide & Brush/Eraser Cursor Ring
                 if is_annotation_paint_mode and not is_playing then
                     local in_band = (mouse_x >= margin_left and mouse_x <= staff_end_x and mouse_y >= band_y0 and mouse_y <= band_y1)
@@ -3922,9 +3951,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             reaper.ImGui_DrawList_AddLine(draw_list, guide_x0, band_y0, guide_x1, band_y0, 0xFF6B3555, 1.0)
                             reaper.ImGui_DrawList_AddLine(draw_list, guide_x0, band_y1 - 1, guide_x1, band_y1 - 1, 0xFF6B3555, 1.0)
                         end
-                        local tool_sz = is_eraser_tool and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)
-                        local res_scale = AnnotationService.RES_SCALE or 2.0
-                        local cursor_rad = math.max(2.0, (tool_sz * 0.5 * res_scale) * (ref_band_h / AnnotationService.TILE_H))
                         if is_eraser_tool then
                             reaper.ImGui_DrawList_AddCircle(draw_list, mouse_x, mouse_y, cursor_rad + 1.0, 0x000000AA, 24, 1.5)
                             reaper.ImGui_DrawList_AddCircle(draw_list, mouse_x, mouse_y, cursor_rad, 0xE74C3CFF, 24, 1.5)
@@ -3946,8 +3972,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     if state._annot_stroke_active and (not reaper.ImGui_IsMouseDown(ctx, 0) or is_playing) then
         state._annot_stroke_active = false
         state._annot_stroke_guid = nil
+        state._annot_live_points = nil
         AnnotationService.commit_dirty_tiles(state, true)
     elseif state._has_dirty_annotation_tiles and not reaper.ImGui_IsMouseDown(ctx, 0) then
+        state._annot_live_points = nil
         AnnotationService.commit_dirty_tiles(state, true)
     end
     -- Barlines per instrument/staff (not connected across distinct instruments!)

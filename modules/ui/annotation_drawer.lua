@@ -99,6 +99,39 @@ function AnnotationDrawer.render(ctx, state, active_tracks_data, width, height, 
         reaper.ImGui_EndCombo(ctx)
     end
 
+    -- 2b. PER-INSTRUMENT TILE RESOLUTION (4 STEPS)
+    reaper.ImGui_Spacing(ctx)
+    local cur_tw, cur_th, _, cur_res_info = AnnotationService.get_track_resolution(state, trk_guid)
+    local cur_res_step = (cur_res_info and cur_res_info.step) or AnnotationService.DEFAULT_RES_STEP
+    reaper.ImGui_TextDisabled(ctx, string.format("Instrument Resolution: %d×%d px", cur_tw, cur_th))
+    local res_avail_w = width - 16
+    local res_btn_w = math.floor((res_avail_w - 12) / 4)
+    for i, rinfo in ipairs(AnnotationService.RESOLUTION_STEPS) do
+        local is_sel_res = (cur_res_step == rinfo.step)
+        if is_sel_res then
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x2980B9FF)
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x3498DBFF)
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0xFFFFFFFF)
+        else
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x262932FF)
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x353A47FF)
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0xCCCCCCFF)
+        end
+        if reaper.ImGui_Button(ctx, rinfo.short .. "##ann_res_" .. tostring(rinfo.step), res_btn_w, 22) and trk_guid then
+            AnnotationService.set_track_resolution_step(state, trk_guid, rinfo.step)
+        end
+        reaper.ImGui_PopStyleColor(ctx, 3)
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, string.format(
+                "%s (%d × %d px per Bar Tile)\nApplies to %s.\nExisting bar tiles on this track are automatically resampled.",
+                rinfo.label, rinfo.w, rinfo.h, trk_name
+            ))
+        end
+        if i < #AnnotationService.RESOLUTION_STEPS then
+            reaper.ImGui_SameLine(ctx, 0, 4)
+        end
+    end
+
     reaper.ImGui_Spacing(ctx)
     reaper.ImGui_Separator(ctx)
 
@@ -358,3 +391,4 @@ function AnnotationDrawer.render(ctx, state, active_tracks_data, width, height, 
 end
 
 return AnnotationDrawer
+
