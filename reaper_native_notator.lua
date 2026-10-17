@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.36-beta
+-- @version 2.37-beta
 -- @changelog
+--   + v2.37-beta: Improvement: Live Audible Auto-Divisi Input FX Router (1 played note = 1 instrument heard in both Smart Register & Top-Down modes, C2 -> Double Bass) + Recording Modal footer gap
 --   + v2.36-beta: New: Auto-Divisi Recording Mode (Smart Register & Voice Split across armed tracks with Tick-based chord & legato transition tolerance) + responsive Recording Modal layout
 --   + v2.35-beta: New: Replace Tracks modal button with wider View-style Tracks dropdown featuring Auto-Detect Tracks, Check/Uncheck All buttons & crash-safe project-scoped persistence
 --   + v2.34-beta: Improvement: Match tile aspect ratio to portrait bar-band geometry (280x420 to 840x1260 px) + Analytical Capsule SDF & 1.25px Smoothstep AA + Quadratic Bezier curve smoothing
@@ -200,6 +201,9 @@ state.current_reaproject, state.current_proj_fn = reaper.EnumProjects(-1)
 state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
 state._last_total_tracks_cleanup = reaper.CountTracks(0)
 PatternService.init()
+if RecordQuantizeService and RecordQuantizeService.sync_auto_divisi_input_fx then
+    RecordQuantizeService.sync_auto_divisi_input_fx(state, true)
+end
 local fonts = FontManager.init(ctx, state)
 local FrameTimerService = safe_require("services.frame_timer_service", {
     init = function() return false end,
@@ -214,6 +218,9 @@ local reaticulate_installed = initial_dep_status.reaticulate_found
 reaper.atexit(function()
     FrameTimerService.restore()
     AudioPreview.stop_all(state)
+    if RecordQuantizeService and RecordQuantizeService.cleanup_all_auto_divisi_input_fx then
+        pcall(RecordQuantizeService.cleanup_all_auto_divisi_input_fx)
+    end
     -- Safely persist all Notator objects & settings before script exit / REAPER shutdown:
     TempoService.save_markers(state)
     OctaveService.save_lines(state)
@@ -756,7 +763,7 @@ local function loop()
             state._last_total_tracks_cleanup = cur_total_tracks
             MidiService.cleanup_orphaned_score_elements(state)
             if RecordQuantizeService and RecordQuantizeService.sync_all_tracks_monitoring then
-                RecordQuantizeService.sync_all_tracks_monitoring()
+                RecordQuantizeService.sync_all_tracks_monitoring(state)
             end
             state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
         end

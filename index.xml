@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.36-beta" author="A-intheCode" time="2026-10-17T22:31:00Z">
+      <version name="2.37-beta" author="A-intheCode" time="2026-10-17T22:53:00Z">
         <changelog><![CDATA[
++ v2.37-beta: Improvement: Live Audible Auto-Divisi Input FX Router (1 played note = 1 instrument heard in both Smart Register & Top-Down modes, C2 -> Double Bass) + Recording Modal footer gap
 + v2.36-beta: New: Auto-Divisi Recording Mode (Smart Register & Voice Split across armed tracks with Tick-based chord & legato transition tolerance) + responsive Recording Modal layout
 + v2.35-beta: New: Replace Tracks modal button with wider View-style Tracks dropdown featuring Auto-Detect Tracks, Check/Uncheck All buttons & crash-safe project-scoped persistence
 + v2.34-beta: Improvement: Match tile aspect ratio to portrait bar-band geometry (280x420 to 840x1260 px) + Analytical Capsule SDF & 1.25px Smoothstep AA + Quadratic Bezier curve smoothing

@@ -623,9 +623,12 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         if chk_div then
             state.rec_auto_divisi = new_div
             require("state").save_settings(state)
+            if RecordQuantizeService.sync_auto_divisi_input_fx then
+                RecordQuantizeService.sync_auto_divisi_input_fx(state, true)
+            end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
-            reaper.ImGui_SetTooltip(ctx, "When 2 or more tracks are armed, chords & polyphonic lines played on your MIDI keyboard are automatically distributed across the armed instruments:\n• Low Register → Cello & Double Bass\n• Mid Register → Viola / Horns\n• High Register → Violin 1 & Violin 2")
+            reaper.ImGui_SetTooltip(ctx, "When 2 or more tracks are armed, live MIDI input and recorded notes are automatically routed across the armed instruments so only the assigned instrument(s) sound:\n• 1 Note Played → Only the single matching register instrument sounds (e.g. C2 → Double Bass)\n• 2+ Notes Played → Distributed harmonically across instruments (Low → Vc/Cb • Mid → Vla • High → Vln 1/2)")
         end
 
         if state.rec_auto_divisi then
@@ -634,16 +637,22 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
             reaper.ImGui_SetNextItemWidth(ctx, 360)
             local div_mode = state.rec_auto_divisi_mode or "smart_register"
             local div_mode_lbl = (div_mode == "top_down")
-                and "Top-Down Voice Split (1st Note → Track #1, 2nd → #2, ...)"
+                and "Top-Down Voice Split (Register-Anchored • 1 Note = 1 Instrument)"
                 or "Smart Register & Voice Split (High → Vln 1/2 • Mid → Vla • Low → Vc/Cb)"
             if reaper.ImGui_BeginCombo(ctx, "##RecAutoDivisiModeCombo", div_mode_lbl) then
                 if reaper.ImGui_Selectable(ctx, "Smart Register & Voice Split (High → Vln 1/2 • Mid → Vla • Low → Vc/Cb)", div_mode == "smart_register") then
                     state.rec_auto_divisi_mode = "smart_register"
                     require("state").save_settings(state)
+                    if RecordQuantizeService.sync_auto_divisi_input_fx then
+                        RecordQuantizeService.sync_auto_divisi_input_fx(state, true)
+                    end
                 end
-                if reaper.ImGui_Selectable(ctx, "Top-Down Voice Split (1st Note → Track #1, 2nd → #2, ...)", div_mode == "top_down") then
+                if reaper.ImGui_Selectable(ctx, "Top-Down Voice Split (Register-Anchored • 1 Note = 1 Instrument)", div_mode == "top_down") then
                     state.rec_auto_divisi_mode = "top_down"
                     require("state").save_settings(state)
+                    if RecordQuantizeService.sync_auto_divisi_input_fx then
+                        RecordQuantizeService.sync_auto_divisi_input_fx(state, true)
+                    end
                 end
                 reaper.ImGui_EndCombo(ctx)
             end
@@ -656,6 +665,9 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
             if chg_dtol then
                 state.rec_divisi_tol_ticks = new_dtol
                 require("state").save_settings(state)
+                if RecordQuantizeService.sync_auto_divisi_input_fx then
+                    RecordQuantizeService.sync_auto_divisi_input_fx(state, true)
+                end
             end
             if reaper.ImGui_IsItemHovered(ctx) then
                 reaper.ImGui_SetTooltip(ctx, "Tick-Based Chord & Legato Transition Guard (960 PPQ):\n• Groups chord finger attacks within ±N Ticks into one simultaneous chord\n• Trims brief legato finger-release overlaps (≤ N Ticks) when switching notes so melodies stay on the same instrument without false Divisi jumps\n• Filters out accidental micro-splinter notes (< N Ticks) during hand transitions")
@@ -666,6 +678,9 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                 if reaper.ImGui_Button(ctx, string.format("%d##DTol%d", val, val), 36, 22) then
                     state.rec_divisi_tol_ticks = val
                     require("state").save_settings(state)
+                    if RecordQuantizeService.sync_auto_divisi_input_fx then
+                        RecordQuantizeService.sync_auto_divisi_input_fx(state, true)
+                    end
                 end
                 reaper.ImGui_SameLine(ctx, 0, 4)
             end
@@ -684,9 +699,9 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
             _, armed_by_guid = RecordQuantizeService.get_armed_tracks_divisi_profile(state)
         end
 
-        -- Track Selection List Child Window (Dynamically expands with window height; Footer stays pinned at bottom!)
+        -- Track Selection List Child Window (Dynamically expands with window height; Footer stays pinned at bottom with gap!)
         local avail_w, avail_h = reaper.ImGui_GetContentRegionAvail(ctx)
-        local footer_reserve_h = 48
+        local footer_reserve_h = 62
         local child_h = math.max(95, avail_h - footer_reserve_h)
         local child_flags = reaper.APIExists("ImGui_ChildFlags_Border") and reaper.ImGui_ChildFlags_Border() or 1
         if reaper.ImGui_BeginChild(ctx, "##RecordTracksChild", 0, child_h, child_flags) then
@@ -725,6 +740,9 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                     local changed_arm, new_arm = reaper.ImGui_Checkbox(ctx, string.format("##TrkArm_%d", ti + 1), is_armed)
                     if changed_arm then
                         RecordQuantizeService.set_track_armed(state, trk, new_arm)
+                        if RecordQuantizeService.sync_auto_divisi_input_fx then
+                            RecordQuantizeService.sync_auto_divisi_input_fx(state, true)
+                        end
                     end
 
                     reaper.ImGui_SameLine(ctx, 0, 8)
@@ -806,6 +824,7 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         if reaper.ImGui_Button(ctx, "Close##CloseRecordModal", 100, 32) then
             state.show_record_modal = false
         end
+        reaper.ImGui_Dummy(ctx, 0, 6)
     end
 
     reaper.ImGui_End(ctx)
