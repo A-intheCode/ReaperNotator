@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.28-beta" author="A-intheCode" time="2026-10-17T11:15:00Z">
+      <version name="2.29-beta" author="A-intheCode" time="2026-10-17T11:43:00Z">
         <changelog><![CDATA[
++ v2.29-beta: Hotfix: Define AnnotationService.MAX_TRACK_SPACING constant in ScoreCanvas & AnnotationService
 + v2.28-beta: New: Per-Track Annotation Layer System (12 color presets, freehand Pen & Eraser, lazy 320x200 per-bar PNG tiles & auto-cleanup)
 + v2.27-beta: Hotfix: Persist manual stem flips (X) via NOTATOR_STEM / NOTE stem tags & ProjExtState, and align 3rd-space stems in low-weighted measures
 + v2.26-beta: Hotfix: Fix chord/dyad beam grouping, middle-line stem direction & move Tracks button right of All Notes dropdown

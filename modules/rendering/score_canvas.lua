@@ -3833,11 +3833,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             -- ==================================================================
             if tdata.guid and tdata.guid ~= "default" then
                 local staff_h_annot = tdata.is_harp and 224 or (tdata.is_grand and 148 or 80)
-                local ref_band_h = (staff_h_annot + AnnotationService.MAX_TRACK_SPACING) * s
+                local ref_band_h = (staff_h_annot + (AnnotationService.MAX_TRACK_SPACING or 320.0)) * s
                 local is_eraser_tool = (state.annotation_tool == "eraser")
 
                 -- 1. Live Pen / Eraser Stroke Input (before tile rendering for 0-frame latency)
-                if is_annotation_paint_mode and not is_playing then
+                if is_annotation_paint_mode and not is_playing and (state.show_annotations_layer ~= false) then
                     local in_band = (mouse_x >= margin_left and mouse_x <= staff_end_x and mouse_y >= band_y0 and mouse_y <= band_y1)
                     if is_hovered_raw and in_band and reaper.ImGui_IsMouseClicked(ctx, 0) then
                         if tdata.track then
@@ -3881,7 +3881,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 -- 2. Render Visible Annotation Layers for this Track (Bottom-to-Top)
                 local trk_annot_stack = (state.track_annotations and state.track_annotations[tdata.guid])
                     or (state.show_annotations_drawer and AnnotationService.get_track_stack(state, tdata.guid))
-                if trk_annot_stack and trk_annot_stack.layers and ref_band_h > 1.0 then
+                if (state.show_annotations_layer ~= false) and trk_annot_stack and trk_annot_stack.layers and ref_band_h > 1.0 then
                     local uv1_y = math.min(1.0, math.max(0.01, (band_y1 - band_y0) / ref_band_h))
                     local annot_start_m = math.max(0, vis_min_measure - 1)
                     local annot_end_m   = vis_max_measure + 1

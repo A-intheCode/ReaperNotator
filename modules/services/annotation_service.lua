@@ -7,6 +7,7 @@ local AnnotationService = {}
 
 AnnotationService.TILE_W = 320
 AnnotationService.TILE_H = 200
+AnnotationService.MAX_TRACK_SPACING = 320.0
 AnnotationService.MAX_TRACK_SPACING_REF = 320.0
 
 -- 12 Curated High-Contrast Color Presets (0xRRGGBBFF)

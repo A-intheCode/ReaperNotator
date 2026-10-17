@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.28-beta
+-- @version 2.29-beta
 -- @changelog
+--   + v2.29-beta: Hotfix: Define AnnotationService.MAX_TRACK_SPACING constant in ScoreCanvas & AnnotationService
 --   + v2.28-beta: New: Per-Track Annotation Layer System (12 color presets, freehand Pen & Eraser, lazy 320x200 per-bar PNG tiles & auto-cleanup)
 --   + v2.27-beta: Hotfix: Persist manual stem flips (X) via NOTATOR_STEM / NOTE stem tags & ProjExtState, and align 3rd-space stems in low-weighted measures
 --   + v2.26-beta: Hotfix: Fix chord/dyad beam grouping, middle-line stem direction & move Tracks button right of All Notes dropdown
