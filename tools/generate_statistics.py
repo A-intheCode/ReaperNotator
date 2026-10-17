@@ -166,6 +166,9 @@ with open(MD_PATH, 'w', encoding='utf-8') as md:
     md.write("| Service File | Subsystem & Musical Responsibility | Code Lines |\n")
     md.write("| :--- | :--- | :---: |\n")
     services_desc = [
+        ("modules/services/annotation_service.lua", "Annotation Layer Engine - Per-track multi-layer freehand PNG tiles & Capsule SDF"),
+        ("modules/services/melody_pathfinder_service.lua", "Melodic Pathfinder Engine - Corpus-trained Viterbi inpainting & counter-melodies"),
+        ("modules/services/melody_style_corpus.lua", "Composer Style Corpus - Statistical Markov transition & rhythm matrices"),
         ("modules/services/divisi_service.lua", "Divisi Engine - Split polyphonic voices onto full duplicated tracks"),
         ("modules/services/divisio_vocum_service.lua", "Divisio Vocum - Orchestral Voice Division across tracks"),
         ("modules/services/dynamics_engine.lua", "Orchestral Dynamics Engine - Bezier/Linear CC automation shaping"),
