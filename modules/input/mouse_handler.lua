@@ -59,6 +59,14 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     local active_tracks_data = canvas_info.active_tracks_data or {}
     local s = state.zoom
     local mouse_x, mouse_y = reaper.ImGui_GetMousePos(ctx)
+
+    -- Annotation Pen/Eraser Fast-Path: bypass note editing, dragging, resizing & marquee inside score area
+    if state.show_annotations_drawer and (state.annotation_tool == "pen" or state.annotation_tool == "eraser") then
+        if mouse_x >= margin_left or state._annot_stroke_active then
+            return
+        end
+    end
+
     local is_ctrl = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftCtrl()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightCtrl())
     local is_shift = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftShift()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightShift())
     

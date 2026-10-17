@@ -318,7 +318,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     reaper.ImGui_SameLine(ctx, 0, 10)
     local parent_avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
     local dq_extra = (state.display_quantize and (3 + 52) or 0)
-    local total_needed_w = 105 + dq_extra + 6 + 88 + 8 + 78 + 6 + 78 + 6 + 110 + 6 + 95 + 6 + 86 + 6 + 26 + 6 + 26 + 6 + 26 + 10
+    local total_needed_w = 105 + dq_extra + 6 + 88 + 8 + 78 + 6 + 78 + 6 + 110 + 6 + 95 + 6 + 86 + 6 + 84 + 6 + 26 + 6 + 26 + 6 + 26 + 10
     local needs_scroll = (parent_avail_w < total_needed_w)
 
     local scroll_flags = reaper.ImGui_WindowFlags_NoScrollbar()
@@ -382,6 +382,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_tempo = false
                 state.show_articulations_drawer = false
                 state.show_key_signatures = false
+                state.show_annotations_drawer = false
             end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
@@ -398,6 +399,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_articulations_drawer = false
                 state.show_key_signatures = false
                 state.show_tools_drawer = false
+                state.show_annotations_drawer = false
             end
         end
 
@@ -411,6 +413,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_tempo = false
                 state.show_articulations_drawer = false
                 state.show_tools_drawer = false
+                state.show_annotations_drawer = false
             end
         end
         if reaper.ImGui_IsItemHovered(ctx) then
@@ -427,6 +430,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_tempo = false
                 state.show_key_signatures = false
                 state.show_tools_drawer = false
+                state.show_annotations_drawer = false
                 local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
                 ReaticulateParser.reload_all_banks()
             end
@@ -445,6 +449,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_articulations_drawer = false
                 state.show_key_signatures = false
                 state.show_tools_drawer = false
+                state.show_annotations_drawer = false
             end
         end
         
@@ -458,7 +463,28 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 state.show_articulations_drawer = false
                 state.show_key_signatures = false
                 state.show_tools_drawer = false
+                state.show_annotations_drawer = false
             end
+        end
+
+        -- Annotation Layers Drawer Toggle
+        reaper.ImGui_SameLine(ctx, 0, 6)
+        if toggle_btn(ctx, "🎨 Layers", state.show_annotations_drawer, 84, 26, 0xFF6B35FF) then
+            state.show_annotations_drawer = not state.show_annotations_drawer
+            if state.show_annotations_drawer then
+                state.show_dynamics = false
+                state.show_tempo = false
+                state.show_clefs = false
+                state.show_articulations_drawer = false
+                state.show_key_signatures = false
+                state.show_tools_drawer = false
+                if not state.annotation_tool then
+                    state.annotation_tool = "pen"
+                end
+            end
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Annotation Layers:\nFreehand drawing & tablet annotations per track with 12 color presets and transparent per-bar PNG layers.")
         end
         
         -- Help Button

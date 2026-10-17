@@ -44,6 +44,7 @@ local SelectionService = require("services.selection_service")
 local SlurService = require("services.slur_service")
 local PortamentoService = require("services.portamento_service")
 local GlissandoService  = require("services.glissando_service")
+local AnnotationService = require("services.annotation_service")
 local StateModule = require("state")
 
 local BAR_NUM_STRINGS = {}
@@ -1236,9 +1237,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local vis_min_measure = math.max(0, math.floor(vis_min_qn / qn_per_measure))
     local vis_max_measure = math.ceil(vis_max_qn / qn_per_measure)
 
-    local is_hovered = reaper.ImGui_IsItemHovered(ctx) and not is_playing
-    local is_active  = reaper.ImGui_IsItemActive(ctx) and not is_playing
+    local is_annotation_paint_mode = (state.show_annotations_drawer == true) and (state.annotation_tool == "pen" or state.annotation_tool == "eraser")
+    local is_hovered_raw = reaper.ImGui_IsItemHovered(ctx) and not is_playing
+    local is_active_raw  = reaper.ImGui_IsItemActive(ctx) and not is_playing
     local mouse_x, mouse_y = reaper.ImGui_GetMousePos(ctx)
+    local is_painting_score_area = is_annotation_paint_mode and (mouse_x >= margin_left or state._annot_stroke_active == true)
+    local is_hovered = is_hovered_raw and not is_painting_score_area
+    local is_active  = is_active_raw and not is_painting_score_area
     
     -- Immediately update live drag targets for dynamics and articulations (only when not playing)
     if not is_playing then
@@ -3823,9 +3828,126 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
         end
 
+            -- ==================================================================
+            -- PER-TRACK ANNOTATION LAYERS (Live Pen/Eraser & Per-Bar PNG Tiles)
+            -- ==================================================================
+            if tdata.guid and tdata.guid ~= "default" then
+                local staff_h_annot = tdata.is_harp and 224 or (tdata.is_grand and 148 or 80)
+                local ref_band_h = (staff_h_annot + AnnotationService.MAX_TRACK_SPACING) * s
+                local is_eraser_tool = (state.annotation_tool == "eraser")
+
+                -- 1. Live Pen / Eraser Stroke Input (before tile rendering for 0-frame latency)
+                if is_annotation_paint_mode and not is_playing then
+                    local in_band = (mouse_x >= margin_left and mouse_x <= staff_end_x and mouse_y >= band_y0 and mouse_y <= band_y1)
+                    if is_hovered_raw and in_band and reaper.ImGui_IsMouseClicked(ctx, 0) then
+                        if tdata.track then
+                            state.focused_track = tdata.track
+                        end
+                        local active_l = AnnotationService.get_active_layer(state, tdata.guid)
+                        if active_l and not active_l.locked and active_l.visible then
+                            state._annot_stroke_active = true
+                            state._annot_stroke_guid = tdata.guid
+                            state._annot_last_x = mouse_x
+                            state._annot_last_y = mouse_y
+                            AnnotationService.stroke_canvas_segment(
+                                state, tdata,
+                                mouse_x, mouse_y, mouse_x, mouse_y,
+                                margin_left, s, qn_per_measure, measure_map,
+                                is_eraser_tool, Engraver
+                            )
+                        elseif active_l and active_l.locked then
+                            state.status_msg = "Annotation Layer '" .. tostring(active_l.name) .. "' is locked (🔒)."
+                        elseif active_l and not active_l.visible then
+                            state.status_msg = "Annotation Layer '" .. tostring(active_l.name) .. "' is hidden (👁)."
+                        end
+                    elseif state._annot_stroke_active and state._annot_stroke_guid == tdata.guid and reaper.ImGui_IsMouseDown(ctx, 0) then
+                        local clamped_x = math.max(margin_left, math.min(staff_end_x, mouse_x))
+                        local clamped_y = math.max(band_y0, math.min(band_y1, mouse_y))
+                        local lx = state._annot_last_x or clamped_x
+                        local ly = state._annot_last_y or clamped_y
+                        if math.abs(clamped_x - lx) >= 0.5 or math.abs(clamped_y - ly) >= 0.5 then
+                            AnnotationService.stroke_canvas_segment(
+                                state, tdata,
+                                lx, ly, clamped_x, clamped_y,
+                                margin_left, s, qn_per_measure, measure_map,
+                                is_eraser_tool, Engraver
+                            )
+                            state._annot_last_x = clamped_x
+                            state._annot_last_y = clamped_y
+                        end
+                    end
+                end
+
+                -- 2. Render Visible Annotation Layers for this Track (Bottom-to-Top)
+                local trk_annot_stack = (state.track_annotations and state.track_annotations[tdata.guid])
+                    or (state.show_annotations_drawer and AnnotationService.get_track_stack(state, tdata.guid))
+                if trk_annot_stack and trk_annot_stack.layers and ref_band_h > 1.0 then
+                    local uv1_y = math.min(1.0, math.max(0.01, (band_y1 - band_y0) / ref_band_h))
+                    local annot_start_m = math.max(0, vis_min_measure - 1)
+                    local annot_end_m   = vis_max_measure + 1
+
+                    for _, layer in ipairs(trk_annot_stack.layers) do
+                        if layer.visible ~= false and layer.bars then
+                            local alpha_byte = math.max(0, math.min(255, math.floor((tonumber(layer.opacity) or 1.0) * 255 + 0.5)))
+                            if alpha_byte > 0 then
+                                local tint_col = 0xFFFFFF00 | alpha_byte
+                                for m = annot_start_m, annot_end_m do
+                                    local tile = layer.bars[m]
+                                    if tile then
+                                        local bx0 = (measure_map and measure_map.starts and measure_map.starts[m])
+                                            or Engraver.cursor_qn_to_canvas_x(m * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
+                                        local bx1 = (measure_map and measure_map.starts and measure_map.starts[m + 1])
+                                            or Engraver.cursor_qn_to_canvas_x((m + 1) * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
+                                        if bx1 >= cull_min_x and bx0 <= cull_max_x then
+                                            local img = AnnotationService.get_valid_tile_image(ctx, tdata.guid, layer.id, m, tile)
+                                            if img then
+                                                pcall(reaper.ImGui_DrawList_AddImage, draw_list, img, bx0, band_y0, bx1, band_y1, 0.0, 0.0, 1.0, uv1_y, tint_col)
+                                            end
+                                        end
+                                    end
+                                end
+                            end
+                        end
+                    end
+                end
+
+                -- 3. Visual Track Band Canvas Guide & Brush/Eraser Cursor Ring
+                if is_annotation_paint_mode and not is_playing then
+                    local in_band = (mouse_x >= margin_left and mouse_x <= staff_end_x and mouse_y >= band_y0 and mouse_y <= band_y1)
+                    local is_active_band = (state._annot_stroke_active and state._annot_stroke_guid == tdata.guid) or (is_hovered_raw and in_band)
+                    if is_active_band then
+                        local guide_x0 = math.max(margin_left, cull_min_x)
+                        local guide_x1 = math.min(staff_end_x, cull_max_x)
+                        if guide_x0 < guide_x1 then
+                            reaper.ImGui_DrawList_AddLine(draw_list, guide_x0, band_y0, guide_x1, band_y0, 0xFF6B3555, 1.0)
+                            reaper.ImGui_DrawList_AddLine(draw_list, guide_x0, band_y1 - 1, guide_x1, band_y1 - 1, 0xFF6B3555, 1.0)
+                        end
+                        local tool_sz = is_eraser_tool and (state.annotation_eraser_size or 14.0) or (state.annotation_brush_size or 4.0)
+                        local cursor_rad = math.max(2.5, (tool_sz * 0.5) * (ref_band_h / AnnotationService.TILE_H))
+                        if is_eraser_tool then
+                            reaper.ImGui_DrawList_AddCircle(draw_list, mouse_x, mouse_y, cursor_rad + 1.0, 0x000000AA, 24, 1.5)
+                            reaper.ImGui_DrawList_AddCircle(draw_list, mouse_x, mouse_y, cursor_rad, 0xE74C3CFF, 24, 1.5)
+                        else
+                            local c_col = state.annotation_color or 0xE74C3CFF
+                            reaper.ImGui_DrawList_AddCircleFilled(draw_list, mouse_x, mouse_y, cursor_rad, (c_col & 0xFFFFFF00) | 0x55, 20)
+                            reaper.ImGui_DrawList_AddCircle(draw_list, mouse_x, mouse_y, cursor_rad, c_col, 20, 1.5)
+                        end
+                    end
+                end
+            end
+
         end -- is_track_vis_y
         
         cur_band_top = cur_band_top + single_band_h
+    end
+
+    -- Flush modified annotation tiles to disk on MouseReleased (auto-deletes empty erased tiles!)
+    if state._annot_stroke_active and (not reaper.ImGui_IsMouseDown(ctx, 0) or is_playing) then
+        state._annot_stroke_active = false
+        state._annot_stroke_guid = nil
+        AnnotationService.commit_dirty_tiles(state, true)
+    elseif state._has_dirty_annotation_tiles and not reaper.ImGui_IsMouseDown(ctx, 0) then
+        AnnotationService.commit_dirty_tiles(state, true)
     end
     -- Barlines per instrument/staff (not connected across distinct instruments!)
     local bar_top_y = (first_staff_top_y or (score_top_y + 24 * s)) - (4 * s)

@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.27-beta
+-- @version 2.28-beta
 -- @changelog
+--   + v2.28-beta: New: Per-Track Annotation Layer System (12 color presets, freehand Pen & Eraser, lazy 320x200 per-bar PNG tiles & auto-cleanup)
 --   + v2.27-beta: Hotfix: Persist manual stem flips (X) via NOTATOR_STEM / NOTE stem tags & ProjExtState, and align 3rd-space stems in low-weighted measures
 --   + v2.26-beta: Hotfix: Fix chord/dyad beam grouping, middle-line stem direction & move Tracks button right of All Notes dropdown
 --   + v2.19-beta: Melodic Pathfinder: Clef Register Intelligence, Audition Wakeup & Film Composer Styles 1-4
@@ -144,6 +145,8 @@ local MusicXmlModal        = require("ui.musicxml_modal")
 local SlurService          = require("services.slur_service")
 local PortamentoService    = require("services.portamento_service")
 local GlissandoService     = require("services.glissando_service")
+local AnnotationService    = require("services.annotation_service")
+local AnnotationDrawer     = require("ui.annotation_drawer")
 local MidiEditorDrawer     = require("ui.midi_editor_drawer")
 local function safe_require(mod_name, fallback)
     local ok, mod = pcall(require, mod_name)
@@ -182,6 +185,7 @@ KeySignatureService.load(state)
 SlurService.load_slurs(state)
 PortamentoService.load_portamentos(state)
 GlissandoService.load_glissandos(state)
+AnnotationService.load_metadata(state)
 MidiService.load_stem_directions(state)
 MidiService.cleanup_orphaned_score_elements(state)
 state.current_reaproject, state.current_proj_fn = reaper.EnumProjects(-1)
@@ -217,6 +221,8 @@ reaper.atexit(function()
     SlurService.save_slurs(state)
     PortamentoService.save_portamentos(state)
     GlissandoService.save_glissandos(state)
+    AnnotationService.commit_dirty_tiles(state, true)
+    AnnotationService.save_metadata(state)
     MidiService.save_stem_directions(state)
     state:save_settings()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
@@ -288,6 +294,7 @@ local function loop()
         SlurService.load_slurs(state)
         PortamentoService.load_portamentos(state)
         GlissandoService.load_glissandos(state)
+        AnnotationService.load_metadata(state)
         MidiService.load_stem_directions(state)
         MidiService.cleanup_orphaned_score_elements(state)
         state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
@@ -807,7 +814,7 @@ local function loop()
         state.drawer_w = state.drawer_w or 236
         
         local canvas_w = main_avail_w - state.sidebar_w - splitter_w - spacing
-        if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures or state.show_tools_drawer then
+        if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures or state.show_tools_drawer or state.show_annotations_drawer then
             canvas_w = canvas_w - state.drawer_w - splitter_w - spacing
         end
         if canvas_w < 150 then canvas_w = 150 end
@@ -1013,8 +1020,8 @@ local function loop()
             reaper.ImGui_EndChild(ctx)
         end
         
-        -- RIGHT AREA: DYNAMICS, TEMPO, CLEF, KEY SIGNATURE, ARTICULATIONS OR TOOLS DRAWER (Resizable via splitter)
-        if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures or state.show_tools_drawer then
+        -- RIGHT AREA: DYNAMICS, TEMPO, CLEF, KEY SIGNATURE, ARTICULATIONS, TOOLS OR ANNOTATIONS DRAWER (Resizable via splitter)
+        if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures or state.show_tools_drawer or state.show_annotations_drawer then
             -- VERTICAL SPLITTER 2: Right drawer resizing
             reaper.ImGui_SameLine(ctx, 0, 2)
             reaper.ImGui_InvisibleButton(ctx, "vsplitter_right", splitter_w, main_content_h)
@@ -1047,6 +1054,8 @@ local function loop()
                 DynamicsDrawer.render(ctx, state, DynamicsEngine, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
             elseif state.show_articulations_drawer then
                 ArticulationsDrawer.render(ctx, state, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
+            elseif state.show_annotations_drawer then
+                AnnotationDrawer.render(ctx, state, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
             end
         end
         
