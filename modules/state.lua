@@ -153,6 +153,9 @@ function State.new()
         
         -- Multitrack & Track-Picker
         selected_tracks = {},     -- Map: track_guid -> boolean
+        disabled_tracks = {},     -- Map: track_guid -> boolean (Project-only deactivated tracks)
+        track_auto_detect = true, -- Automatically include existing & newly added project tracks unless in disabled_tracks
+        _known_track_guids = {},  -- Map: track_guid -> boolean (Tracks seen in current project session)
         track_clefs = {},         -- Map: track_guid -> "treble"|"bass"|"grand"|"auto"
         item_clefs = {},          -- Map: item_guid -> "treble"|"bass"|"grand"|"alto" etc.
         clef_scope = "item",      -- Target scope for Clef drawer: "item" or "track"
@@ -1024,6 +1027,108 @@ function State:load_settings()
         if hex then
             self.custom_colors[k] = hex
         end
+    end
+
+    self:load_project_track_filter(true)
+end
+
+function State.load_project_track_filter(self, force)
+    if not self then return end
+    local proj, proj_fn = reaper.EnumProjects(-1, "")
+    local proj_key = tostring(proj) .. "|" .. tostring(proj_fn or "")
+    if not force and self._loaded_proj_track_filter_key == proj_key then
+        return
+    end
+    self._loaded_proj_track_filter_key = proj_key
+    self.disabled_tracks = {}
+    self._known_track_guids = {}
+
+    local rv_dt, raw_dt = reaper.GetProjExtState(0, "REAPER_Notator", "disabled_tracks")
+    if rv_dt == 1 and raw_dt and raw_dt ~= "" then
+        for guid in raw_dt:gmatch("([^;]+)") do
+            if guid and guid ~= "" then
+                self.disabled_tracks[guid] = true
+            end
+        end
+    end
+
+    local rv_ad, raw_ad = reaper.GetProjExtState(0, "REAPER_Notator", "track_auto_detect")
+    if rv_ad == 1 and raw_ad == "false" then
+        self.track_auto_detect = false
+    else
+        self.track_auto_detect = true
+    end
+end
+
+function State.save_project_track_filter(self)
+    if not self then return end
+    local parts = {}
+    if self.disabled_tracks then
+        for guid, is_dis in pairs(self.disabled_tracks) do
+            if is_dis and type(guid) == "string" and guid ~= "" then
+                table.insert(parts, guid)
+            end
+        end
+    end
+    table.sort(parts)
+    reaper.SetProjExtState(0, "REAPER_Notator", "disabled_tracks", table.concat(parts, ";"))
+    reaper.SetProjExtState(0, "REAPER_Notator", "track_auto_detect", (self.track_auto_detect ~= false) and "true" or "false")
+    if reaper.MarkProjectDirty then
+        reaper.MarkProjectDirty(0)
+    end
+end
+
+function State.sync_project_tracks(self, project_tracks)
+    if not self then return end
+    self:load_project_track_filter(false)
+    self.selected_tracks = self.selected_tracks or {}
+    self.disabled_tracks = self.disabled_tracks or {}
+    self._known_track_guids = self._known_track_guids or {}
+    if self.track_auto_detect == nil then self.track_auto_detect = true end
+
+    local valid_guids = {}
+    if project_tracks then
+        for _, t in ipairs(project_tracks) do
+            if t and t.guid then
+                valid_guids[t.guid] = t
+                local is_known = self._known_track_guids[t.guid]
+                self._known_track_guids[t.guid] = true
+
+                if self.track_auto_detect ~= false then
+                    if self.disabled_tracks[t.guid] then
+                        self.selected_tracks[t.guid] = nil
+                    else
+                        self.selected_tracks[t.guid] = true
+                    end
+                else
+                    if not is_known and not self.selected_tracks[t.guid] then
+                        self.disabled_tracks[t.guid] = true
+                        self.selected_tracks[t.guid] = nil
+                    elseif self.disabled_tracks[t.guid] then
+                        self.selected_tracks[t.guid] = nil
+                    else
+                        self.selected_tracks[t.guid] = true
+                    end
+                end
+            end
+        end
+    end
+
+    -- Crash-safety: prune any deleted track GUIDs from selected_tracks and _known_track_guids
+    for guid in pairs(self.selected_tracks) do
+        if not valid_guids[guid] then
+            self.selected_tracks[guid] = nil
+        end
+    end
+    for guid in pairs(self._known_track_guids) do
+        if not valid_guids[guid] then
+            self._known_track_guids[guid] = nil
+        end
+    end
+
+    -- Crash-safety: validate focused_track pointer
+    if self.focused_track and not reaper.ValidatePtr(self.focused_track, "MediaTrack*") then
+        self.focused_track = nil
     end
 end
 

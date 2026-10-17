@@ -272,6 +272,11 @@ end
 
 
 local function sync_arrange_selection(state, project_tracks)
+    local State = package.loaded["state"] or require("state")
+    if State and State.sync_project_tracks then
+        State.sync_project_tracks(state, project_tracks)
+    end
+
     local cur_sel_item = reaper.GetSelectedMediaItem(0, 0)
     local cur_sel_trk = reaper.GetSelectedTrack(0, 0)
     
@@ -305,45 +310,11 @@ local function sync_arrange_selection(state, project_tracks)
             end
         end
 
-        local sel_trk_count = 0
-        for _ in pairs(state.selected_tracks) do sel_trk_count = sel_trk_count + 1 end
-        
-        local reaper_sel_trk_cnt = reaper.CountSelectedTracks(0)
-        local reaper_sel_item_cnt = reaper.CountSelectedMediaItems(0)
-        
-        if reaper_sel_trk_cnt > 1 then
-            if sel_trk_count <= 1 then
-                state.selected_tracks = {}
-            end
-            for i = 0, reaper_sel_trk_cnt - 1 do
-                local st = reaper.GetSelectedTrack(0, i)
-                if st then state.selected_tracks[reaper.GetTrackGUID(st)] = true end
-            end
-            if clicked_trk then state.focused_track = clicked_trk end
-        elseif reaper_sel_item_cnt > 1 then
-            if sel_trk_count <= 1 then
-                state.selected_tracks = {}
-            end
-            for i = 0, reaper_sel_item_cnt - 1 do
-                local mi = reaper.GetSelectedMediaItem(0, i)
-                if mi then
-                    local mt = reaper.GetMediaItem_Track(mi)
-                    if mt then state.selected_tracks[reaper.GetTrackGUID(mt)] = true end
-                end
-            end
-            if clicked_trk then state.focused_track = clicked_trk end
-        else
-            if clicked_trk then
-                local cguid = reaper.GetTrackGUID(clicked_trk)
-                if sel_trk_count <= 1 then
-                    state.selected_tracks = { [cguid] = true }
-                else
-                    state.selected_tracks[cguid] = true
-                end
+        if clicked_trk and reaper.ValidatePtr(clicked_trk, "MediaTrack*") then
+            local cguid = reaper.GetTrackGUID(clicked_trk)
+            if not (state.disabled_tracks and state.disabled_tracks[cguid]) then
+                state.selected_tracks[cguid] = true
                 state.focused_track = clicked_trk
-            elseif project_tracks and #project_tracks > 0 and sel_trk_count == 0 then
-                state.selected_tracks[project_tracks[1].guid] = true
-                state.focused_track = project_tracks[1].track
             end
         end
     end
@@ -352,7 +323,7 @@ local function sync_arrange_selection(state, project_tracks)
     local first_sel_trk = nil
     if project_tracks then
         for _, t in ipairs(project_tracks) do
-            if AudioPreview.is_track_user_armed(t.track) then
+            if AudioPreview.is_track_user_armed(t.track) and not (state.disabled_tracks and state.disabled_tracks[t.guid]) then
                 state.selected_tracks[t.guid] = true
             end
             if state.selected_tracks[t.guid] then
@@ -361,8 +332,11 @@ local function sync_arrange_selection(state, project_tracks)
             end
         end
         if not has_any_sel and #project_tracks > 0 then
-            state.selected_tracks[project_tracks[1].guid] = true
-            state.focused_track = project_tracks[1].track
+            local t1 = project_tracks[1]
+            if not (state.disabled_tracks and state.disabled_tracks[t1.guid]) then
+                state.selected_tracks[t1.guid] = true
+                state.focused_track = t1.track
+            end
         elseif first_sel_trk then
             if not state.focused_track or not reaper.ValidatePtr(state.focused_track, "MediaTrack*") or not state.selected_tracks[reaper.GetTrackGUID(state.focused_track)] then
                 if cur_sel_trk and reaper.ValidatePtr(cur_sel_trk, "MediaTrack*") and state.selected_tracks[reaper.GetTrackGUID(cur_sel_trk)] then

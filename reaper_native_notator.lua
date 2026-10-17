@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.34-beta
+-- @version 2.35-beta
 -- @changelog
+--   + v2.35-beta: New: Replace Tracks modal button with wider View-style Tracks dropdown featuring Auto-Detect Tracks, Check/Uncheck All buttons & crash-safe project-scoped persistence
 --   + v2.34-beta: Improvement: Match tile aspect ratio to portrait bar-band geometry (280x420 to 840x1260 px) + Analytical Capsule SDF & 1.25px Smoothstep AA + Quadratic Bezier curve smoothing
 --   + v2.33-beta: Hotfix: Eliminate dark bilinear alpha-bleed fringe (Saum / Premultiply effect) via 3.5px transparent color-bleed guard collar around strokes
 --   + v2.32-beta: Hotfix: Aspect-correct annotation brush stamps per bar width so vertical and horizontal strokes have identical screen thickness
@@ -760,6 +761,9 @@ local function loop()
         end
 
         local project_tracks = MidiService.get_project_midi_tracks()
+        if State.sync_project_tracks then
+            State.sync_project_tracks(state, project_tracks)
+        end
         
         -- Intercept keyboard shortcuts
         KeyboardHandler.handle(ctx, state, MidiService, ClipboardService, DynamicsEngine, state.active_tracks_cache)
@@ -789,7 +793,7 @@ local function loop()
         if reaper.APIExists("ImGui_WindowFlags_NoMove") then
             topbar_flags = topbar_flags | reaper.ImGui_WindowFlags_NoMove()
         end
-        TopBar.render(ctx, state, ClipboardService, MidiService, state.active_tracks_cache, #project_tracks, child_border, topbar_flags)
+        TopBar.render(ctx, state, ClipboardService, MidiService, state.active_tracks_cache, #project_tracks, child_border, topbar_flags, project_tracks)
         
         -- ======================================================================
         -- 2. MAIN AREA: Left sidebar (palette) | Center canvas | Right drawer (resizable)
