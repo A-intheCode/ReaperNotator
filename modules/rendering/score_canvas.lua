@@ -625,21 +625,39 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 cvn.nominal_nx = base_nominal_nx
             end
         end
+        -- Elaine Gould ("Behind Bars", pp. 48-51) & Gardner Read (p. 71):
+        -- Noteheads in a single-stem chord are NEVER placed on both sides of the stem.
+        -- Normal noteheads sit on the normal side (offset = 0); displaced noteheads in a 2nd
+        -- sit strictly on the opposite side of the stem (+note_w for up-stems, -note_w for down-stems),
+        -- alternating from the stem root toward the stem tip (bottom-up for up-stems, top-down for down-stems).
         for i = 1, #cnotes do
-            local vn = cnotes[i]
-            if i > 1 then
-                local prev_vn = cnotes[i - 1]
-                local step_diff = vn.dstep - prev_vn.dstep
-                if step_diff == 0 then
-                    vn.head_x_offset = prev_vn.head_x_offset + 11.5 * s
-                elseif step_diff == 1 then
-                    if cluster.stem_down then
-                        if prev_vn.head_x_offset == 0 then prev_vn.head_x_offset = -note_w else vn.head_x_offset = note_w end
-                    else
-                        if prev_vn.head_x_offset == 0 then vn.head_x_offset = note_w else vn.head_x_offset = 0 end
-                    end
+            cnotes[i].head_x_offset = 0
+        end
+        if cluster.stem_down then
+            for i = #cnotes - 1, 1, -1 do
+                local vn = cnotes[i]
+                local upper_vn = cnotes[i + 1]
+                local step_diff = (upper_vn.dstep or 0) - (vn.dstep or 0)
+                if step_diff <= 1 and math.abs(upper_vn.head_x_offset or 0) < 0.1 then
+                    vn.head_x_offset = -note_w
+                else
+                    vn.head_x_offset = 0
                 end
             end
+        else
+            for i = 2, #cnotes do
+                local vn = cnotes[i]
+                local lower_vn = cnotes[i - 1]
+                local step_diff = (vn.dstep or 0) - (lower_vn.dstep or 0)
+                if step_diff <= 1 and math.abs(lower_vn.head_x_offset or 0) < 0.1 then
+                    vn.head_x_offset = note_w
+                else
+                    vn.head_x_offset = 0
+                end
+            end
+        end
+        for i = 1, #cnotes do
+            local vn = cnotes[i]
             vn.vis_nx = vn.nominal_nx + vn.head_x_offset
             vn.nx = vn.vis_nx
             vn.stem_x = vn.vis_nx
@@ -1490,22 +1508,16 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 draw_5lines(treble_bottom_y)
                 draw_5lines(mid_bottom_y)
                 draw_5lines(bass_bottom_y)
-                -- Vertical system bracket & harp accolade (3 staves connected)
+                -- Vertical system line & curved harp accolade brace (3 staves connected)
                 if draw_sys_bracket then
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x, top_system_y, system_start_x, btm_system_y, staff_line_col, 2.8 * s)
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x - 5*s, top_system_y, system_start_x - 5*s, btm_system_y, staff_line_col, 1.4 * s)
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x - 5*s, top_system_y, system_start_x + 5*s, top_system_y, staff_line_col, 2.2 * s)
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x - 5*s, btm_system_y, system_start_x + 5*s, btm_system_y, staff_line_col, 2.2 * s)
+                    Engraver.draw_piano_brace(draw_list, system_start_x, top_system_y, btm_system_y, s, staff_line_col)
                 end
             elseif is_grand then
                 draw_5lines(treble_bottom_y)
                 draw_5lines(bass_bottom_y)
-                -- Vertical system bracket and accolade (grand staff brace with wings)
+                -- Vertical system line & curved piano accolade brace (Elaine Gould "Behind Bars", pp. 13, 502)
                 if draw_sys_bracket then
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x, top_system_y, system_start_x, btm_system_y, staff_line_col, 2.5 * s)
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x - 4*s, top_system_y, system_start_x - 4*s, btm_system_y, staff_line_col, 1.2 * s)
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x - 4*s, top_system_y, system_start_x + 4*s, top_system_y, staff_line_col, 2.0 * s)
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x - 4*s, btm_system_y, system_start_x + 4*s, btm_system_y, staff_line_col, 2.0 * s)
+                    Engraver.draw_piano_brace(draw_list, system_start_x, top_system_y, btm_system_y, s, staff_line_col)
                 end
             else
                 local cdef = Constants.CLEF_DEFS[track_clef]
@@ -2629,14 +2641,33 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     
                     if Engraver.is_dotted_duration(vn.dur_qn) then
                         local dot_base_x = nx
+                        local eff_dot_ny = ny
+                        local eff_dot_dstep = vn.dstep
                         if vn.chord_cluster and #vn.chord_cluster.notes > 1 then
                             for _, cvn in ipairs(vn.chord_cluster.notes) do
                                 if cvn.vis_nx and cvn.vis_nx > dot_base_x then
                                     dot_base_x = cvn.vis_nx
                                 end
                             end
+                            -- Elaine Gould ("Behind Bars", p. 31) & Gardner Read (p. 117):
+                            -- When a dotted chord contains a 2nd between a line note (dstep % 2 == 0)
+                            -- and the space note directly above it (dstep + 1), the lower line note's dot
+                            -- is placed in the space BELOW the line (ny + step_y) so the two dots never overlap!
+                            if vn.dstep and (vn.dstep % 2 == 0) then
+                                local upper_space_occupied = false
+                                for _, cvn in ipairs(vn.chord_cluster.notes) do
+                                    if cvn ~= vn and cvn.dstep == (vn.dstep + 1) and Engraver.is_dotted_duration(cvn.dur_qn) then
+                                        upper_space_occupied = true
+                                        break
+                                    end
+                                end
+                                if upper_space_occupied then
+                                    eff_dot_ny = ny + step_y
+                                    eff_dot_dstep = 1 -- already shifted into the lower space
+                                end
+                            end
                         end
-                        Engraver.draw_dot(draw_list, dot_base_x, ny, s, head_col, font_music, vn.dstep, step_y)
+                        Engraver.draw_dot(draw_list, dot_base_x, eff_dot_ny, s, head_col, font_music, eff_dot_dstep, step_y)
                     end
                 end
                 
@@ -2652,50 +2683,38 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         eff_stem_down = (vn.dstep >= 4)
                     end
 
+                    local is_always_above_art = (n.articulation == "marcato" or n.articulation == "marc" or n.articulation == "harmonic" or n.articulation == "harm" or n.articulation == "flageolet" or n.articulation == "fermata")
                     local is_extreme = true
                     if vn.chord_cluster and #vn.chord_cluster.notes > 1 then
                         local cnotes = vn.chord_cluster.notes
-                        if eff_stem_down then
+                        if is_always_above_art or eff_stem_down then
                             is_extreme = (vn == cnotes[#cnotes])
                         else
                             is_extreme = (vn == cnotes[1])
                         end
                     end
                     if is_extreme then
-                        local is_above = (eff_stem_down == true)
-                        local art_y = is_above and (ny - 12*s) or (ny + 14*s)
-                        
-                        if n.articulation == "marcato" or n.articulation == "marc" then
-                            art_y = is_above and (ny - 19*s) or (ny + 20*s)
-                        elseif n.articulation == "staccatissimo" or n.articulation == "staccatiss" or n.articulation == "wedge" then
-                            art_y = is_above and (ny - 14*s) or (ny + 15*s)
-                        elseif n.articulation == "harmonic" or n.articulation == "harm" or n.articulation == "flageolet" then
-                            is_above = true
-                            art_y = ny - 15*s
-                        elseif n.articulation == "tenuto" or n.articulation == "ten" then
-                            art_y = is_above and (ny - 11*s) or (ny + 13*s)
+                        local cur_staff_bot = staff_bottom_y
+                        if is_harp then
+                            cur_staff_bot = (vn.in_staff == "treble") and treble_bottom_y or ((vn.in_staff == "mid" or vn.in_staff == "alto") and mid_bottom_y or bass_bottom_y)
+                        elseif is_grand then
+                            cur_staff_bot = vn.in_treble and (tdata.treble_bottom_y or (tdata.staff_top_y + 32 * s)) or (tdata.bass_bottom_y or staff_bottom_y)
                         end
-                        
-                        -- Gould ("Behind Bars" p. 115) / Gardner Read: Staccato dot must always sit in a space, never on a staff line
-                        if n.articulation == "staccato" or n.articulation == "stacc" then
-                            local cur_staff_bot = staff_bottom_y
-                            if tdata.is_grand then
-                                cur_staff_bot = vn.in_treble and (tdata.treble_bottom_y or (tdata.staff_top_y + 32 * s)) or (tdata.bass_bottom_y or staff_bottom_y)
-                            end
-                            local l_spacing = tdata.line_spacing or (8.0 * s)
-                            local cur_staff_top = cur_staff_bot - 4 * l_spacing
-                            if art_y >= cur_staff_top - 1.0 * s and art_y <= cur_staff_bot + 1.0 * s then
-                                local rel_y = (cur_staff_bot - art_y) / l_spacing
-                                local line_idx = math.floor(rel_y + 0.5)
-                                if line_idx >= 0 and line_idx <= 4 then
-                                    local dist_to_line = math.abs(art_y - (cur_staff_bot - line_idx * l_spacing))
-                                    if dist_to_line < 2.0 * s then
-                                        art_y = is_above and (art_y - 4.0 * s) or (art_y + 4.0 * s)
-                                    end
-                                end
-                            end
+                        local l_spacing = tdata.line_spacing or (8.0 * s)
+                        local cur_staff_top = cur_staff_bot - 4 * l_spacing
+                        local est_stem_end_y = vn.beam_stem_end_y or vn.stem_end_y or (eff_stem_down and (ny + 32 * s) or (ny - 32 * s))
+
+                        local art_y, is_above = Engraver.get_articulation_y(
+                            n.articulation, ny, vn.dstep, eff_stem_down,
+                            cur_staff_top, cur_staff_bot, l_spacing, s, est_stem_end_y
+                        )
+                        vn.art_y = art_y
+                        vn.art_is_above = is_above
+                        if all_note_render_by_key and all_note_render_by_key[vn.key] then
+                            all_note_render_by_key[vn.key].art_y = art_y
+                            all_note_render_by_key[vn.key].art_is_above = is_above
                         end
-                        
+
                         local art_col = head_col
                         if state.invert_mode and (art_col == 0x111111FF or art_col == 0x000000FF) then
                             art_col = 0xEEEEEEFF
@@ -2806,7 +2825,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         stem_start_y = stem_down and min_ny or max_ny
                         stem_end_y = beam_end_y
                     else
-                        local stem_len = 32 * s
+                        -- Elaine Gould ("Behind Bars", p. 16) & Gardner Read (p. 69):
+                        -- Unbeamed 32nd (3 flags) and 64th (4 flags) notes require lengthened stems
+                        -- (+6.5*s per flag beyond the 2nd) so multiple flags never crowd the notehead.
+                        local flag_cnt_unbeamed = Engraver.get_flag_count(shortest_dur)
+                        local stem_len = (32 * s) + math.max(0, (flag_cnt_unbeamed or 0) - 2) * (6.5 * s)
                         stem_x = base_nx + (stem_down and (-5.0 * s) or (5.0 * s))
                         stem_start_y = stem_down and min_ny or max_ny
                         stem_end_y = stem_down and (max_ny + stem_len) or (min_ny - stem_len)

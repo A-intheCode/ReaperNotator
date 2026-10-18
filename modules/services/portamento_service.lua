@@ -6,6 +6,7 @@
 -- ==============================================================================
 
 local Constants      = require("constants")
+local Engraver       = require("rendering.engraver")
 local PortamentoMark = require("classes.portamento_mark")
 
 local PortamentoService = {}
@@ -1363,11 +1364,22 @@ function PortamentoService.draw_portamentos(ctx, draw_list, state, all_note_rend
                 local max_y = math.max(nd1.ny, nd2.ny) + 20 * s
 
                 if max_x >= cull_min_x and min_x <= cull_max_x and (not cull_min_y or (max_y >= cull_min_y and min_y <= cull_max_y)) then
-                    -- Notehead center offsets with clean, visible gap between notehead and line
+                    -- Elaine Gould ("Behind Bars" pp. 136-137):
+                    -- Portamento starts to the right of any augmentation dot on nd1,
+                    -- and ends to the left of any accidental on nd2.
                     local gap = ((state and state.portamento_default_gap) or 16.0) * s
-                    local start_x = nd1.nx + gap
+                    local start_gap = gap
+                    local end_gap   = gap
+                    local nd1_dur = nd1.dur_qn or (nd1.orig and nd1.orig.dur_qn) or 0
+                    if Engraver.is_dotted_duration(nd1_dur) then
+                        start_gap = start_gap + 8.5 * s
+                    end
+                    if nd2.acc and nd2.acc ~= 0 and not nd2.is_unpitched then
+                        end_gap = end_gap + (12.0 * s - (nd2.acc_x_offset or 0))
+                    end
+                    local start_x = nd1.nx + start_gap
                     local start_y = nd1.ny
-                    local end_x   = nd2.nx - gap
+                    local end_x   = nd2.nx - end_gap
                     local end_y   = nd2.ny
 
                     if end_x < start_x + 4.0 * s then

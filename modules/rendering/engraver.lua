@@ -2601,9 +2601,20 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
         slope = 0
     end
     
-    -- 5. Vertical position of primary beam (Elaine Gould "Behind Bars", pp. 14, 22:
-    -- stems on ledger-line notes pointing into the staff must reach at least the middle staff line dstep = 4)
-    local std_stem_len = 30 * s
+    -- 5. Vertical position of primary beam (Elaine Gould "Behind Bars", pp. 14, 21-24:
+    --    a) Stems on ledger-line notes pointing into the staff must reach at least the middle staff line dstep = 4.
+    --    b) Each secondary beam beyond the 2nd (32nd, 64th) lengthens the stem by one beam_gap.
+    --    c) The innermost beam must maintain at least 14*s clearance from every notehead in the group.)
+    local max_flags = 1
+    for _, onset in ipairs(onsets) do
+        local fc = Engraver.get_flag_count(onset.dur_qn)
+        if fc > max_flags then max_flags = fc end
+    end
+
+    local extra_beam_len = math.max(0, max_flags - 2) * beam_gap
+    local std_stem_len = (30 * s) + extra_beam_len
+    local min_inner_clearance = ((max_flags - 1) * beam_gap) + (14.0 * s)
+    local min_req_stem_len = math.max(std_stem_len, min_inner_clearance)
     local step_y_approx = 4.0 * s
     local beam_y1
     
@@ -2611,7 +2622,7 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
         local max_needed_y1 = -math.huge
         for _, onset in ipairs(onsets) do
             local cur_x = onset.stem_x
-            local target_end_y = onset.max_ny + std_stem_len
+            local target_end_y = onset.max_ny + min_req_stem_len
             if onset.max_dstep and onset.max_dstep > 4 then
                 local mid_line_y = onset.max_ny + (onset.max_dstep - 4) * step_y_approx
                 if mid_line_y > target_end_y then
@@ -2626,7 +2637,7 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
         local min_needed_y1 = math.huge
         for _, onset in ipairs(onsets) do
             local cur_x = onset.stem_x
-            local target_end_y = onset.min_ny - std_stem_len
+            local target_end_y = onset.min_ny - min_req_stem_len
             if onset.min_dstep and onset.min_dstep < 4 then
                 local mid_line_y = onset.min_ny + (onset.min_dstep - 4) * step_y_approx
                 if mid_line_y < target_end_y then
@@ -2715,13 +2726,7 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     local by2 = beam_y1 + slope * (bx2 - x1)
     draw_beam_quad(bx1, by1, bx2, by2)
     
-    -- Secondary beam levels (Level 1: 16ths, Level 2: 32nds) across onsets
-    local max_flags = 0
-    for _, onset in ipairs(onsets) do
-        local fc = Engraver.get_flag_count(onset.dur_qn)
-        if fc > max_flags then max_flags = fc end
-    end
-    
+    -- Secondary beam levels (Level 1: 16ths, Level 2: 32nds, Level 3: 64ths) across onsets
     for level = 1, max_flags - 1 do
         local offset_y = level * beam_gap * dir
         local seg_start = nil
@@ -2734,10 +2739,31 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
                 local ey = (beam_y1 + slope * (ex - x1)) + offset_y
                 draw_beam_quad(sx, sy, ex, ey)
             elseif count == 1 then
-                -- Fractional beam (stub / beamlet)
+                -- Elaine Gould ("Behind Bars", pp. 25, 155-158) & Gardner Read (p. 90):
+                -- Fractional beam (stub / beamlet) must point toward its rhythmic partner
+                -- within the same metric sub-unit (e.g., toward the paired dotted note).
                 local stem_pos = onsets[s_idx].stem_x
                 local stub_len = 9 * s
-                local stub_dir = (s_idx > 1) and -1 or 1
+                local stub_dir = 1
+                if s_idx == 1 then
+                    stub_dir = 1
+                elseif s_idx == #onsets then
+                    stub_dir = -1
+                else
+                    local prev_o = onsets[s_idx - 1]
+                    local next_o = onsets[s_idx + 1]
+                    local prev_dotted = prev_o and Engraver.is_dotted_duration(prev_o.dur_qn)
+                    local next_dotted = next_o and Engraver.is_dotted_duration(next_o.dur_qn)
+                    if prev_dotted and not next_dotted then
+                        stub_dir = -1
+                    elseif next_dotted and not prev_dotted then
+                        stub_dir = 1
+                    else
+                        local cur_q = onsets[s_idx].qn or onsets[s_idx].start_qn or 0
+                        local on_half_beat = math.abs((cur_q * 2.0) - math.floor(cur_q * 2.0 + 0.5)) < 0.04
+                        stub_dir = on_half_beat and 1 or -1
+                    end
+                end
                 local sx, ex
                 if stub_dir == 1 then
                     sx = stem_pos - (s_idx == 1 and half_stem or 0)
@@ -3001,6 +3027,82 @@ function Engraver.draw_dot(draw_list, cx, cy, s, col, font_music, dstep, step_y)
     reaper.ImGui_DrawList_AddCircleFilled(draw_list, cx + 9*s, dot_y, 1.9*s, col)
 end
 
+-- Elaine Gould ("Behind Bars", pp. 115-122) & Gardner Read (p. 252):
+-- Computes canonical articulation placement (above/below) and Y coordinate:
+-- 1. Marcato (^), Harmonic (o), and Fermata always sit ABOVE the staff/note/stem.
+-- 2. Staccato (.) and Tenuto (-) sit on the notehead side and NEVER sit on a staff line
+--    (snapping into the center of the nearest staff space away from the notehead).
+-- 3. Accent (>) sits outside the staff (or clear of staff lines) on the notehead side.
+function Engraver.get_articulation_y(art_id, ny, dstep, stem_down, staff_top_y, staff_bottom_y, l_spacing, s, stem_end_y)
+    local step_y = (l_spacing or (8.0 * s)) * 0.5
+    local cur_staff_bot = staff_bottom_y or (ny + (dstep or 0) * step_y)
+    local cur_staff_top = staff_top_y or (cur_staff_bot - 8.0 * step_y)
+    local lsp = l_spacing or (8.0 * s)
+
+    -- 1. Always-above markings: marcato (^), harmonic (o), fermata
+    if art_id == "marcato" or art_id == "marc" or art_id == "harmonic" or art_id == "harm" or art_id == "flageolet" or art_id == "fermata" then
+        local top_ref = math.min(cur_staff_top - (9.0 * s), ny - (13.0 * s))
+        if (not stem_down) and stem_end_y then
+            top_ref = math.min(top_ref, stem_end_y - (9.5 * s))
+        end
+        return top_ref, true
+    end
+
+    local is_above = (stem_down == true)
+
+    -- 2. Accent (>): placed on the notehead side, always outside the 5-line staff
+    if art_id == "accent" or art_id == "acc" then
+        if is_above then
+            local ay = math.min(cur_staff_top - (7.5 * s), ny - (12.5 * s))
+            return ay, true
+        else
+            local ay = math.max(cur_staff_bot + (7.5 * s), ny + (13.0 * s))
+            return ay, false
+        end
+    end
+
+    -- 3. Staccatissimo (wedge): placed on notehead side, clearing staff lines
+    if art_id == "staccatissimo" or art_id == "staccatiss" or art_id == "wedge" then
+        local ay = is_above and (ny - 13.5 * s) or (ny + 14.5 * s)
+        if ay >= cur_staff_top - 2.0 * s and ay <= cur_staff_bot + 2.0 * s then
+            local rel_y = (cur_staff_bot - ay) / lsp
+            local line_idx = math.floor(rel_y + 0.5)
+            if line_idx >= 0 and line_idx <= 4 and math.abs(rel_y - line_idx) < 0.38 then
+                if is_above then
+                    ay = (line_idx >= 4) and (cur_staff_top - 6.0 * s) or (cur_staff_bot - (line_idx + 0.5) * lsp)
+                else
+                    ay = (line_idx <= 0) and (cur_staff_bot + 6.0 * s) or (cur_staff_bot - (line_idx - 0.5) * lsp)
+                end
+            end
+        end
+        return ay, is_above
+    end
+
+    -- 4. Staccato (.) and Tenuto (-): placed on notehead side, strictly centered in a staff space when inside the staff
+    local base_off = (art_id == "tenuto" or art_id == "ten") and (10.5 * s) or (11.0 * s)
+    local ay = is_above and (ny - base_off) or (ny + base_off + 1.0 * s)
+    if ay >= cur_staff_top - 2.0 * s and ay <= cur_staff_bot + 2.0 * s then
+        local rel_y = (cur_staff_bot - ay) / lsp
+        local line_idx = math.floor(rel_y + 0.5)
+        if line_idx >= 0 and line_idx <= 4 and math.abs(rel_y - line_idx) < 0.38 then
+            if is_above then
+                if line_idx >= 4 then
+                    ay = cur_staff_top - 5.0 * s
+                else
+                    ay = cur_staff_bot - (line_idx + 0.5) * lsp
+                end
+            else
+                if line_idx <= 0 then
+                    ay = cur_staff_bot + 5.0 * s
+                else
+                    ay = cur_staff_bot - (line_idx - 0.5) * lsp
+                end
+            end
+        end
+    end
+    return ay, is_above
+end
+
 function Engraver.draw_articulation(draw_list, art_id, x, y, s, col, font_music, is_above)
     if not art_id or art_id == "" then return end
     local art_col = col or 0x1A1A1AFF
@@ -3042,7 +3144,7 @@ function Engraver.draw_articulation(draw_list, art_id, x, y, s, col, font_music,
         reaper.ImGui_DrawList_AddCircle(draw_list, x, y, 3.2 * s, art_col, 16, 1.5 * s)
         return
     elseif art_id == "marcato" or art_id == "marc" then
-        -- Pointed roof / hat ^
+        -- Pointed roof / hat ^ (Elaine Gould p. 117: always upright above the staff)
         reaper.ImGui_DrawList_AddLine(draw_list, x - 4.5*s, y + 3.5*s, x, y - 4*s, art_col, 2.0 * s)
         reaper.ImGui_DrawList_AddLine(draw_list, x + 4.5*s, y + 3.5*s, x, y - 4*s, art_col, 2.0 * s)
         return
@@ -3181,6 +3283,54 @@ function Engraver.draw_arpeggio(draw_list, x, y_top, y_bottom, s, col, font_musi
             x, arrow_y - 6.5 * s,
             arp_col)
     end
+end
+
+-- Elaine Gould ("Behind Bars", pp. 13, 502) & Gardner Read (p. 41):
+-- Draws a classical curved accolade brace ({) to the left of Grand Staff / Harp systems,
+-- paired with the vertical system line at x.
+function Engraver.draw_piano_brace(draw_list, x, top_y, bottom_y, s, col)
+    local brace_col = col or Constants.COLORS.staff_lines or 0x111111FF
+    -- Vertical system line connecting the staves
+    reaper.ImGui_DrawList_AddLine(draw_list, x, top_y, x, bottom_y, brace_col, 2.2 * s)
+
+    local mid_y = (top_y + bottom_y) * 0.5
+    local half_h = (bottom_y - top_y) * 0.5
+    if half_h < 10 * s then return end
+
+    local tip_x  = x - 1.5 * s
+    local beak_x = x - 10.5 * s
+    local belly_outer_x = x - 9.0 * s
+    local belly_inner_x = x - 6.8 * s
+    local waist_outer_x = x - 1.8 * s
+    local waist_inner_x = x - 4.0 * s
+
+    -- Upper half of accolade (top_y -> mid_y): paired Bezier curves for engraved calligraphic swell
+    reaper.ImGui_DrawList_AddBezierCubic(draw_list,
+        tip_x, top_y,
+        belly_outer_x, top_y + half_h * 0.22,
+        waist_outer_x, top_y + half_h * 0.78,
+        beak_x, mid_y,
+        brace_col, 1.7 * s)
+    reaper.ImGui_DrawList_AddBezierCubic(draw_list,
+        tip_x, top_y,
+        belly_inner_x, top_y + half_h * 0.26,
+        waist_inner_x, top_y + half_h * 0.74,
+        beak_x, mid_y,
+        brace_col, 1.7 * s)
+
+    -- Lower half of accolade (bottom_y -> mid_y): symmetric mirror
+    reaper.ImGui_DrawList_AddBezierCubic(draw_list,
+        tip_x, bottom_y,
+        belly_outer_x, bottom_y - half_h * 0.22,
+        waist_outer_x, bottom_y - half_h * 0.78,
+        beak_x, mid_y,
+        brace_col, 1.7 * s)
+    reaper.ImGui_DrawList_AddBezierCubic(draw_list,
+        tip_x, bottom_y,
+        belly_inner_x, bottom_y - half_h * 0.26,
+        waist_inner_x, bottom_y - half_h * 0.74,
+        beak_x, mid_y,
+        brace_col, 1.7 * s)
 end
 
 function Engraver.draw_flags(draw_list, stem_x, stem_end_y, s, col, count, stem_down, font_music)
@@ -3600,7 +3750,7 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                                 local y2 = last_o.beam_stem_end_y
                                 local cy_beam = (y1 and y2) and ((y1 + y2) / 2.0) or first_o.notes[1].vis_ny
                                 local stem_down = first_o.beam_stem_down
-                                local cy = stem_down and (cy_beam + 10 * s) or (cy_beam - 10 * s)
+                                local cy = stem_down and (cy_beam + 11.5 * s) or (cy_beam - 11.5 * s)
 
                                 local digit_col = is_ghost_tuplet and (ghost_col or 0x88888835) or col
                                 draw_tuplet_digit(draw_list, cx, cy, n, s, digit_col, font_music, font_main)
@@ -3677,15 +3827,24 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                         local cx = (x1 + x2) / 2.0
 
                         if not (cull_max_x and x1 > cull_max_x) and not (cull_min_x and x2 < cull_min_x) then
-                            -- Helper function: determines highest optical point of an onset
+                            -- Helper function: determines highest optical point of an onset,
+                            -- ensuring the tuplet bracket NEVER sits inside the 5-line staff (Gould p. 198)
+                            -- and clears all up-stem tips and above-staff articulations.
                             local function get_onset_top(o)
                                 local top_y = o.min_ny
                                 for _, vn in ipairs(o.notes) do
+                                    if vn.dstep and vn.vis_ny then
+                                        local staff_top_y = vn.vis_ny + (vn.dstep - 8) * (4.0 * s)
+                                        if staff_top_y < top_y then top_y = staff_top_y end
+                                    end
                                     if vn.stem_end_y and not vn.stem_down then
                                         if vn.stem_end_y < top_y then top_y = vn.stem_end_y end
-                                    elseif not vn.stem_end_y then
+                                    elseif vn.stem_down == nil and not vn.stem_end_y then
                                         local est = vn.vis_ny - 32 * s
                                         if est < top_y then top_y = est end
+                                    end
+                                    if vn.art_y and vn.art_is_above and (vn.art_y - 4.0 * s) < top_y then
+                                        top_y = vn.art_y - 4.0 * s
                                     end
                                 end
                                 return top_y
@@ -3694,9 +3853,10 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                             local y_first_top = get_onset_top(first_o)
                             local y_last_top  = get_onset_top(last_o)
 
-                            -- Slant (slope) following note contour (Gardner Read / Gould engraving standard)
+                            -- Slant (slope) following note contour, clamped to max 10*s vertical tilt (Gould p. 198)
                             local raw_slope = (y_last_top - y_first_top) / dx
-                            local slope = math.max(-0.25, math.min(0.25, raw_slope))
+                            local max_slope = math.min(0.22, (10.0 * s) / dx)
+                            local slope = math.max(-max_slope, math.min(max_slope, raw_slope))
 
                             -- If direction changes (convex/concave) -> horizontal
                             local has_higher, has_lower = false, false
@@ -3707,8 +3867,8 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                             end
                             if has_higher and has_lower then slope = 0 end
 
-                            -- Calculate y1 ensuring at least clearance (12*s) distance at each onset
-                            local clearance = 12 * s
+                            -- Calculate y1 ensuring at least clearance (11.5*s) distance at each onset
+                            local clearance = 11.5 * s
                             local y1 = y_first_top - clearance
                             for idx = i, i + n - 1 do
                                 local o = onset_list[idx]

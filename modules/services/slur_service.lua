@@ -1784,6 +1784,33 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                     above = false
                 end
                 
+                -- Elaine Gould ("Behind Bars" pp. 110-115):
+                -- When a slur is on the stem side (mixed stem directions) or shares the side
+                -- of a staccato/tenuto articulation, anchor outside the stem tip / articulation!
+                local anchor_y1 = nd1.ny
+                local anchor_y2 = nd2.ny
+                if above then
+                    if nd1.stem_down == false and nd1.stem_end_y then
+                        anchor_y1 = math.min(anchor_y1, nd1.stem_end_y + 2.0 * s)
+                    end
+                    if nd1.art_is_above == true and nd1.art_y then
+                        anchor_y1 = math.min(anchor_y1, nd1.art_y + 2.0 * s)
+                    end
+                    if nd2.stem_down == false and nd2.stem_end_y then
+                        anchor_y2 = math.min(anchor_y2, nd2.stem_end_y + 2.0 * s)
+                    end
+                    if nd2.art_is_above == true and nd2.art_y then
+                        anchor_y2 = math.min(anchor_y2, nd2.art_y + 2.0 * s)
+                    end
+                else
+                    if nd1.art_is_above == false and nd1.art_y then
+                        anchor_y1 = math.max(anchor_y1, nd1.art_y - 2.0 * s)
+                    end
+                    if nd2.art_is_above == false and nd2.art_y then
+                        anchor_y2 = math.max(anchor_y2, nd2.art_y - 2.0 * s)
+                    end
+                end
+                
                 local has_tie = has_tie_on_same_side(state, nd1, nd2, above, all_note_render_by_key)
                 local extra_offset_y = 0
                 local extra_arc = 0
@@ -1795,7 +1822,7 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                 end
                 
                 local dist_x = nd2.nx - nd1.nx
-                local dy = nd2.ny - nd1.ny
+                local dy = anchor_y2 - anchor_y1
                 local chord_len = math.sqrt(dist_x * dist_x + dy * dy)
                 local base_arc_h = math.min(32.0 * s, math.max(10.0 * s, chord_len * 0.15))
                 local arc_h = base_arc_h + extra_arc
@@ -1804,8 +1831,8 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                 local start_x = nd1.nx + 4.5 * s
                 local end_x   = nd2.nx - 4.5 * s
                 local base_offset_y = 6.5 * s
-                local start_y = nd1.ny + dir * (base_offset_y + extra_offset_y)
-                local end_y   = nd2.ny + dir * (base_offset_y + extra_offset_y)
+                local start_y = anchor_y1 + dir * (base_offset_y + extra_offset_y)
+                local end_y   = anchor_y2 + dir * (base_offset_y + extra_offset_y)
                 
                 local cp_dist = math.abs(start_x - end_x) * 0.28
                 local cp1_x = start_x + cp_dist
@@ -1854,7 +1881,7 @@ function SlurService.draw_slurs(ctx_or_dl, draw_list_or_state, state_or_notes, a
                     col = (col & 0xFFFFFF00) | alpha
                 end
                 
-                Engraver.draw_slur(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, col, above, thickness, extra_offset_y, extra_arc)
+                Engraver.draw_slur(draw_list, nd1.nx, anchor_y1, nd2.nx, anchor_y2, s, col, above, thickness, extra_offset_y, extra_arc)
             end
         end
     end
@@ -1934,12 +1961,20 @@ function SlurService.draw_user_ties(ctx_or_dl, draw_list_or_state, state_or_note
             local y_min = math.min(nd1.ny, nd2.ny) - 30 * s
             local y_max = math.max(nd1.ny, nd2.ny) + 30 * s
             if x_max >= cull_min_x and x_min <= cull_max_x and (not cull_min_y or (y_max >= cull_min_y and y_min <= cull_max_y)) then
-                -- Determine curve direction (Elaine Gould standard)
-                -- If both stems up -> tie is below (above = false)
-                -- If both stems down -> tie is above (above = true)
-                -- If mixed -> opposite first stem
+                -- Determine curve direction (Elaine Gould standard, Behind Bars p. 62)
+                -- In chords, upper notes curve up and lower notes curve down (outward splitting).
+                -- Single notes curve opposite the stem direction.
                 local above = true
-                if nd1.stem_down == false and nd2.stem_down == false then
+                if nd1.chord_cluster and #nd1.chord_cluster > 1 then
+                    local min_cy, max_cy = 999999, -999999
+                    for _, cn in ipairs(nd1.chord_cluster) do
+                        local cny = cn.ny or nd1.ny
+                        if cny < min_cy then min_cy = cny end
+                        if cny > max_cy then max_cy = cny end
+                    end
+                    local mid_cy = (min_cy + max_cy) * 0.5
+                    above = (nd1.ny <= mid_cy)
+                elseif nd1.stem_down == false and nd2.stem_down == false then
                     above = false
                 elseif nd1.stem_down == false then
                     above = false

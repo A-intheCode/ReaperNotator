@@ -6,6 +6,7 @@
 -- ==============================================================================
 
 local Constants     = require("constants")
+local Engraver      = require("rendering.engraver")
 local GlissandoMark = require("classes.glissando_mark")
 
 local GlissandoService = {}
@@ -1234,16 +1235,29 @@ function GlissandoService.draw_glissandos(ctx, draw_list, state, all_note_render
                         up_ny = -up_ny
                     end
 
-                    local eff_gap = gap_px
-                    if (dist - 2.0 * eff_gap) < 8.0 * s then
-                        eff_gap = math.max(2.0 * s, (dist - 8.0 * s) * 0.5)
+                    -- Elaine Gould ("Behind Bars" pp. 136-137):
+                    -- Glissando starts to the right of any augmentation dot on nd1,
+                    -- and ends to the left of any accidental on nd2.
+                    local start_gap = gap_px
+                    local end_gap   = gap_px
+                    local nd1_dur = nd1.dur_qn or (nd1.orig and nd1.orig.dur_qn) or 0
+                    if Engraver.is_dotted_duration(nd1_dur) then
+                        start_gap = start_gap + 8.5 * s
+                    end
+                    if nd2.acc and nd2.acc ~= 0 and not nd2.is_unpitched then
+                        end_gap = end_gap + (12.0 * s - (nd2.acc_x_offset or 0))
+                    end
+                    if (dist - (start_gap + end_gap)) < 8.0 * s then
+                        local safe = math.max(2.0 * s, (dist - 8.0 * s) * 0.5)
+                        start_gap = safe
+                        end_gap   = safe
                     end
 
-                    local sx = x1 + ux * eff_gap
-                    local sy = y1 + uy * eff_gap
-                    local ex = x2 - ux * eff_gap
-                    local ey = y2 - uy * eff_gap
-                    local eff_dist = dist - 2.0 * eff_gap
+                    local sx = x1 + ux * start_gap
+                    local sy = y1 + uy * start_gap
+                    local ex = x2 - ux * end_gap
+                    local ey = y2 - uy * end_gap
+                    local eff_dist = dist - (start_gap + end_gap)
 
                     -- Text Badge positioning (above the center of the line)
                     local mid_x = (sx + ex) * 0.5
