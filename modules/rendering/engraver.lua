@@ -753,6 +753,61 @@ local ENHARMONIC_SPELLINGS = {
     },
 }
 
+function Engraver.is_percussion_instrument_name(track_name)
+    if type(track_name) ~= "string" or track_name == "" then
+        return false
+    end
+    local name_l = track_name:lower()
+
+    -- 1. Exclude pitched kettle drums (Timpani / Pauken -> Bass Clef)
+    if name_l:find("timpani") or name_l:find("pauke") or name_l:find("pauken") or name_l:match("%f[%a]timp%f[%A]") then
+        return false
+    end
+
+    -- 2. Exclude pitched mallet & tuned percussion (Xylophone, Marimba, Vibraphone, Glockenspiel, Celesta, Chimes, etc.)
+    if name_l:find("xylophon") or name_l:find("marimba") or name_l:find("vibraphon") or name_l:match("%f[%a]vibes%f[%A]") or
+       name_l:find("glockenspiel") or name_l:find("celesta") or name_l:find("crotales") or
+       name_l:find("tubular bell") or name_l:match("%f[%a]chimes%f[%A]") or name_l:find("campanelli") or name_l:find("carillon") or
+       name_l:find("kalimba") or name_l:find("mbira") or name_l:find("mallet") or
+       name_l:find("pitched perc") or name_l:find("tuned perc") or
+       name_l:find("steel drum") or name_l:find("steeldrum") or name_l:find("steel pan") or
+       name_l:find("handpan") or name_l:find("hang drum") or name_l:find("tongue drum") then
+        return false
+    end
+
+    -- 3. True unpitched drums, snares, drumkits, toms, world drums, cymbals & auxiliary percussion
+    if name_l:match("%f[%a]snares?%f[%A]") or name_l:find("snaredrum") or name_l:find("kleine trommel") or
+       name_l:find("side stick") or name_l:find("sidestick") or name_l:find("rimshot") or
+       name_l:find("bass drum") or name_l:find("bassdrum") or name_l:find("gran cassa") or
+       name_l:find("große trommel") or name_l:find("grosse trommel") or
+       name_l:find("kick drum") or name_l:find("kickdrum") or name_l:match("%f[%a]kick%f[%A]") or
+       name_l:match("%f[%a]drums?%f[%A]") or name_l:find("drumkit") or name_l:find("drumset") or
+       name_l:find("framedrum") or name_l:find("bodhran") or
+       name_l:find("schlagzeug") or name_l:find("schlagwerk") or
+       name_l:match("%f[%a]trommeln?%f[%A]") or
+       name_l:match("%f[%a]toms?%f[%A]") or name_l:find("rototom") or name_l:find("taiko") or name_l:find("surdo") or name_l:find("timbale") or
+       name_l:find("bongo") or name_l:find("conga") or name_l:find("djembe") or name_l:find("cajon") or name_l:find("darbuka") or name_l:find("doumbek") or
+       name_l:find("tambourin") or name_l:find("tamburin") or name_l:find("pandeiro") or
+       name_l:find("cymbal") or name_l:find("becken") or name_l:find("piatti") or
+       name_l:find("hi-hat", 1, true) or name_l:find("hihat") or name_l:match("%f[%a]hi%s+hat%f[%A]") or
+       name_l:find("tam-tam", 1, true) or name_l:find("tamtam") or name_l:match("%f[%a]gong%f[%A]") or
+       name_l:find("cowbell") or name_l:find("agogo") or name_l:find("anvil") or
+       name_l:find("woodblock") or name_l:find("wood block") or name_l:find("holzblock") or name_l:find("temple block") or
+       name_l:find("claves") or name_l:find("castanet") or name_l:find("kastagnetten") or
+       name_l:find("maracas") or name_l:find("cabasa") or name_l:find("guiro") or name_l:match("%f[%a]shakers?%f[%A]") or
+       name_l:find("vibraslap") or name_l:find("slapstick") or name_l:find("peitsche") or name_l:find("ratchet") or
+       name_l:find("percussion") or name_l:match("%f[%a]perc%f[%A]") then
+        return true
+    end
+
+    if (name_l:find("triangle") or name_l:find("triangel")) and
+       not (name_l:find("synth") or name_l:find("wave") or name_l:find("osc") or name_l:find("lead") or name_l:find("pad")) then
+        return true
+    end
+
+    return false
+end
+
 function Engraver.get_track_clef(track_or_guid, p2, p3, state)
     local track_name, track_notes
     if type(p2) == "string" then
@@ -776,12 +831,12 @@ function Engraver.get_track_clef(track_or_guid, p2, p3, state)
     if state and state.track_clefs and guid ~= "" then
         local saved = state.track_clefs[guid] or (guid.upper and state.track_clefs[guid:upper()]) or (guid.lower and state.track_clefs[guid:lower()])
         if saved and saved ~= "auto" then
-            return saved
+            return (saved == "percussion") and "percussion_1" or saved
         end
     end
 
-    if state and state.view_mode and state.view_mode ~= "auto" and (state.view_mode == "treble" or state.view_mode == "bass" or state.view_mode == "grand" or state.view_mode == "alto") then
-        return state.view_mode
+    if state and state.view_mode and state.view_mode ~= "auto" and (state.view_mode == "treble" or state.view_mode == "bass" or state.view_mode == "grand" or state.view_mode == "alto" or state.view_mode == "percussion_1" or state.view_mode == "percussion_2" or state.view_mode == "percussion") then
+        return (state.view_mode == "percussion") and "percussion_1" or state.view_mode
     end
 
     local name_l = (track_name or ""):lower()
@@ -805,17 +860,34 @@ function Engraver.get_track_clef(track_or_guid, p2, p3, state)
         return "alto"
     end
 
-    -- 4. Explicit bass instruments (cellos, double bass, tuba, bassoon, trombone, timpani, etc.)
+    -- 4. Pitched kettle drums (Timpani / Pauken -> Bass Clef) & pitched mallet percussion (-> Treble Clef)
+    if name_l:find("timpani") or name_l:find("pauke") or name_l:find("pauken") or name_l:match("%f[%a]timp%f[%A]") then
+        return "bass"
+    end
+    if name_l:find("xylophon") or name_l:find("marimba") or name_l:find("vibraphon") or name_l:match("%f[%a]vibes%f[%A]") or
+       name_l:find("glockenspiel") or name_l:find("crotales") or name_l:find("tubular bell") or name_l:match("%f[%a]chimes%f[%A]") or
+       name_l:find("campanelli") or name_l:find("carillon") or name_l:find("kalimba") or name_l:find("mbira") or
+       name_l:find("mallet") or name_l:find("pitched perc") or name_l:find("tuned perc") or
+       name_l:find("steel drum") or name_l:find("steeldrum") or name_l:find("steel pan") or
+       name_l:find("handpan") or name_l:find("hang drum") or name_l:find("tongue drum") then
+        return "treble"
+    end
+
+    -- 5. True unpitched percussion instruments (snares, drums, drumset, bass drum, toms, cymbals, etc.)
+    if Engraver.is_percussion_instrument_name(name_l) then
+        return "percussion_1"
+    end
+
+    -- 6. Explicit bass instruments (cellos, double bass, tuba, bassoon, trombone, euphonium, etc.)
     if name_l:find("cell") or name_l:find("violoncell") or name_l:match("%f[%a]vc%f[%A]") or name_l:match("%f[%a]vlc%f[%A]") or
        name_l:find("bass") or name_l:find("kontra") or name_l:find("contra") or name_l:match("%f[%a]cb%f[%A]") or name_l:match("%f[%a]kb%f[%A]") or name_l:match("%f[%a]db%f[%A]") or
        name_l:find("tuba") or name_l:find("fagott") or name_l:find("bassoon") or name_l:match("%f[%a]bsn%f[%A]") or name_l:match("%f[%a]fgt%f[%A]") or
        name_l:find("posaune") or name_l:find("trombone") or name_l:match("%f[%a]trb%f[%A]") or name_l:match("%f[%a]pos%f[%A]") or name_l:match("%f[%a]tbn%f[%A]") or
-       name_l:find("timpani") or name_l:find("pauke") or name_l:find("pauken") or name_l:match("%f[%a]timp%f[%A]") or
-       name_l:find("baritone") or name_l:find("euphonium") or name_l:find("kick") then
+       name_l:find("baritone") or name_l:find("euphonium") then
         return "bass"
     end
 
-    -- 5. Explicit treble instruments (violin, flute, oboe, clarinet, trumpet, horn, guitar, etc.)
+    -- 7. Explicit treble instruments (violin, flute, oboe, clarinet, trumpet, horn, guitar, etc.)
     if name_l:find("violin") or name_l:find("violine") or name_l:find("geige") or name_l:find("fiddle") or name_l:match("%f[%a]vln%f[%A]") or name_l:match("%f[%a]vn%f[%A]") or
        name_l:find("flute") or name_l:find("flöte") or name_l:find("piccolo") or name_l:match("%f[%a]fl%f[%A]") or name_l:match("%f[%a]picc%f[%A]") or
        name_l:find("oboe") or name_l:find("cor anglais") or name_l:find("englischhorn") or name_l:match("%f[%a]ob%f[%A]") or name_l:match("%f[%a]eh%f[%A]") or

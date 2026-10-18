@@ -578,7 +578,10 @@ local CLEF_REGISTER_DEFAULTS = {
     tenor_8vb     = { min_p = 36, max_p = 64,  center_p = 48, family = "bass",      role_label = "Bass (C2–E4)",     rank_bias = -3 },
     bass_8vb      = { min_p = 24, max_p = 55,  center_p = 36, family = "sub_bass",  role_label = "Sub-Bass (C1–G3)", rank_bias = -6 },
     bass_15mb     = { min_p = 21, max_p = 50,  center_p = 34, family = "sub_bass",  role_label = "Sub-Bass (A0–D3)", rank_bias = -8 },
-    grand         = { min_p = 36, max_p = 88,  center_p = 60, family = "grand",     role_label = "Grand (C2–E6)",    rank_bias = 0 },
+    grand         = { min_p = 36, max_p = 88,  center_p = 60, family = "grand",      role_label = "Grand (C2–E6)",     rank_bias = 0 },
+    percussion    = { min_p = 35, max_p = 81,  center_p = 48, family = "percussion", role_label = "Percussion (B1–A5)", rank_bias = -1 },
+    percussion_1  = { min_p = 35, max_p = 81,  center_p = 48, family = "percussion", role_label = "Percussion (B1–A5)", rank_bias = -1 },
+    percussion_2  = { min_p = 35, max_p = 81,  center_p = 48, family = "percussion", role_label = "Percussion (B1–A5)", rank_bias = -1 },
 }
 
 --- Resolves the acoustic register, Clef, and role profile for a single REAPER track

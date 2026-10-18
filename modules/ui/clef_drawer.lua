@@ -80,7 +80,13 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
         local _, name = reaper.GetTrackName(cur_trk)
         trk_name = (name and name ~= "") and name or ("Track " .. math.floor(reaper.GetMediaTrackInfo_Value(cur_trk, "IP_TRACKNUMBER")))
         trk_guid = reaper.GetTrackGUID(cur_trk)
-        cur_clef_id = state.track_clefs[trk_guid] or "treble"
+        local saved_clef = state.track_clefs[trk_guid]
+        if saved_clef and saved_clef ~= "auto" then
+            cur_clef_id = (saved_clef == "percussion") and "percussion_1" or saved_clef
+        else
+            local Engraver = package.loaded["rendering.engraver"] or require("rendering.engraver")
+            cur_clef_id = (Engraver and Engraver.get_track_clef and Engraver.get_track_clef(trk_guid, trk_name, nil, state)) or "treble"
+        end
     end
 
     local short_trk_name = #trk_name > 24 and (trk_name:sub(1, 22) .. "..") or trk_name
@@ -166,6 +172,7 @@ function ClefDrawer.render(ctx, state, width, height, child_border, sidebar_flag
                 state.cached_measure_map = nil
                 state.cached_measure_map_sig = nil
                 state._track_clefs_cache = nil
+                state._clef_cache = nil
                 state._cached_hdr_metrics = nil
                 local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
                 if MidiService and MidiService.invalidate_cache then

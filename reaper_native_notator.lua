@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.49-beta
+-- @version 2.50-beta
 -- @changelog
+--   + v2.50-beta: New: Automatic Percussion Clef detection (`percussion_1`) from track names for true unpitched drums & percussion (`Snare`, `Drums`, `Drumset`, `Bass Drum` / `Gran Cassa`, `Kick`, `Toms`, `Taiko`, `Timbales`, `Bongos`, `Congas`, `Djembe`, `Cajon`, `Tambourine`, `Cymbals`, `Hi-Hat`, `Gong`, `Woodblock`, `Claves`, `Castanets`, `Shaker`, `Cowbell`, `Triangle`, `Percussion` / `Schlagzeug`) while strictly excluding pitched percussion (`Timpani` / `Pauken` -> Bass Clef, `Xylophone` / `Marimba` / `Vibraphone` / `Glockenspiel` / `Tubular Bells` / `Steel Drum` -> Treble Clef, `Celesta` -> Grand Staff)
 --   + v2.49-beta: Hotfix: Delete all associated Type 15 notation events (`NOTE`, `NOTATOR_NOTEHEAD`, `NOTATOR_STEM`, `NOTATOR_CHORD_ORIG`, `NOTATOR_ARPEGGIO`, `TRILL`) and `ProjExtState` records when deleting notes + auto-purge orphaned Type 15 events on take parse + flush `2.5*s` stem attachment on `slash` and `diamond` noteheads
 --   + v2.48-beta: Hotfix: Exact Elaine Gould & SMuFL stem attachment coordinates (`get_notehead_stem_attachment`), glyph centering & flag scaling (`32*s`) for all 9 Percussion & Custom Noteheads (`standard`, `x`, `circle_x`, `diamond`, `triangle`, `triangle_down`, `plus`, `slash`, `square`) so stems connect cleanly to every notehead contour and downward flags never touch the right side of the notehead
 --   + v2.47-beta: New: Percussion & Custom Notehead Selector in Right-Click Context Menu (`🥁 Notehead / Percussion Head`) supporting single and multi-note selections across all 9 SMuFL / Elaine Gould notehead shapes (`standard`, `x`, `circle_x`, `diamond`, `triangle`, `triangle_down`, `plus`, `slash`, `square`, plus `auto`) with MIDI Type 15 (`NOTATOR_NOTEHEAD` / `NOTE head`), `ProjExtState`, Clipboard Copy/Paste & MusicXML `<notehead>` persistence

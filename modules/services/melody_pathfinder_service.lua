@@ -57,6 +57,7 @@ local CLEF_RANGES = {
     treble_15ma  = { min_p = 72, max_p = 103, center_p = 84, label = "Treble 15ma" },
     grand        = { min_p = 40, max_p = 86, center_p = 60, label = "Grand Staff" },
     harp_3staff  = { min_p = 38, max_p = 88, center_p = 60, label = "Harp (3 Staves)" },
+    percussion   = { min_p = 36, max_p = 72, center_p = 48, label = "Percussion Clef" },
     percussion_1 = { min_p = 36, max_p = 72, center_p = 48, label = "Percussion Clef" },
     percussion_2 = { min_p = 36, max_p = 72, center_p = 48, label = "Percussion Clef" },
 }

@@ -1157,6 +1157,11 @@ function MusicXmlExportService.export_project(state, options)
                         emit('          <sign>C</sign>\n')
                         emit('          <line>4</line>\n')
                         emit('        </clef>\n')
+                    elseif trk_clef == "percussion_1" or trk_clef == "percussion_2" or trk_clef == "percussion" then
+                        emit('        <clef>\n')
+                        emit('          <sign>percussion</sign>\n')
+                        emit('          <line>2</line>\n')
+                        emit('        </clef>\n')
                     else
                         emit('        <clef>\n')
                         emit('          <sign>G</sign>\n')

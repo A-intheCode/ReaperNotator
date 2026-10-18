@@ -556,6 +556,7 @@ for _, cid in ipairs(Constants.CLEFS_ORDERED) do
         table.insert(Constants.CLEF_CATEGORIES[cdef.cat], cdef)
     end
 end
+Constants.CLEF_DEFS.percussion = Constants.CLEF_DEFS.percussion_1
 
 Constants.OCTAVE_LINE_DEFS = {
     ["8va"]  = { id = "8va",  label = "8",    corner = "top", shift_semitones = 12,  shift_diatonic = 7,   placement = "above", name = "8va (1 Octave Above)" },

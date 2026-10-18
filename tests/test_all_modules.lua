@@ -1297,6 +1297,113 @@ run_test("Percussion & Custom Notehead Selector: Multi-Note Conversion, Persiste
     assert_eq(Engraver.get_note_custom_notehead_type({ orig = { pitch = del_pitch, start_qn = del_qn, chan = del_chan }, track_guid = trk_guid }, st), nil, "Deleted note custom notehead record purged")
 end)
 
+run_test("Automatic Percussion Clef Detection: True Unpitched Drums vs. Pitched Percussion & Bass Instruments", function()
+    local Engraver = require("rendering.engraver")
+    local State = require("state")
+    local st = State.new()
+    st.view_mode = "auto"
+
+    -- 1. True unpitched percussion instruments MUST detect as "percussion_1"
+    local true_percussion_names = {
+        "Snare",
+        "Snare Drum",
+        "Military Snare",
+        "Kleine Trommel",
+        "Drums",
+        "Drum Kit",
+        "Drumset",
+        "Studio Drums",
+        "Schlagzeug",
+        "Schlagwerk",
+        "Bass Drum",
+        "Orchestral Bass Drum",
+        "Gran Cassa",
+        "Große Trommel",
+        "Kick Drum",
+        "Kick",
+        "Toms",
+        "Floor Tom",
+        "Rack Tom",
+        "Taiko Drums",
+        "Timbales",
+        "Bongos",
+        "Congas",
+        "Djembe",
+        "Cajon",
+        "Tambourine",
+        "Cymbals",
+        "Crash Cymbal",
+        "Ride Cymbal",
+        "Hi-Hat",
+        "Piatti",
+        "Tam-Tam",
+        "Gong",
+        "Woodblock",
+        "Claves",
+        "Castanets",
+        "Maracas",
+        "Shaker",
+        "Cowbell",
+        "Triangle",
+        "Orchestral Percussion"
+    }
+
+    for _, name in ipairs(true_percussion_names) do
+        assert_true(Engraver.is_percussion_instrument_name(name), "is_percussion_instrument_name('" .. name .. "') is true")
+        local detected = Engraver.get_track_clef("guid_test_perc", name, nil, st)
+        assert_eq(detected, "percussion_1", "get_track_clef('" .. name .. "') auto-detects 'percussion_1'")
+    end
+
+    -- 2. Pitched percussion & mallets MUST NOT detect as percussion clef
+    local pitched_percussion_expectations = {
+        { name = "Timpani",                  expected = "bass" },
+        { name = "Orchestral Timpani",       expected = "bass" },
+        { name = "Pauken",                   expected = "bass" },
+        { name = "Percussion - Timpani",     expected = "bass" },
+        { name = "Xylophone",                expected = "treble" },
+        { name = "Marimba",                  expected = "treble" },
+        { name = "Vibraphone",               expected = "treble" },
+        { name = "Glockenspiel",             expected = "treble" },
+        { name = "Tubular Bells",            expected = "treble" },
+        { name = "Chimes",                   expected = "treble" },
+        { name = "Crotales",                 expected = "treble" },
+        { name = "Kalimba",                  expected = "treble" },
+        { name = "Steel Drum",               expected = "treble" },
+        { name = "Hang Drum",                expected = "treble" },
+        { name = "Tongue Drum",              expected = "treble" },
+        { name = "Pitched Percussion",       expected = "treble" },
+        { name = "Celesta",                  expected = "grand" },
+    }
+
+    for _, item in ipairs(pitched_percussion_expectations) do
+        assert_true(not Engraver.is_percussion_instrument_name(item.name), "is_percussion_instrument_name('" .. item.name .. "') is false (pitched)")
+        local detected = Engraver.get_track_clef("guid_test_pitched", item.name, nil, st)
+        assert_eq(detected, item.expected, "get_track_clef('" .. item.name .. "') resolves to '" .. item.expected .. "' (not percussion)")
+    end
+
+    -- 3. Non-percussion instruments with overlapping substrings ("Bass", "Trombone", "Baritone", "Triangle Wave")
+    local non_percussion_expectations = {
+        { name = "Double Bass",              expected = "bass" },
+        { name = "Bass Guitar",              expected = "bass" },
+        { name = "Synth Bass",               expected = "bass" },
+        { name = "Bassoon",                  expected = "bass" },
+        { name = "Trombone",                 expected = "bass" },
+        { name = "Baritone",                 expected = "bass" },
+        { name = "Violin 1",                 expected = "treble" },
+        { name = "Viola",                    expected = "alto" },
+        { name = "Violoncello",              expected = "bass" },
+        { name = "Grand Piano",              expected = "grand" },
+        { name = "Concert Harp",             expected = "harp_3staff" },
+        { name = "Triangle Wave Synth Lead", expected = "treble" },
+    }
+
+    for _, item in ipairs(non_percussion_expectations) do
+        assert_true(not Engraver.is_percussion_instrument_name(item.name), "is_percussion_instrument_name('" .. item.name .. "') is false")
+        local detected = Engraver.get_track_clef("guid_test_nonperc", item.name, nil, st)
+        assert_eq(detected, item.expected, "get_track_clef('" .. item.name .. "') resolves to '" .. item.expected .. "'")
+    end
+end)
+
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 78 Modules", function()
     local total_exported_functions = 0
     for _, mod_name in ipairs(all_modules) do

@@ -250,19 +250,20 @@ end
 local function get_track_clef(guid, track_notes, track_name, state)
     local saved = state and state.track_clefs and (state.track_clefs[guid] or (guid.upper and state.track_clefs[guid:upper()]))
     if saved and saved ~= "auto" then
-        return saved
+        return (saved == "percussion") and "percussion_1" or saved
     end
     if state then
         state._clef_cache = state._clef_cache or {}
         local proj_change = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
         local c_entry = state._clef_cache[guid]
-        if c_entry and c_entry.proj_cnt == proj_change and c_entry.notes_count == (track_notes and #track_notes or 0) then
+        if c_entry and c_entry.proj_cnt == proj_change and c_entry.notes_count == (track_notes and #track_notes or 0) and c_entry.track_name == (track_name or "") then
             return c_entry.clef
         end
         local detected = Engraver.get_track_clef(guid, track_name, track_notes, state)
         state._clef_cache[guid] = {
             proj_cnt = proj_change,
             notes_count = track_notes and #track_notes or 0,
+            track_name = track_name or "",
             clef = detected
         }
         return detected
@@ -1578,6 +1579,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.cached_measure_map = nil
                     state.cached_measure_map_sig = nil
                     state._track_clefs_cache = nil
+                    state._clef_cache = nil
                     state._cached_hdr_metrics = nil
                     StateModule.save_settings(state)
                     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
@@ -1594,6 +1596,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
                 if reaper.ImGui_MenuItem(ctx, "🎺 Tenor Clef", nil, track_clef == "tenor") then
                     apply_canvas_clef("tenor")
+                end
+                if reaper.ImGui_MenuItem(ctx, "🥁 Percussion Clef", nil, track_clef == "percussion_1" or track_clef == "percussion_2" or track_clef == "percussion") then
+                    apply_canvas_clef("percussion_1")
                 end
                 if reaper.ImGui_MenuItem(ctx, "🎹 Grand Staff", nil, track_clef == "grand") then
                     apply_canvas_clef("grand")

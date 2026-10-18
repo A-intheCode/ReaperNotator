@@ -597,6 +597,8 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                     state.track_clefs[trk_guid] = "alto"
                                 elseif sign == "C" and line == 4 then
                                     state.track_clefs[trk_guid] = "tenor"
+                                elseif sign and sign:lower() == "percussion" then
+                                    state.track_clefs[trk_guid] = "percussion_1"
                                 elseif sign == "G" then
                                     state.track_clefs[trk_guid] = "treble"
                                 end
