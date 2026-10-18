@@ -827,7 +827,7 @@ Functions:
 Functions:
 - Docked Bottom Drawer: The Integrated MIDI Editor lives in a collapsible drawer docked directly beneath the score canvas, toggled via the bottom utility bar.
 - Bidirectional Take Synchronization: Any edits made on the notation canvas instantly update the MIDI Editor timeline, and adjustments to velocities or CC nodes immediately write to REAPER's active MIDI take.
-- Standalone Reference Guide: For an exhaustive guide, see the dedicated standalone documentation at docs/midi_editor_manual.md.
+- Standalone Reference Guide: For an exhaustive guide, see the dedicated standalone documentation at tools/midi_editor_manual.md.
 
 ### 15.2 Note Velocity Lane & REAPER Flag Handles
 

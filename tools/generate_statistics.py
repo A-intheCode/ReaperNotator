@@ -2,7 +2,7 @@
 """
 REAPER-Notator - Codebase Architecture & Volume Statistics Generator
 Generates:
-  1. docs/codebase_statistics.md (Markdown documentation)
+  1. tools/codebase_statistics.md (Markdown documentation)
   2. docs/reaper_notator_codebase_statistics.pdf (Publication-grade PDF report)
 """
 
@@ -14,10 +14,12 @@ from fpdf.enums import XPos, YPos
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS_DIR = os.path.join(REPO_ROOT, "docs")
+TOOLS_DIR = os.path.join(REPO_ROOT, "tools")
 os.makedirs(DOCS_DIR, exist_ok=True)
+os.makedirs(TOOLS_DIR, exist_ok=True)
 
 PDF_PATH = os.path.join(DOCS_DIR, "reaper_notator_codebase_statistics.pdf")
-MD_PATH = os.path.join(DOCS_DIR, "codebase_statistics.md")
+MD_PATH = os.path.join(TOOLS_DIR, "codebase_statistics.md")
 
 # Extract version from modules/version.lua
 def get_version():

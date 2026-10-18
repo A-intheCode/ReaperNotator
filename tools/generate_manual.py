@@ -2,7 +2,7 @@
 """
 REAPER-Notator - Complete User Manual & Documentation Generator
 Generates:
-  1. docs/user_manual.md (GitHub Markdown documentation)
+  1. tools/user_manual.md (GitHub Markdown documentation)
   2. docs/reaper_notator_user_manual.pdf (Full publication-grade PDF manual)
 """
 
@@ -14,9 +14,11 @@ from fpdf.enums import XPos, YPos
 
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS_DIR = os.path.join(REPO_ROOT, "docs")
+TOOLS_DIR = os.path.join(REPO_ROOT, "tools")
 os.makedirs(DOCS_DIR, exist_ok=True)
+os.makedirs(TOOLS_DIR, exist_ok=True)
 
-MD_PATH = os.path.join(DOCS_DIR, "user_manual.md")
+MD_PATH = os.path.join(TOOLS_DIR, "user_manual.md")
 PDF_PATH = os.path.join(DOCS_DIR, "reaper_notator_user_manual.pdf")
 
 def get_version():
@@ -854,7 +856,7 @@ MANUAL_DATA = [
                 "text": "Functions:\n"
                         "- Docked Bottom Drawer: The Integrated MIDI Editor lives in a collapsible drawer docked directly beneath the score canvas, toggled via the bottom utility bar.\n"
                         "- Bidirectional Take Synchronization: Any edits made on the notation canvas instantly update the MIDI Editor timeline, and adjustments to velocities or CC nodes immediately write to REAPER's active MIDI take.\n"
-                        "- Standalone Reference Guide: For an exhaustive guide, see the dedicated standalone documentation at docs/midi_editor_manual.md."
+                        "- Standalone Reference Guide: For an exhaustive guide, see the dedicated standalone documentation at tools/midi_editor_manual.md."
             },
             {
                 "heading": "15.2 Note Velocity Lane & REAPER Flag Handles",

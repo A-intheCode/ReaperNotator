@@ -76,7 +76,7 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - **128 Continuous Controller Lanes**: Complete support for all 128 MIDI CC channels (Modulation CC1, Breath CC2, Expression CC11, Volume CC7, Pan CC10, Sustain CC64, etc.) with REAPER CC curve envelope integration (Linear Ramp default, Square Step, Slow Start/End S-Curve, Fast Start/End, and Bézier).
   - **Convert All to Linear**: 1-click batch conversion eliminating staircase artifacts (*"Treppenstufen"*).
   - **Dynamic CC Shaping Protection**: Automatic padlock lock (`🔒 CC Locked`) protecting CC1/CC11 orchestral dynamics from accidental overwrites, with a 1-click Unlock / Bypass toggle.
-  - **Dedicated User Manual**: See the standalone documentation at [**`docs/midi_editor_manual.md`**](docs/midi_editor_manual.md).
+  - **Dedicated User Manual**: See the standalone documentation at [**`tools/midi_editor_manual.md`**](tools/midi_editor_manual.md).
 
 - **Performance Overhaul & 60-70+ FPS Playback Pipeline (v1.8.0)**:
   - **Zero-Latency Playback Query Bypass**: During active playback, interactive hover checks, ghost note previews, drag evaluations, Take C-API queries, and track scans are completely bypassed, rendering purely from pre-allocated memory caches.
@@ -178,9 +178,9 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Documentation
 
-- 📖 **[Official User Manual & Function Reference](docs/user_manual.md)** ([PDF Version](docs/reaper_notator_user_manual.pdf)): Comprehensive guide covering all engraving, playback, and DAW synchronization features.
-- 🎹 **[Integrated MIDI Editor Manual](docs/midi_editor_manual.md)**: Dedicated standalone guide for the MIDI Velocity & 128 CC Automation drawer, curve shaping, and dynamic protection.
-- 📊 **[Codebase Architecture & Volume Statistics](docs/codebase_statistics.md)** ([PDF Version](docs/reaper_notator_codebase_statistics.pdf)): Technical metrics and architecture breakdown.
+- 📖 **[Official User Manual & Function Reference](tools/user_manual.md)** ([PDF Version](docs/reaper_notator_user_manual.pdf)): Comprehensive guide covering all engraving, playback, and DAW synchronization features.
+- 🎹 **[Integrated MIDI Editor Manual](tools/midi_editor_manual.md)**: Dedicated standalone guide for the MIDI Velocity & 128 CC Automation drawer, curve shaping, and dynamic protection.
+- 📊 **[Codebase Architecture & Volume Statistics](tools/codebase_statistics.md)** ([PDF Version](docs/reaper_notator_codebase_statistics.pdf)): Technical metrics and architecture breakdown.
 
 ---
 
