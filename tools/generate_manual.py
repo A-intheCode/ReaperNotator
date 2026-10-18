@@ -867,6 +867,62 @@ MANUAL_DATA = [
                         "| Ctrl + Wheel | Canvas Zoom | Zooms score canvas in and out |"
             }
         ]
+    },
+    {
+        "chapter": 18,
+        "title": "Elaine Gould (Behind Bars) & Gardner Read Engraving Standards Reference",
+        "sections": [
+            {
+                "heading": "18.1 Optical Horizontal Spacing & Dynamic Measure Widths (Behind Bars pp. 38-42, Music Notation Ch. 6)",
+                "text": "- Non-Linear Rhythmic Spacing (t^0.70): Instead of spacing notes linearly by MIDI tick length (which crushes 16th and 32nd notes together and wastes horizontal space on whole and half notes), intra-measure rhythmic intervals are weighted by a non-linear power curve (delta_t^0.70). A half note takes roughly 1.62x the width of a quarter note rather than 2.0x.\n"
+                        "- Dynamic Collision-Free Measure Expansion: Before rendering a system, every measure is scanned across all visible tracks for horizontal density. The engine counts rhythmically distinct note onsets, accidental columns, chord second displacements, and augmentation dots. Dense bars automatically expand horizontally so noteheads, dots, and accidentals never collide."
+            },
+            {
+                "heading": "18.2 Stems: Direction, Ledger Extensions & Multi-Flag Lengthening (Behind Bars pp. 13-16, Music Notation pp. 65-69)",
+                "text": "- Middle-Line Rule: Single notes on the middle staff line (dstep == 4) default to stem down, or follow the local melodic and beam group context.\n"
+                        "- Stem Extension to the Middle Line: Notes on multiple ledger lines far above or below the staff automatically extend their stems all the way to the middle staff line.\n"
+                        "- 32nd & 64th Flag Stem Lengthening: Unbeamed notes with 3 or more flags (32nd and 64th notes) automatically lengthen their stems by one full staff space per additional flag beyond the 16th flag, preventing the innermost flag from colliding with the notehead."
+            },
+            {
+                "heading": "18.3 Beaming: Metric Grouping, Rest-Breaking & Fractional Stubs (Behind Bars pp. 17-29 & 152-158, Music Notation pp. 71-81)",
+                "text": "- Time-Signature-Aware Metric Grouping: Beams automatically break at main beat boundaries according to the active time signature, including compound meters (6/8, 9/8, 12/8) and asymmetric meters (5/8, 7/8).\n"
+                        "- Automatic Beam Breaking Across Rests: Any intervening rest splits the active beam group so primary/secondary beams and 16th stubs never cut across rest glyphs.\n"
+                        "- Inner-Beam Notehead Clearance: In beamed groups with 3 or more beams (32nd and 64th notes), stems are lengthened so the innermost beam always maintains at least 1.75 staff spaces of clearance from every notehead in the group.\n"
+                        "- Damped Beam Slopes: Beam angles follow the melodic contour but are damped to a maximum slant of 1.25 staff spaces and flattened to horizontal on outer-interval inversions to avoid steep angles.\n"
+                        "- Paired Fractional Beam Stubs: Isolated 16th and 32nd sub-beam stubs never point outside the beam group or into a rest. Interior stubs always point toward their rhythmically paired dotted note or metric half-beat subdivision."
+            },
+            {
+                "heading": "18.4 Chords, Seconds (2nds) & Augmentation Dots (Behind Bars pp. 16 & 48-50, Music Notation pp. 69-70 & 113-115)",
+                "text": "- Strict Two-Side Alternation for Chord Clusters: When a chord contains adjacent diatonic steps (seconds, or dense clusters like C-D-E), noteheads strictly alternate between the normal stem side and the displaced side starting from the stem root toward the stem tip. On an up-stem, the higher note of a second goes to the right of the stem while the lower note stays on the left. On a down-stem, the lower note of a second goes to the left of the stem while the higher note stays on the right. Noteheads are never placed on three columns across a single stem.\n"
+                        "- Staff-Line Avoidance for Augmentation Dots: Augmentation dots never sit on a staff line. Notes on a line place their dot in the staff space immediately above.\n"
+                        "- Dotted Chord Second Separation: In a dotted chord containing a second where the lower note sits on a line and the upper note already occupies the space above, the lower note dot shifts into the space below so two dots never stack in the same space."
+            },
+            {
+                "heading": "18.5 Accidentals: Intra-Bar Memory, Natural Cancellation & Staggered Columns (Behind Bars pp. 50-54 & 78-85, Music Notation pp. 129-137)",
+                "text": "- Intra-Measure Accidental Memory: Accidentals remain active for the same diatonic step and octave within a measure. Repeated altered notes in the same bar omit redundant accidentals. Returning to the diatonic key-signature pitch within the same bar automatically adds a natural cancellation sign (or the key signature sharp or flat). Tied continuation notes across a barline suppress redundant accidentals inside the same system.\n"
+                        "- Multi-Column Diagonal Stacking in Chords: When multiple accidentals appear on a chord within fewer than 6 diatonic steps of each other, they stagger into up to 3 collision-free columns ordered from top-right to bottom-left, while octave intervals share the same vertical column."
+            },
+            {
+                "heading": "18.6 Articulations: Staff-Line Avoidance & Vertical Hierarchy (Behind Bars pp. 115-121, Music Notation pp. 247-264)",
+                "text": "- No Articulations on Staff Lines: Staccato dots and tenuto lines placed inside the staff automatically snap to the nearest staff space so they are never bisected by a staff line.\n"
+                        "- Outside-Staff Accents & Always-Above Marks: Accents are always placed outside the five-line staff. Marcato, harmonic circles, and fermatas are always placed above the staff, clearing both the top staff line and any up-stem tips."
+            },
+            {
+                "heading": "18.7 Ties & Slurs: Tapered Crescent Profiles, Adjacency & Stem/Articulation Clearance (Behind Bars pp. 60-66 & 110-115, Music Notation pp. 116-121 & 265-268)",
+                "text": "- Dual-Bezier Tapered Crescent Rendering: Ties and slurs are drawn as 24-segment filled dual cubic-Bezier polygons with thin pointed ends and a thicker midpoint.\n"
+                        "- Tie Adjacency Rule: Ties connect only immediately adjacent notes of the same pitch and never jump across an intervening note.\n"
+                        "- Outward Chord Tie Splitting: In multi-note chords (both automatic barline ties and manual ties), ties split outward from the center of the chord (upper notes curve up, lower notes curve down).\n"
+                        "- Slur Clearance Over Ties, Stems & Articulations: When a slur and a tie share the same side, the slur arches outside the tie with at least 1 staff space of separation. On mixed-stem phrases where the slur curves above an up-stem note, the slur anchors above the stem tip rather than cutting through the stem. Slur endpoints also anchor outside staccato and tenuto marks."
+            },
+            {
+                "heading": "18.8 Rests, Tuplets, Glissandi & System Braces (Behind Bars pp. 136-137, 152-168, 196-204 & 499-502)",
+                "text": "- Whole-Measure Rests & Metric Consolidation: Empty measures display a centered whole-bar rest hanging from the fourth line regardless of time signature. Tied chains within a bar consolidate into single dotted or standard note values where metrically valid.\n"
+                        "- Polyphonic Voice Rest Merging: Identical rests occurring at the same time in Voice 1 and Voice 2 merge at the middle line, while different rest values shift vertically to their respective voice registers.\n"
+                        "- Tuplet Brackets: Unbeamed tuplet brackets clear the top staff line, all up-stem tips, and any above-note articulations, with a centered gap for the tuplet number.\n"
+                        "- Glissando & Portamento Endpoint Gaps: Wavy glissando and straight portamento lines automatically start to the right of any augmentation dot on the starting note and stop to the left of any accidental on the target note.\n"
+                        "- System Braces vs. Brackets: Orchestral family groups use a straight system bracket with winged tips, while Grand Staff (Piano) and Harp tracks use a curved S-Bezier accolade brace tapering to a central point."
+            }
+        ]
     }
 ]
 
