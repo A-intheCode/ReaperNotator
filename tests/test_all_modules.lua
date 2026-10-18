@@ -1220,6 +1220,10 @@ run_test("Percussion & Custom Notehead Selector: Multi-Note Conversion, Persiste
         Engraver.draw_oval_notehead(dl, 100, 120, 1.0, 0x111111FF, true,  false, nil, htype)
         Engraver.draw_oval_notehead(dl, 120, 120, 1.0, 0x111111FF, false, false, nil, htype)
         Engraver.draw_oval_notehead(dl, 140, 120, 1.0, 0x111111FF, false, true,  nil, htype)
+        local dx_up, dy_up = Engraver.get_notehead_stem_attachment(htype, false, 1.0, true)
+        local dx_dn, dy_dn = Engraver.get_notehead_stem_attachment(htype, true,  1.0, true)
+        assert_true(dx_up > 0 and dx_dn < 0, "Stem X offset is positive for stem-up and negative for stem-down on " .. htype)
+        assert_true(type(dy_up) == "number" and type(dy_dn) == "number", "Stem Y offset is numeric on " .. htype)
     end
 
     -- 2. Select multiple notes on a Percussion Clef system and convert their notehead type

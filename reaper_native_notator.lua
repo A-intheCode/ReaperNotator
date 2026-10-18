@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.47-beta
+-- @version 2.48-beta
 -- @changelog
+--   + v2.48-beta: Hotfix: Exact Elaine Gould & SMuFL stem attachment coordinates (`get_notehead_stem_attachment`), glyph centering & flag scaling (`32*s`) for all 9 Percussion & Custom Noteheads (`standard`, `x`, `circle_x`, `diamond`, `triangle`, `triangle_down`, `plus`, `slash`, `square`) so stems connect cleanly to every notehead contour and downward flags never touch the right side of the notehead
 --   + v2.47-beta: New: Percussion & Custom Notehead Selector in Right-Click Context Menu (`🥁 Notehead / Percussion Head`) supporting single and multi-note selections across all 9 SMuFL / Elaine Gould notehead shapes (`standard`, `x`, `circle_x`, `diamond`, `triangle`, `triangle_down`, `plus`, `slash`, `square`, plus `auto`) with MIDI Type 15 (`NOTATOR_NOTEHEAD` / `NOTE head`), `ProjExtState`, Clipboard Copy/Paste & MusicXML `<notehead>` persistence
 --   + v2.46-beta: Hotfix: Fix Step Input crash (`AudioPreview` require in `KeyboardHandler`), protect `KeyboardHandler` with `pcall` so `ImGui_End` is never skipped, and fix 5 undeclared global variable references (`_cached_banks`, `is_hov`, `eff_bank`, `all_have_target`, `SlurService`) caught by the new strict `_G` metatable guard in the unit test suite
 --   + v2.45-beta: Comprehensive Automated Unit Test & Fuzzing Suite across all 78 Lua modules (604 exported functions, 149 test cases) + defensive nil/type safety across all 15 data classes, Engraver beam/tuplet coordinate fallbacks, SystemEngraver vertical layout fallbacks, ClipboardService argument-order resilience, and MIDI Editor track color safety

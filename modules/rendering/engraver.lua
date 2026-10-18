@@ -988,6 +988,34 @@ function Engraver.get_note_notehead_type(vn, state, is_unpitched, eff_pitch)
     return "standard"
 end
 
+-- Elaine Gould ("Behind Bars", pp. 291-295) & SMuFL Engraving Anchors (stemUpSE / stemDownNW):
+-- Returns (dx, dy) offset from notehead center (nx, ny) where the stem attaches cleanly to the notehead contour.
+function Engraver.get_notehead_stem_attachment(notehead_type, stem_down, s, is_filled)
+    s = s or 1.0
+    local ntype = notehead_type or "standard"
+    if ntype == "x" then
+        if stem_down then return -4.8 * s, 4.0 * s else return 4.8 * s, -4.0 * s end
+    elseif ntype == "circle_x" then
+        if stem_down then return -4.5 * s, 1.8 * s else return 4.5 * s, -1.8 * s end
+    elseif ntype == "diamond" then
+        local rx = (is_filled == false) and (5.0 * s) or (5.8 * s)
+        if stem_down then return -rx, 0.0 else return rx, 0.0 end
+    elseif ntype == "triangle" then
+        if stem_down then return -5.2 * s, 4.4 * s else return 5.2 * s, 4.4 * s end
+    elseif ntype == "triangle_down" then
+        if stem_down then return -5.2 * s, -4.4 * s else return 5.2 * s, -4.4 * s end
+    elseif ntype == "plus" then
+        if stem_down then return -4.4 * s, 0.0 else return 4.4 * s, 0.0 end
+    elseif ntype == "slash" then
+        if stem_down then return -4.6 * s, 3.6 * s else return 4.6 * s, -3.6 * s end
+    elseif ntype == "square" then
+        if stem_down then return -4.5 * s, -2.5 * s else return 4.5 * s, 2.5 * s end
+    else
+        if stem_down then return -5.0 * s, 1.0 * s else return 5.0 * s, -1.0 * s end
+    end
+end
+
+
 function Engraver.get_note_effective_pitch(raw_pitch, start_qn, track_guid, state)
     local pitch = raw_pitch or 60
     if not (state and track_guid and track_guid ~= "") then
@@ -2624,7 +2652,22 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     
     -- 3. Stem X positions per onset (and for all notes within the onset)
     for _, onset in ipairs(onsets) do
-        local sx = onset.nominal_nx + (group_stem_down and (-5.0 * s) or (5.0 * s))
+        local anchor_nh = "standard"
+        if onset.notes and #onset.notes > 0 then
+            local anchor_vn = onset.notes[1]
+            for _, ovn in ipairs(onset.notes) do
+                local ony = ovn.vis_ny or ovn.ny or 0
+                local any = anchor_vn.vis_ny or anchor_vn.ny or 0
+                if group_stem_down then
+                    if ony < any then anchor_vn = ovn end
+                else
+                    if ony > any then anchor_vn = ovn end
+                end
+            end
+            anchor_nh = anchor_vn.notehead_type or "standard"
+        end
+        local attach_dx = Engraver.get_notehead_stem_attachment(anchor_nh, group_stem_down, s, true)
+        local sx = onset.nominal_nx + attach_dx
         onset.stem_x = sx
         for _, vn in ipairs(onset.notes) do
             vn.beam_stem_x = sx
@@ -2872,30 +2915,65 @@ end
 -- ==============================================================================
 
 function Engraver.draw_oval_notehead(draw_list, cx, cy, s, col, filled, is_whole, font_music, notehead_type)
-    local font_sz = math.floor(40 * s + 0.5)
+    if notehead_type == "slash" then
+        -- Single-staff-space percussion / rimshot slash notehead (SMuFL E100-E103 are 2-space comping slashes)
+        local rx = (is_whole and 6.2 or 5.4) * s
+        local ry = 4.2 * s
+        local thick = 3.0 * s
+        if filled and not is_whole and reaper.APIExists("ImGui_DrawList_AddQuadFilled") then
+            reaper.ImGui_DrawList_AddQuadFilled(draw_list,
+                cx - rx, cy + ry,
+                cx - rx + thick, cy + ry,
+                cx + rx, cy - ry,
+                cx + rx - thick, cy - ry,
+                col)
+            return
+        elseif reaper.APIExists("ImGui_DrawList_PathClear") then
+            reaper.ImGui_DrawList_PathClear(draw_list)
+            reaper.ImGui_DrawList_PathLineTo(draw_list, cx - rx, cy + ry)
+            reaper.ImGui_DrawList_PathLineTo(draw_list, cx + rx - thick, cy - ry)
+            reaper.ImGui_DrawList_PathLineTo(draw_list, cx + rx, cy - ry)
+            reaper.ImGui_DrawList_PathLineTo(draw_list, cx - rx + thick, cy + ry)
+            if filled and not is_whole then
+                reaper.ImGui_DrawList_PathFillConvex(draw_list, col)
+            else
+                reaper.ImGui_DrawList_PathStroke(draw_list, col, reaper.ImGui_DrawFlags_Closed(), 1.6 * s)
+            end
+            return
+        end
+    end
+
+    local font_sz = math.floor(((notehead_type == "square") and 34 or 40) * s + 0.5)
     if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
         local glyph
+        local ox = is_whole and 8.4 or 5.9
         if notehead_type == "circle_x" then
             glyph = is_whole and (SMUFL.noteheadCircleXWhole or SMUFL.noteheadCircleX) or (filled and SMUFL.noteheadCircleX or (SMUFL.noteheadCircleXHalf or SMUFL.noteheadCircleX))
+            ox = 5.0
         elseif notehead_type == "x" then
             glyph = is_whole and SMUFL.noteheadXWhole or (filled and SMUFL.noteheadXBlack or SMUFL.noteheadXHalf)
+            ox = is_whole and 7.5 or (filled and 5.8 or 6.7)
         elseif notehead_type == "plus" then
             glyph = is_whole and SMUFL.noteheadPlusWhole or (filled and SMUFL.noteheadPlusBlack or SMUFL.noteheadPlusHalf)
+            ox = is_whole and 5.7 or (filled and 5.0 or 5.2)
         elseif notehead_type == "triangle" then
             glyph = is_whole and SMUFL.noteheadTriangleUpWhole or (filled and SMUFL.noteheadTriangleUpBlack or SMUFL.noteheadTriangleUpHalf)
+            ox = is_whole and 6.4 or 5.86
         elseif notehead_type == "triangle_down" then
             glyph = is_whole and SMUFL.noteheadTriangleDownWhole or (filled and SMUFL.noteheadTriangleDownBlack or SMUFL.noteheadTriangleDownHalf)
+            ox = is_whole and 5.7 or 5.85
         elseif notehead_type == "diamond" then
             glyph = is_whole and (SMUFL.noteheadDiamondWhole or SMUFL.noteheadDiamondHalf) or (filled and SMUFL.noteheadDiamondBlack or SMUFL.noteheadDiamondHalf)
-        elseif notehead_type == "slash" then
-            glyph = is_whole and SMUFL.noteheadSlashWhiteWhole or (filled and SMUFL.noteheadSlashHorizontalEnds or SMUFL.noteheadSlashWhiteHalf)
+            ox = is_whole and 8.0 or (filled and 6.8 or 5.6)
         elseif notehead_type == "square" then
             glyph = (is_whole or not filled) and SMUFL.noteheadSquareWhite or SMUFL.noteheadSquareBlack
+            ox = 5.3
         else
             glyph = is_whole and SMUFL.note_whole or (filled and SMUFL.note_black or SMUFL.note_half)
+            ox = is_whole and 8.4 or 5.9
         end
         local pos_y = cy - (font_sz * 2.012)
-        local pos_x = cx - (is_whole and 8.4 or 5.9) * s
+        local pos_x = cx - ox * s
         reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, font_sz, pos_x, pos_y, col, glyph)
         return
     end
@@ -3438,29 +3516,39 @@ function Engraver.draw_piano_brace(draw_list, x, top_y, bottom_y, s, col)
 end
 
 function Engraver.draw_flags(draw_list, stem_x, stem_end_y, s, col, count, stem_down, font_music)
-    local font_sz = math.floor(40 * s + 0.5)
+    -- Elaine Gould ("Behind Bars", p. 16): Flag height must match our 8.0*s staff space (font_sz = 32*s)
+    -- so at least 6*s of clear space remains between the flag tip and the notehead.
+    local font_sz = math.floor(32 * s + 0.5)
     if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
         local glyph = nil
-        if count == 1 then glyph = stem_down and SMUFL.flag_8th_down or SMUFL.flag_8th_up
-        elseif count == 2 then glyph = stem_down and SMUFL.flag_16th_down or SMUFL.flag_16th_up
-        elseif count == 3 then glyph = stem_down and SMUFL.flag_32nd_down or SMUFL.flag_32nd_up
-        elseif count >= 4 then glyph = stem_down and SMUFL.flag_64th_down or SMUFL.flag_64th_up end
+        local extra_y = 0
+        if count == 1 then
+            glyph = stem_down and SMUFL.flag_8th_down or SMUFL.flag_8th_up
+        elseif count == 2 then
+            glyph = stem_down and SMUFL.flag_16th_down or SMUFL.flag_16th_up
+        elseif count == 3 then
+            glyph = stem_down and SMUFL.flag_32nd_down or SMUFL.flag_32nd_up
+            extra_y = (stem_down and -5.2 or 4.8) * s
+        elseif count >= 4 then
+            glyph = stem_down and SMUFL.flag_64th_down or SMUFL.flag_64th_up
+            extra_y = (stem_down and -11.8 or 11.1) * s
+        end
         if glyph then
-            local pos_y = stem_end_y - (font_sz * 2.012)
+            local pos_y = (stem_end_y + extra_y) - (font_sz * 2.012)
             local pos_x = stem_x - 0.5 * s
             reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, font_sz, pos_x, pos_y, col, glyph)
             return
         end
     end
     for f = 0, count - 1 do
-        local flag_offset = f * 7 * s
-        local fy = stem_down and (stem_end_y + flag_offset) or (stem_end_y - flag_offset)
-        local dir = stem_down and 1 or -1
+        local flag_offset = f * 6.5 * s
+        local fy = stem_down and (stem_end_y - flag_offset) or (stem_end_y + flag_offset)
+        local dir = stem_down and -1 or 1
         reaper.ImGui_DrawList_AddBezierCubic(draw_list,
             stem_x, fy,
-            stem_x + 7*s, fy + dir * 10*s,
-            stem_x + 13*s, fy + dir * 5*s,
-            stem_x + 6*s, fy + dir * 16*s,
+            stem_x + 7*s, fy + dir * 8*s,
+            stem_x + 12*s, fy + dir * 4*s,
+            stem_x + 5*s, fy + dir * 14*s,
             col, 1.8*s)
     end
 end

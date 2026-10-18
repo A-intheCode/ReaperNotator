@@ -2802,11 +2802,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     
                     local min_ny = cnotes[1].vis_ny
                     local max_ny = cnotes[1].vis_ny
+                    local top_vn = cnotes[1]
+                    local bot_vn = cnotes[1]
                     local shortest_dur = cnotes[1].dur_qn
                     local has_beamed = false
                     for _, vn in ipairs(cnotes) do
-                        if vn.vis_ny < min_ny then min_ny = vn.vis_ny end
-                        if vn.vis_ny > max_ny then max_ny = vn.vis_ny end
+                        if vn.vis_ny < min_ny then min_ny = vn.vis_ny; top_vn = vn end
+                        if vn.vis_ny > max_ny then max_ny = vn.vis_ny; bot_vn = vn end
                         if vn.dur_qn < shortest_dur then shortest_dur = vn.dur_qn end
                         if beamed_notes_map[vn.key] then has_beamed = true end
                     end
@@ -2823,11 +2825,17 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                     
+                    local eff_stem_down = (has_beamed and beam_end_y) and beam_down or stem_down
+                    local anchor_vn = eff_stem_down and top_vn or bot_vn
+                    local anchor_dur = anchor_vn.dur_qn or shortest_dur
+                    local is_anchor_filled = not (math.abs(anchor_dur - 4.0) < 0.15 or math.abs(anchor_dur - 2.0) < 0.15 or math.abs(anchor_dur - 3.0) < 0.15)
+                    local attach_dx, attach_dy = Engraver.get_notehead_stem_attachment(anchor_vn.notehead_type, eff_stem_down, s, is_anchor_filled)
+
                     local stem_x, stem_start_y, stem_end_y
                     if has_beamed and beam_end_y then
-                        stem_x = beam_stem_x or (base_nx + (beam_down and (-5.0 * s) or (5.0 * s)))
+                        stem_x = beam_stem_x or (base_nx + attach_dx)
                         stem_down = beam_down
-                        stem_start_y = stem_down and min_ny or max_ny
+                        stem_start_y = (stem_down and min_ny or max_ny) + attach_dy
                         stem_end_y = beam_end_y
                     else
                         -- Elaine Gould ("Behind Bars", p. 16) & Gardner Read (p. 69):
@@ -2835,8 +2843,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         -- (+6.5*s per flag beyond the 2nd) so multiple flags never crowd the notehead.
                         local flag_cnt_unbeamed = Engraver.get_flag_count(shortest_dur)
                         local stem_len = (32 * s) + math.max(0, (flag_cnt_unbeamed or 0) - 2) * (6.5 * s)
-                        stem_x = base_nx + (stem_down and (-5.0 * s) or (5.0 * s))
-                        stem_start_y = stem_down and min_ny or max_ny
+                        stem_x = base_nx + attach_dx
+                        stem_start_y = (stem_down and min_ny or max_ny) + attach_dy
                         stem_end_y = stem_down and (max_ny + stem_len) or (min_ny - stem_len)
                         -- Elaine Gould ("Behind Bars", p. 14): Stems on ledger-line notes pointing toward
                         -- the staff must extend at least to the middle staff line (dstep = 4).
