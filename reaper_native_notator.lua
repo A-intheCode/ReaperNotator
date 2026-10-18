@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.44-beta
+-- @version 2.45-beta
 -- @changelog
+--   + v2.45-beta: Comprehensive Automated Unit Test & Fuzzing Suite across all 78 Lua modules (604 exported functions, 149 test cases) + defensive nil/type safety across all 15 data classes, Engraver beam/tuplet coordinate fallbacks, SystemEngraver vertical layout fallbacks, ClipboardService argument-order resilience, and MIDI Editor track color safety
 --   + v2.44-beta: Complete Elaine Gould ("Behind Bars") & Gardner Read Engraving Compliance: 32nd/64th beam & flag stem lengthening with inner-beam clearance, paired fractional beam stub direction, strict 2-side chord 2nd alternation, dotted chord 2nd collision resolution, staff-line-avoiding articulation placement, slur stem/articulation clearance & chord user-tie outward splitting, tuplet bracket staff/stem/articulation clearance, glissando/portamento dot & accidental gaps, and curved S-bezier Piano/Harp accolade brace (`{`)
 --   + v2.43-beta: New: Elaine Gould ("Behind Bars") Optical Spacing & Engraving Engine: Non-linear proportional intra-measure spacing (Δt^0.70), dynamic collision-free measure expansion, intra-bar accidental memory & natural (♮) cancellation, multi-column chord accidental stacking, line-avoiding augmentation dots, middle-line ledger stem extension, and tapered crescent ties & slurs
 --   + v2.42-beta: Hotfix: Break beam groups across intervening rests so beams and 16th stubs never collide with rest glyphs + preserve nominal notation durations on Melodic Pathfinder staccato notes

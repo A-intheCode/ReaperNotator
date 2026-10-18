@@ -8,6 +8,7 @@ local ChordItem = {}
 ChordItem.__index = ChordItem
 
 function ChordItem.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, ChordItem)
     self.id         = data.id or string.format("chd_%d_%d", math.floor(reaper.time_precise() * 1000), math.random(1000, 9999))
     self.text       = data.text or "C"

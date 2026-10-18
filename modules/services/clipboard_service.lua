@@ -377,6 +377,10 @@ function ClipboardService.copy(state, active_tracks_data)
 end
 
 function ClipboardService.cut(state, midi_service, active_tracks_data)
+    if midi_service and not midi_service.delete_selected_notes and active_tracks_data and active_tracks_data.delete_selected_notes then
+        midi_service, active_tracks_data = active_tracks_data, midi_service
+    end
+    midi_service = (midi_service and midi_service.delete_selected_notes) and midi_service or (package.loaded["services.midi_service"] or require("services.midi_service"))
     if ClipboardService.copy(state, active_tracks_data) then
         local del_parts = {}
         
@@ -619,6 +623,10 @@ function ClipboardService.overwrite_track_bounds(state, target_track_guid, range
 end
 
 function ClipboardService.paste(state, midi_service, active_tracks_data)
+    if midi_service and not midi_service.get_or_create_item_at_qn and active_tracks_data and active_tracks_data.get_or_create_item_at_qn then
+        midi_service, active_tracks_data = active_tracks_data, midi_service
+    end
+    midi_service = (midi_service and midi_service.get_or_create_item_at_qn) and midi_service or (package.loaded["services.midi_service"] or require("services.midi_service"))
     if not state.clipboard then
         state.status_msg = "Paste: Clipboard is empty!"
         return false

@@ -7,6 +7,7 @@ local MidiNote = {}
 MidiNote.__index = MidiNote
 
 function MidiNote.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, MidiNote)
     self.idx          = data.idx or 0
     self.pitch        = data.pitch or 60

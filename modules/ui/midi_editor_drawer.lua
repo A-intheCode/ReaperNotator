@@ -273,7 +273,7 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                 local raw_col = reaper.GetTrackColor(active_track)
                 if raw_col ~= 0 then
                     local r, g, b = reaper.ColorFromNative(raw_col)
-                    track_col = (r << 24) | (g << 16) | (b << 8) | 0xFF
+                    track_col = ((r or 0) << 24) | ((g or 0) << 16) | ((b or 0) << 8) | 0xFF
                 end
             end
             local _, tkn = reaper.GetSetMediaItemTakeInfo_String(active_take, "P_NAME", "", false)

@@ -8,6 +8,7 @@ local RehearsalMark = {}
 RehearsalMark.__index = RehearsalMark
 
 function RehearsalMark.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, RehearsalMark)
     self.id          = data.id or string.format("rm_%d_%d", os.time(), math.random(1000, 9999))
     self.measure     = tonumber(data.measure) or 0

@@ -8,6 +8,7 @@ local TempoMarker = {}
 TempoMarker.__index = TempoMarker
 
 function TempoMarker.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, TempoMarker)
     self.id         = data.id or string.format("tempo_%d_%d", os.time(), math.random(1000, 9999))
     self.type       = data.type or "absolute" -- "absolute" | "gradual"

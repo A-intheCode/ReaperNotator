@@ -7,6 +7,7 @@ local DynamicMarker = {}
 DynamicMarker.__index = DynamicMarker
 
 function DynamicMarker.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, DynamicMarker)
     self.take       = data.take
     self.item       = data.item

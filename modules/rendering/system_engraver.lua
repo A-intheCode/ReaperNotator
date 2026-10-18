@@ -185,10 +185,28 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
     local col_ink  = 0x111111FF
     local col_line = 0x333333FF
 
+    -- Ensure every track has valid vertical coordinates even if caller did not pre-populate them
+    local cur_auto_y = bounds.top_y or 100.0
+    for _, tdata in ipairs(active_tracks) do
+        if tdata.is_grand then
+            tdata.upper_top = tdata.upper_top or tdata.staff_top_y or cur_auto_y
+            tdata.upper_bot = tdata.upper_bot or (tdata.upper_top + staff_h)
+            tdata.lower_top = tdata.lower_top or (tdata.upper_bot + 48.0 * eng_s)
+            tdata.lower_bot = tdata.lower_bot or tdata.staff_bottom_y or (tdata.lower_top + staff_h)
+            tdata.center_y  = tdata.center_y  or ((tdata.upper_top + tdata.lower_bot) * 0.5)
+            cur_auto_y = tdata.lower_bot + 72.0 * eng_s
+        else
+            tdata.top_y    = tdata.top_y    or tdata.staff_top_y    or cur_auto_y
+            tdata.bot_y    = tdata.bot_y    or tdata.staff_bottom_y or (tdata.top_y + staff_h)
+            tdata.center_y = tdata.center_y or ((tdata.top_y + tdata.bot_y) * 0.5)
+            cur_auto_y = tdata.bot_y + 72.0 * eng_s
+        end
+    end
+
     -- Master System Bracket on Left connecting all staves
-    local overall_top = active_tracks[1] and (active_tracks[1].is_grand and active_tracks[1].upper_top or active_tracks[1].top_y) or bounds.top_y
+    local overall_top = active_tracks[1] and (active_tracks[1].is_grand and active_tracks[1].upper_top or active_tracks[1].top_y) or bounds.top_y or 100.0
     local last_t = active_tracks[#active_tracks]
-    local overall_bot = last_t and (last_t.is_grand and last_t.lower_bot or last_t.bot_y) or bounds.bot_y
+    local overall_bot = last_t and (last_t.is_grand and last_t.lower_bot or last_t.bot_y) or bounds.bot_y or (overall_top + staff_h)
 
     reaper.ImGui_DrawList_AddLine(dl, bounds.margin_l - 6 * eng_s, overall_top, bounds.margin_l - 6 * eng_s, overall_bot, col_ink, 2.5 * eng_s)
     reaper.ImGui_DrawList_AddLine(dl, bounds.margin_l - 6 * eng_s, overall_top, bounds.margin_l - 1 * eng_s, overall_top, col_ink, 1.2 * eng_s)

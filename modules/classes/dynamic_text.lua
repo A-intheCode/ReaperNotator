@@ -8,6 +8,7 @@ local DynamicText = {}
 DynamicText.__index = DynamicText
 
 function DynamicText.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, DynamicText)
     self.id            = data.id or string.format("dtxt_%d_%d", math.floor(reaper.time_precise() * 1000), math.random(1000, 9999))
     self.track_guid    = data.track_guid or ""

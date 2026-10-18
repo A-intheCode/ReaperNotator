@@ -7,6 +7,7 @@ local MidiItem = {}
 MidiItem.__index = MidiItem
 
 function MidiItem.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, MidiItem)
     self.item     = data.item
     self.take     = data.take

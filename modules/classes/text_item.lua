@@ -7,8 +7,9 @@ local TextItem = {}
 TextItem.__index = TextItem
 
 function TextItem.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, TextItem)
-    self.id         = (data and data.id) or string.format("txt_%d_%d", math.floor(reaper.time_precise() * 1000), math.random(1000, 9999))
+    self.id         = data.id or string.format("txt_%d_%d", math.floor(reaper.time_precise() * 1000), math.random(1000, 9999))
     self.track_guid = (data and data.track_guid) or ""
     self.qn         = tonumber(data and data.qn) or 0.0
     self.offset_y   = tonumber(data and data.offset_y) or 32.0 -- Pixel offset below the staff bottom edge

@@ -2473,27 +2473,30 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     -- 1. Condense notes by temporal onsets (chord notes share the same stem/beam step)
     local onsets = {}
     for _, vn in ipairs(group) do
-        local vn_qn = vn.display_qn or vn.start_qn
+        local vn_qn = vn.display_qn or vn.start_qn or 0
+        local vnx = vn.vis_nx or vn.nominal_nx or vn.nx or 0
+        local vny = vn.vis_ny or vn.ny or 0
+        local vdstep = vn.dstep or 4
         local last_onset = onsets[#onsets]
         if last_onset and math.abs(vn_qn - last_onset.qn) <= 0.04 then
             table.insert(last_onset.notes, vn)
-            if vn.dur_qn < last_onset.dur_qn then last_onset.dur_qn = vn.dur_qn end
-            if vn.vis_ny < last_onset.min_ny then last_onset.min_ny = vn.vis_ny end
-            if vn.vis_ny > last_onset.max_ny then last_onset.max_ny = vn.vis_ny end
-            if vn.dstep < last_onset.min_dstep then last_onset.min_dstep = vn.dstep end
-            if vn.dstep > last_onset.max_dstep then last_onset.max_dstep = vn.dstep end
+            if (vn.dur_qn or 0.5) < last_onset.dur_qn then last_onset.dur_qn = vn.dur_qn or 0.5 end
+            if vny < last_onset.min_ny then last_onset.min_ny = vny end
+            if vny > last_onset.max_ny then last_onset.max_ny = vny end
+            if vdstep < last_onset.min_dstep then last_onset.min_dstep = vdstep end
+            if vdstep > last_onset.max_dstep then last_onset.max_dstep = vdstep end
         else
-            local onset_base_x = (vn.vis_nx or vn.nominal_nx) - (vn.head_x_offset or 0)
+            local onset_base_x = vnx - (vn.head_x_offset or 0)
             table.insert(onsets, {
                 qn = vn_qn,
-                start_qn = vn.start_qn,
-                dur_qn = vn.dur_qn,
+                start_qn = vn.start_qn or vn_qn,
+                dur_qn = vn.dur_qn or 0.5,
                 notes = { vn },
                 nominal_nx = onset_base_x,
-                min_ny = vn.vis_ny,
-                max_ny = vn.vis_ny,
-                min_dstep = vn.dstep,
-                max_dstep = vn.dstep,
+                min_ny = vny,
+                max_ny = vny,
+                min_dstep = vdstep,
+                max_dstep = vdstep,
                 in_treble = vn.in_treble
             })
         end
@@ -2803,7 +2806,9 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     local beamed_keys = {}
     for _, onset in ipairs(onsets) do
         for _, vn in ipairs(onset.notes) do
-            beamed_keys[vn.key] = true
+            if vn.key ~= nil then
+                beamed_keys[vn.key] = true
+            end
         end
     end
     return beamed_keys
@@ -3784,19 +3789,21 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
     end
 
     local function add_to_onset_list(list, vn)
+        local vnx = vn.nominal_nx or vn.vis_nx or vn.nx or 0
+        local vny = vn.vis_ny or vn.ny or 0
         local last = list[#list]
-        if last and math.abs(vn.start_qn - last.start_qn) < 0.02 then
+        if last and math.abs((vn.start_qn or 0) - last.start_qn) < 0.02 then
             table.insert(last.notes, vn)
-            if vn.vis_ny < last.min_ny then last.min_ny = vn.vis_ny end
-            if vn.vis_ny > last.max_ny then last.max_ny = vn.vis_ny end
+            if vny < last.min_ny then last.min_ny = vny end
+            if vny > last.max_ny then last.max_ny = vny end
         else
             table.insert(list, {
-                start_qn = vn.start_qn,
-                dur_qn = vn.dur_qn,
+                start_qn = vn.start_qn or 0,
+                dur_qn = vn.dur_qn or 0.5,
                 notes = { vn },
-                nominal_nx = vn.nominal_nx or vn.vis_nx,
-                min_ny = vn.vis_ny,
-                max_ny = vn.vis_ny,
+                nominal_nx = vnx,
+                min_ny = vny,
+                max_ny = vny,
                 in_treble = vn.in_treble,
                 in_staff = vn.in_staff
             })
@@ -3833,14 +3840,15 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                             local function get_onset_top(o)
                                 local top_y = o.min_ny
                                 for _, vn in ipairs(o.notes) do
-                                    if vn.dstep and vn.vis_ny then
-                                        local staff_top_y = vn.vis_ny + (vn.dstep - 8) * (4.0 * s)
+                                    local vny = vn.vis_ny or vn.ny
+                                    if vn.dstep and vny then
+                                        local staff_top_y = vny + (vn.dstep - 8) * (4.0 * s)
                                         if staff_top_y < top_y then top_y = staff_top_y end
                                     end
                                     if vn.stem_end_y and not vn.stem_down then
                                         if vn.stem_end_y < top_y then top_y = vn.stem_end_y end
-                                    elseif vn.stem_down == nil and not vn.stem_end_y then
-                                        local est = vn.vis_ny - 32 * s
+                                    elseif vn.stem_down == nil and not vn.stem_end_y and vny then
+                                        local est = vny - 32 * s
                                         if est < top_y then top_y = est end
                                     end
                                     if vn.art_y and vn.art_is_above and (vn.art_y - 4.0 * s) < top_y then

@@ -7,6 +7,7 @@ local Fermata = {}
 Fermata.__index = Fermata
 
 function Fermata.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, Fermata)
     self.id            = data.id or string.format("ferm_%d_%d", os.time(), math.random(1000, 9999))
     self.qn            = tonumber(data.qn) or 0.0

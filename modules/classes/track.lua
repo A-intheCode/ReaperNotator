@@ -7,6 +7,7 @@ local TrackStaff = {}
 TrackStaff.__index = TrackStaff
 
 function TrackStaff.new(data)
+    data = (type(data) == "table") and data or {}
     local self = setmetatable({}, TrackStaff)
     self.track    = data.track
     self.guid     = data.guid or "default"
