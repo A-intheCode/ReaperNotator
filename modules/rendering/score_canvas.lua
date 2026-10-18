@@ -1006,7 +1006,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
 
     for _, t in ipairs(project_tracks) do
         if state.selected_tracks[t.guid] then
-            local items, trk_notes, dyns, arts, trk_max_qn, r_cache, l_cache = midi_service.get_track_items_and_notes(t.track)
+            local items, trk_notes, dyns, arts, trk_max_qn, r_cache, l_cache = midi_service.get_track_items_and_notes(t.track, state)
             if is_recording and AudioPreview.is_track_user_armed(t.track) then
                 local merged_notes, live_max_qn = RecordQuantizeService.get_merged_live_notes_for_track(state, { track = t.track, notes = trk_notes })
                 trk_notes = merged_notes
@@ -2581,7 +2581,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                 elseif is_irregular_preview then
-                    head_col = is_hov and Constants.COLORS.hover_orange or 0xF1C40FFF
+                    head_col = is_the_closest and Constants.COLORS.hover_orange or 0xF1C40FFF
                     reaper.ImGui_DrawList_AddCircleFilled(draw_list, nx, ny, 9.5*s, 0xF1C40F44)
                     reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, 8.5*s, 0xD4AC0DFF, 0, 2.0*s)
                 elseif is_ghost then
@@ -2593,7 +2593,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 elseif state.marquee_active and (nx >= mrx0 - 8*s and nx <= mrx1 + 8*s and ny >= mry0 - 8*s and ny <= mry1 + 8*s) then
                     head_col = 0xF39C12FF
                     reaper.ImGui_DrawList_AddCircle(draw_list, nx, ny, 7.5*s, 0xFF9F1C55, 0, 1.8*s)
-                elseif is_hov then
+                elseif is_the_closest then
                     head_col = Constants.COLORS.hover_orange
                 elseif (state.voice_color_mode ~= false) and note_v > 1 then
                     head_col = Constants.get_voice_color(note_v, state.invert_mode)

@@ -1,6 +1,7 @@
 local PathService = require("services.path_service")
 
 local ReaticulateParser = {}
+local _cached_banks = nil
 
 function ReaticulateParser.extract_vendor_library_section(group)
     if not group or group == "" then

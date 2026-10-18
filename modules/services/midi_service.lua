@@ -532,7 +532,7 @@ function MidiService.sync_track_slurs_with_behavior(track, opt_bank, state)
     end
 end
 
-local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, end_qn, item_col, iname)
+local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, end_qn, item_col, iname, state)
     local item_obj = MidiItem.new({
         item = item,
         take = take,
@@ -1180,7 +1180,7 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     return item_obj, take_notes, take_dynamics, take_articulations
 end
 
-function MidiService.get_track_items_and_notes(track)
+function MidiService.get_track_items_and_notes(track, state)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") then
         return {}, {}, {}, {}, 0
     end
@@ -1293,7 +1293,7 @@ function MidiService.get_track_items_and_notes(track)
                 take_dyns = tc.dynamics
                 take_arts = tc.articulations
             else
-                take_item_obj, take_notes, take_dyns, take_arts = parse_single_take_midi(take, item, track, i, pos, len, start_qn, end_qn, item_col, iname)
+                take_item_obj, take_notes, take_dyns, take_arts = parse_single_take_midi(take, item, track, i, pos, len, start_qn, end_qn, item_col, iname, state)
                 MidiService._take_cache[take] = {
                     hash = take_hash,
                     pos = pos,
@@ -3477,15 +3477,15 @@ function MidiService.auto_chase_momentary_articulations(take, opt_bank, force_up
             end
             
             -- Also check non-momentary Type 15 note articulations (e.g. explicit legato/long on an earlier note)
-            if eff_bank then
+            if bank then
                 for _, na in ipairs(note_arts_list) do
                     if (not na.chan or na.chan == chan) and na.ppq <= n.sppq + 15 and not is_momentary(na.art, nil) and not get_active_slur_at(na.ppq) then
-                        local matched_base = MidiService.find_reaticulate_art_for_id(eff_bank, na.art)
+                        local matched_base = MidiService.find_reaticulate_art_for_id(bank, na.art)
                         if matched_base and matched_base.pc then
                             active_base = {
                                 pc = matched_base.pc,
-                                msb = (eff_bank.msb and eff_bank.msb >= 0) and eff_bank.msb or (chan_latest_msb[chan] or -1),
-                                lsb = (eff_bank.lsb and eff_bank.lsb >= 0) and eff_bank.lsb or (chan_latest_lsb[chan] or -1),
+                                msb = (bank.msb and bank.msb >= 0) and bank.msb or (chan_latest_msb[chan] or -1),
+                                lsb = (bank.lsb and bank.lsb >= 0) and bank.lsb or (chan_latest_lsb[chan] or -1),
                                 name = matched_base.name
                             }
                         end
@@ -3813,8 +3813,11 @@ function MidiService.toggle_selected_articulation(state, art_id)
             end
         end
         
-        if not all_have_target and MidiService.is_momentary_articulation(norm_target) and SlurService and SlurService.remove_slurs_for_notes then
-            SlurService.remove_slurs_for_notes(state, targets)
+        if not toggle_off_all and MidiService.is_momentary_articulation(norm_target) then
+            local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+            if SlurService and SlurService.remove_slurs_for_notes then
+                SlurService.remove_slurs_for_notes(state, targets)
+            end
         end
         MidiService.auto_chase_momentary_articulations(take, bank)
         reaper.MIDI_Sort(take)

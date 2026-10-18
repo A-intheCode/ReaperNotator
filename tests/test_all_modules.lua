@@ -9,6 +9,19 @@ package.path = repo_root .. "/modules/?.lua;" .. repo_root .. "/?.lua;" .. packa
 local Mock = require("tests.mock_reaper")
 _G.reaper = Mock.create_environment(repo_root)
 
+-- Strict Global Variable Guard: Catch any undeclared global read/write across all 78 modules!
+setmetatable(_G, {
+    __index = function(_, k)
+        error("STRICT GLOBAL GUARD: Attempt to read undeclared global '" .. tostring(k) .. "'", 2)
+    end,
+    __newindex = function(t, k, v)
+        if k ~= "reaper" and k ~= "gfx" and k ~= "TEST_REPO_ROOT" then
+            error("STRICT GLOBAL GUARD: Attempt to write undeclared global '" .. tostring(k) .. "'", 2)
+        end
+        rawset(t, k, v)
+    end
+})
+
 local results = {
     passed = 0,
     failed = 0,
@@ -662,6 +675,39 @@ run_test("KeyboardHandler: shortcut execution & complete blocking during layer r
     env.active_keys_pressed = {}
 end)
 
+run_test("KeyboardHandler: Step Input mode note entry (C, D, E, F, G, A, B, H) with AudioPreview & cursor advance", function()
+    local st, env, trk1, item1, take1, project_tracks, fonts, canvas_info = setup_rich_mock_project()
+    local KeyboardHandler = require("input.keyboard_handler")
+    local MidiService = require("services.midi_service")
+    local ClipboardService = require("services.clipboard_service")
+    local DynamicsEngine = require("services.dynamics_engine")
+    local ctx = reaper.ImGui_CreateContext("kb_step_test")
+
+    st:set_input_mode("step")
+    st.focused_track = trk1
+    st.note_duration = 1.0
+    reaper.SetEditCurPos(8.0, false, false)
+
+    local step_keys = {
+        reaper.ImGui_Key_C(),
+        reaper.ImGui_Key_D(),
+        reaper.ImGui_Key_E(),
+        reaper.ImGui_Key_F(),
+        reaper.ImGui_Key_G(),
+        reaper.ImGui_Key_A(),
+        reaper.ImGui_Key_B(),
+        reaper.ImGui_Key_H(),
+    }
+    local before_notes = #take1.notes
+    for i, kcode in ipairs(step_keys) do
+        env.active_keys_pressed[kcode] = true
+        KeyboardHandler.handle(ctx, st, MidiService, ClipboardService, DynamicsEngine, st.active_tracks_cache)
+        env.active_keys_pressed[kcode] = false
+    end
+    assert_eq(#take1.notes, before_notes + #step_keys, "Step Input inserted all 8 notes (C..H) into active MIDI item")
+    assert_true(math.abs(reaper.GetCursorPosition() - (8.0 + #step_keys * 0.5)) < 0.01, "Step Input advanced edit cursor after each note")
+end)
+
 run_test("MouseHandler: canvas hover, click & drag handling", function()
     local st, env, trk1, item1, take1, project_tracks, fonts, canvas_info = setup_rich_mock_project()
     local MouseHandler = require("input.mouse_handler")
@@ -1126,21 +1172,27 @@ run_test("MouseHandler & KeyboardHandler: All Tool Modes & All Default Shortcuts
     end
     st.tool_mode = "select"
 
-    -- Test every keyboard key press with a selected note
-    if st.active_tracks_cache[1] and st.active_tracks_cache[1].notes[1] then
-        st:select_note(st.active_tracks_cache[1].notes[1], false)
-    end
-    for _, def in pairs(ShortcutManager.DEFAULT_SHORTCUTS) do
-        local key_fn = reaper["ImGui_Key_" .. tostring(def.key)]
-        if key_fn then
-            local kcode = key_fn()
-            env.active_keys_pressed[kcode] = true
-            env.key_mods = (def.ctrl and reaper.ImGui_Mod_Ctrl() or 0)
-                         | (def.shift and reaper.ImGui_Mod_Shift() or 0)
-                         | (def.alt and reaper.ImGui_Mod_Alt() or 0)
-            KeyboardHandler.handle(ctx, st, MidiService, project_tracks, DynamicsEngine, ShortcutManager)
-            env.active_keys_pressed[kcode] = false
-            env.key_mods = 0
+    -- Test every keyboard key press with a selected note in both select and step modes
+    local ClipboardService = require("services.clipboard_service")
+    for _, imode in ipairs({ "select", "step" }) do
+        st:set_input_mode(imode)
+        cinfo = ScoreCanvas.render(ctx, st, fonts, project_tracks, MidiService)
+        st.active_tracks_cache = cinfo.active_tracks_data
+        if st.active_tracks_cache and st.active_tracks_cache[1] and st.active_tracks_cache[1].notes[1] then
+            st:select_note(st.active_tracks_cache[1].notes[1], false)
+        end
+        for _, def in pairs(ShortcutManager.DEFAULT_SHORTCUTS) do
+            local key_fn = reaper["ImGui_Key_" .. tostring(def.key)]
+            if key_fn then
+                local kcode = key_fn()
+                env.active_keys_pressed[kcode] = true
+                env.key_mods = (def.ctrl and reaper.ImGui_Mod_Ctrl() or 0)
+                             | (def.shift and reaper.ImGui_Mod_Shift() or 0)
+                             | (def.alt and reaper.ImGui_Mod_Alt() or 0)
+                KeyboardHandler.handle(ctx, st, MidiService, ClipboardService, DynamicsEngine, st.active_tracks_cache)
+                env.active_keys_pressed[kcode] = false
+                env.key_mods = 0
+            end
         end
     end
 end)
