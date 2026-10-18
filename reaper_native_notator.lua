@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.42-beta
+-- @version 2.43-beta
 -- @changelog
+--   + v2.43-beta: New: Elaine Gould ("Behind Bars") Optical Spacing & Engraving Engine: Non-linear proportional intra-measure spacing (Δt^0.70), dynamic collision-free measure expansion, intra-bar accidental memory & natural (♮) cancellation, multi-column chord accidental stacking, line-avoiding augmentation dots, middle-line ledger stem extension, and tapered crescent ties & slurs
 --   + v2.42-beta: Hotfix: Break beam groups across intervening rests so beams and 16th stubs never collide with rest glyphs + preserve nominal notation durations on Melodic Pathfinder staccato notes
 --   + v2.41-beta: Hotfix: Fix Melodic Pathfinder freeze on Reversed + Counter-Melody patterns, auto-jump Edit Cursor to start of selected note pattern & preserve pattern anchor across insertions
 --   + v2.40-beta: Hotfix: Auto-Divisi live Note-On voice handover & legato preemption when moving a finger while holding a chord

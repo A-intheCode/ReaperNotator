@@ -28,20 +28,32 @@ function Engraver.get_nominal_rhythmic_duration(raw_dur)
     if not raw_dur or raw_dur <= 0 then return 0.25 end
     if raw_dur >= 3.85 then
         return 4.0
-    elseif raw_dur >= 2.65 then
+    elseif raw_dur >= 3.35 then
+        return 3.5
+    elseif raw_dur >= 2.75 then
         return 3.0
-    elseif raw_dur >= 1.75 then
+    elseif raw_dur >= 2.35 then
+        return 2.5
+    elseif raw_dur >= 1.85 then
         return 2.0
-    elseif raw_dur >= 1.25 then
+    elseif raw_dur >= 1.62 then
+        return 1.75
+    elseif raw_dur >= 1.35 then
         return 1.5
+    elseif raw_dur >= 1.12 then
+        return 1.25
     elseif raw_dur >= 0.85 then
         return 1.0
-    elseif raw_dur >= 0.60 then
+    elseif raw_dur >= 0.62 then
         return 0.75
-    elseif raw_dur >= 0.35 then
+    elseif raw_dur >= 0.43 then
         return 0.5
-    elseif raw_dur >= 0.18 then
+    elseif raw_dur >= 0.31 then
+        return 0.375
+    elseif raw_dur >= 0.21 then
         return 0.25
+    elseif raw_dur >= 0.155 then
+        return 0.1875
     elseif raw_dur >= 0.09 then
         return 0.125
     else
@@ -67,6 +79,7 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
     local widths = {}
     local pad_lefts = {}
     local onsets_by_bar = {}
+    local bar_anchors = {}
     local num_m = math.max((total_measures or 16) + 64, 64)
     
     local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
@@ -79,174 +92,386 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
     end
     
     local dq = (state and state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001) and state.display_quantize_grid or nil
-    -- Pre-generate or retrieve cached rests per track so they are factored into measure width calculation
-    local rests_by_track = {}
-    local r_key = string.format("%d_%.3f_%s", num_m + 1, bpi, tostring(dq))
+
+    -- Decompose visual notes (including intra-bar tied sub-segments) & rests per track
+    local track_vnotes_by_bar = {}
+    local track_rests_by_bar = {}
+    local user_ties = state and state.user_ties
+
     for _, tdata in ipairs(active_tracks_data or {}) do
+        local vnotes = Engraver.get_visual_notes(tdata.notes or {}, bpi, nil, (num_m + 1) * bpi, user_ties)
+        local vnotes_by_bar = {}
+        track_vnotes_by_bar[tdata] = vnotes_by_bar
+
+        local eff_notes = {}
+        local eff_notes_by_bar = {}
+        for _, vn in ipairs(vnotes) do
+            local m = vn.bar or math.floor((vn.start_qn + 0.0001) / bpi)
+            if m >= 0 and m <= num_m then
+                local blist = vnotes_by_bar[m]
+                if not blist then
+                    blist = {}
+                    vnotes_by_bar[m] = blist
+                end
+                table.insert(blist, vn)
+            end
+
+            local n_sqn = dq and (math.floor((vn.start_qn / dq) + 0.5) * dq) or vn.start_qn
+            local n_dur = vn.dur_qn or 1.0
+            local en = {
+                pitch = vn.pitch,
+                start_qn = n_sqn,
+                end_qn = n_sqn + n_dur,
+                dur_qn = n_dur,
+                chan = (vn.orig and vn.orig.chan) or (vn.chan or 0)
+            }
+            table.insert(eff_notes, en)
+            local mb_start = math.floor(en.start_qn / bpi)
+            local mb_end = math.floor(math.max(en.start_qn, en.end_qn - 0.001) / bpi)
+            for mb = mb_start, mb_end do
+                local eblist = eff_notes_by_bar[mb]
+                if not eblist then
+                    eblist = {}
+                    eff_notes_by_bar[mb] = eblist
+                end
+                table.insert(eblist, en)
+            end
+        end
+
+        local r_key = string.format("v2_%d_%.3f_%s_%d", num_m + 1, bpi, tostring(dq), #vnotes)
         local r_cache = tdata.rests_cache
         local tr_rests = r_cache and r_cache[r_key]
         if not tr_rests then
-            tr_rests = Engraver.generate_voice_rests(tdata.notes or {}, num_m + 1, bpi, dq)
+            tr_rests = Engraver.generate_voice_rests(eff_notes, num_m + 1, bpi, dq)
             if r_cache then
                 r_cache[r_key] = tr_rests
-            end
-        end
-        rests_by_track[tdata] = tr_rests
-    end
-    
-    -- O(N) note and rest bucketing by measure
-    local track_notes_by_bar = {}
-    local track_rests_by_bar = {}
-    for _, tdata in ipairs(active_tracks_data or {}) do
-        local notes_by_bar = {}
-        track_notes_by_bar[tdata] = notes_by_bar
-        if tdata.notes and #tdata.notes > 0 then
-            for _, n in ipairs(tdata.notes) do
-                local m = math.floor(n.start_qn / bpi + 0.0001)
-                if m >= 0 and m <= num_m then
-                    local b_list = notes_by_bar[m]
-                    if not b_list then
-                        b_list = {}
-                        notes_by_bar[m] = b_list
-                    end
-                    table.insert(b_list, n)
-                end
             end
         end
 
         local rests_by_bar = {}
         track_rests_by_bar[tdata] = rests_by_bar
-        local tr_rests = rests_by_track[tdata]
         if tr_rests and #tr_rests > 0 then
             for _, r in ipairs(tr_rests) do
                 if not r.is_full_measure then
-                    local m = math.floor(r.start_qn / bpi + 0.0001)
+                    local m = r.measure_idx or math.floor(r.start_qn / bpi + 0.0001)
                     if m >= 0 and m <= num_m then
-                        local r_list = rests_by_bar[m]
-                        if not r_list then
-                            r_list = {}
-                            rests_by_bar[m] = r_list
+                        local r_start = r.start_qn
+                        local r_end = r_start + (r.dur_qn or 0.25)
+                        local collision = false
+                        local bar_ens = eff_notes_by_bar[m]
+                        if bar_ens then
+                            local tol = dq and (dq * 0.3) or 0.05
+                            local onset_tol = dq and (dq * 0.7) or 0.20
+                            for _, en in ipairs(bar_ens) do
+                                if not (r_end <= en.start_qn + tol or r_start >= en.end_qn - tol) or math.abs(en.start_qn - r_start) < onset_tol then
+                                    collision = true
+                                    break
+                                end
+                            end
                         end
-                        table.insert(r_list, r)
+                        if not collision then
+                            local r_list = rests_by_bar[m]
+                            if not r_list then
+                                r_list = {}
+                                rests_by_bar[m] = r_list
+                            end
+                            table.insert(r_list, r)
+                        end
                     end
                 end
             end
         end
     end
 
-    -- For each measure from 0 to num_m
+    -- For each measure from 0 to num_m: build Elaine Gould optical spacing anchors & dynamic measure width
     for m = 0, num_m do
         local m_start_qn = m * bpi
-        local m_end_qn = (m + 1) * bpi
-        local max_needed_for_m = base_w
-        local m_combined_onsets = {}
-        
-        -- Check all active tracks for note density, accidentals, dots, and rests in measure m
+        local base_pad_l = pad_left
+        if key_changes and key_changes[m] and key_changes[m].has_change then
+            local extra_kw = (key_changes[m].max_kw or 0) + 12.0 * s
+            base_pad_l = base_pad_l + extra_kw
+        end
+        local m_pad_l = base_pad_l
+
+        local m_combined_onsets = { [0.0] = true, [bpi] = true }
+        local measure_track_onsets = {}
+
         for _, tdata in ipairs(active_tracks_data or {}) do
             local onsets = {}
-            local bar_notes = track_notes_by_bar[tdata] and track_notes_by_bar[tdata][m]
-            if bar_notes then
-                for _, n in ipairs(bar_notes) do
-                    local rounded_qn = math.floor(n.start_qn * 32.0 + 0.5) / 32.0
-                    local rel_qn = math.floor((n.start_qn - m_start_qn) * 32.0 + 0.5) / 32.0
+            local bar_vnotes = track_vnotes_by_bar[tdata] and track_vnotes_by_bar[tdata][m]
+            local seen_pitch_in_bar = {}
+
+            if bar_vnotes then
+                for _, vn in ipairs(bar_vnotes) do
+                    local raw_rel = math.max(0.0, math.min(bpi - 0.03125, vn.start_qn - m_start_qn))
+                    local rel_qn = math.floor(raw_rel * 32.0 + 0.5) / 32.0
                     m_combined_onsets[rel_qn] = true
-                    if not onsets[rounded_qn] then
-                        onsets[rounded_qn] = {
-                            qn = n.start_qn,
-                            has_acc = false,
+                    local o = onsets[rel_qn]
+                    if not o then
+                        o = {
+                            rel_qn = rel_qn,
+                            qn = m_start_qn + rel_qn,
+                            acc_count = 0,
                             has_dot = false,
-                            count = 0,
+                            has_arpeggio = false,
+                            max_flags = 0,
+                            is_tied_to_next = false,
+                            note_count = 0,
                             is_rest = false
                         }
+                        onsets[rel_qn] = o
+                    else
+                        o.is_rest = false
                     end
-                    local o = onsets[rounded_qn]
-                    o.count = o.count + 1
-                    
-                    -- Check accidentals
-                    local k = n.key or (n.get_key and n:get_key())
-                    local pref_acc = state and state.note_accidentals and state.note_accidentals[k]
-                    if pref_acc == nil and state and state.note_accidentals and n.take then
-                        local id_k = string.format("%s_%s_%.3f", tostring(n.take or "0"), tostring(n.idx), n.start_qn)
-                        pref_acc = state.note_accidentals[id_k]
+                    o.note_count = o.note_count + 1
+
+                    local orig = vn.orig or vn
+                    if orig and (orig.arpeggio or orig.articulation == "arpeggio") then
+                        o.has_arpeggio = true
                     end
-                    local p_mod = n.pitch % 12
-                    local is_black = (p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10)
-                    if pref_acc == 1 or pref_acc == -1 or pref_acc == 2 or (is_black and pref_acc ~= 0) then
-                        o.has_acc = true
+
+                    -- Accidental estimation respecting tied segments and intra-bar pitch memory
+                    if not vn.is_tied_from_prev and (not vn.is_segment or vn.seg_idx == 1) then
+                        local k = orig and (orig.key or (orig.get_key and orig:get_key()))
+                        local pref_acc = k and state and state.note_accidentals and state.note_accidentals[k]
+                        if pref_acc == nil and state and state.note_accidentals and orig and orig.take then
+                            local id_k = string.format("%s_%s_%.3f", tostring(orig.take or "0"), tostring(orig.idx), orig.start_qn or vn.start_qn)
+                            pref_acc = state.note_accidentals[id_k]
+                        end
+                        local p_mod = (vn.pitch or 60) % 12
+                        local is_black = (p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10)
+                        local oct_step = math.floor((vn.pitch or 60) / 12) * 7 + (Constants.PITCH_MAP[p_mod] and Constants.PITCH_MAP[p_mod].step or 0)
+                        local prev_alt = seen_pitch_in_bar[oct_step]
+                        local cur_alt = is_black and 1 or 0
+                        if pref_acc == 1 or pref_acc == -1 or pref_acc == 2 then
+                            o.acc_count = o.acc_count + 1
+                            seen_pitch_in_bar[oct_step] = (pref_acc == 2) and 0 or pref_acc
+                        elseif prev_alt ~= nil and prev_alt ~= cur_alt then
+                            o.acc_count = o.acc_count + 1
+                            seen_pitch_in_bar[oct_step] = cur_alt
+                        elseif prev_alt == nil and is_black then
+                            o.acc_count = o.acc_count + 1
+                            seen_pitch_in_bar[oct_step] = cur_alt
+                        end
                     end
-                    
-                    -- Check augmentation dots
-                    if Engraver.is_dotted_duration(n.dur_qn) then
+
+                    if Engraver.is_dotted_duration(vn.dur_qn) then
                         o.has_dot = true
+                    end
+                    local fc = Engraver.get_flag_count(vn.dur_qn)
+                    if fc > o.max_flags then
+                        o.max_flags = fc
+                    end
+                    if vn.is_tied_to_next then
+                        o.is_tied_to_next = true
                     end
                 end
             end
-            
-            -- Include rests (e.g. 16th / 32nd rests) in space allocation
+
             local bar_rests = track_rests_by_bar[tdata] and track_rests_by_bar[tdata][m]
             if bar_rests then
                 for _, r in ipairs(bar_rests) do
-                    local rounded_qn = math.floor(r.start_qn * 32.0 + 0.5) / 32.0
-                    local rel_qn = math.floor((r.start_qn - m_start_qn) * 32.0 + 0.5) / 32.0
+                    local raw_rel = math.max(0.0, math.min(bpi - 0.03125, r.start_qn - m_start_qn))
+                    local rel_qn = math.floor(raw_rel * 32.0 + 0.5) / 32.0
                     m_combined_onsets[rel_qn] = true
-                    if not onsets[rounded_qn] then
-                        onsets[rounded_qn] = {
-                            qn = r.start_qn,
-                            has_acc = false,
+                    if not onsets[rel_qn] then
+                        onsets[rel_qn] = {
+                            rel_qn = rel_qn,
+                            qn = m_start_qn + rel_qn,
+                            acc_count = 0,
                             has_dot = false,
-                            count = 1,
-                            is_rest = true
+                            has_arpeggio = false,
+                            max_flags = 0,
+                            is_tied_to_next = false,
+                            note_count = 1,
+                            is_rest = true,
+                            rest_type = r.type
                         }
                     end
                 end
             end
-            
-            -- Calculate required width for this track in measure m
+
             local sorted_onsets = {}
             for _, o in pairs(onsets) do
-                table.insert(sorted_onsets, o)
-            end
-            table.sort(sorted_onsets, function(a, b) return a.qn < b.qn end)
-            
-            if #sorted_onsets > 0 then
-                local track_needed_w = pad_left + pad_right
-                for idx, o in ipairs(sorted_onsets) do
-                    local onset_w = o.is_rest and (16.0 * s) or (11.5 * s) -- Rest or notehead
-                    if o.has_acc then
-                        onset_w = onset_w + 14.0 * s -- Accidental on left
+                -- Compute exact graphical left & right extents per Elaine Gould ("Behind Bars" pp. 39-43)
+                if o.is_rest then
+                    local is_short_rest = (o.rest_type == "16th" or o.rest_type == "32nd" or o.rest_type == "64th")
+                    o.left_ext  = (is_short_rest and 8.5 or 7.5) * s
+                    o.right_ext = (is_short_rest and 9.0 or 8.0) * s
+                else
+                    o.left_ext  = 6.5 * s
+                    o.right_ext = 6.5 * s
+                    if o.note_count > 1 then
+                        o.left_ext  = o.left_ext + 5.0 * s
+                        o.right_ext = o.right_ext + 6.0 * s
+                    end
+                    if o.acc_count > 0 then
+                        local acc_cols = math.min(3, o.acc_count)
+                        o.left_ext = o.left_ext + (acc_cols * 12.5 * s) + 3.5 * s
+                    end
+                    if o.has_arpeggio then
+                        o.left_ext = o.left_ext + 12.0 * s
                     end
                     if o.has_dot then
-                        onset_w = onset_w + 10.0 * s -- Augmentation dot on right
+                        o.right_ext = o.right_ext + 10.5 * s
                     end
-                    if o.count > 1 then
-                        onset_w = onset_w + 6.0 * s -- Chord displacement / second interval offset
+                    if o.max_flags > 0 then
+                        o.right_ext = o.right_ext + 6.0 * s
                     end
-                    
-                    local gap = (idx < #sorted_onsets) and (16.0 * s) or (6.0 * s)
-                    track_needed_w = track_needed_w + onset_w + gap
+                    if o.is_tied_to_next then
+                        o.right_ext = math.max(o.right_ext, 14.0 * s)
+                    end
                 end
-                
-                if track_needed_w > max_needed_for_m then
-                    max_needed_for_m = track_needed_w
-                end
+                table.insert(sorted_onsets, o)
+            end
+            table.sort(sorted_onsets, function(a, b) return a.rel_qn < b.rel_qn end)
+            if #sorted_onsets > 0 then
+                table.insert(measure_track_onsets, sorted_onsets)
             end
         end
-        
-        local m_pad_l = pad_left
-        if key_changes and key_changes[m] and key_changes[m].has_change then
-            local extra_kw = (key_changes[m].max_kw or 0) + 12.0 * s
-            m_pad_l = m_pad_l + extra_kw
-            max_needed_for_m = math.max(max_needed_for_m, base_w + extra_kw)
-        end
-        pad_lefts[m] = m_pad_l
-        widths[m] = max_needed_for_m
-        
-        local sorted_bar_onsets = {}
+
+        local anchor_qns = {}
         for o_qn in pairs(m_combined_onsets) do
-            table.insert(sorted_bar_onsets, o_qn)
+            table.insert(anchor_qns, o_qn)
         end
-        table.sort(sorted_bar_onsets)
+        table.sort(anchor_qns)
+
+        local sorted_bar_onsets = {}
+        for _, o_qn in ipairs(anchor_qns) do
+            if o_qn < bpi - 0.001 then
+                table.insert(sorted_bar_onsets, o_qn)
+            end
+        end
         onsets_by_bar[m] = sorted_bar_onsets
+
+        local K = #anchor_qns
+        local base_usable_w = math.max(40.0 * s, base_w - pad_left - pad_right)
+
+        if K > 2 and #measure_track_onsets > 0 then
+            local qn_to_idx = {}
+            for k, qv in ipairs(anchor_qns) do
+                qn_to_idx[qv] = k
+            end
+
+            -- Step 1: Elaine Gould non-linear proportional base weights (delta_t ^ 0.70)
+            local weights = {}
+            local sum_w = 0.0
+            for k = 1, K - 1 do
+                local dt = math.max(0.03125, anchor_qns[k + 1] - anchor_qns[k])
+                local w = dt ^ 0.70
+                weights[k] = w
+                sum_w = sum_w + w
+            end
+
+            local seg_w = {}
+            for k = 1, K - 1 do
+                local dt = math.max(0.03125, anchor_qns[k + 1] - anchor_qns[k])
+                local prop_w = (sum_w > 0) and (base_usable_w * (weights[k] / sum_w)) or ((dt / bpi) * base_usable_w)
+                local min_lin_w = (dt / bpi) * base_usable_w * 0.82
+                seg_w[k] = math.max(prop_w, min_lin_w)
+            end
+
+            -- Step 2: Pairwise collision-free clearance satisfaction across all active tracks
+            local optical_gap = 7.5 * s
+            for _, trk_onsets in ipairs(measure_track_onsets) do
+                local first_o = trk_onsets[1]
+                if first_o.rel_qn <= 0.001 then
+                    if first_o.left_ext > 11.0 * s then
+                        local extra_pad = first_o.left_ext - 11.0 * s
+                        if m_pad_l < base_pad_l + extra_pad then
+                            m_pad_l = base_pad_l + extra_pad
+                        end
+                    end
+                else
+                    local idx1 = qn_to_idx[first_o.rel_qn]
+                    if idx1 and idx1 > 1 then
+                        local cur_lead = 0.0
+                        for k = 1, idx1 - 1 do cur_lead = cur_lead + seg_w[k] end
+                        local req_lead = first_o.left_ext + 4.0 * s
+                        if cur_lead < req_lead then
+                            local sf = req_lead / math.max(1.0, cur_lead)
+                            for k = 1, idx1 - 1 do seg_w[k] = seg_w[k] * sf end
+                        end
+                    end
+                end
+
+                for r = 1, #trk_onsets - 1 do
+                    local oa = trk_onsets[r]
+                    local ob = trk_onsets[r + 1]
+                    local ia = qn_to_idx[oa.rel_qn]
+                    local ib = qn_to_idx[ob.rel_qn]
+                    if ia and ib and ib > ia then
+                        local req_dx = oa.right_ext + ob.left_ext + optical_gap
+                        if oa.is_tied_to_next then
+                            req_dx = math.max(req_dx, 26.0 * s)
+                        end
+                        local cur_dx = 0.0
+                        for k = ia, ib - 1 do
+                            cur_dx = cur_dx + seg_w[k]
+                        end
+                        if cur_dx < req_dx then
+                            local sf = req_dx / math.max(1.0, cur_dx)
+                            for k = ia, ib - 1 do
+                                seg_w[k] = seg_w[k] * sf
+                            end
+                        end
+                    end
+                end
+
+                local last_o = trk_onsets[#trk_onsets]
+                local ilast = qn_to_idx[last_o.rel_qn]
+                if ilast and ilast < K then
+                    local req_tail = last_o.right_ext + (last_o.is_tied_to_next and 14.0 * s or 8.0 * s)
+                    local cur_tail = 0.0
+                    for k = ilast, K - 1 do
+                        cur_tail = cur_tail + seg_w[k]
+                    end
+                    if cur_tail < req_tail then
+                        local sf = req_tail / math.max(1.0, cur_tail)
+                        for k = ilast, K - 1 do
+                            seg_w[k] = seg_w[k] * sf
+                        end
+                    end
+                end
+            end
+
+            local total_usable_w = 0.0
+            for k = 1, K - 1 do
+                total_usable_w = total_usable_w + seg_w[k]
+            end
+            if total_usable_w < base_usable_w and total_usable_w > 0 then
+                local scale_up = base_usable_w / total_usable_w
+                for k = 1, K - 1 do
+                    seg_w[k] = seg_w[k] * scale_up
+                end
+                total_usable_w = base_usable_w
+            end
+
+            local anchor_xs = { [1] = 0.0 }
+            for k = 1, K - 1 do
+                anchor_xs[k + 1] = anchor_xs[k] + seg_w[k]
+            end
+            bar_anchors[m] = {
+                qns = anchor_qns,
+                xs = anchor_xs,
+                usable_w = total_usable_w
+            }
+            pad_lefts[m] = m_pad_l
+            widths[m] = math.max(base_w, m_pad_l + total_usable_w + pad_right)
+        else
+            -- Check single beat-1 onset accidental padding even when K == 2
+            for _, trk_onsets in ipairs(measure_track_onsets) do
+                local first_o = trk_onsets[1]
+                if first_o and first_o.rel_qn <= 0.001 and first_o.left_ext > 11.0 * s then
+                    local extra_pad = first_o.left_ext - 11.0 * s
+                    if m_pad_l < base_pad_l + extra_pad then
+                        m_pad_l = base_pad_l + extra_pad
+                    end
+                end
+            end
+            pad_lefts[m] = m_pad_l
+            widths[m] = math.max(base_w, m_pad_l + base_usable_w + pad_right)
+        end
     end
     
     -- Calculate start positions of all measures
@@ -271,6 +496,7 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
         total_measures = total_measures,
         total_score_w = cur_x - margin_left,
         onsets_by_bar = onsets_by_bar,
+        bar_anchors = bar_anchors,
         key_changes = key_changes
     }
 end
@@ -320,10 +546,31 @@ function Engraver.qn_to_canvas_x(qn, margin_left, s, qn_per_measure, measure_map
     m_w = m_w or measure_map.base_w
     
     local pad_l = (measure_map.pad_lefts and measure_map.pad_lefts[m_idx]) or measure_map.pad_left or (30.0 * s)
-    local pad_r = measure_map.pad_right or (30.0 * s)
+    local pad_r = measure_map.pad_right or (25.0 * s)
     local usable_w = math.max(10.0 * s, m_w - pad_l - pad_r)
     
-    -- Linear note placement based on onset within the measure (beat 1 placed on the left at pad_l)
+    -- Use Elaine Gould optical anchor interpolation when available for this measure
+    local anchors = measure_map.bar_anchors and measure_map.bar_anchors[m_idx]
+    if anchors and anchors.qns and anchors.xs and #anchors.qns >= 2 then
+        local qns = anchors.qns
+        local xs = anchors.xs
+        local n_pts = #qns
+        if qn_in_m <= qns[1] then
+            return m_start_x + pad_l + xs[1]
+        elseif qn_in_m >= qns[n_pts] then
+            return m_start_x + pad_l + xs[n_pts]
+        else
+            for k = 1, n_pts - 1 do
+                local q0, q1 = qns[k], qns[k + 1]
+                if qn_in_m >= q0 and qn_in_m <= q1 then
+                    local dq_seg = q1 - q0
+                    local t = (dq_seg > 0.0001) and ((qn_in_m - q0) / dq_seg) or 0.0
+                    return m_start_x + pad_l + xs[k] + t * (xs[k + 1] - xs[k])
+                end
+            end
+        end
+    end
+    
     return m_start_x + pad_l + (qn_in_m / bpi) * usable_w
 end
 
@@ -359,15 +606,40 @@ function Engraver.canvas_x_to_qn(x, margin_left, s, qn_per_measure, grid_qn, mea
     local snap = (grid_qn and grid_qn > 0) and grid_qn or 0.25
     
     local function calc_measure_qn(m_idx, m_start_x, m_w, cur_x, pad_l, pad_r)
-        local usable_w = math.max(10.0 * s, m_w - pad_l - pad_r)
+        local eff_pad_l = (measure_map and measure_map.pad_lefts and measure_map.pad_lefts[m_idx]) or pad_l
+        local usable_w = math.max(10.0 * s, m_w - eff_pad_l - pad_r)
         local rel_x = cur_x - m_start_x
         local raw_qn_in_m
-        if rel_x <= pad_l then
+        if rel_x <= eff_pad_l then
             raw_qn_in_m = 0.0
-        elseif rel_x >= pad_l + usable_w then
+        elseif rel_x >= eff_pad_l + usable_w then
             raw_qn_in_m = bpi - 0.0001
         else
-            raw_qn_in_m = ((rel_x - pad_l) / usable_w) * bpi
+            local ux = rel_x - eff_pad_l
+            local anchors = measure_map and measure_map.bar_anchors and measure_map.bar_anchors[m_idx]
+            if anchors and anchors.qns and anchors.xs and #anchors.xs >= 2 then
+                local qns = anchors.qns
+                local xs = anchors.xs
+                local n_pts = #xs
+                if ux <= xs[1] then
+                    raw_qn_in_m = qns[1]
+                elseif ux >= xs[n_pts] then
+                    raw_qn_in_m = qns[n_pts] - 0.0001
+                else
+                    raw_qn_in_m = (ux / usable_w) * bpi
+                    for k = 1, n_pts - 1 do
+                        local x0, x1 = xs[k], xs[k + 1]
+                        if ux >= x0 and ux <= x1 then
+                            local dx_seg = x1 - x0
+                            local t = (dx_seg > 0.0001) and ((ux - x0) / dx_seg) or 0.0
+                            raw_qn_in_m = qns[k] + t * (qns[k + 1] - qns[k])
+                            break
+                        end
+                    end
+                end
+            else
+                raw_qn_in_m = (ux / usable_w) * bpi
+            end
         end
         local snapped = math.floor((raw_qn_in_m / snap) + 0.5) * snap
         local max_snap = (snap <= bpi) and (bpi - snap) or 0.0
@@ -793,6 +1065,136 @@ function Engraver.pitch_to_canvas_y(pitch, treble_bottom_y, bass_bottom_y, step_
     return ny, in_treble, offset, final_acc, staff_target
 end
 
+-- ==============================================================================
+-- ELAINE GOULD ("BEHIND BARS", PP. 78-84) ACCIDENTAL MEMORY & CHORD STACKING
+-- 1. Intra-bar accidental persistence per diatonic staff step (resets at barline)
+-- 2. Automatic natural (♮) cancellation when an altered step returns to natural in-bar
+-- 3. Suppression of redundant accidentals on tied continuation segments
+-- 4. Multi-column high-to-low chord accidental staggering (7ths/octaves share column)
+-- ==============================================================================
+function Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure)
+    if not visual_notes or #visual_notes == 0 then return end
+    local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
+    local state_by_bar_staff = {}
+
+    for _, vn in ipairs(visual_notes) do
+        local qn = vn.display_qn or vn.start_qn or 0
+        local m = vn.bar or math.floor((qn + 0.001) / bpi)
+        local staff = vn.in_staff or (vn.in_treble and "treble" or "bass")
+        local key = tostring(m) .. "_" .. tostring(staff)
+        if not state_by_bar_staff[key] then
+            state_by_bar_staff[key] = {}
+        end
+        local mem = state_by_bar_staff[key]
+        local dstep = vn.dstep
+
+        if vn.is_tied_from_prev then
+            -- Tied continuation notes never restate the accidental on the tied notehead
+            vn.acc = 0
+        elseif dstep then
+            local raw_acc = vn.acc or 0
+            local prev_entry = mem[dstep]
+            local active_acc = prev_entry and prev_entry.acc or 0
+
+            if prev_entry and math.abs(qn - prev_entry.qn) <= 0.02 then
+                -- Simultaneous note at same onset: keep its own accidental if distinct
+                if raw_acc == prev_entry.raw_acc then
+                    vn.acc = prev_entry.shown_acc
+                end
+            else
+                local shown_acc = 0
+                if raw_acc ~= active_acc then
+                    if raw_acc == 0 and active_acc ~= 0 then
+                        -- Cancel previous sharp/flat in the same measure & octave with a natural (♮)
+                        shown_acc = 2
+                    else
+                        shown_acc = raw_acc
+                    end
+                    mem[dstep] = { acc = raw_acc, raw_acc = raw_acc, shown_acc = shown_acc, qn = qn }
+                else
+                    -- Same accidental already active at this diatonic step in this measure: suppress
+                    shown_acc = 0
+                    mem[dstep] = { acc = active_acc, raw_acc = raw_acc, shown_acc = 0, qn = qn }
+                end
+                vn.acc = shown_acc
+            end
+        end
+    end
+end
+
+function Engraver.layout_chord_accidentals(visual_notes, s)
+    if not visual_notes or #visual_notes == 0 then return end
+    local scale = s or 1.0
+    local i = 1
+    local n_total = #visual_notes
+
+    while i <= n_total do
+        local j = i
+        local base_qn = visual_notes[i].display_qn or visual_notes[i].start_qn or 0
+        local base_staff = visual_notes[i].in_staff or (visual_notes[i].in_treble and "treble" or "bass")
+
+        local min_head_offset = math.min(0, visual_notes[i].head_x_offset or 0)
+        local acc_notes = {}
+        if (visual_notes[i].acc or 0) ~= 0 then
+            table.insert(acc_notes, visual_notes[i])
+        end
+
+        while j + 1 <= n_total do
+            local nxt = visual_notes[j + 1]
+            local nxt_qn = nxt.display_qn or nxt.start_qn or 0
+            local nxt_staff = nxt.in_staff or (nxt.in_treble and "treble" or "bass")
+            if nxt_staff == base_staff and math.abs(nxt_qn - base_qn) <= 0.02 then
+                j = j + 1
+                if (nxt.head_x_offset or 0) < min_head_offset then
+                    min_head_offset = nxt.head_x_offset or 0
+                end
+                if (nxt.acc or 0) ~= 0 then
+                    table.insert(acc_notes, nxt)
+                end
+            else
+                break
+            end
+        end
+
+        if #acc_notes == 1 then
+            local vn = acc_notes[1]
+            vn.acc_x_offset = min_head_offset - (vn.head_x_offset or 0)
+        elseif #acc_notes > 1 then
+            -- Sort top-to-bottom (highest dstep first) per Elaine Gould ("Behind Bars", pp. 81-83)
+            table.sort(acc_notes, function(a, b)
+                return (a.dstep or 0) > (b.dstep or 0)
+            end)
+            local columns = {} -- columns[col_idx] = list of dsteps placed in that column
+            for _, vn in ipairs(acc_notes) do
+                local ds = vn.dstep or 0
+                local placed_col = nil
+                for c = 1, #columns do
+                    local conflict = false
+                    for _, existing_ds in ipairs(columns[c]) do
+                        -- Accidentals closer than a 7th (6 diatonic steps) collide vertically
+                        if math.abs(ds - existing_ds) < 6 then
+                            conflict = true
+                            break
+                        end
+                    end
+                    if not conflict then
+                        placed_col = c
+                        table.insert(columns[c], ds)
+                        break
+                    end
+                end
+                if not placed_col then
+                    placed_col = #columns + 1
+                    columns[placed_col] = { ds }
+                end
+                vn.acc_x_offset = (min_head_offset - (vn.head_x_offset or 0)) - ((placed_col - 1) * 9.5 * scale)
+            end
+        end
+
+        i = j + 1
+    end
+end
+
 local DIATONIC_STEP_TO_SEMITONE = { [0] = 0, [1] = 2, [2] = 4, [3] = 5, [4] = 7, [5] = 9, [6] = 11 }
 
 local GM_STEP_TO_DRUM_PITCH = {
@@ -873,18 +1275,23 @@ function Engraver.decompose_rest_gap(rests, start_qn, dur_qn, m, qn_per_measure)
     local rem = dur_qn
     local cur = start_qn
     
-    -- 1. Fill off-beat fractions up to the next quarter-beat boundary (e.g. 0.5 -> 1.0)
-    local beat_offset = cur % 1.0
-    if beat_offset > 0.04 and rem >= 0.05 then
+    -- 1. Fill off-beat subdivisions step-by-step up to the next quarter-beat boundary (Elaine Gould p. 163)
+    local sub_rests = {
+        { val = 0.5,    type = "8th" },
+        { val = 0.25,   type = "16th" },
+        { val = 0.125,  type = "32nd" },
+        { val = 0.0625, type = "64th" }
+    }
+    local guard = 0
+    while guard < 8 and rem >= 0.05 do
+        guard = guard + 1
+        local beat_offset = cur % 1.0
+        if beat_offset <= 0.03 or beat_offset >= 0.97 then break end
         local needed_to_beat = 1.0 - beat_offset
-        local sub_rests = {
-            { val = 0.5,    type = "8th" },
-            { val = 0.25,   type = "16th" },
-            { val = 0.125,  type = "32nd" },
-            { val = 0.0625, type = "64th" }
-        }
+        local matched_sub = false
         for _, rdef in ipairs(sub_rests) do
-            if rem >= rdef.val - 0.01 and math.abs((needed_to_beat % rdef.val)) < 0.02 then
+            -- Pick the smallest binary subdivision that aligns cur to the next coarser binary boundary
+            if rem >= rdef.val - 0.01 and math.abs((beat_offset % (rdef.val * 2.0)) - rdef.val) < 0.02 and rdef.val <= needed_to_beat + 0.02 then
                 table.insert(rests, {
                     type = rdef.type,
                     start_qn = cur,
@@ -894,9 +1301,28 @@ function Engraver.decompose_rest_gap(rests, start_qn, dur_qn, m, qn_per_measure)
                 })
                 cur = cur + rdef.val
                 rem = rem - rdef.val
+                matched_sub = true
                 break
             end
         end
+        if not matched_sub then
+            for _, rdef in ipairs(sub_rests) do
+                if rem >= rdef.val - 0.01 and math.abs((needed_to_beat % rdef.val)) < 0.02 then
+                    table.insert(rests, {
+                        type = rdef.type,
+                        start_qn = cur,
+                        dur_qn = rdef.val,
+                        measure_idx = m,
+                        is_full_measure = false
+                    })
+                    cur = cur + rdef.val
+                    rem = rem - rdef.val
+                    matched_sub = true
+                    break
+                end
+            end
+        end
+        if not matched_sub then break end
     end
     
     -- 2. Main rest decomposition observing metric beat hierarchy (half rests only on beats 1 & 3 in 4/4)
@@ -1019,7 +1445,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
             -- Group by unique rhythmic onset slots (combine chords)
             local distinct_onsets = {}
             for _, n in ipairs(bar_notes) do
-                local snap_grid = dq or 0.125
+                local snap_grid = dq or 0.0625
                 local eff_n_start = math.max(bar_start_qn, n.start_qn)
                 local eff_n_end = math.min(bar_end_qn, n.end_qn or (n.start_qn + (n.dur_qn or (n.end_qn and (n.end_qn - n.start_qn) or 1.0))))
                 local eff_n_dur = math.max(0, eff_n_end - eff_n_start)
@@ -1029,7 +1455,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
                 local nom_dur = dq and (math.max(dq, math.floor((raw_dur / dq) + 0.5) * dq)) or Engraver.get_nominal_rhythmic_duration(raw_dur)
                 
                 local found = false
-                local tol = dq and (dq * 0.7) or 0.10
+                local tol = dq and (dq * 0.7) or 0.05
                 for _, slot in ipairs(distinct_onsets) do
                     if math.abs(slot.s - snapped_s) < tol then
                         slot.dur = math.max(slot.dur, nom_dur)
@@ -1252,7 +1678,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
                     -- Voices do not sound simultaneously. Check combined metric coverage of the measure.
                     local distinct_onsets = {}
                     for _, n in ipairs(bar_notes) do
-                        local snap_grid = dq or 0.125
+                        local snap_grid = dq or 0.0625
                         local eff_n_start = math.max(bar_sqn, n.start_qn)
                         local eff_n_end = math.min(bar_eqn, n.end_qn or (n.start_qn + (n.dur_qn or (n.end_qn and (n.end_qn - n.start_qn) or 1.0))))
                         local eff_n_dur = math.max(0, eff_n_end - eff_n_start)
@@ -1261,7 +1687,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
                         local nom_dur = dq and (math.max(dq, math.floor((eff_n_dur / dq) + 0.5) * dq)) or Engraver.get_nominal_rhythmic_duration(eff_n_dur)
                         
                         local found = false
-                        local tol = dq and (dq * 0.7) or 0.10
+                        local tol = dq and (dq * 0.7) or 0.05
                         for _, slot in ipairs(distinct_onsets) do
                             if math.abs(slot.s - snapped_s) < tol then
                                 slot.dur = math.max(slot.dur, nom_dur)
@@ -1723,6 +2149,7 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                 local start_bar = math.floor((clean_sqn + 0.001) / bpi)
                 local end_bar = math.floor(math.max(clean_sqn, clean_eqn - 0.001) / bpi)
                 
+                local prev_seg = nil
                 local prev_seg_key = nil
                 local prev_seg_bar = nil
                 for bar = start_bar, end_bar do
@@ -1789,8 +2216,13 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 track = active_n.track or first_n.track,
                                 stem_dir = target_orig and target_orig.stem_dir or nil,
                                 is_tied_chain = (#chain > 1),
-                                chain_notes = (#chain > 1) and chain or nil
+                                chain_notes = (#chain > 1) and chain or nil,
+                                is_tied_from_prev = (prev_seg ~= nil),
+                                is_tied_to_next = false
                             }
+                            if prev_seg then
+                                prev_seg.is_tied_to_next = true
+                            end
                             table.insert(visual_notes, seg)
                             
                             if prev_seg_key then
@@ -1806,6 +2238,7 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                     is_tied_chain = (#chain > 1)
                                 })
                             end
+                            prev_seg = seg
                             prev_seg_key = seg_key
                             prev_seg_bar = bar
                         end
@@ -2168,15 +2601,24 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
         slope = 0
     end
     
-    -- 5. Vertical position of primary beam
+    -- 5. Vertical position of primary beam (Elaine Gould "Behind Bars", pp. 14, 22:
+    -- stems on ledger-line notes pointing into the staff must reach at least the middle staff line dstep = 4)
     local std_stem_len = 30 * s
+    local step_y_approx = 4.0 * s
     local beam_y1
     
     if group_stem_down then
         local max_needed_y1 = -math.huge
         for _, onset in ipairs(onsets) do
             local cur_x = onset.stem_x
-            local needed_y1 = (onset.max_ny + std_stem_len) - slope * (cur_x - x1)
+            local target_end_y = onset.max_ny + std_stem_len
+            if onset.max_dstep and onset.max_dstep > 4 then
+                local mid_line_y = onset.max_ny + (onset.max_dstep - 4) * step_y_approx
+                if mid_line_y > target_end_y then
+                    target_end_y = mid_line_y
+                end
+            end
+            local needed_y1 = target_end_y - slope * (cur_x - x1)
             if needed_y1 > max_needed_y1 then max_needed_y1 = needed_y1 end
         end
         beam_y1 = max_needed_y1
@@ -2184,7 +2626,14 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
         local min_needed_y1 = math.huge
         for _, onset in ipairs(onsets) do
             local cur_x = onset.stem_x
-            local needed_y1 = (onset.min_ny - std_stem_len) - slope * (cur_x - x1)
+            local target_end_y = onset.min_ny - std_stem_len
+            if onset.min_dstep and onset.min_dstep < 4 then
+                local mid_line_y = onset.min_ny + (onset.min_dstep - 4) * step_y_approx
+                if mid_line_y < target_end_y then
+                    target_end_y = mid_line_y
+                end
+            end
+            local needed_y1 = target_end_y - slope * (cur_x - x1)
             if needed_y1 < min_needed_y1 then min_needed_y1 = needed_y1 end
         end
         beam_y1 = min_needed_y1
@@ -2534,15 +2983,22 @@ function Engraver.draw_key_signature(draw_list, key_idx, x, bot_y, line_spacing,
     return x + (count * acc_spacing)
 end
 
-function Engraver.draw_dot(draw_list, cx, cy, s, col, font_music)
+function Engraver.draw_dot(draw_list, cx, cy, s, col, font_music, dstep, step_y)
+    -- Elaine Gould ("Behind Bars", p. 30): Augmentation dots on a staff line or ledger line (dstep % 2 == 0)
+    -- must never sit on the line itself; they are placed in the space immediately above the line.
+    local dot_y = cy
+    if dstep and (dstep % 2 == 0) then
+        local sy = step_y or (4.0 * s)
+        dot_y = cy - sy
+    end
     local font_sz = math.floor(40 * s + 0.5)
     if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
-        local pos_y = cy - (font_sz * 2.012)
+        local pos_y = dot_y - (font_sz * 2.012)
         local pos_x = cx + 8.5 * s
         reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, font_sz, pos_x, pos_y, col, SMUFL.dot)
         return
     end
-    reaper.ImGui_DrawList_AddCircleFilled(draw_list, cx + 9*s, cy - 2*s, 1.8*s, col)
+    reaper.ImGui_DrawList_AddCircleFilled(draw_list, cx + 9*s, dot_y, 1.9*s, col)
 end
 
 function Engraver.draw_articulation(draw_list, art_id, x, y, s, col, font_music, is_above)
@@ -2756,29 +3212,47 @@ function Engraver.draw_flags(draw_list, stem_x, stem_end_y, s, col, count, stem_
 end
 
 function Engraver.draw_tie(draw_list, x1, y1, x2, y2, s, col, above, opt_thickness)
-    local dist = math.abs(x2 - x1)
-    if dist < 6 * s then return end
+    local dist = x2 - x1
+    if dist < 5.0 * s then return end
     if math.abs(y2 - y1) > 16 * s then return end
     
-    -- Elaine Gould ("Behind Bars" p. 60-63): Ties are compact, shallow, and hug the noteheads closely
-    local arc_h = math.min(10.0 * s, math.max(4.0 * s, dist * 0.075))
+    -- Elaine Gould ("Behind Bars", pp. 60-66):
+    -- 1. Adaptive endpoint inset so closely spaced notes never invert or form a vertical spike.
+    -- 2. Tapered crescent profile: thin at the ends, gently thickened at the mid-arch apex.
+    local inset = math.min(5.2 * s, math.max(2.2 * s, dist * 0.22))
+    local start_x = x1 + inset
+    local end_x   = x2 - inset
+    local span = end_x - start_x
+    if span < 3.0 * s then
+        start_x = x1 + (dist * 0.15)
+        end_x   = x2 - (dist * 0.15)
+        span = math.max(2.5 * s, end_x - start_x)
+    end
+
     local dir = above and -1 or 1
-    local offset_y = dir * arc_h
-    local cp_offset = dist * 0.25
+    -- Cap arch height relative to actual inner span so short ties stay flat and graceful, never spiky
+    local arc_h = math.min(9.5 * s, math.min(span * 0.34, math.max(3.0 * s, span * 0.14)))
+    local cp_offset = span * 0.28
     
     local tie_col = col or Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
-    local start_x = x1 + 6.0 * s
-    local end_x   = x2 - 6.0 * s
-    local start_y = y1 + dir * 3.8 * s
-    local end_y   = y2 + dir * 3.8 * s
-    local thickness = opt_thickness or (2.0 * s)
-    
+    local start_y = y1 + dir * (3.6 * s)
+    local end_y   = y2 + dir * (3.6 * s)
+    local base_thick = opt_thickness or (1.5 * s)
+    local crown_swell = dir * math.min(1.4 * s, math.max(0.8 * s, span * 0.04))
+
+    -- Outer arch + inner arch create an authentic engraved crescent taper
     reaper.ImGui_DrawList_AddBezierCubic(draw_list,
         start_x, start_y,
-        start_x + cp_offset, start_y + offset_y,
-        end_x - cp_offset, end_y + offset_y,
+        start_x + cp_offset, start_y + (dir * arc_h) + crown_swell,
+        end_x - cp_offset,   end_y + (dir * arc_h) + crown_swell,
         end_x, end_y,
-        tie_col, thickness)
+        tie_col, base_thick)
+    reaper.ImGui_DrawList_AddBezierCubic(draw_list,
+        start_x, start_y,
+        start_x + cp_offset, start_y + (dir * arc_h),
+        end_x - cp_offset,   end_y + (dir * arc_h),
+        end_x, end_y,
+        tie_col, base_thick)
 end
 
 function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickness, opt_extra_offset_y, opt_extra_arc_h)
@@ -2789,35 +3263,44 @@ function Engraver.draw_slur(draw_list, x1, y1, x2, y2, s, col, above, opt_thickn
     local dy = y2 - y1
     local chord_len = math.sqrt(dx * dx + dy * dy)
     
-    -- Elaine Gould ("Behind Bars" p. 110-115): Slurs have a generous, wide arch.
-    -- When enclosing ties, extra arc height and offset are applied to clear the tie completely.
-    local base_arc_h = math.min(32.0 * s, math.max(10.0 * s, chord_len * 0.15))
+    -- Elaine Gould ("Behind Bars", pp. 109-115): Slurs have a generous, tapered crescent arch.
+    local inset = math.min(4.5 * s, math.max(2.0 * s, math.abs(dist_x) * 0.18))
+    local start_x = x1 + inset
+    local end_x   = x2 - inset
+    local span = math.max(3.0 * s, math.abs(end_x - start_x))
+
+    local base_arc_h = math.min(30.0 * s, math.min(span * 0.38, math.max(7.5 * s, chord_len * 0.15)))
     local extra_arc = opt_extra_arc_h or 0
     local arc_h = base_arc_h + extra_arc
     local dir = above and -1 or 1
     
     local extra_y = opt_extra_offset_y or 0
-    local base_offset_y = 6.5 * s
-    local start_x = x1 + 4.5 * s
-    local end_x   = x2 - 4.5 * s
+    local base_offset_y = 6.2 * s
     local start_y = y1 + dir * (base_offset_y + extra_y)
     local end_y   = y2 + dir * (base_offset_y + extra_y)
     
-    local cp_dist = math.abs(start_x - end_x) * 0.28
+    local cp_dist = span * 0.28
     local cp1_x = start_x + cp_dist
     local cp1_y = start_y + dir * arc_h
     local cp2_x = end_x - cp_dist
     local cp2_y = end_y + dir * arc_h
     
     local slur_col = col or Constants.COLORS.slur_col or Constants.COLORS.tie_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
-    local thickness = opt_thickness or (2.0 * s)
+    local base_thick = opt_thickness or (1.6 * s)
+    local crown_swell = dir * math.min(1.6 * s, math.max(0.9 * s, span * 0.04))
     
+    reaper.ImGui_DrawList_AddBezierCubic(draw_list,
+        start_x, start_y,
+        cp1_x, cp1_y + crown_swell,
+        cp2_x, cp2_y + crown_swell,
+        end_x, end_y,
+        slur_col, base_thick)
     reaper.ImGui_DrawList_AddBezierCubic(draw_list,
         start_x, start_y,
         cp1_x, cp1_y,
         cp2_x, cp2_y,
         end_x, end_y,
-        slur_col, thickness)
+        slur_col, base_thick)
 end
 
 function Engraver.draw_rest(draw_list, r, staff_bottom_y, line_spacing, margin_left, s, qn_per_measure, col, font_music, measure_map, custom_x)

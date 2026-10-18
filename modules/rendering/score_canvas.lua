@@ -472,6 +472,9 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         if math.abs(a.start_qn - b.start_qn) > 0.02 then return a.start_qn < b.start_qn end
         return a.pitch < b.pitch
     end)
+
+    -- Elaine Gould ("Behind Bars", pp. 78-80): Intra-bar accidental memory & natural (♮) cancellation
+    Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure)
     
     -- Compute measure-local voice counts on each staff (Gould "Behind Bars" p. 301):
     -- Stems split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist!
@@ -641,18 +644,8 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
             vn.nx = vn.vis_nx
             vn.stem_x = vn.vis_nx
         end
-        
-        local acc_notes = {}
-        for _, vn in ipairs(cnotes) do
-            if vn.acc ~= 0 and (not vn.is_segment or vn.seg_idx == 1) then table.insert(acc_notes, vn) end
-        end
-        if #acc_notes > 1 then
-            for ai = 1, #acc_notes do
-                if ai % 2 == 0 then acc_notes[ai].acc_x_offset = -10.0 * s end
-            end
-        end
     end
-    
+
     -- Collision spacing adjustment (only within the same staff and measure!)
     for ci = 2, #chord_clusters do
         local cur_c = chord_clusters[ci]
@@ -701,8 +694,16 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 end
             end
         end
-        
-        -- 2. Sequential spacing adjustment against earlier temporal notes on the same staff and measure
+    end
+
+    -- Elaine Gould ("Behind Bars", pp. 81-84): Multi-column high-to-low chord accidental stacking
+    -- (placed after notehead 2nd-interval offsets so all accidentals stand left of the entire chord)
+    Engraver.layout_chord_accidentals(visual_notes, s)
+
+    for ci = 2, #chord_clusters do
+        local cur_c = chord_clusters[ci]
+        local cur_m = math.floor(cur_c.start_qn / bpi)
+        -- 2. Sequential spacing safety check against earlier temporal notes on the same staff and measure
         local prev_max_x = nil
         local max_prev_start_qn = -1
         for pi = ci - 1, 1, -1 do
@@ -731,7 +732,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 if cvn.acc ~= 0 then left_edge = cvn.vis_nx - 11.5 * s + cvn.acc_x_offset end
                 if left_edge < cur_min_x then cur_min_x = left_edge end
             end
-            local min_gap = 14 * s
+            local min_gap = 10.5 * s
             if cur_min_x < prev_max_x + min_gap then
                 local push = (prev_max_x + min_gap) - cur_min_x
                 local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or Engraver.cursor_qn_to_canvas_x((cur_m + 1) * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
@@ -1694,10 +1695,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         
         -- Render rests: Ultra-fast O(1) path from cached_layout (ZERO note scans, ZERO table sorts)
         if cached_layout and cached_layout.rests then
-            local min_rest_gap = 16.0 * s
-            local prev_rx = nil
-            local prev_m = nil
-            local prev_r_sqn = nil
             for _, r in ipairs(cached_layout.rests) do
                 if r.start_qn > vis_max_qn + qn_per_measure then
                     break
@@ -1728,16 +1725,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     else
                         rx = Engraver.qn_to_canvas_x(r.start_qn, margin_left, s, qn_per_measure, measure_map)
                     end
-                    
-                    local cur_m = r.measure_idx or math.floor(r.start_qn / bpi)
-                    if prev_rx and prev_m == cur_m and not r.is_full_measure and prev_r_sqn and (r.start_qn >= prev_r_sqn + 0.18) then
-                        if rx < prev_rx + min_rest_gap then
-                            rx = prev_rx + min_rest_gap
-                        end
-                    end
-                    prev_rx = rx
-                    prev_m = cur_m
-                    prev_r_sqn = r.start_qn
                     
                     if rx >= cull_min_x - 30 * s and rx <= cull_max_x + 30 * s then
                         local rest_col = Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
@@ -1846,10 +1833,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
                 table.sort(visible_rests, function(a, b) return a.start_qn < b.start_qn end)
-                local min_rest_gap = 16.0 * s
-                local prev_rx = nil
-                local prev_m = nil
-                local prev_r_sqn = nil
                 for _, r in ipairs(visible_rests) do
                     local rx
                     if r.is_full_measure then
@@ -1866,13 +1849,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     else
                         rx = Engraver.qn_to_canvas_x(r.start_qn, margin_left, s, qn_per_measure, measure_map)
                     end
-                    local cur_m = r.measure_idx or math.floor(r.start_qn / bpi)
-                    if prev_rx and prev_m == cur_m and not r.is_full_measure and prev_r_sqn and (r.start_qn >= prev_r_sqn + 0.18) then
-                        if rx < prev_rx + min_rest_gap then rx = prev_rx + min_rest_gap end
-                    end
-                    prev_rx = rx
-                    prev_m = cur_m
-                    prev_r_sqn = r.start_qn
                     if rx >= cull_min_x - 30 * s and rx <= cull_max_x + 30 * s then
                         local rest_col = Constants.COLORS.rest_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
                         Engraver.draw_rest(draw_list, r, staff_bot, line_spacing, margin_left, s, qn_per_measure, rest_col, font_music, measure_map, rx)
@@ -2116,6 +2092,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 if math.abs(a.start_qn - b.start_qn) > 0.02 then return a.start_qn < b.start_qn end
                 return a.pitch < b.pitch
             end)
+
+            Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure)
             
             local live_measure_staff_voices = {}
             local live_measure_staff_pitch_balance = {}
@@ -2277,16 +2255,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     vn.nx = vn.vis_nx
                     vn.stem_x = vn.vis_nx
                 end
-                
-                local acc_notes = {}
-                for _, vn in ipairs(cnotes) do
-                    if vn.acc ~= 0 and (not vn.is_segment or vn.seg_idx == 1) then table.insert(acc_notes, vn) end
-                end
-                if #acc_notes > 1 then
-                    for ai = 1, #acc_notes do
-                        if ai % 2 == 0 then acc_notes[ai].acc_x_offset = -10.0 * s end
-                    end
-                end
             end
             
             for ci = 2, #chord_clusters do
@@ -2331,7 +2299,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         end
                     end
                 end
-                
+            end
+
+            Engraver.layout_chord_accidentals(visual_notes, s)
+
+            for ci = 2, #chord_clusters do
+                local cur_c = chord_clusters[ci]
+                local cur_m = math.floor(cur_c.start_qn / bpi)
                 local prev_max_x = nil
                 local max_prev_start_qn = -1
                 for pi = ci - 1, 1, -1 do
@@ -2357,7 +2331,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         if cvn.acc ~= 0 then left_edge = cvn.vis_nx - 11.5 * s + cvn.acc_x_offset end
                         if left_edge < cur_min_x then cur_min_x = left_edge end
                     end
-                    local min_gap = 14 * s
+                    local min_gap = 10.5 * s
                     if cur_min_x < prev_max_x + min_gap then
                         local push = (prev_max_x + min_gap) - cur_min_x
                         local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or Engraver.cursor_qn_to_canvas_x((cur_m + 1) * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
@@ -2640,8 +2614,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
                 
-                -- Accidentals (suppressed on unpitched percussion)
-                if acc ~= 0 and (not vn.is_unpitched) and (not vn.is_segment or vn.seg_idx == 1) then
+                -- Accidentals (suppressed on unpitched percussion and tied continuations)
+                if acc ~= 0 and (not vn.is_unpitched) and (not vn.is_tied_from_prev) and (not vn.is_segment or vn.seg_idx == 1) then
                     if not (hide_regular_active and not is_irregular_preview) then
                         local acc_col = is_ghost and head_col or nil
                         Engraver.draw_accidental(draw_list, acc, nx - 11.5*s + vn.acc_x_offset, ny, s, font_music, acc_col)
@@ -2654,7 +2628,15 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     Engraver.draw_oval_notehead(draw_list, nx, ny, s, head_col, not (is_whole or is_half), is_whole, font_music, vn.notehead_type)
                     
                     if Engraver.is_dotted_duration(vn.dur_qn) then
-                        Engraver.draw_dot(draw_list, nx, ny, s, head_col, font_music)
+                        local dot_base_x = nx
+                        if vn.chord_cluster and #vn.chord_cluster.notes > 1 then
+                            for _, cvn in ipairs(vn.chord_cluster.notes) do
+                                if cvn.vis_nx and cvn.vis_nx > dot_base_x then
+                                    dot_base_x = cvn.vis_nx
+                                end
+                            end
+                        end
+                        Engraver.draw_dot(draw_list, dot_base_x, ny, s, head_col, font_music, vn.dstep, step_y)
                     end
                 end
                 
@@ -2828,6 +2810,20 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         stem_x = base_nx + (stem_down and (-5.0 * s) or (5.0 * s))
                         stem_start_y = stem_down and min_ny or max_ny
                         stem_end_y = stem_down and (max_ny + stem_len) or (min_ny - stem_len)
+                        -- Elaine Gould ("Behind Bars", p. 14): Stems on ledger-line notes pointing toward
+                        -- the staff must extend at least to the middle staff line (dstep = 4).
+                        local cur_staff_bot = staff_bottom_y
+                        if is_harp then
+                            cur_staff_bot = (c_vn1.in_staff == "treble") and treble_bottom_y or ((c_vn1.in_staff == "mid" or c_vn1.in_staff == "alto") and mid_bottom_y or bass_bottom_y)
+                        elseif is_grand then
+                            cur_staff_bot = (c_vn1.in_staff == "treble") and treble_bottom_y or bass_bottom_y
+                        end
+                        local mid_line_y = cur_staff_bot - (4 * step_y)
+                        if stem_down then
+                            if mid_line_y > stem_end_y then stem_end_y = mid_line_y end
+                        else
+                            if mid_line_y < stem_end_y then stem_end_y = mid_line_y end
+                        end
                     end
                     
                     for _, cvn in ipairs(cluster.notes) do
@@ -4176,7 +4172,31 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                                 end
                             end
                         end
-                        local tie_above = (nd1.stem_down == true) or (nd1.dstep and nd1.dstep >= 4)
+                        -- Elaine Gould ("Behind Bars", pp. 60-63):
+                        -- Single-note ties always curve opposite the stem; chord ties split outward above/below.
+                        local tie_above
+                        if nd1.chord_cluster and nd1.chord_cluster.notes and #nd1.chord_cluster.notes > 1 then
+                            local cnotes = nd1.chord_cluster.notes
+                            local mid_idx = (#cnotes + 1) / 2.0
+                            local my_idx = 1
+                            for ci, cvn in ipairs(cnotes) do
+                                if cvn == nd1 or cvn.pitch == nd1.pitch then
+                                    my_idx = ci
+                                    break
+                                end
+                            end
+                            if my_idx > mid_idx then
+                                tie_above = true
+                            elseif my_idx < mid_idx then
+                                tie_above = false
+                            else
+                                tie_above = (nd1.stem_down == true)
+                            end
+                        elseif nd1.stem_down ~= nil then
+                            tie_above = (nd1.stem_down == true)
+                        else
+                            tie_above = ((nd1.dstep or 0) >= 4)
+                        end
                         Engraver.draw_tie(draw_list, nd1.nx, nd1.ny, nd2.nx, nd2.ny, s, tie_col, tie_above)
                     end
                 end
