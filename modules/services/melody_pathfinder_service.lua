@@ -1202,7 +1202,6 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
             if not is_anchor then
                 if rng() < (style_obj.staccato_prob or 0.1) and st.dur_qn <= 0.5 then
                     art = "staccato"
-                    dur = math.min(dur, 0.22)
                 elseif math.abs(beat_frac) < 0.05 and rng() < (style_obj.accent_prob or 0.25) then
                     art = "accent"
                 end

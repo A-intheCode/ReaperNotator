@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.41-beta
+-- @version 2.42-beta
 -- @changelog
+--   + v2.42-beta: Hotfix: Break beam groups across intervening rests so beams and 16th stubs never collide with rest glyphs + preserve nominal notation durations on Melodic Pathfinder staccato notes
 --   + v2.41-beta: Hotfix: Fix Melodic Pathfinder freeze on Reversed + Counter-Melody patterns, auto-jump Edit Cursor to start of selected note pattern & preserve pattern anchor across insertions
 --   + v2.40-beta: Hotfix: Auto-Divisi live Note-On voice handover & legato preemption when moving a finger while holding a chord
 --   + v2.39-beta: Hotfix: Prevent Auto-Divisi Input JSFX Router from popping up floating FX windows on startup or when arming tracks

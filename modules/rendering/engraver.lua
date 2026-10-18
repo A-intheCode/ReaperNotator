@@ -1980,15 +1980,15 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
             local m_idx = math.floor((o.qn + 0.001) / qn_per_measure)
             local beat_idx = math.floor((o.qn + 0.001) / group_size)
             local g_idx = tuplet_assigned[o] or string.format("%d_%d", m_idx, beat_idx)
-            -- Break beam group if separated by a quarter rest or longer gap (when grouping by half-bar/bar)
-            local has_large_rest_gap = false
+            -- Break beam group whenever separated by a rest gap (>= 0.11 QN) so beams never slice through rest glyphs
+            local has_rest_gap = false
             if prev_onset and not tuplet_assigned[o] then
                 local gap = o.qn - (prev_onset.qn + prev_onset.max_dur_qn)
-                if gap >= 0.95 then
-                    has_large_rest_gap = true
+                if gap >= 0.11 then
+                    has_rest_gap = true
                 end
             end
-            if cur_group_start == nil or g_idx ~= cur_group_start or has_large_rest_gap then
+            if cur_group_start == nil or g_idx ~= cur_group_start or has_rest_gap then
                 if cur_group_onsets >= 2 then
                     table.insert(groups, cur_group)
                 end
@@ -2276,60 +2276,51 @@ function Engraver.calculate_and_draw_beams(draw_list, group, s, col, all_note_re
     for level = 1, max_flags - 1 do
         local offset_y = level * beam_gap * dir
         local seg_start = nil
-        for i, onset in ipairs(onsets) do
-            local fc = Engraver.get_flag_count(onset.dur_qn)
-            if fc > level then
-                if not seg_start then seg_start = i end
-            else
-                if seg_start and (i - seg_start) >= 2 then
-                    local sx = onsets[seg_start].stem_x - (seg_start == 1 and half_stem or 0)
-                    local sy = (beam_y1 + slope * (sx - x1)) + offset_y
-                    local ex = onsets[i-1].stem_x + ((i-1) == #onsets and half_stem or 0)
-                    local ey = (beam_y1 + slope * (ex - x1)) + offset_y
-                    draw_beam_quad(sx, sy, ex, ey)
-                elseif seg_start and (i - seg_start) == 1 then
-                    -- Fractional beam (stub / beamlet)
-                    local stem_pos = onsets[seg_start].stem_x
-                    local stub_len = 9 * s
-                    local stub_dir = (seg_start > 1) and -1 or 1
-                    local sx, ex
-                    if stub_dir == 1 then
-                        sx = stem_pos - (seg_start == 1 and half_stem or 0)
-                        ex = stem_pos + stub_len
-                    else
-                        sx = stem_pos + (seg_start == #onsets and half_stem or 0)
-                        ex = stem_pos - stub_len
-                    end
-                    local sy = (beam_y1 + slope * (sx - x1)) + offset_y
-                    local ey = (beam_y1 + slope * (ex - x1)) + offset_y
-                    draw_beam_quad(sx, sy, ex, ey)
-                end
-                seg_start = nil
-            end
-        end
-        if seg_start then
-            if (#onsets - seg_start + 1) >= 2 then
-                local sx = onsets[seg_start].stem_x - (seg_start == 1 and half_stem or 0)
+        local function flush_secondary_segment(s_idx, e_idx)
+            local count = e_idx - s_idx + 1
+            if count >= 2 then
+                local sx = onsets[s_idx].stem_x - (s_idx == 1 and half_stem or 0)
                 local sy = (beam_y1 + slope * (sx - x1)) + offset_y
-                local ex = onsets[#onsets].stem_x + half_stem
+                local ex = onsets[e_idx].stem_x + (e_idx == #onsets and half_stem or 0)
                 local ey = (beam_y1 + slope * (ex - x1)) + offset_y
                 draw_beam_quad(sx, sy, ex, ey)
-            elseif (#onsets - seg_start + 1) == 1 then
-                local stem_pos = onsets[seg_start].stem_x
+            elseif count == 1 then
+                -- Fractional beam (stub / beamlet)
+                local stem_pos = onsets[s_idx].stem_x
                 local stub_len = 9 * s
-                local stub_dir = (#onsets > 1) and -1 or 1
+                local stub_dir = (s_idx > 1) and -1 or 1
                 local sx, ex
                 if stub_dir == 1 then
-                    sx = stem_pos - (seg_start == 1 and half_stem or 0)
+                    sx = stem_pos - (s_idx == 1 and half_stem or 0)
                     ex = stem_pos + stub_len
                 else
-                    sx = stem_pos + (seg_start == #onsets and half_stem or 0)
+                    sx = stem_pos + (s_idx == #onsets and half_stem or 0)
                     ex = stem_pos - stub_len
                 end
                 local sy = (beam_y1 + slope * (sx - x1)) + offset_y
                 local ey = (beam_y1 + slope * (ex - x1)) + offset_y
                 draw_beam_quad(sx, sy, ex, ey)
             end
+        end
+
+        for i, onset in ipairs(onsets) do
+            local fc = Engraver.get_flag_count(onset.dur_qn)
+            local has_gap = (i > 1) and ((onset.qn - (onsets[i-1].qn + onsets[i-1].dur_qn)) > 0.06)
+            if seg_start and has_gap then
+                flush_secondary_segment(seg_start, i - 1)
+                seg_start = nil
+            end
+            if fc > level then
+                if not seg_start then seg_start = i end
+            else
+                if seg_start then
+                    flush_secondary_segment(seg_start, i - 1)
+                    seg_start = nil
+                end
+            end
+        end
+        if seg_start then
+            flush_secondary_segment(seg_start, #onsets)
         end
     end
     
