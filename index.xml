@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.50-beta.2" author="A-intheCode" time="2026-10-18T20:13:00Z">
+      <version name="2.50-beta.3" author="A-intheCode" time="2026-10-18T20:22:00Z">
         <changelog><![CDATA[
++ v2.50-beta.3: Hotfix: Extend Percussion Clef staff mapping (`GM_DRUM_STEP_MAP`) across the full MIDI pitch range C0–C9 (`0..127`) so pitching notes below C2 (`< 35`) or above A5 (`> 81`) always keeps them centered in the Percussion System without ledger-line jumps
 + v2.50-beta.2: Hotfix: Restore Percussion Clef staff mapping (`GM_DRUM_STEP_MAP` & `GM_STEP_TO_DRUM_PITCH`) exactly as in v2.50-beta while keeping automatic Cross/Percussion noteheads disabled (manual assignment only via right-click menu) + display `Percussion` in track header subtitle
 + v2.50-beta.1: Hotfix: Do not automatically convert notes in Percussion Clef systems to percussion noteheads (`x`, `circle_x`, `triangle`, `diamond`) — all notes default to standard noteheads (`●`) unless manually changed via the right-click menu (`🥁 Notehead / Percussion Head`)
 + v2.50-beta: New: Automatic Percussion Clef detection (`percussion_1`) from track names for true unpitched drums & percussion (`Snare`, `Drums`, `Drumset`, `Bass Drum` / `Gran Cassa`, `Kick`, `Toms`, `Taiko`, `Timbales`, `Bongos`, `Congas`, `Djembe`, `Cajon`, `Tambourine`, `Cymbals`, `Hi-Hat`, `Gong`, `Woodblock`, `Claves`, `Castanets`, `Shaker`, `Cowbell`, `Triangle`, `Percussion` / `Schlagzeug`) while strictly excluding pitched percussion (`Timpani` / `Pauken` -> Bass Clef, `Xylophone` / `Marimba` / `Vibraphone` / `Glockenspiel` / `Tubular Bells` / `Steel Drum` -> Treble Clef, `Celesta` -> Grand Staff)

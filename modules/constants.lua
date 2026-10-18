@@ -625,9 +625,17 @@ Constants.GM_DRUM_STEP_MAP = {
     [75] = 5,  -- Claves
     [76] = 6,  -- Hi Wood Block
     [77] = 4,  -- Low Wood Block
+    [78] = 6,  -- Mute Cuica
+    [79] = 7,  -- Open Cuica
     [80] = 9,  -- Mute Triangle
     [81] = 9,  -- Open Triangle
 }
+-- Ensure all MIDI pitches from C0 (0) to C9 (127) map to the middle of the Percussion Staff
+for p = 0, 127 do
+    if Constants.GM_DRUM_STEP_MAP[p] == nil then
+        Constants.GM_DRUM_STEP_MAP[p] = Constants.GM_DRUM_STEP_MAP[60 + (p % 12)] or 4
+    end
+end
 
 function Constants.get_percussion_notehead_type(pitch)
     if not pitch then return "standard" end

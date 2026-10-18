@@ -1171,8 +1171,9 @@ function Engraver.pitch_to_canvas_y(pitch, treble_bottom_y, bass_bottom_y, step_
         local target_bottom_y = (track_clef == "bass" and bass_bottom_y) or ((track_clef == "alto" and mid_bottom_y) and mid_bottom_y or treble_bottom_y)
         in_treble = (track_clef ~= "bass")
         staff_target = (track_clef == "bass") and "bass" or ((track_clef == "alto") and "alto" or "treble")
-        if cdef and cdef.unpitched and Constants.GM_DRUM_STEP_MAP and Constants.GM_DRUM_STEP_MAP[pitch] then
-            offset = Constants.GM_DRUM_STEP_MAP[pitch]
+        if cdef and cdef.unpitched and Constants.GM_DRUM_STEP_MAP then
+            local eff_p = math.max(0, math.min(127, math.floor(pitch or 60)))
+            offset = Constants.GM_DRUM_STEP_MAP[eff_p] or Constants.GM_DRUM_STEP_MAP[60 + (eff_p % 12)] or 4
             ny = target_bottom_y - (offset * step_y)
             return ny, in_treble, offset, 0, staff_target
         end

@@ -1406,6 +1406,14 @@ run_test("Automatic Percussion Clef Detection: True Unpitched Drums vs. Pitched 
         local detected = Engraver.get_track_clef("guid_test_nonperc", item.name, nil, st)
         assert_eq(detected, item.expected, "get_track_clef('" .. item.name .. "') resolves to '" .. item.expected .. "'")
     end
+
+    -- 4. Verify all MIDI pitches 0..127 (C0 to C9) stay centered on the Percussion Staff (never fall back to treble ledger lines)
+    for p = 0, 127 do
+        local ny, _, dstep, acc = Engraver.pitch_to_canvas_y(p, 200, 300, 4.0, false, "percussion_1", nil, 250, 0, nil)
+        assert_true(dstep >= -2 and dstep <= 10, "Percussion Clef pitch " .. p .. " maps to staff step " .. tostring(dstep) .. " (within [-2, 10])")
+        assert_eq(acc, 0, "Percussion Clef pitch " .. p .. " has no accidental")
+        assert_true(type(ny) == "number", "Percussion Clef pitch " .. p .. " has numeric Y")
+    end
 end)
 
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 78 Modules", function()
