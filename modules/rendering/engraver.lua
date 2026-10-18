@@ -994,24 +994,27 @@ function Engraver.get_notehead_stem_attachment(notehead_type, stem_down, s, is_f
     s = s or 1.0
     local ntype = notehead_type or "standard"
     if ntype == "x" then
-        if stem_down then return -4.8 * s, 4.0 * s else return 4.8 * s, -4.0 * s end
+        if stem_down then return -4.6 * s, 3.8 * s else return 4.6 * s, -3.8 * s end
     elseif ntype == "circle_x" then
-        if stem_down then return -4.5 * s, 1.8 * s else return 4.5 * s, -1.8 * s end
+        if stem_down then return -4.2 * s, 2.2 * s else return 4.2 * s, -2.2 * s end
     elseif ntype == "diamond" then
-        local rx = (is_filled == false) and (5.0 * s) or (5.8 * s)
-        if stem_down then return -rx, 0.0 else return rx, 0.0 end
+        if is_filled == false then
+            if stem_down then return -4.4 * s, 0.8 * s else return 4.4 * s, -0.8 * s end
+        end
+        if stem_down then return -4.6 * s, 1.4 * s else return 4.6 * s, -1.4 * s end
     elseif ntype == "triangle" then
-        if stem_down then return -5.2 * s, 4.4 * s else return 5.2 * s, 4.4 * s end
+        if stem_down then return -4.7 * s, 4.4 * s else return 4.7 * s, 4.4 * s end
     elseif ntype == "triangle_down" then
-        if stem_down then return -5.2 * s, -4.4 * s else return 5.2 * s, -4.4 * s end
+        if stem_down then return -4.7 * s, -4.4 * s else return 4.7 * s, -4.4 * s end
     elseif ntype == "plus" then
-        if stem_down then return -4.4 * s, 0.0 else return 4.4 * s, 0.0 end
+        if stem_down then return -4.2 * s, 0.0 else return 4.2 * s, 0.0 end
     elseif ntype == "slash" then
-        if stem_down then return -4.6 * s, 3.6 * s else return 4.6 * s, -3.6 * s end
+        local dy = (is_filled == false) and (4.2 * s) or (3.5 * s)
+        if stem_down then return -3.9 * s, dy else return 3.9 * s, -dy end
     elseif ntype == "square" then
-        if stem_down then return -4.5 * s, -2.5 * s else return 4.5 * s, 2.5 * s end
+        if stem_down then return -4.2 * s, 0.0 else return 4.2 * s, 0.0 end
     else
-        if stem_down then return -5.0 * s, 1.0 * s else return 5.0 * s, -1.0 * s end
+        if stem_down then return -4.8 * s, 1.2 * s else return 4.8 * s, -1.2 * s end
     end
 end
 

@@ -6,8 +6,9 @@
         <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="2.48-beta" author="A-intheCode" time="2026-10-18T18:55:00Z">
+      <version name="2.49-beta" author="A-intheCode" time="2026-10-18T19:10:00Z">
         <changelog><![CDATA[
++ v2.49-beta: Hotfix: Delete all associated Type 15 notation events (`NOTE`, `NOTATOR_NOTEHEAD`, `NOTATOR_STEM`, `NOTATOR_CHORD_ORIG`, `NOTATOR_ARPEGGIO`, `TRILL`) and `ProjExtState` records when deleting notes + auto-purge orphaned Type 15 events on take parse + flush `2.5*s` stem attachment on `slash` and `diamond` noteheads
 + v2.48-beta: Hotfix: Exact Elaine Gould & SMuFL stem attachment coordinates (`get_notehead_stem_attachment`), glyph centering & flag scaling (`32*s`) for all 9 Percussion & Custom Noteheads (`standard`, `x`, `circle_x`, `diamond`, `triangle`, `triangle_down`, `plus`, `slash`, `square`) so stems connect cleanly to every notehead contour and downward flags never touch the right side of the notehead
 + v2.47-beta: New: Percussion & Custom Notehead Selector in Right-Click Context Menu (`🥁 Notehead / Percussion Head`) supporting single and multi-note selections across all 9 SMuFL / Elaine Gould notehead shapes (`standard`, `x`, `circle_x`, `diamond`, `triangle`, `triangle_down`, `plus`, `slash`, `square`, plus `auto`) with MIDI Type 15 (`NOTATOR_NOTEHEAD` / `NOTE head`), `ProjExtState`, Clipboard Copy/Paste & MusicXML `<notehead>` persistence
 + v2.46-beta: Hotfix: Fix Step Input crash (`AudioPreview` require in `KeyboardHandler`), protect `KeyboardHandler` with `pcall` so `ImGui_End` is never skipped, and fix 5 undeclared global variable references (`_cached_banks`, `is_hov`, `eff_bank`, `all_have_target`, `SlurService`) caught by the new strict `_G` metatable guard in the unit test suite

@@ -568,6 +568,28 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     local take_dynamics = {}
     local take_articulations = {}
     
+    -- Pre-read raw MIDI notes in take so orphaned note-level Type 15 events (from deleted notes) are detected & purged
+    local raw_notes_in_take = {}
+    local _, raw_ncnt = reaper.MIDI_CountEvts(take)
+    for rni = 0, (raw_ncnt or 0) - 1 do
+        local rok, _, _, rsppq, reppq, rchan, rpitch = reaper.MIDI_GetNote(take, rni)
+        if rok then
+            local rsqn = reaper.MIDI_GetProjQNFromPPQPos(take, rsppq)
+            table.insert(raw_notes_in_take, { sppq = rsppq, eppq = reppq, chan = rchan or 0, pitch = rpitch, sqn = rsqn })
+        end
+    end
+    local function has_raw_note_at(p_chk, ppq_chk, sqn_chk, tol_ppq)
+        tol_ppq = tol_ppq or 60
+        for _, rn in ipairs(raw_notes_in_take) do
+            if p_chk == nil or rn.pitch == p_chk then
+                if (ppq_chk and math.abs(rn.sppq - ppq_chk) <= tol_ppq) or (sqn_chk and rn.sqn and math.abs(rn.sqn - sqn_chk) <= 0.08) then
+                    return true
+                end
+            end
+        end
+        return false
+    end
+
     -- Read articulations, stem directions, staff assignments & custom noteheads (Type 15 Sysex/Text)
     local note_arts_list = {}
     local note_stems_list = {}
@@ -579,15 +601,24 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     local tie_slaves = {}
     local gliss_steps = {}
     local gliss_masters = {}
+    local orphaned_type15_indices = {}
     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
     for ti = 0, text_cnt - 1 do
         local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
         if ok and etype == 15 then
+            local is_orphaned_note_evt = false
             local p, ch, art = msg:match("NOTE%s+(%d+)%s+(%d+)%s+a%s+([%a%d_]+)")
             if p and art then
-                table.insert(note_arts_list, { ppq = ppq, pitch = tonumber(p), chan = tonumber(ch) or 0, art = art })
-                if art:lower():find("arpegg") or art:lower():find("arp") then
-                    table.insert(note_arpeggios_list, { ppq = ppq, dir = art:lower():find("down") and "down" or "up" })
+                local p_num = tonumber(p)
+                local ch_num = tonumber(ch) or 0
+                if has_raw_note_at(p_num, ppq, nil, 60) or has_raw_note_at(ch_num, ppq, nil, 60) then
+                    local actual_p = has_raw_note_at(p_num, ppq, nil, 60) and p_num or ch_num
+                    table.insert(note_arts_list, { ppq = ppq, pitch = actual_p, chan = ch_num, art = art })
+                    if art:lower():find("arpegg") or art:lower():find("arp") then
+                        table.insert(note_arpeggios_list, { ppq = ppq, dir = art:lower():find("down") and "down" or "up" })
+                    end
+                else
+                    is_orphaned_note_evt = true
                 end
             end
             local sp, sch, sdir = msg:match("NOTE%s+(%d+)%s+(%d+)%s+stem%s+([%a]+)")
@@ -596,22 +627,33 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 sp, sch, sdir, sqn_str = msg:match("NOTATOR_STEM%s+(%d+)%s+(%d+)%s+([%a]+)%s*([%d%.]*)")
             end
             if sp and sdir then
-                sdir = sdir:lower()
-                if sdir == "up" or sdir == "down" then
-                    table.insert(note_stems_list, {
-                        ppq = ppq,
-                        pitch = tonumber(sp),
-                        chan = tonumber(sch) or 0,
-                        stem_dir = sdir,
-                        start_qn = (sqn_str and sqn_str ~= "") and tonumber(sqn_str) or nil
-                    })
+                local sp_num = tonumber(sp)
+                local sqn_num = (sqn_str and sqn_str ~= "") and tonumber(sqn_str) or nil
+                if has_raw_note_at(sp_num, ppq, sqn_num, 60) then
+                    sdir = sdir:lower()
+                    if sdir == "up" or sdir == "down" then
+                        table.insert(note_stems_list, {
+                            ppq = ppq,
+                            pitch = sp_num,
+                            chan = tonumber(sch) or 0,
+                            stem_dir = sdir,
+                            start_qn = sqn_num
+                        })
+                    end
+                else
+                    is_orphaned_note_evt = true
                 end
             end
             local stp, stch, sstf = msg:match("NOTE%s+(%d+)%s+(%d+)%s+staff%s+([%a]+)")
             if stp and sstf then
-                sstf = sstf:lower()
-                if sstf == "treble" or sstf == "bass" then
-                    table.insert(note_staffs_list, { ppq = ppq, pitch = tonumber(stp), chan = tonumber(stch) or 0, staff = sstf })
+                local stp_num = tonumber(stp)
+                if has_raw_note_at(stp_num, ppq, nil, 60) then
+                    sstf = sstf:lower()
+                    if sstf == "treble" or sstf == "bass" then
+                        table.insert(note_staffs_list, { ppq = ppq, pitch = stp_num, chan = tonumber(stch) or 0, staff = sstf })
+                    end
+                else
+                    is_orphaned_note_evt = true
                 end
             end
             local hp, hch, htype = msg:match("NOTE%s+(%d+)%s+(%d+)%s+head%s+([%a_]+)")
@@ -620,18 +662,48 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 hp, hch, htype, hqn_str = msg:match("NOTATOR_NOTEHEAD%s+(%d+)%s+(%d+)%s+([%a_]+)%s*([%d%.]*)")
             end
             if hp and htype then
-                htype = htype:lower()
-                table.insert(note_heads_list, {
-                    ppq = ppq,
-                    pitch = tonumber(hp),
-                    chan = tonumber(hch) or 0,
-                    notehead_type = htype,
-                    start_qn = (hqn_str and hqn_str ~= "") and tonumber(hqn_str) or nil
-                })
+                local hp_num = tonumber(hp)
+                local hqn_num = (hqn_str and hqn_str ~= "") and tonumber(hqn_str) or nil
+                if has_raw_note_at(hp_num, ppq, hqn_num, 60) then
+                    htype = htype:lower()
+                    table.insert(note_heads_list, {
+                        ppq = ppq,
+                        pitch = hp_num,
+                        chan = tonumber(hch) or 0,
+                        notehead_type = htype,
+                        start_qn = hqn_num
+                    })
+                else
+                    is_orphaned_note_evt = true
+                end
             end
-            local arp_dir = msg:match("NOTATOR_ARPEGGIO%s*([%a]*)")
+            local arp_dir = msg:match("^NOTATOR_ARPEGGIO%s*([%a]*)")
             if arp_dir then
-                table.insert(note_arpeggios_list, { ppq = ppq, dir = (arp_dir ~= "" and arp_dir) or "up" })
+                if has_raw_note_at(nil, ppq, nil, 75) then
+                    table.insert(note_arpeggios_list, { ppq = ppq, dir = (arp_dir ~= "" and arp_dir) or "up" })
+                else
+                    is_orphaned_note_evt = true
+                end
+            end
+            if not is_orphaned_note_evt and (msg:match("^NOTE%s+%d+%s+%d+") or msg:match("^TRILL") or msg:match("^NOTATOR_CHORD_ORIG")) then
+                local n1, n2 = msg:match("^NOTE%s+(%d+)%s+(%d+)")
+                if n1 and n2 then
+                    if not (has_raw_note_at(tonumber(n1), ppq, nil, 60) or has_raw_note_at(tonumber(n2), ppq, nil, 60)) then
+                        is_orphaned_note_evt = true
+                    end
+                elseif msg:match("^NOTATOR_CHORD_ORIG") then
+                    local op, _, mp = msg:match("^NOTATOR_CHORD_ORIG%s+(%d+)%s+(%d+)%s+(%d+)")
+                    if op and mp and not (has_raw_note_at(tonumber(mp), ppq, nil, 60) or has_raw_note_at(tonumber(op), ppq, nil, 60)) then
+                        is_orphaned_note_evt = true
+                    end
+                elseif msg:match("^TRILL") then
+                    if not has_raw_note_at(nil, ppq, nil, 60) then
+                        is_orphaned_note_evt = true
+                    end
+                end
+            end
+            if is_orphaned_note_evt then
+                table.insert(orphaned_type15_indices, ti)
             end
             local ch_c, pc_c = msg:match("NOTATOR_CHASE%s+(%d+)%s+(%d+)")
             if ch_c and pc_c then
@@ -714,6 +786,16 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 table.insert(item_obj.time_sig_events, { ppq = ppq, qn = ev_qn, num = tonumber(ts_num_s), denom = tonumber(ts_den_s) })
             end
         end
+    end
+
+    -- Automatically purge orphaned note-bound Type 15 events whose MIDI note was deleted
+    if #orphaned_type15_indices > 0 then
+        reaper.MIDI_DisableSort(take)
+        for idx_i = #orphaned_type15_indices, 1, -1 do
+            reaper.MIDI_DeleteTextSysexEvt(take, orphaned_type15_indices[idx_i])
+        end
+        reaper.MIDI_Sort(take)
+        _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
     end
     
     -- Dual persistence fallback: read ties from ProjExtState so tied notes are never dropped
@@ -798,13 +880,15 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
             if s_sqn and s_pit and (s_dir == "up" or s_dir == "down") then
                 if (s_guid ~= "" and trk_guid and s_guid == trk_guid) or (s_guid == "" and single_trk_proj) then
                     local s_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, s_sqn) + 0.5)
-                    table.insert(note_stems_list, {
-                        ppq = s_ppq,
-                        pitch = s_pit,
-                        chan = s_ch,
-                        stem_dir = s_dir,
-                        start_qn = s_sqn
-                    })
+                    if has_raw_note_at(s_pit, s_ppq, s_sqn, 60) then
+                        table.insert(note_stems_list, {
+                            ppq = s_ppq,
+                            pitch = s_pit,
+                            chan = s_ch,
+                            stem_dir = s_dir,
+                            start_qn = s_sqn
+                        })
+                    end
                 end
             end
         end
@@ -2116,6 +2200,7 @@ function MidiService.delete_selected_notes(state)
         -- 1. Identify notes to delete and record their properties
         local idx_to_del = {}
         local deleted_note_infos = {}
+        local trk_guid = (trk and reaper.ValidatePtr(trk, "MediaTrack*")) and reaper.GetTrackGUID(trk) or ""
         
         for _, sn in ipairs(n_list) do
             local sppq = reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn)
@@ -2123,13 +2208,19 @@ function MidiService.delete_selected_notes(state)
             local ok, _, _, s2, e2, c2, p2, _ = reaper.MIDI_GetNote(take, sn.idx)
             if ok and p2 == sn.pitch and math.abs(s2 - sppq) < 15 then
                 target_idx = sn.idx
-                table.insert(deleted_note_infos, { idx = sn.idx, pitch = p2, chan = c2, sppq = s2, eppq = e2 })
+                table.insert(deleted_note_infos, {
+                    idx = sn.idx, pitch = p2, chan = c2, sppq = s2, eppq = e2,
+                    start_qn = sn.start_qn, track_guid = sn.track_guid or trk_guid
+                })
             else
                 for i = 0, notecnt - 1 do
                     local ok2, _, _, s_chk, e_chk, c_chk, p_chk, _ = reaper.MIDI_GetNote(take, i)
                     if ok2 and p_chk == sn.pitch and math.abs(s_chk - sppq) < 15 then
                         target_idx = i
-                        table.insert(deleted_note_infos, { idx = i, pitch = p_chk, chan = c_chk, sppq = s_chk, eppq = e_chk })
+                        table.insert(deleted_note_infos, {
+                            idx = i, pitch = p_chk, chan = c_chk, sppq = s_chk, eppq = e_chk,
+                            start_qn = sn.start_qn, track_guid = sn.track_guid or trk_guid
+                        })
                         break
                     end
                 end
@@ -2150,35 +2241,163 @@ function MidiService.delete_selected_notes(state)
             end
         end
         
-        -- 3. Delete Type 15 text events attached to the deleted notes
+        -- 3. Delete ALL Type 15 text/notation events attached to the deleted notes
         local _, rem_notes, _, cur_text_cnt = reaper.MIDI_CountEvts(take)
-        for ti = cur_text_cnt - 1, 0, -1 do
-            local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
-            if ok and etype == 15 then
-                local p, ch = msg:match("NOTE%s+(%d+)%s+(%d+)")
-                if p and ch then
-                    local p_num = tonumber(p)
-                    local ch_num = tonumber(ch)
-                    for _, dn in ipairs(deleted_note_infos) do
-                        if dn.pitch == p_num and dn.chan == ch_num and math.abs(dn.sppq - ppq) <= 25 then
-                            reaper.MIDI_DeleteTextSysexEvt(take, ti)
-                            break
-                        end
-                    end
-                else
-                    local orig_p, ch_orig, midi_p = msg:match("NOTATOR_CHORD_ORIG%s+(%d+)%s+(%d+)%s+(%d+)")
-                    if orig_p and ch_orig and midi_p then
-                        local p_num = tonumber(midi_p)
-                        local ch_num = tonumber(ch_orig)
-                        for _, dn in ipairs(deleted_note_infos) do
-                            if dn.pitch == p_num and dn.chan == ch_num and math.abs(dn.sppq - ppq) <= 25 then
-                                reaper.MIDI_DeleteTextSysexEvt(take, ti)
+        local function matches_deleted_note(p_num, ch_num, ppq, qn_num)
+            for _, dn in ipairs(deleted_note_infos) do
+                if dn.pitch == p_num and (ch_num == nil or dn.chan == ch_num) then
+                    if math.abs(dn.sppq - ppq) <= 25 or (qn_num and dn.start_qn and math.abs(dn.start_qn - qn_num) < 0.05) then
+                        -- Ensure no remaining identical note still sits at this exact position
+                        local still_has_note = false
+                        for ni = 0, rem_notes - 1 do
+                            local ok_n, _, _, r_sppq, _, r_chan, r_pitch = reaper.MIDI_GetNote(take, ni)
+                            if ok_n and r_pitch == p_num and (ch_num == nil or r_chan == ch_num) and math.abs(r_sppq - ppq) <= 20 then
+                                still_has_note = true
                                 break
                             end
+                        end
+                        if not still_has_note then
+                            return true
                         end
                     end
                 end
             end
+            return false
+        end
+
+        for ti = cur_text_cnt - 1, 0, -1 do
+            local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
+            if ok and etype == 15 then
+                local should_del = false
+                local nh_p, nh_ch, _, nh_qn = msg:match("^NOTATOR_NOTEHEAD%s+(%d+)%s+(%d+)%s+([%w_]+)%s*([%d%.%-]*)")
+                if nh_p and nh_ch then
+                    should_del = matches_deleted_note(tonumber(nh_p), tonumber(nh_ch), ppq, tonumber(nh_qn))
+                end
+                if not should_del then
+                    local st_p, st_ch, _, st_qn = msg:match("^NOTATOR_STEM%s+(%d+)%s+(%d+)%s+(%w+)%s*([%d%.%-]*)")
+                    if st_p and st_ch then
+                        should_del = matches_deleted_note(tonumber(st_p), tonumber(st_ch), ppq, tonumber(st_qn))
+                    end
+                end
+                if not should_del then
+                    local orig_p, ch_orig, midi_p = msg:match("NOTATOR_CHORD_ORIG%s+(%d+)%s+(%d+)%s+(%d+)")
+                    if orig_p and ch_orig and midi_p then
+                        should_del = matches_deleted_note(tonumber(midi_p), tonumber(ch_orig), ppq, nil)
+                            or matches_deleted_note(tonumber(orig_p), tonumber(ch_orig), ppq, nil)
+                    end
+                end
+                if not should_del then
+                    local arp_p, arp_ch = msg:match("NOTATOR_ARPEGGIO%s+(%d+)%s+(%d+)")
+                    if arp_p and arp_ch then
+                        should_del = matches_deleted_note(tonumber(arp_p), tonumber(arp_ch), ppq, nil)
+                    end
+                end
+                if not should_del then
+                    local tr_p = msg:match("TRILL%s+(%d+)")
+                    if tr_p then
+                        should_del = matches_deleted_note(tonumber(tr_p), nil, ppq, nil)
+                    end
+                end
+                if not should_del then
+                    local ch_s, p_s = msg:match("^NOTE%s+(%d+)%s+(%d+)")
+                    if not ch_s then
+                        ch_s, p_s = msg:match("NOTE%s+(%d+)%s+(%d+)")
+                    end
+                    if ch_s and p_s then
+                        local a_num = tonumber(ch_s)
+                        local b_num = tonumber(p_s)
+                        -- Support both NOTE <pitch> <chan> (Notator custom) and NOTE <chan> <pitch> (REAPER native)
+                        should_del = matches_deleted_note(a_num, b_num, ppq, nil)
+                            or matches_deleted_note(b_num, a_num, ppq, nil)
+                    end
+                end
+                if should_del then
+                    reaper.MIDI_DeleteTextSysexEvt(take, ti)
+                end
+            end
+        end
+        
+        -- 3b. Purge in-memory and ProjExtState notehead, stem, staff & accidental records for deleted notes
+        local item = reaper.GetMediaItemTake_Item(take)
+        local nh_changed = false
+        local stem_changed = false
+        for _, dn in ipairs(deleted_note_infos) do
+            local eff_sqn = dn.start_qn or 0
+            local pitch = dn.pitch
+            local chan = dn.chan or 0
+            local g_str = dn.track_guid or trk_guid or ""
+            local k_full = string.format("%s_%s_%.3f_%d_%d", tostring(item or "0"), tostring(take), eff_sqn, pitch, chan)
+            local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(dn.idx or 0), eff_sqn)
+            local pos_k = string.format("%s_%.3f_%d", tostring(take), eff_sqn, pitch)
+            local trk_k = (g_str ~= "") and string.format("trk_%s_%.3f_%d_%d", g_str, eff_sqn, pitch, chan) or nil
+            local trk_pos_k = (g_str ~= "") and string.format("trk_%s_%.2f_%d", g_str, eff_sqn, pitch) or nil
+            local rec_key = string.format("%s_%.3f_%d_%d", g_str, eff_sqn, pitch, chan)
+
+            local function clear_note_keys(tbl)
+                if not tbl then return false end
+                local removed = false
+                for _, key_cand in ipairs({ k_full, id_k, pos_k, trk_k, trk_pos_k, rec_key }) do
+                    if key_cand and tbl[key_cand] ~= nil then
+                        tbl[key_cand] = nil
+                        removed = true
+                    end
+                end
+                for k in pairs(tbl) do
+                    local k_qn, k_p = k:match("_([%d%.%-]+)_(%d+)_%d+$")
+                    if not k_qn then
+                        k_qn, k_p = k:match("_([%d%.%-]+)_(%d+)$")
+                    end
+                    if k_qn and tonumber(k_p) == pitch and math.abs((tonumber(k_qn) or -999) - eff_sqn) < 0.05 then
+                        if g_str == "" or k:find(g_str, 1, true) or k:find(tostring(take), 1, true) then
+                            tbl[k] = nil
+                            removed = true
+                        end
+                    end
+                end
+                return removed
+            end
+
+            if clear_note_keys(state.note_head_types) then nh_changed = true end
+            if state._persistent_notehead_records then
+                if state._persistent_notehead_records[rec_key] then
+                    state._persistent_notehead_records[rec_key] = nil
+                    nh_changed = true
+                end
+                for rk, rec in pairs(state._persistent_notehead_records) do
+                    if type(rec) == "table" and rec.pitch == pitch and (rec.chan or 0) == chan and math.abs((rec.sqn or rec.start_qn or -999) - eff_sqn) < 0.05 then
+                        if (rec.guid or "") == "" or g_str == "" or rec.guid == g_str then
+                            state._persistent_notehead_records[rk] = nil
+                            nh_changed = true
+                        end
+                    end
+                end
+            end
+
+            if clear_note_keys(state.note_stem_directions) then stem_changed = true end
+            if state._persistent_stem_records then
+                if state._persistent_stem_records[rec_key] then
+                    state._persistent_stem_records[rec_key] = nil
+                    stem_changed = true
+                end
+                for rk, rec in pairs(state._persistent_stem_records) do
+                    if type(rec) == "table" and rec.pitch == pitch and (rec.chan or 0) == chan and math.abs((rec.sqn or rec.start_qn or -999) - eff_sqn) < 0.05 then
+                        if (rec.guid or "") == "" or g_str == "" or rec.guid == g_str then
+                            state._persistent_stem_records[rk] = nil
+                            stem_changed = true
+                        end
+                    end
+                end
+            end
+
+            clear_note_keys(state.note_staff_assignments)
+            clear_note_keys(state.note_accidentals)
+            clear_note_keys(state.note_base_pitch)
+        end
+        if nh_changed and MidiService.save_notehead_types then
+            MidiService.save_notehead_types(state)
+        end
+        if stem_changed and MidiService.save_stem_directions then
+            MidiService.save_stem_directions(state)
         end
         
         -- 4. Delete CCs (CC0, CC32) and Program Changes belonging to deleted notes where no remaining note exists

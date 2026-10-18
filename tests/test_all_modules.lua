@@ -1267,6 +1267,34 @@ run_test("Percussion & Custom Notehead Selector: Multi-Note Conversion, Persiste
     -- 5. Reset to "auto"
     MidiService.set_selected_notes_notehead_type(st, "auto")
     assert_eq(notes[1].notehead_type, nil, "Reset to auto clears custom notehead_type")
+
+    -- 6. Verify deleting a note deletes all associated Type 15 notation events & persistent records
+    st:clear_selection()
+    st:select_note(notes[1], false)
+    MidiService.set_selected_notes_notehead_type(st, "slash")
+    MidiService.invert_selected_notes_stem_direction(st, "down")
+    local take1 = notes[1].take
+    local sppq1 = reaper.MIDI_GetPPQPosFromProjQN(take1, notes[1].start_qn)
+    reaper.MIDI_InsertTextSysexEvt(take1, false, false, sppq1, 15, string.format("NOTE %d %d articulation staccato", notes[1].pitch, notes[1].chan))
+    local del_pitch = notes[1].pitch
+    local del_chan = notes[1].chan
+    local del_qn = notes[1].start_qn
+
+    local del_cnt = MidiService.delete_selected_notes(st)
+    assert_eq(del_cnt, 1, "Deleted 1 selected note")
+
+    local _, _, _, text_cnt_after = reaper.MIDI_CountEvts(take1)
+    local leftover_events = 0
+    for ti = 0, text_cnt_after - 1 do
+        local ok_t, _, _, ppq_t, etype_t, msg_t = reaper.MIDI_GetTextSysexEvt(take1, ti)
+        if ok_t and etype_t == 15 and math.abs(ppq_t - sppq1) <= 25 then
+            if msg_t:find(tostring(del_pitch), 1, true) then
+                leftover_events = leftover_events + 1
+            end
+        end
+    end
+    assert_eq(leftover_events, 0, "All Type 15 notation events (NOTATOR_NOTEHEAD, NOTATOR_STEM, NOTE) deleted with the note")
+    assert_eq(Engraver.get_note_custom_notehead_type({ orig = { pitch = del_pitch, start_qn = del_qn, chan = del_chan }, track_guid = trk_guid }, st), nil, "Deleted note custom notehead record purged")
 end)
 
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 78 Modules", function()
