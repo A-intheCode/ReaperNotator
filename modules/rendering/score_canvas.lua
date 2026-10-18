@@ -4427,7 +4427,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
                 
                 -- Subtitle: item count & clefs (muted gray)
-                local clef_lbl = (tdata.clef == "grand") and "Grand" or ((tdata.clef == "bass") and "Bass" or ((tdata.clef == "harp_3staff") and "Harp" or "Treble"))
+                local clef_lbl = (tdata.clef == "grand") and "Grand"
+                    or ((tdata.clef == "bass") and "Bass"
+                    or ((tdata.clef == "harp_3staff") and "Harp"
+                    or ((tdata.clef == "percussion_1" or tdata.clef == "percussion_2" or tdata.clef == "percussion") and "Percussion"
+                    or ((tdata.clef == "alto") and "Alto"
+                    or ((tdata.clef == "tenor") and "Tenor" or "Treble")))))
                 local sub_lbl = string.format("%d Items • %s", tdata.items and #tdata.items or 0, clef_lbl)
                 local sub_col = state.invert_mode and 0xAAAAAAFF or 0x666666FF
                 reaper.ImGui_DrawList_AddText(draw_list, cur_hdr_x0 + stripe_w + 5 * s, hdr_y0 + 21 * s, sub_col, sub_lbl)
