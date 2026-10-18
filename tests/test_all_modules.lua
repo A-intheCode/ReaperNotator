@@ -1197,6 +1197,74 @@ run_test("MouseHandler & KeyboardHandler: All Tool Modes & All Default Shortcuts
     end
 end)
 
+run_test("Percussion & Custom Notehead Selector: Multi-Note Conversion, Persistence & Engraving", function()
+    local st, env, trk1, item1, take1, project_tracks, fonts = setup_rich_mock_project()
+    local Constants = require("constants")
+    local MidiService = require("services.midi_service")
+    local Engraver = require("rendering.engraver")
+    local ScoreCanvas = require("rendering.score_canvas")
+    local ctx = reaper.ImGui_CreateContext("percussion_noteheads_test")
+    local dl = reaper.ImGui_GetWindowDrawList(ctx)
+
+    -- 1. Verify all 9 notehead types and auto are defined in Constants
+    assert_true(type(Constants.NOTEHEAD_DEFS) == "table" and Constants.NOTEHEAD_DEFS.auto ~= nil, "Constants.NOTEHEAD_DEFS exists with auto")
+    assert_true(type(Constants.NOTEHEAD_TYPES_ORDERED) == "table" and #Constants.NOTEHEAD_TYPES_ORDERED == 9, "9 ordered notehead shapes")
+    local expected_types = { "standard", "x", "circle_x", "diamond", "triangle", "triangle_down", "plus", "slash", "square" }
+    for _, htype in ipairs(expected_types) do
+        local def = Constants.NOTEHEAD_DEFS[htype]
+        assert_true(def ~= nil and def.label ~= nil, "NOTEHEAD_DEFS has " .. htype)
+        -- Test both SMuFL and vector fallback rendering for Whole, Half, and Quarter noteheads
+        Engraver.draw_oval_notehead(dl, 100, 100, 1.0, 0x111111FF, true,  false, fonts.music, htype)
+        Engraver.draw_oval_notehead(dl, 120, 100, 1.0, 0x111111FF, false, false, fonts.music, htype)
+        Engraver.draw_oval_notehead(dl, 140, 100, 1.0, 0x111111FF, false, true,  fonts.music, htype)
+        Engraver.draw_oval_notehead(dl, 100, 120, 1.0, 0x111111FF, true,  false, nil, htype)
+        Engraver.draw_oval_notehead(dl, 120, 120, 1.0, 0x111111FF, false, false, nil, htype)
+        Engraver.draw_oval_notehead(dl, 140, 120, 1.0, 0x111111FF, false, true,  nil, htype)
+    end
+
+    -- 2. Select multiple notes on a Percussion Clef system and convert their notehead type
+    local trk_guid = reaper.GetTrackGUID(trk1)
+    st.track_clefs[trk_guid] = "percussion"
+    local cinfo = ScoreCanvas.render(ctx, st, fonts, project_tracks, MidiService)
+    st.active_tracks_cache = cinfo.active_tracks_data
+    local notes = st.active_tracks_cache[1].notes
+    assert_true(#notes >= 3, "At least 3 notes available for multi-note selection test")
+
+    st:clear_selection()
+    st:select_note(notes[1], true)
+    st:select_note(notes[2], true)
+    st:select_note(notes[3], true)
+    assert_eq(st:count_selected_notes(), 3, "3 notes selected simultaneously")
+
+    -- Convert all 3 selected notes to "circle_x"
+    MidiService.set_selected_notes_notehead_type(st, "circle_x")
+    assert_eq(notes[1].notehead_type, "circle_x", "Note 1 notehead_type updated to circle_x")
+    assert_eq(notes[2].notehead_type, "circle_x", "Note 2 notehead_type updated to circle_x")
+    assert_eq(notes[3].notehead_type, "circle_x", "Note 3 notehead_type updated to circle_x")
+    assert_eq(Engraver.get_note_notehead_type({ orig = notes[1], track_guid = trk_guid }, st, true, notes[1].pitch), "circle_x", "Engraver resolves circle_x")
+
+    -- 3. Verify ProjExtState persistence round-trip
+    st.note_head_types = {}
+    st._persistent_notehead_records = {}
+    MidiService.load_notehead_types(st)
+    assert_eq(Engraver.get_note_custom_notehead_type({ orig = { pitch = notes[1].pitch, start_qn = notes[1].start_qn, chan = notes[1].chan }, track_guid = trk_guid }, st), "circle_x", "ProjExtState round-trip preserves circle_x")
+
+    -- 4. Verify MIDI Type 15 re-parse preserves notehead_type
+    MidiService.invalidate_cache()
+    local _, reparsed_notes = MidiService.get_track_items_and_notes(trk1)
+    local found_circle_x = 0
+    for _, rn in ipairs(reparsed_notes) do
+        if rn.notehead_type == "circle_x" then
+            found_circle_x = found_circle_x + 1
+        end
+    end
+    assert_true(found_circle_x >= 3, "Reparsed MIDI take preserves circle_x on all 3 selected notes")
+
+    -- 5. Reset to "auto"
+    MidiService.set_selected_notes_notehead_type(st, "auto")
+    assert_eq(notes[1].notehead_type, nil, "Reset to auto clears custom notehead_type")
+end)
+
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 78 Modules", function()
     local total_exported_functions = 0
     for _, mod_name in ipairs(all_modules) do

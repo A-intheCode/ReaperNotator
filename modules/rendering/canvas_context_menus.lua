@@ -880,6 +880,53 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                 reaper.ImGui_EndMenu(ctx)
             end
             
+            if reaper.ImGui_BeginMenu(ctx, "🥁 Notehead / Percussion Head") then
+                local Constants = get_service("constants")
+                local Engraver = get_service("rendering.engraver")
+                local sel_cnt = (state.count_selected_notes and state:count_selected_notes()) or 0
+                local sn = state.selected_note
+                if not sn and state.selected_notes then
+                    for _, n in pairs(state.selected_notes) do sn = n break end
+                end
+                local cur_head = nil
+                if sn then
+                    if Engraver and Engraver.get_note_custom_notehead_type then
+                        cur_head = Engraver.get_note_custom_notehead_type(sn, state)
+                    else
+                        local k = (sn.get_key and sn:get_key()) or sn.key
+                        cur_head = sn.notehead_type or (state.note_head_types and k and state.note_head_types[k])
+                    end
+                end
+                if sel_cnt > 1 then
+                    reaper.ImGui_TextDisabled(ctx, string.format("Apply to %d selected notes:", sel_cnt))
+                    reaper.ImGui_Separator(ctx)
+                end
+                local p_auto = (cur_head == nil or cur_head == "auto") and "✓ " or "   "
+                if reaper.ImGui_MenuItem(ctx, p_auto .. "🔄 Auto (Default by Clef / Drum Map)") then
+                    if midi_service and midi_service.set_selected_notes_notehead_type then
+                        midi_service.set_selected_notes_notehead_type(state, "auto")
+                    end
+                end
+                reaper.ImGui_Separator(ctx)
+                local ordered_types = (Constants and Constants.NOTEHEAD_TYPES_ORDERED) or {
+                    "standard", "x", "circle_x", "diamond", "triangle", "triangle_down", "plus", "slash", "square"
+                }
+                for _, htype in ipairs(ordered_types) do
+                    if htype ~= "auto" then
+                        local hdef = Constants and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[htype]
+                        local label = (hdef and hdef.label) or htype
+                        local is_cur = (cur_head == htype)
+                        local prefix = is_cur and "✓ " or "   "
+                        if reaper.ImGui_MenuItem(ctx, string.format("%s%s###nhead_%s", prefix, label, htype)) then
+                            if midi_service and midi_service.set_selected_notes_notehead_type then
+                                midi_service.set_selected_notes_notehead_type(state, htype)
+                            end
+                        end
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
+            
             if reaper.ImGui_BeginMenu(ctx, "🎯 Articulation") then
                 local cur_note_art = nil
                 local sn = state.selected_note

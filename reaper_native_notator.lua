@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.46-beta
+-- @version 2.47-beta
 -- @changelog
+--   + v2.47-beta: New: Percussion & Custom Notehead Selector in Right-Click Context Menu (`🥁 Notehead / Percussion Head`) supporting single and multi-note selections across all 9 SMuFL / Elaine Gould notehead shapes (`standard`, `x`, `circle_x`, `diamond`, `triangle`, `triangle_down`, `plus`, `slash`, `square`, plus `auto`) with MIDI Type 15 (`NOTATOR_NOTEHEAD` / `NOTE head`), `ProjExtState`, Clipboard Copy/Paste & MusicXML `<notehead>` persistence
 --   + v2.46-beta: Hotfix: Fix Step Input crash (`AudioPreview` require in `KeyboardHandler`), protect `KeyboardHandler` with `pcall` so `ImGui_End` is never skipped, and fix 5 undeclared global variable references (`_cached_banks`, `is_hov`, `eff_bank`, `all_have_target`, `SlurService`) caught by the new strict `_G` metatable guard in the unit test suite
 --   + v2.45-beta: Comprehensive Automated Unit Test & Fuzzing Suite across all 78 Lua modules (604 exported functions, 149 test cases) + defensive nil/type safety across all 15 data classes, Engraver beam/tuplet coordinate fallbacks, SystemEngraver vertical layout fallbacks, ClipboardService argument-order resilience, and MIDI Editor track color safety
 --   + v2.44-beta: Complete Elaine Gould ("Behind Bars") & Gardner Read Engraving Compliance: 32nd/64th beam & flag stem lengthening with inner-beam clearance, paired fractional beam stub direction, strict 2-side chord 2nd alternation, dotted chord 2nd collision resolution, staff-line-avoiding articulation placement, slur stem/articulation clearance & chord user-tie outward splitting, tuplet bracket staff/stem/articulation clearance, glissando/portamento dot & accidental gaps, and curved S-bezier Piano/Harp accolade brace (`{`)
@@ -205,6 +206,7 @@ PortamentoService.load_portamentos(state)
 GlissandoService.load_glissandos(state)
 AnnotationService.load_metadata(state)
 MidiService.load_stem_directions(state)
+MidiService.load_notehead_types(state)
 MidiService.cleanup_orphaned_score_elements(state)
 state.current_reaproject, state.current_proj_fn = reaper.EnumProjects(-1)
 state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
@@ -248,6 +250,7 @@ reaper.atexit(function()
     AnnotationService.commit_dirty_tiles(state, true)
     AnnotationService.save_metadata(state)
     MidiService.save_stem_directions(state)
+    MidiService.save_notehead_types(state)
     state:save_settings()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end)
@@ -320,6 +323,7 @@ local function loop()
         GlissandoService.load_glissandos(state)
         AnnotationService.load_metadata(state)
         MidiService.load_stem_directions(state)
+        MidiService.load_notehead_types(state)
         MidiService.cleanup_orphaned_score_elements(state)
         state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
         state._last_total_tracks_cleanup = reaper.CountTracks(0)

@@ -35,16 +35,30 @@ Constants.SMUFL = {
     note_half         = utf8.char(0xE0A3), -- Half note 𝅗𝅥
     note_black        = utf8.char(0xE0A4), -- Quarter / Black note 𝅘𝅥
     
-    -- Percussion Noteheads (SMuFL U+E0A7..E0DB)
-    noteheadXBlack            = utf8.char(0xE0A9), -- X notehead black
-    noteheadXHalf             = utf8.char(0xE0A8), -- X notehead half
+    -- Percussion & Special Noteheads (SMuFL U+E0A7..E103)
     noteheadXWhole            = utf8.char(0xE0A7), -- X notehead whole
-    noteheadCircleX           = utf8.char(0xE0B3), -- Circle-X notehead (open hi-hat)
-    noteheadTriangleUpBlack   = utf8.char(0xE0BE), -- Triangle notehead black (cowbell/triangle)
-    noteheadTriangleUpHalf    = utf8.char(0xE0BD), -- Triangle notehead half
-    noteheadTriangleUpWhole   = utf8.char(0xE0BC), -- Triangle notehead whole
-    noteheadDiamondBlack      = utf8.char(0xE0DB), -- Diamond notehead black (ride bell/harmonics)
+    noteheadXHalf             = utf8.char(0xE0A8), -- X notehead half
+    noteheadXBlack            = utf8.char(0xE0A9), -- X notehead black
+    noteheadPlusWhole         = utf8.char(0xE0AD), -- Plus notehead whole (stopped/muted)
+    noteheadPlusHalf          = utf8.char(0xE0AE), -- Plus notehead half
+    noteheadPlusBlack         = utf8.char(0xE0AF), -- Plus notehead black
+    noteheadCircleXWhole      = utf8.char(0xE0B1), -- Circle-X notehead whole
+    noteheadCircleXHalf       = utf8.char(0xE0B2), -- Circle-X notehead half
+    noteheadCircleX           = utf8.char(0xE0B3), -- Circle-X notehead black (open hi-hat)
+    noteheadSquareWhite       = utf8.char(0xE0B8), -- Square notehead white (half/whole)
+    noteheadSquareBlack       = utf8.char(0xE0B9), -- Square notehead black (cajon/shaker)
+    noteheadTriangleUpWhole   = utf8.char(0xE0BC), -- Triangle Up notehead whole
+    noteheadTriangleUpHalf    = utf8.char(0xE0BD), -- Triangle Up notehead half
+    noteheadTriangleUpBlack   = utf8.char(0xE0BE), -- Triangle Up notehead black (cowbell/triangle)
+    noteheadTriangleDownWhole = utf8.char(0xE0C5), -- Triangle Down notehead whole
+    noteheadTriangleDownHalf  = utf8.char(0xE0C6), -- Triangle Down notehead half
+    noteheadTriangleDownBlack = utf8.char(0xE0C7), -- Triangle Down notehead black (low woodblock/agogo)
+    noteheadDiamondWhole      = utf8.char(0xE0D8), -- Diamond notehead whole
     noteheadDiamondHalf       = utf8.char(0xE0DA), -- Diamond notehead half
+    noteheadDiamondBlack      = utf8.char(0xE0DB), -- Diamond notehead black (ride bell/harmonics)
+    noteheadSlashHorizontalEnds = utf8.char(0xE101), -- Slash notehead black
+    noteheadSlashWhiteWhole   = utf8.char(0xE102), -- Slash notehead whole
+    noteheadSlashWhiteHalf    = utf8.char(0xE103), -- Slash notehead half
     
     -- Measure & Beat Repeat Marks / Simile (SMuFL U+E500 ff.)
     repeat1Bar                = utf8.char(0xE500), -- 1-bar repeat (%)
@@ -635,6 +649,92 @@ function Constants.get_percussion_notehead_type(pitch)
     -- Bass Drum, Snares, Toms, Bongos, Congas -> standard round noteheads
     return "standard"
 end
+
+-- ==============================================================================
+-- PERCUSSION & SPECIAL NOTEHEAD DEFINITIONS (Elaine Gould "Behind Bars", pp. 291-306)
+-- ==============================================================================
+Constants.NOTEHEAD_DEFS = {
+    auto = {
+        id = "auto",
+        label = "🔄 Auto (Default by Clef / Drum Map)",
+        short = "Auto"
+    },
+    standard = {
+        id = "standard",
+        label = "● Standard Oval (Drum / Snare / Tom / Pitched)",
+        short = "Standard Oval",
+        xml = "normal",
+        musicxml = "normal"
+    },
+    x = {
+        id = "x",
+        label = "✕ Cross / X (Cymbal / Hi-Hat / Cross-Stick)",
+        short = "Cross / X",
+        xml = "x",
+        musicxml = "x"
+    },
+    circle_x = {
+        id = "circle_x",
+        label = "⊗ Circle-X (Open Hi-Hat / Crash / Sizzle)",
+        short = "Circle-X",
+        xml = "circle-x",
+        musicxml = "circle-x"
+    },
+    diamond = {
+        id = "diamond",
+        label = "◆ Diamond (Ride Bell / Harmonics / Crotales)",
+        short = "Diamond",
+        xml = "diamond",
+        musicxml = "diamond"
+    },
+    triangle = {
+        id = "triangle",
+        label = "▲ Triangle Up (Triangle / Cowbell / Woodblock)",
+        short = "Triangle Up",
+        xml = "triangle",
+        musicxml = "triangle"
+    },
+    triangle_down = {
+        id = "triangle_down",
+        label = "▼ Triangle Down (Low Woodblock / Agogo)",
+        short = "Triangle Down",
+        xml = "inverted triangle",
+        musicxml = "inverted triangle"
+    },
+    plus = {
+        id = "plus",
+        label = "＋ Plus / Muted (Dead Stroke / Stopped)",
+        short = "Plus / Muted",
+        xml = "cross",
+        musicxml = "cross"
+    },
+    slash = {
+        id = "slash",
+        label = "╱ Slash (Rhythm Slash / Rim Hit)",
+        short = "Slash",
+        xml = "slash",
+        musicxml = "slash"
+    },
+    square = {
+        id = "square",
+        label = "■ Square (Cajon / Shaker / Box)",
+        short = "Square",
+        xml = "rectangle",
+        musicxml = "rectangle"
+    }
+}
+
+Constants.NOTEHEAD_TYPES_ORDERED = {
+    "standard",
+    "x",
+    "circle_x",
+    "diamond",
+    "triangle",
+    "triangle_down",
+    "plus",
+    "slash",
+    "square"
+}
 
 -- ==============================================================================
 -- KEY SIGNATURES (Western music engraving according to Gardner Read & Elaine Gould)

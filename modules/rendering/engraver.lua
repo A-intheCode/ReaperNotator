@@ -936,6 +936,58 @@ function Engraver.get_note_staff(vn, state)
     return nil
 end
 
+function Engraver.get_note_custom_notehead_type(vn, state)
+    if not vn then return nil end
+    local orig = vn.orig or (vn.take and vn) or nil
+    if orig and orig.notehead_type and orig.notehead_type ~= "auto" and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[orig.notehead_type] then
+        return orig.notehead_type
+    end
+    if vn.custom_notehead_type and vn.custom_notehead_type ~= "auto" and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[vn.custom_notehead_type] then
+        return vn.custom_notehead_type
+    end
+    if state and state.note_head_types then
+        local k = (orig and (orig.key or (orig.get_key and orig:get_key()))) or vn.key
+        local pref = k and state.note_head_types[k]
+        if pref and pref ~= "auto" and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[pref] then
+            return pref
+        end
+        local eff_sqn = (orig and orig.start_qn) or vn.start_qn or 0
+        local eff_pitch = (orig and orig.pitch) or vn.pitch or 0
+        local eff_chan = (orig and orig.chan) or vn.chan or 0
+        if orig and orig.take then
+            local id_k = string.format("%s_%s_%.3f", tostring(orig.take or "0"), tostring(orig.idx or 0), eff_sqn)
+            pref = state.note_head_types[id_k]
+            if pref and pref ~= "auto" and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[pref] then return pref end
+            local pos_k = string.format("%s_%.3f_%d", tostring(orig.take or "0"), eff_sqn, eff_pitch)
+            pref = state.note_head_types[pos_k]
+            if pref and pref ~= "auto" and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[pref] then return pref end
+        end
+        local trk = (orig and orig.track) or vn.track
+        local trk_guid = vn.track_guid or (trk and reaper and reaper.ValidatePtr and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.GetTrackGUID(trk)) or nil
+        if trk_guid then
+            local trk_k = string.format("trk_%s_%.3f_%d_%d", tostring(trk_guid), eff_sqn, eff_pitch, eff_chan)
+            pref = state.note_head_types[trk_k]
+            if pref and pref ~= "auto" and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[pref] then return pref end
+            local trk_pos_k = string.format("trk_%s_%.2f_%d", tostring(trk_guid), eff_sqn, eff_pitch)
+            pref = state.note_head_types[trk_pos_k]
+            if pref and pref ~= "auto" and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[pref] then return pref end
+        end
+    end
+    return nil
+end
+
+function Engraver.get_note_notehead_type(vn, state, is_unpitched, eff_pitch)
+    local custom = Engraver.get_note_custom_notehead_type(vn, state)
+    if custom then
+        return custom
+    end
+    local p = eff_pitch or (vn and (vn.eff_pitch or vn.pitch)) or 60
+    if is_unpitched then
+        return Constants.get_percussion_notehead_type(p)
+    end
+    return "standard"
+end
+
 function Engraver.get_note_effective_pitch(raw_pitch, start_qn, track_guid, state)
     local pitch = raw_pitch or 60
     if not (state and track_guid and track_guid ~= "") then
@@ -2215,6 +2267,7 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 take = active_n.take or first_n.take,
                                 track = active_n.track or first_n.track,
                                 stem_dir = target_orig and target_orig.stem_dir or nil,
+                                custom_notehead_type = target_orig and target_orig.notehead_type or nil,
                                 is_tied_chain = (#chain > 1),
                                 chain_notes = (#chain > 1) and chain or nil,
                                 is_tied_from_prev = (prev_seg ~= nil),
@@ -2823,13 +2876,21 @@ function Engraver.draw_oval_notehead(draw_list, cx, cy, s, col, filled, is_whole
     if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
         local glyph
         if notehead_type == "circle_x" then
-            glyph = SMUFL.noteheadCircleX
+            glyph = is_whole and (SMUFL.noteheadCircleXWhole or SMUFL.noteheadCircleX) or (filled and SMUFL.noteheadCircleX or (SMUFL.noteheadCircleXHalf or SMUFL.noteheadCircleX))
         elseif notehead_type == "x" then
             glyph = is_whole and SMUFL.noteheadXWhole or (filled and SMUFL.noteheadXBlack or SMUFL.noteheadXHalf)
+        elseif notehead_type == "plus" then
+            glyph = is_whole and SMUFL.noteheadPlusWhole or (filled and SMUFL.noteheadPlusBlack or SMUFL.noteheadPlusHalf)
         elseif notehead_type == "triangle" then
             glyph = is_whole and SMUFL.noteheadTriangleUpWhole or (filled and SMUFL.noteheadTriangleUpBlack or SMUFL.noteheadTriangleUpHalf)
+        elseif notehead_type == "triangle_down" then
+            glyph = is_whole and SMUFL.noteheadTriangleDownWhole or (filled and SMUFL.noteheadTriangleDownBlack or SMUFL.noteheadTriangleDownHalf)
         elseif notehead_type == "diamond" then
-            glyph = (is_whole or not filled) and SMUFL.noteheadDiamondHalf or SMUFL.noteheadDiamondBlack
+            glyph = is_whole and (SMUFL.noteheadDiamondWhole or SMUFL.noteheadDiamondHalf) or (filled and SMUFL.noteheadDiamondBlack or SMUFL.noteheadDiamondHalf)
+        elseif notehead_type == "slash" then
+            glyph = is_whole and SMUFL.noteheadSlashWhiteWhole or (filled and SMUFL.noteheadSlashHorizontalEnds or SMUFL.noteheadSlashWhiteHalf)
+        elseif notehead_type == "square" then
+            glyph = (is_whole or not filled) and SMUFL.noteheadSquareWhite or SMUFL.noteheadSquareBlack
         else
             glyph = is_whole and SMUFL.note_whole or (filled and SMUFL.note_black or SMUFL.note_half)
         end
@@ -2839,7 +2900,7 @@ function Engraver.draw_oval_notehead(draw_list, cx, cy, s, col, filled, is_whole
         return
     end
     
-    -- Fallback vector shapes for percussion noteheads
+    -- Fallback vector shapes for percussion and special noteheads
     if notehead_type == "x" or notehead_type == "circle_x" then
         local r = 5.0 * s
         reaper.ImGui_DrawList_AddLine(draw_list, cx - r, cy - r, cx + r, cy + r, col, 2.0 * s)
@@ -2848,12 +2909,31 @@ function Engraver.draw_oval_notehead(draw_list, cx, cy, s, col, filled, is_whole
             reaper.ImGui_DrawList_AddCircle(draw_list, cx, cy, 6.5 * s, col, 0, 1.6 * s)
         end
         return
+    elseif notehead_type == "plus" then
+        local r = 5.2 * s
+        reaper.ImGui_DrawList_AddLine(draw_list, cx - r, cy, cx + r, cy, col, 2.1 * s)
+        reaper.ImGui_DrawList_AddLine(draw_list, cx, cy - r, cx, cy + r, col, 2.1 * s)
+        if is_whole or not filled then
+            reaper.ImGui_DrawList_AddCircle(draw_list, cx, cy, 6.2 * s, col, 0, 1.4 * s)
+        end
+        return
     elseif notehead_type == "triangle" then
         local r = 5.5 * s
         local p1x, p1y = cx, cy - r
         local p2x, p2y = cx - r * 1.1, cy + r * 0.8
         local p3x, p3y = cx + r * 1.1, cy + r * 0.8
-        if filled then
+        if filled and not is_whole then
+            reaper.ImGui_DrawList_AddTriangleFilled(draw_list, p1x, p1y, p2x, p2y, p3x, p3y, col)
+        else
+            reaper.ImGui_DrawList_AddTriangle(draw_list, p1x, p1y, p2x, p2y, p3x, p3y, col, 1.8 * s)
+        end
+        return
+    elseif notehead_type == "triangle_down" then
+        local r = 5.5 * s
+        local p1x, p1y = cx, cy + r
+        local p2x, p2y = cx - r * 1.1, cy - r * 0.8
+        local p3x, p3y = cx + r * 1.1, cy - r * 0.8
+        if filled and not is_whole then
             reaper.ImGui_DrawList_AddTriangleFilled(draw_list, p1x, p1y, p2x, p2y, p3x, p3y, col)
         else
             reaper.ImGui_DrawList_AddTriangle(draw_list, p1x, p1y, p2x, p2y, p3x, p3y, col, 1.8 * s)
@@ -2871,10 +2951,29 @@ function Engraver.draw_oval_notehead(draw_list, cx, cy, s, col, filled, is_whole
         reaper.ImGui_DrawList_PathLineTo(draw_list, p2x, p2y)
         reaper.ImGui_DrawList_PathLineTo(draw_list, p3x, p3y)
         reaper.ImGui_DrawList_PathLineTo(draw_list, p4x, p4y)
-        if filled then
+        if filled and not is_whole then
             reaper.ImGui_DrawList_PathFillConvex(draw_list, col)
         else
             reaper.ImGui_DrawList_PathStroke(draw_list, col, reaper.ImGui_DrawFlags_Closed(), 1.8 * s)
+        end
+        return
+    elseif notehead_type == "slash" then
+        local rx = 5.8 * s
+        local ry = 4.6 * s
+        if filled and not is_whole then
+            reaper.ImGui_DrawList_AddLine(draw_list, cx - rx, cy + ry, cx + rx, cy - ry, col, 3.2 * s)
+        else
+            reaper.ImGui_DrawList_AddLine(draw_list, cx - rx, cy + ry - 1.5 * s, cx + rx - 2.0 * s, cy - ry - 1.5 * s, col, 1.6 * s)
+            reaper.ImGui_DrawList_AddLine(draw_list, cx - rx + 2.0 * s, cy + ry + 1.5 * s, cx + rx, cy - ry + 1.5 * s, col, 1.6 * s)
+        end
+        return
+    elseif notehead_type == "square" then
+        local rx = 5.2 * s
+        local ry = 3.8 * s
+        if filled and not is_whole then
+            reaper.ImGui_DrawList_AddRectFilled(draw_list, cx - rx, cy - ry, cx + rx, cy + ry, col)
+        else
+            reaper.ImGui_DrawList_AddRect(draw_list, cx - rx, cy - ry, cx + rx, cy + ry, col, 0, 0, 1.8 * s)
         end
         return
     end

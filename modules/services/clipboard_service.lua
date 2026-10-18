@@ -206,14 +206,17 @@ function ClipboardService.copy(state, active_tracks_data)
     -- 4. Store notes relative to start point (STRICTLY SELECTED NOTES ONLY)
     local clip_notes = {}
     for _, n in ipairs(sel_notes) do
+        local k = (n.get_key and n:get_key()) or n.key
+        local htype = n.notehead_type or (state.note_head_types and k and state.note_head_types[k])
         table.insert(clip_notes, {
-            rel_qn       = n.start_qn - min_start_qn,
-            pitch        = n.pitch,
-            dur_qn       = n.dur_qn,
-            vel          = n.vel or 96,
-            chan         = n.chan or 0,
-            articulation = n.articulation,
-            track_guid   = n.track and reaper.ValidatePtr(n.track, "MediaTrack*") and reaper.GetTrackGUID(n.track) or nil
+            rel_qn        = n.start_qn - min_start_qn,
+            pitch         = n.pitch,
+            dur_qn        = n.dur_qn,
+            vel           = n.vel or 96,
+            chan          = n.chan or 0,
+            articulation  = n.articulation,
+            notehead_type = htype,
+            track_guid    = n.track and reaper.ValidatePtr(n.track, "MediaTrack*") and reaper.GetTrackGUID(n.track) or nil
         })
     end
 
@@ -786,13 +789,39 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
             end
             
             -- 5. Insert pasted notes
+            local has_pasted_heads = false
             for _, cn in ipairs(clip.notes) do
                 local n_sqn = target_start_qn + cn.rel_qn
                 local n_obj = midi_service.insert_note(target_take, n_sqn, cn.pitch, cn.dur_qn, cn.vel, cn.chan, cn.articulation)
                 if n_obj then
+                    if cn.notehead_type and cn.notehead_type ~= "auto" then
+                        n_obj.notehead_type = cn.notehead_type
+                        local n_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(target_take, n_sqn) + 0.5)
+                        reaper.MIDI_InsertTextSysexEvt(target_take, false, false, n_ppq, 15, string.format("NOTATOR_NOTEHEAD %d %d %s %.4f", cn.pitch, cn.chan or 0, cn.notehead_type, n_sqn))
+                        reaper.MIDI_InsertTextSysexEvt(target_take, false, false, n_ppq, 15, string.format("NOTE %d %d head %s", cn.pitch, cn.chan or 0, cn.notehead_type))
+                        state.note_head_types = state.note_head_types or {}
+                        local k = (n_obj.get_key and n_obj:get_key()) or n_obj.key
+                        if k then state.note_head_types[k] = cn.notehead_type end
+                        if target_track_guid then
+                            local trk_k = string.format("trk_%s_%.3f_%d_%d", tostring(target_track_guid), n_sqn, cn.pitch, cn.chan or 0)
+                            state.note_head_types[trk_k] = cn.notehead_type
+                            state._persistent_notehead_records = state._persistent_notehead_records or {}
+                            state._persistent_notehead_records[trk_k] = {
+                                track_guid = target_track_guid,
+                                start_qn = n_sqn,
+                                pitch = cn.pitch,
+                                chan = cn.chan or 0,
+                                head = cn.notehead_type
+                            }
+                        end
+                        has_pasted_heads = true
+                    end
                     state:select_note(n_obj)
                     pasted_notes_count = pasted_notes_count + 1
                 end
+            end
+            if has_pasted_heads and midi_service.save_notehead_types then
+                midi_service.save_notehead_types(state)
             end
             
             -- 6. Auto-chase articulations on the target take

@@ -1026,17 +1026,39 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             cur_div = cur_div + dur_div
                         end
 
-                        local pitch_node = get_first_child(child, "pitch")
+                        local pitch_node = get_first_child(child, "pitch") or get_first_child(child, "unpitched")
                         if pitch_node then
-                            local step_node = get_first_child(pitch_node, "step")
+                            local step_node = get_first_child(pitch_node, "step") or get_first_child(pitch_node, "display-step")
                             local alter_node = get_first_child(pitch_node, "alter")
-                            local oct_node = get_first_child(pitch_node, "octave")
+                            local oct_node = get_first_child(pitch_node, "octave") or get_first_child(pitch_node, "display-octave")
 
                             local step = step_node and get_text(step_node) or "C"
                             local alter = alter_node and tonumber(get_text(alter_node)) or 0
                             local oct = oct_node and tonumber(get_text(oct_node)) or 4
 
                             local pitch = musicxml_to_pitch(step, alter, oct)
+
+                            local notehead_type = nil
+                            local nh_node = get_first_child(child, "notehead")
+                            if nh_node then
+                                local nhtxt = (get_text(nh_node) or ""):lower()
+                                local nh_map = {
+                                    ["x"] = "x",
+                                    ["circle-x"] = "circle_x",
+                                    ["diamond"] = "diamond",
+                                    ["fa"] = "diamond",
+                                    ["mi"] = "diamond",
+                                    ["triangle"] = "triangle",
+                                    ["do"] = "triangle",
+                                    ["inverted triangle"] = "triangle_down",
+                                    ["cross"] = "plus",
+                                    ["slash"] = "slash",
+                                    ["rectangle"] = "square",
+                                    ["la"] = "square",
+                                    ["normal"] = "standard",
+                                }
+                                notehead_type = nh_map[nhtxt]
+                            end
 
                             -- In Grand Staff without explicit staff node: assign channel based on pitch
                             if (is_grand_part or staves_count == 2) and not staff_node then
@@ -1238,7 +1260,8 @@ function MusicXmlImportService.import_file(file_path, state, options)
                                 vel = 90,
                                 articulation = note_art,
                                 arpeggio = note_arp,
-                                accidental = pref_acc
+                                accidental = pref_acc,
+                                notehead_type = notehead_type
                             }
                             table.insert(track_notes, note_entry)
                             total_notes_imported = total_notes_imported + 1
@@ -1606,6 +1629,29 @@ function MusicXmlImportService.import_file(file_path, state, options)
                             local full_k = string.format("%s_%s_%.3f_%d_%d", tostring(item), tostring(take), n.start_qn, n.pitch, n.chan or 0)
                             state.note_accidentals[pos_k] = n.accidental
                             state.note_accidentals[full_k] = n.accidental
+                        end
+                        if n.notehead_type and n.notehead_type ~= "auto" then
+                            reaper.MIDI_InsertTextSysexEvt(take, false, false, s_ppq, 15, string.format("NOTATOR_NOTEHEAD %d %d %s %.4f", n.pitch, n.chan or 0, n.notehead_type, n.start_qn))
+                            reaper.MIDI_InsertTextSysexEvt(take, false, false, s_ppq, 15, string.format("NOTE %d %d head %s", n.pitch, n.chan or 0, n.notehead_type))
+                            if state then
+                                state.note_head_types = state.note_head_types or {}
+                                local pos_k = string.format("%s_%.3f_%d", tostring(take), n.start_qn, n.pitch)
+                                local full_k = string.format("%s_%s_%.3f_%d_%d", tostring(item), tostring(take), n.start_qn, n.pitch, n.chan or 0)
+                                state.note_head_types[pos_k] = n.notehead_type
+                                state.note_head_types[full_k] = n.notehead_type
+                                if trk_guid and trk_guid ~= "" then
+                                    local trk_k = string.format("trk_%s_%.3f_%d_%d", tostring(trk_guid), n.start_qn, n.pitch, n.chan or 0)
+                                    state.note_head_types[trk_k] = n.notehead_type
+                                    state._persistent_notehead_records = state._persistent_notehead_records or {}
+                                    state._persistent_notehead_records[trk_k] = {
+                                        track_guid = trk_guid,
+                                        start_qn = n.start_qn,
+                                        pitch = n.pitch,
+                                        chan = n.chan or 0,
+                                        head = n.notehead_type
+                                    }
+                                end
+                            end
                         end
                     end
 
@@ -2093,6 +2139,9 @@ function MusicXmlImportService.import_file(file_path, state, options)
         end
         if PortamentoService and PortamentoService.save_portamentos then
             PortamentoService.save_portamentos(state)
+        end
+        if MidiService and MidiService.save_notehead_types then
+            MidiService.save_notehead_types(state)
         end
         if state.save_to_project then
             state:save_to_project()

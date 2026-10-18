@@ -568,10 +568,11 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
     local take_dynamics = {}
     local take_articulations = {}
     
-    -- Read articulations, stem directions & staff assignments (Type 15 Sysex/Text)
+    -- Read articulations, stem directions, staff assignments & custom noteheads (Type 15 Sysex/Text)
     local note_arts_list = {}
     local note_stems_list = {}
     local note_staffs_list = {}
+    local note_heads_list = {}
     local note_arpeggios_list = {}
     local chase_events_list = {}
     local tie_masters = {}
@@ -612,6 +613,21 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 if sstf == "treble" or sstf == "bass" then
                     table.insert(note_staffs_list, { ppq = ppq, pitch = tonumber(stp), chan = tonumber(stch) or 0, staff = sstf })
                 end
+            end
+            local hp, hch, htype = msg:match("NOTE%s+(%d+)%s+(%d+)%s+head%s+([%a_]+)")
+            local hqn_str = nil
+            if not (hp and htype) then
+                hp, hch, htype, hqn_str = msg:match("NOTATOR_NOTEHEAD%s+(%d+)%s+(%d+)%s+([%a_]+)%s*([%d%.]*)")
+            end
+            if hp and htype then
+                htype = htype:lower()
+                table.insert(note_heads_list, {
+                    ppq = ppq,
+                    pitch = tonumber(hp),
+                    chan = tonumber(hch) or 0,
+                    notehead_type = htype,
+                    start_qn = (hqn_str and hqn_str ~= "") and tonumber(hqn_str) or nil
+                })
             end
             local arp_dir = msg:match("NOTATOR_ARPEGGIO%s*([%a]*)")
             if arp_dir then
@@ -944,6 +960,17 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                                 break
                             end
                         end
+
+                        local notehead_override = nil
+                        for _, nh in ipairs(note_heads_list) do
+                            if nh.pitch == pitch and (nh.chan == nil or nh.chan == chan) then
+                                local qn_ok = (nh.start_qn and math.abs(nh.start_qn - cl_sqn) <= 0.05)
+                                if math.abs(nh.ppq - sppq) <= 45 or qn_ok then
+                                    notehead_override = nh.notehead_type
+                                    break
+                                end
+                            end
+                        end
                         
                         local note_obj = MidiNote.new({
                             idx = ni,
@@ -959,6 +986,7 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                             track = track,
                             articulation = art,
                             stem_dir = stem_dir,
+                            notehead_type = notehead_override,
                             arpeggio = arpeggio_dir,
                             staff = staff_override,
                             is_tied_master = (tie_master_info ~= nil),
@@ -989,9 +1017,11 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                 local d2_qn = tm.d2_qn
                 if s2_qn < end_qn - 0.005 and (s2_qn + d2_qn) > start_qn + 0.005 then
                     local master_staff = nil
+                    local master_head = nil
                     for _, n in ipairs(take_notes) do
                         if n.is_tied_master and n.tie_id == tm.id then
                             master_staff = n.staff
+                            master_head = n.notehead_type
                             break
                         end
                     end
@@ -1008,6 +1038,7 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                         item_obj = item_obj,
                         track = track,
                         staff = master_staff,
+                        notehead_type = master_head,
                         is_tied_master = false,
                         is_tied_slave = true,
                         tie_id = tm.id
@@ -4422,6 +4453,284 @@ function MidiService.set_selected_notes_staff(state, target_staff)
         state.status_msg = string.format("Reset staff to Auto (split at Middle C) for %d note(s)", #targets)
     else
         state.status_msg = string.format("Moved %d note(s) to %s staff", #targets, (target_staff == "treble" and "Upper (Treble)" or "Lower (Bass)"))
+    end
+    state.status_time = reaper.time_precise()
+end
+
+function MidiService.save_notehead_types(state)
+    if not state then return end
+    local records = state._persistent_notehead_records or {}
+    local parts = {}
+    for _, rec in pairs(records) do
+        if rec and rec.notehead_type and rec.notehead_type ~= "" and rec.notehead_type ~= "auto" and rec.sqn and rec.pitch then
+            table.insert(parts, string.format("%s|%.4f|%d|%d|%s",
+                tostring(rec.guid or ""),
+                tonumber(rec.sqn) or 0,
+                tonumber(rec.pitch) or 60,
+                tonumber(rec.chan) or 0,
+                tostring(rec.notehead_type)
+            ))
+        end
+    end
+    reaper.SetProjExtState(0, "REAPER_Notator", "note_head_types", table.concat(parts, ";"))
+end
+
+function MidiService.load_notehead_types(state)
+    if not state then return end
+    state.note_head_types = {}
+    state._persistent_notehead_records = {}
+
+    local function register_head_record(trk_guid, sqn, pitch, chan, htype, take, item, idx)
+        if not (sqn and pitch and htype and htype ~= "" and htype ~= "auto") then return end
+        local ch = tonumber(chan) or 0
+        local g_str = tostring(trk_guid or "")
+        local rec_key = string.format("%s_%.3f_%d_%d", g_str, sqn, pitch, ch)
+        state._persistent_notehead_records[rec_key] = {
+            guid = g_str,
+            sqn = sqn,
+            pitch = pitch,
+            chan = ch,
+            notehead_type = htype
+        }
+        if g_str ~= "" then
+            local trk_k = string.format("trk_%s_%.3f_%d_%d", g_str, sqn, pitch, ch)
+            local trk_pos_k = string.format("trk_%s_%.2f_%d", g_str, sqn, pitch)
+            state.note_head_types[trk_k] = htype
+            state.note_head_types[trk_pos_k] = htype
+        end
+        if take then
+            local pos_k = string.format("%s_%.3f_%d", tostring(take), sqn, pitch)
+            state.note_head_types[pos_k] = htype
+            if idx ~= nil then
+                local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(idx), sqn)
+                state.note_head_types[id_k] = htype
+            end
+            if item then
+                local full_k = string.format("%s_%s_%.3f_%d_%d", tostring(item), tostring(take), sqn, pitch, ch)
+                state.note_head_types[full_k] = htype
+            end
+        end
+    end
+
+    -- 1. Load from ProjExtState
+    local _, raw_heads = reaper.GetProjExtState(0, "REAPER_Notator", "note_head_types")
+    if raw_heads and raw_heads ~= "" then
+        for entry in raw_heads:gmatch("([^;]+)") do
+            local sp = {}
+            for field in (entry .. "|"):gmatch("([^|]*)|") do table.insert(sp, field) end
+            local s_guid  = sp[1] or ""
+            local s_sqn   = tonumber(sp[2])
+            local s_pit   = tonumber(sp[3])
+            local s_ch    = tonumber(sp[4]) or 0
+            local s_htype = sp[5]
+            if s_sqn and s_pit and s_htype and s_htype ~= "" and s_htype ~= "auto" then
+                register_head_record(s_guid, s_sqn, s_pit, s_ch, s_htype, nil, nil, nil)
+            end
+        end
+    end
+
+    -- 2. Scan all MIDI takes in project for Type 15 NOTATOR_NOTEHEAD and NOTE ... head events
+    local num_tracks = reaper.CountTracks(0)
+    for ti = 0, num_tracks - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+            local trk_guid = reaper.GetTrackGUID(trk)
+            local num_items = reaper.CountTrackMediaItems(trk)
+            for ii = 0, num_items - 1 do
+                local item = reaper.GetTrackMediaItem(trk, ii)
+                local take = item and reaper.GetActiveTake(item)
+                if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                    for tx = 0, text_cnt - 1 do
+                        local ok, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, tx)
+                        if ok and etype == 15 and msg then
+                            local hp, hch, htype = msg:match("NOTE%s+(%d+)%s+(%d+)%s+head%s+([%a_]+)")
+                            local hqn_str = nil
+                            if not (hp and htype) then
+                                hp, hch, htype, hqn_str = msg:match("NOTATOR_NOTEHEAD%s+(%d+)%s+(%d+)%s+([%a_]+)%s*([%d%.]*)")
+                            end
+                            if hp and htype then
+                                htype = htype:lower()
+                                local sqn = (hqn_str and hqn_str ~= "") and tonumber(hqn_str) or reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                                register_head_record(trk_guid, sqn, tonumber(hp), tonumber(hch) or 0, htype, take, item, nil)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+function MidiService.set_selected_notes_notehead_type(state, target_type)
+    if not state then return end
+    local targets = {}
+    if state.selected_notes then
+        for _, sn in pairs(state.selected_notes) do table.insert(targets, sn) end
+    end
+    if #targets == 0 and state.selected_note then
+        table.insert(targets, state.selected_note)
+    end
+    if #targets == 0 then
+        state.status_msg = "No notes selected for notehead change"
+        return
+    end
+
+    local norm_type = target_type and tostring(target_type):lower() or "auto"
+    if norm_type == "auto" or norm_type == "default" or norm_type == "" then
+        norm_type = nil
+    end
+
+    reaper.Undo_BeginBlock2(0)
+    local by_take = {}
+    for _, sn in ipairs(targets) do
+        local take = sn.take or (sn.orig and sn.orig.take) or MidiService.get_active_midi_take()
+        if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
+            if not by_take[take] then by_take[take] = {} end
+            table.insert(by_take[take], sn)
+        end
+    end
+
+    if not state.note_head_types then
+        state.note_head_types = {}
+    end
+    if not state._persistent_notehead_records then
+        state._persistent_notehead_records = {}
+    end
+
+    for take, n_list in pairs(by_take) do
+        local item = reaper.GetMediaItemTake_Item(take)
+        local trk = get_track_from_take(take)
+        local trk_guid = (trk and reaper.ValidatePtr(trk, "MediaTrack*")) and reaper.GetTrackGUID(trk) or ""
+        local loop_src = item and (reaper.GetMediaItemInfo_Value(item, "B_LOOPSRC") ~= 0)
+        local item_pos = item and reaper.GetMediaItemInfo_Value(item, "D_POSITION") or 0
+        local item_sqn = item and reaper.TimeMap2_timeToQN(0, item_pos) or 0
+        local src = reaper.GetMediaItemTake_Source(take)
+        local src_len_qn = 0
+        if src and item then
+            local slen, is_qn = reaper.GetMediaSourceLength(src)
+            if is_qn then src_len_qn = slen
+            else src_len_qn = reaper.TimeMap2_timeToQN(0, item_pos + slen) - item_sqn end
+        end
+
+        reaper.MIDI_DisableSort(take)
+        local _, raw_notecnt = reaper.MIDI_CountEvts(take)
+        for _, sn in ipairs(n_list) do
+            local ref = sn.orig or sn
+            local eff_sqn = ref.start_qn or sn.start_qn or 0
+            local base_qn = eff_sqn
+            if loop_src and src_len_qn > 0.01 and eff_sqn >= (item_sqn + src_len_qn - 0.005) then
+                base_qn = item_sqn + ((eff_sqn - item_sqn) % src_len_qn)
+            end
+            local est_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, base_qn) + 0.5)
+            local sppq = est_sppq
+            local resolved = false
+            local check_idx = ref.idx or sn.idx
+            local pitch = ref.pitch or sn.pitch or 60
+            local chan = ref.chan or sn.chan or 0
+            if check_idx and check_idx >= 0 then
+                local ok_n, _, _, s_ppq, _, _, n_pitch = reaper.MIDI_GetNote(take, check_idx)
+                if ok_n and s_ppq and n_pitch == pitch and math.abs(s_ppq - est_sppq) <= 45 then
+                    sppq = s_ppq
+                    resolved = true
+                end
+            end
+            if not resolved then
+                local best_dist = 60
+                for ni = 0, raw_notecnt - 1 do
+                    local ok_n, _, muted_n, s_ppq, _, _, n_pitch = reaper.MIDI_GetNote(take, ni)
+                    if ok_n and not muted_n and n_pitch == pitch then
+                        local d = math.abs(s_ppq - est_sppq)
+                        if d <= best_dist then
+                            best_dist = d
+                            sppq = s_ppq
+                        end
+                    end
+                end
+            end
+
+            -- Delete existing Type 15 notehead events (both NOTE ... head and NOTATOR_NOTEHEAD) for this pitch & onset
+            local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+            for ti = text_cnt - 1, 0, -1 do
+                local ok_t, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(take, ti)
+                if ok_t and etype == 15 and msg then
+                    local p = msg:match("NOTE%s+(%d+)%s+%d+%s+head%s+[%a_]+")
+                    local sqn_tag = nil
+                    if not p then
+                        p, _, _, sqn_tag = msg:match("NOTATOR_NOTEHEAD%s+(%d+)%s+(%d+)%s+([%a_]+)%s*([%d%.]*)")
+                    end
+                    if p and tonumber(p) == pitch then
+                        local qn_match = (sqn_tag and sqn_tag ~= "" and math.abs((tonumber(sqn_tag) or -999) - eff_sqn) <= 0.06)
+                        if math.abs(ppq - sppq) <= 45 or qn_match then
+                            reaper.MIDI_DeleteTextSysexEvt(take, ti)
+                        end
+                    end
+                end
+            end
+
+            local k = string.format("%s_%s_%.3f_%d_%d", tostring(item or ref.item or "0"), tostring(take), eff_sqn, pitch, chan)
+            local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(ref.idx or sn.idx or 0), eff_sqn)
+            local pos_k = string.format("%s_%.3f_%d", tostring(take), eff_sqn, pitch)
+            local trk_k = (trk_guid ~= "") and string.format("trk_%s_%.3f_%d_%d", trk_guid, eff_sqn, pitch, chan) or nil
+            local trk_pos_k = (trk_guid ~= "") and string.format("trk_%s_%.2f_%d", trk_guid, eff_sqn, pitch) or nil
+            local rec_key = string.format("%s_%.3f_%d_%d", trk_guid, eff_sqn, pitch, chan)
+            local own_k = (ref.get_key and ref:get_key()) or ref.key or (sn.get_key and sn:get_key()) or sn.key
+
+            if norm_type then
+                reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, string.format("NOTATOR_NOTEHEAD %d %d %s %.4f", pitch, chan, norm_type, eff_sqn))
+                reaper.MIDI_InsertTextSysexEvt(take, false, false, sppq, 15, string.format("NOTE %d %d head %s", pitch, chan, norm_type))
+                state.note_head_types[k] = norm_type
+                state.note_head_types[id_k] = norm_type
+                state.note_head_types[pos_k] = norm_type
+                if own_k then state.note_head_types[own_k] = norm_type end
+                if trk_k then state.note_head_types[trk_k] = norm_type end
+                if trk_pos_k then state.note_head_types[trk_pos_k] = norm_type end
+                state._persistent_notehead_records[rec_key] = {
+                    guid = trk_guid,
+                    sqn = eff_sqn,
+                    pitch = pitch,
+                    chan = chan,
+                    notehead_type = norm_type
+                }
+            else
+                state.note_head_types[k] = nil
+                state.note_head_types[id_k] = nil
+                state.note_head_types[pos_k] = nil
+                if own_k then state.note_head_types[own_k] = nil end
+                if trk_k then state.note_head_types[trk_k] = nil end
+                if trk_pos_k then state.note_head_types[trk_pos_k] = nil end
+                state._persistent_notehead_records[rec_key] = nil
+            end
+
+            sn.notehead_type = norm_type
+            if sn.orig then
+                sn.orig.notehead_type = norm_type
+            end
+        end
+        reaper.MIDI_Sort(take)
+        if item and reaper.ValidatePtr(item, "MediaItem*") then
+            reaper.UpdateItemInProject(item)
+            if trk and reaper.ValidatePtr(trk, "MediaTrack*") and reaper.APIExists("MarkTrackItemsDirty") then
+                reaper.MarkTrackItemsDirty(trk, item)
+            end
+        end
+    end
+
+    MidiService.save_notehead_types(state)
+    state.accidental_change_cnt = (state.accidental_change_cnt or 0) + 1
+    if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
+
+    local hdef = norm_type and Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[norm_type]
+    local h_short = (hdef and hdef.short) or norm_type or "Auto"
+    reaper.Undo_EndBlock2(0, "Notator: Change Notehead (" .. tostring(h_short) .. ")", -1)
+    reaper.UpdateArrange()
+    MidiService.invalidate_cache()
+    state.active_tracks_cache = nil
+
+    if norm_type then
+        state.status_msg = string.format("Set notehead to '%s' for %d note(s)", h_short, #targets)
+    else
+        state.status_msg = string.format("Reset notehead to Auto for %d note(s)", #targets)
     end
     state.status_time = reaper.time_precise()
 end

@@ -69,6 +69,8 @@ function State.new()
         note_base_pitch = {},     -- Map: note_key -> integer (natural base pitch, e.g. 62 for D)
         note_stem_directions = {},-- Map: note_key -> "up" | "down" (manual stem direction)
         note_staff_assignments = {}, -- Map: note_key -> "treble" | "bass" (manual staff override)
+        note_head_types = {},     -- Map: note_key -> "standard" | "x" | "circle_x" | "diamond" | "triangle" | "triangle_down" | "plus" | "slash" | "square"
+        _persistent_notehead_records = {},
         active_velocity = 90,     -- Default velocity (mf)
         active_articulation = nil,-- "accent", "staccato", "tenuto", "marcato"
         tie_active = false,

@@ -621,6 +621,13 @@ local function emit_voice_notes(emit, v_notes, voice_id, staff_id, m_start_qn, m
             if staff_id then
                 emit('        <staff>%d</staff>\n', staff_id)
             end
+            if cn.notehead_type and cn.notehead_type ~= "auto" then
+                local hdef = Constants.NOTEHEAD_DEFS and Constants.NOTEHEAD_DEFS[cn.notehead_type]
+                local xml_nh = (hdef and hdef.musicxml) or (cn.notehead_type == "standard" and "normal" or nil)
+                if xml_nh then
+                    emit('        <notehead>%s</notehead>\n', xml_nh)
+                end
+            end
             if cn.beam1 then
                 emit('        <beam number="1">%s</beam>\n', cn.beam1)
             end
@@ -1494,6 +1501,10 @@ function MusicXmlExportService.export_project(state, options)
 
                         local is_user_tie_start = (n.is_tied_master == true)
                         local is_user_tie_stop  = (n.is_tied_slave == true)
+                        local custom_nh = n.notehead_type
+                        if not custom_nh and state and Engraver and Engraver.get_note_custom_notehead_type then
+                            custom_nh = Engraver.get_note_custom_notehead_type({ orig = orig_n, track_guid = trk_guid }, state)
+                        end
 
                         local seg_n = {
                             pitch = n.pitch or 60,
@@ -1504,6 +1515,7 @@ function MusicXmlExportService.export_project(state, options)
                             vel = n.vel or 90,
                             accidental = pref_acc,
                             articulation = n.articulation,
+                            notehead_type = custom_nh,
                             is_auto_return = n.is_auto_return or (orig_n and orig_n.is_auto_return),
                             tie_stop = (n_start < m_start_qn - 0.01) or (is_first_slice and is_user_tie_stop),
                             tie_start = (n_end > m_end_qn + 0.01) or (is_last_slice and is_user_tie_start),

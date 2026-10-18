@@ -427,7 +427,9 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         vn.in_treble = in_treble_b
         vn.dstep = dstep
         vn.acc = is_unpitched and 0 or acc
-        vn.notehead_type = is_unpitched and Constants.get_percussion_notehead_type(eff_pitch) or "standard"
+        vn.track = tdata.track
+        vn.track_guid = tdata.guid
+        vn.notehead_type = Engraver.get_note_notehead_type(vn, state, is_unpitched, eff_pitch)
         vn.is_unpitched = is_unpitched
         vn.active_octave_line = active_oct
         
@@ -1931,6 +1933,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     vn.stem_x = vn.vis_nx
                     vn.stem_end_y = vn.vis_ny
                     vn.note = vn.orig
+                    vn.notehead_type = Engraver.get_note_notehead_type(vn, state, vn.is_unpitched, vn.pitch)
                     
                     table.insert(all_note_render_data, vn)
                     all_note_render_by_key[vn.key] = vn
@@ -2078,7 +2081,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 vn.in_treble = in_treble_b
                 vn.dstep = dstep
                 vn.acc = is_unpitched and 0 or acc
-                vn.notehead_type = is_unpitched and Constants.get_percussion_notehead_type(eff_pitch) or "standard"
+                vn.track = tdata.track
+                vn.track_guid = tdata.guid
+                vn.notehead_type = Engraver.get_note_notehead_type(vn, state, is_unpitched, eff_pitch)
                 vn.is_unpitched = is_unpitched
                 vn.active_octave_line = active_oct
                 

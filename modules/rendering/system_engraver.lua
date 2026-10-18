@@ -388,6 +388,8 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
     end
 
     -- Compute positions and diatonic steps for each note
+    local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[clef_type]
+    local is_unpitched = cdef and cdef.unpitched
     for _, vn in ipairs(display_notes) do
         local pref_acc = Engraver.get_note_preferred_accidental(vn, state)
         local eff_pitch, active_oct, oct_shift = Engraver.get_note_effective_pitch(vn.pitch, vn.start_qn, track_guid, state)
@@ -398,9 +400,12 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
         vn.vis_nx     = nx
         vn.vis_ny     = ny
         vn.dstep      = dstep
-        vn.acc        = acc
+        vn.acc        = is_unpitched and 0 or acc
         vn.in_treble  = in_treble
         vn.eff_pitch  = eff_pitch
+        vn.track_guid = track_guid
+        vn.is_unpitched = is_unpitched
+        vn.notehead_type = Engraver.get_note_notehead_type(vn, state, is_unpitched, eff_pitch)
         vn.active_octave_line = active_oct
         vn.key        = tostring(eff_pitch) .. "_" .. tostring(vn.start_qn)
     end
@@ -535,7 +540,7 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
         local is_half  = (math.abs(vn.dur_qn - 2.0) < 0.15 or math.abs(vn.dur_qn - 3.0) < 0.15)
 
         -- Notehead via Bravura SMuFL
-        Engraver.draw_oval_notehead(dl, nx, ny, eng_s, 0x111111FF, not (is_whole or is_half), is_whole, font_music, "standard")
+        Engraver.draw_oval_notehead(dl, nx, ny, eng_s, 0x111111FF, not (is_whole or is_half), is_whole, font_music, vn.notehead_type or "standard")
 
         -- Accidental
         if vn.acc and vn.acc ~= 0 then

@@ -20,10 +20,11 @@ function MidiNote.new(data)
     self.item         = data.item
     self.item_obj     = data.item_obj
     self.track        = data.track
-    self.articulation = data.articulation
-    self.stem_dir     = data.stem_dir
-    self.arpeggio     = data.arpeggio
-    self.staff        = data.staff
+    self.articulation  = data.articulation
+    self.stem_dir      = data.stem_dir
+    self.notehead_type = data.notehead_type
+    self.arpeggio      = data.arpeggio
+    self.staff         = data.staff
     self.slur_to      = data.slur_to
     self.slur_id      = data.slur_id
     self.tied_to      = data.tied_to
