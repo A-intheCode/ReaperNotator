@@ -1053,10 +1053,6 @@ function Engraver.get_note_notehead_type(vn, state, is_unpitched, eff_pitch)
     if custom then
         return custom
     end
-    local p = eff_pitch or (vn and (vn.eff_pitch or vn.pitch)) or 60
-    if is_unpitched then
-        return Constants.get_percussion_notehead_type(p)
-    end
     return "standard"
 end
 
@@ -1175,11 +1171,6 @@ function Engraver.pitch_to_canvas_y(pitch, treble_bottom_y, bass_bottom_y, step_
         local target_bottom_y = (track_clef == "bass" and bass_bottom_y) or ((track_clef == "alto" and mid_bottom_y) and mid_bottom_y or treble_bottom_y)
         in_treble = (track_clef ~= "bass")
         staff_target = (track_clef == "bass") and "bass" or ((track_clef == "alto") and "alto" or "treble")
-        if cdef and cdef.unpitched and Constants.GM_DRUM_STEP_MAP and Constants.GM_DRUM_STEP_MAP[pitch] then
-            offset = Constants.GM_DRUM_STEP_MAP[pitch]
-            ny = target_bottom_y - (offset * step_y)
-            return ny, in_treble, offset, 0, staff_target
-        end
         local b_diatonic = (cdef and cdef.bottom_line_diatonic) or (track_clef == "bass" and -10 or 2)
         offset = diatonic_from_c4 - b_diatonic
         ny = target_bottom_y - (offset * step_y)
@@ -1408,10 +1399,6 @@ function Engraver.canvas_y_to_pitch(y, treble_bottom_y, bass_bottom_y, step_y, i
         local target_bottom_y = (track_clef == "bass" and bass_bottom_y) or treble_bottom_y
         in_treble = (track_clef ~= "bass")
         local offset = math.floor(((target_bottom_y - y) / step_y) + 0.5)
-        if cdef and cdef.unpitched then
-            local dp = GM_STEP_TO_DRUM_PITCH[offset]
-            if dp then return dp, in_treble end
-        end
         local b_diatonic = (cdef and cdef.bottom_line_diatonic) or (track_clef == "bass" and -10 or 2)
         diatonic_from_c4 = offset + b_diatonic
     end

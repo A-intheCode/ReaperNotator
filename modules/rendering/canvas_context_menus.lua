@@ -902,7 +902,7 @@ function CanvasContextMenus.render_note_context_menu(ctx, state, midi_service, a
                     reaper.ImGui_Separator(ctx)
                 end
                 local p_auto = (cur_head == nil or cur_head == "auto") and "✓ " or "   "
-                if reaper.ImGui_MenuItem(ctx, p_auto .. "🔄 Auto (Default by Clef / Drum Map)") then
+                if reaper.ImGui_MenuItem(ctx, p_auto .. "🔄 Reset to Standard (● Normal)") then
                     if midi_service and midi_service.set_selected_notes_notehead_type then
                         midi_service.set_selected_notes_notehead_type(state, "auto")
                     end

@@ -1264,9 +1264,13 @@ run_test("Percussion & Custom Notehead Selector: Multi-Note Conversion, Persiste
     end
     assert_true(found_circle_x >= 3, "Reparsed MIDI take preserves circle_x on all 3 selected notes")
 
-    -- 5. Reset to "auto"
+    -- 5. Reset to "auto" (must revert to "standard", never auto-convert to percussion noteheads)
     MidiService.set_selected_notes_notehead_type(st, "auto")
     assert_eq(notes[1].notehead_type, nil, "Reset to auto clears custom notehead_type")
+    for _, test_p in ipairs({ 36, 37, 38, 42, 46, 49, 51, 53, 54, 56, 60, 69, 76, 81 }) do
+        assert_eq(Engraver.get_note_notehead_type({ orig = { pitch = test_p, start_qn = 99.0, chan = 0 }, track_guid = trk_guid }, st, true, test_p), "standard",
+            "Unpitched percussion note at pitch " .. test_p .. " defaults to 'standard' unless set manually")
+    end
 
     -- 6. Verify deleting a note deletes all associated Type 15 notation events & persistent records
     st:clear_selection()
