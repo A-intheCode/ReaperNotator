@@ -55,7 +55,9 @@ local function draw_contour_preview(dl, preview, x, y, w, h)
     -- Draw measure grid lines (every 4 QN)
     local first_bar_qn = math.ceil(min_qn / 4.0) * 4.0
     local q = first_bar_qn
-    while q < max_qn do
+    local bar_guard = 0
+    while q < max_qn and bar_guard < 128 do
+        bar_guard = bar_guard + 1
         local gx = x + pad_x + ((q - min_qn) / span_qn) * inner_w
         reaper.ImGui_DrawList_AddLine(dl, gx, y + 2, gx, y + h - 2, 0x2A3040AA, 1.0)
         q = q + 4.0
@@ -132,6 +134,12 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
             reaper.ImGui_SetNextWindowFocus(ctx)
         end
         state.focus_melody_pathfinder_modal = nil
+        state.mpf_locked_sel_sig = nil
+        state.mpf_locked_waypoints = nil
+        state.mpf_locked_min_qn = nil
+        state.mpf_locked_max_qn = nil
+        state.mpf_locked_track = nil
+        state.mpf_locked_take = nil
         state.mpf_dirty = true
     end
 
@@ -140,6 +148,12 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
 
     if not s_open then
         state.show_melody_pathfinder_modal = false
+        state.mpf_locked_sel_sig = nil
+        state.mpf_locked_waypoints = nil
+        state.mpf_locked_min_qn = nil
+        state.mpf_locked_max_qn = nil
+        state.mpf_locked_track = nil
+        state.mpf_locked_take = nil
         PatternService.stop_preview(audio_preview)
     end
 
@@ -147,11 +161,24 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         local target_track, waypoints = MelodyPathfinderService.get_selected_waypoints(state, active_tracks_data)
         local trk_guid = (target_track and reaper.ValidatePtr(target_track, "MediaTrack*") and reaper.GetTrackGUID(target_track)) or ""
         local cur_clef_setting = (state.track_clefs and state.track_clefs[trk_guid]) or "auto"
-        local cur_q_bucket = math.floor((reaper.GetCursorPosition() or 0) * 4)
-        local wp_sig = string.format("%s_%s_%d_%s_%d", trk_guid, cur_clef_setting, #waypoints, waypoints[1] and tostring(waypoints[1].start_qn) or "0", cur_q_bucket)
+        local cur_q_bucket = (#waypoints == 0) and math.floor((reaper.GetCursorPosition() or 0) * 4) or 0
+        local wp_sig = string.format(
+            "%s_%s_%d_%s_%s_%d",
+            trk_guid,
+            cur_clef_setting,
+            #waypoints,
+            waypoints[1] and string.format("%.3f_%d", waypoints[1].start_qn, waypoints[1].pitch) or "0",
+            waypoints[#waypoints] and string.format("%.3f_%d", waypoints[#waypoints].start_qn, waypoints[#waypoints].pitch) or "0",
+            cur_q_bucket
+        )
         if state.mpf_last_wp_sig ~= wp_sig then
             state.mpf_last_wp_sig = wp_sig
             state.mpf_dirty = true
+            -- Automatically jump Edit Cursor to the start of the selected note pattern
+            if #waypoints >= 1 and waypoints[1].start_qn then
+                reaper.SetEditCurPos2(0, reaper.TimeMap2_QNToTime(0, waypoints[1].start_qn), false, false)
+                state._suppress_autoscroll_frames = 2
+            end
         end
 
         if state.mpf_dirty or not state.mpf_preview then

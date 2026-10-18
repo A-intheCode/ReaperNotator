@@ -2527,8 +2527,17 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
                     state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)
                     state.jump_to_item = nil
+                    local min_sel_qn = n.start_qn
+                    for _, sn in pairs(state.selected_notes) do
+                        if sn and sn.start_qn and (not min_sel_qn or sn.start_qn < min_sel_qn) then
+                            min_sel_qn = sn.start_qn
+                        end
+                    end
+                    if min_sel_qn then
+                        reaper.SetEditCurPos2(0, reaper.TimeMap2_QNToTime(0, min_sel_qn), false, false)
+                    end
                     if state.auto_scroll then
-                        state.jump_to_note_qn = n.start_qn
+                        state.jump_to_note_qn = min_sel_qn or n.start_qn
                     else
                         state.jump_to_note_qn = nil
                         state._suppress_autoscroll_frames = 2

@@ -1333,6 +1333,18 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             elseif n_cnt > 0 then
                 state.status_msg = string.format("%d note(s) selected", n_cnt)
             end
+            if n_cnt > 0 then
+                local min_sel_qn = nil
+                for _, sn in pairs(state.selected_notes) do
+                    if sn and sn.start_qn and (not min_sel_qn or sn.start_qn < min_sel_qn) then
+                        min_sel_qn = sn.start_qn
+                    end
+                end
+                if min_sel_qn then
+                    reaper.SetEditCurPos2(0, reaper.TimeMap2_QNToTime(0, min_sel_qn), false, false)
+                    state._suppress_autoscroll_frames = 2
+                end
+            end
             midi_service.sync_selection_to_reaper(state, canvas_info.active_tracks_data)
         end
         state.marquee_active = false

@@ -88,10 +88,12 @@ end
 --- @return MediaTrack|nil, table waypoints, MediaItem_Take|nil
 function MelodyPathfinderService.get_selected_waypoints(state, active_tracks_data)
     local raw = {}
-    local target_track = nil
+    local target_track = (state and state.focused_track and reaper.ValidatePtr(state.focused_track, "MediaTrack*")) and state.focused_track or nil
     local target_take = nil
 
     if state and state.selected_notes and next(state.selected_notes) ~= nil then
+        -- Collect all valid selected notes first, then pick target_track deterministically (earliest note or focused_track)
+        local all_sel = {}
         for _, entry in pairs(state.selected_notes) do
             if entry and entry.take and reaper.ValidatePtr(entry.take, "MediaItem_Take*") and entry.idx then
                 local ok, _, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(entry.take, entry.idx)
@@ -99,23 +101,44 @@ function MelodyPathfinderService.get_selected_waypoints(state, active_tracks_dat
                     local sqn = reaper.MIDI_GetProjQNFromPPQPos(entry.take, sppq)
                     local eqn = reaper.MIDI_GetProjQNFromPPQPos(entry.take, eppq)
                     local trk = entry.track or reaper.GetMediaItemTake_Track(entry.take)
-                    if not target_track then
-                        target_track = trk
-                        target_take = entry.take
+                    table.insert(all_sel, {
+                        pitch = pitch,
+                        start_qn = sqn,
+                        end_qn = eqn,
+                        dur_qn = math.max(0.125, eqn - sqn),
+                        vel = vel or 96,
+                        chan = chan or 0,
+                        take = entry.take,
+                        track = trk,
+                        idx = entry.idx,
+                        is_waypoint = true,
+                    })
+                end
+            end
+        end
+        table.sort(all_sel, function(a, b)
+            if math.abs(a.start_qn - b.start_qn) > 0.02 then
+                return a.start_qn < b.start_qn
+            end
+            return a.pitch > b.pitch
+        end)
+        if #all_sel > 0 then
+            local has_focused = false
+            if target_track then
+                for _, n in ipairs(all_sel) do
+                    if n.track == target_track then
+                        has_focused = true
+                        break
                     end
-                    if trk == target_track then
-                        table.insert(raw, {
-                            pitch = pitch,
-                            start_qn = sqn,
-                            end_qn = eqn,
-                            dur_qn = math.max(0.125, eqn - sqn),
-                            vel = vel or 96,
-                            chan = chan or 0,
-                            take = entry.take,
-                            idx = entry.idx,
-                            is_waypoint = true,
-                        })
-                    end
+                end
+            end
+            if not has_focused then
+                target_track = all_sel[1].track
+            end
+            for _, n in ipairs(all_sel) do
+                if n.track == target_track then
+                    if not target_take then target_take = n.take end
+                    table.insert(raw, n)
                 end
             end
         end
@@ -166,6 +189,34 @@ function MelodyPathfinderService.get_selected_waypoints(state, active_tracks_dat
     for _, n in ipairs(raw) do
         if #deduped == 0 or math.abs(n.start_qn - deduped[#deduped].start_qn) > 0.04 then
             table.insert(deduped, n)
+        end
+    end
+
+    if deduped[1] and deduped[1].take then
+        target_take = deduped[1].take
+    end
+
+    -- If the user just clicked "Insert" in the current Melodic Pathfinder modal session and hasn't
+    -- manually changed the canvas selection since, preserve the original session waypoints & start_qn
+    -- so subsequent parameter tweaks / re-insertions replace the exact same pattern span without drift!
+    if state and state.mpf_locked_sel_sig and state.mpf_locked_waypoints then
+        local cur_sig = string.format(
+            "%s_%d_%.2f_%.2f",
+            tostring(target_take),
+            #raw,
+            raw[1] and raw[1].start_qn or -1,
+            raw[#raw] and raw[#raw].start_qn or -1
+        )
+        if cur_sig == state.mpf_locked_sel_sig and state.mpf_locked_track == target_track then
+            return target_track, state.mpf_locked_waypoints, state.mpf_locked_take or target_take
+        else
+            -- User selected a different pattern on the canvas -> unlock and adopt the new selection
+            state.mpf_locked_sel_sig = nil
+            state.mpf_locked_waypoints = nil
+            state.mpf_locked_min_qn = nil
+            state.mpf_locked_max_qn = nil
+            state.mpf_locked_track = nil
+            state.mpf_locked_take = nil
         end
     end
 
@@ -300,8 +351,11 @@ end
 --- Transposes `pitch` by octaves (±12 semitones) so it preserves its exact pitch class
 --- while landing squarely inside `[min_p, max_p]` as close as possible to `prefer_center`.
 function MelodyPathfinderService.fold_pitch_into_register(pitch, min_p, max_p, prefer_center)
+    pitch = math.floor((tonumber(pitch) or 60) + 0.5)
+    min_p = math.floor((tonumber(min_p) or 36) + 0.5)
+    max_p = math.max(min_p, math.floor((tonumber(max_p) or 84) + 0.5))
     local pc = pitch % 12
-    local center = prefer_center or math.floor((min_p + max_p) * 0.5)
+    local center = tonumber(prefer_center) or math.floor((min_p + max_p) * 0.5)
     local best_p = nil
     local best_dist = 999
 
@@ -320,19 +374,31 @@ function MelodyPathfinderService.fold_pitch_into_register(pitch, min_p, max_p, p
 
     -- Fallback: clamp by ±12 steps toward [min_p, max_p]
     local p = pitch
-    while p < min_p do p = p + 12 end
-    while p > max_p do p = p - 12 end
+    local guard = 0
+    while p < min_p and guard < 16 do p = p + 12; guard = guard + 1 end
+    while p > max_p and guard < 32 do p = p - 12; guard = guard + 1 end
     return math.max(min_p, math.min(max_p, p))
 end
 
---- Resolves the best bar-aligned start_qn when 0 notes are selected, automatically matching
---- any active MIDI item on the Target Track or Reference Track (e.g. a 4-Bar Celli pattern)
+--- Resolves the start_qn when 0 notes are selected:
+--- Prioritizes the active session anchor or REAPER Edit Cursor position so inserted notes
+--- always land at the cursor instead of jumping back to the start of a multi-bar MIDI item.
 function MelodyPathfinderService.resolve_default_start_qn(state, target_track, ref_mode, qn_per_bar)
+    if state and state.mpf_locked_min_qn then
+        return state.mpf_locked_min_qn
+    end
     qn_per_bar = qn_per_bar or 4.0
     local cur_sec = reaper.GetCursorPosition()
     local cur_qn = reaper.TimeMap2_timeToQN(0, cur_sec)
 
-    -- 1. If a MIDI item is selected on target_track (or covers cur_qn on target_track), use its start_qn
+    -- Snap Edit Cursor to nearest quarter-note beat (or bar if within 0.08 QN of a barline)
+    local snapped_cur_qn = math.floor(cur_qn + 0.08)
+    if math.abs(cur_qn - snapped_cur_qn) > 0.15 then
+        snapped_cur_qn = math.floor(cur_qn * 4.0 + 0.5) / 4.0
+    end
+    snapped_cur_qn = math.max(0, snapped_cur_qn)
+
+    -- 1. If a MIDI item on target_track covers the Edit Cursor, start right at `snapped_cur_qn`!
     if target_track and reaper.ValidatePtr(target_track, "MediaTrack*") then
         local icnt = reaper.CountTrackMediaItems(target_track)
         for ii = 0, icnt - 1 do
@@ -340,58 +406,22 @@ function MelodyPathfinderService.resolve_default_start_qn(state, target_track, r
             if it then
                 local pos_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(it, "D_POSITION"))
                 local end_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(it, "D_POSITION") + reaper.GetMediaItemInfo_Value(it, "D_LENGTH"))
-                if it == (state and state.selected_item) or (cur_qn >= pos_qn - 0.1 and cur_qn <= end_qn + 0.1) then
-                    return math.floor(pos_qn / qn_per_bar + 0.1) * qn_per_bar
+                if cur_qn >= pos_qn - 0.1 and cur_qn <= end_qn + 0.1 then
+                    return snapped_cur_qn
                 end
             end
         end
-    end
-
-    -- 2. Check Reference Track(s): if a Reference Track has a MIDI item covering or near the cursor, align to its start!
-    local ref_tracks = {}
-    if type(ref_mode) == "userdata" and reaper.ValidatePtr(ref_mode, "MediaTrack*") then
-        table.insert(ref_tracks, ref_mode)
-    elseif ref_mode == "auto_all" then
-        local cnt = reaper.CountTracks(0)
-        for ti = 0, cnt - 1 do
-            local tr = reaper.GetTrack(0, ti)
-            if tr and tr ~= target_track then
-                table.insert(ref_tracks, tr)
+        -- If `state.selected_item` is on `target_track` and cursor is outside it, align to the selected item's start
+        if state and state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*") then
+            if reaper.GetMediaItem_Track(state.selected_item) == target_track then
+                local pos_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(state.selected_item, "D_POSITION"))
+                return math.floor(pos_qn * 4.0 + 0.5) / 4.0
             end
         end
     end
 
-    local best_ref_start = nil
-    local best_dist = 999999
-    for _, tr in ipairs(ref_tracks) do
-        local icnt = reaper.CountTrackMediaItems(tr)
-        for ii = 0, icnt - 1 do
-            local it = reaper.GetTrackMediaItem(tr, ii)
-            local tk = it and reaper.GetActiveTake(it)
-            if tk and reaper.TakeIsMIDI(tk) then
-                local _, ncnt = reaper.MIDI_CountEvts(tk)
-                if (ncnt or 0) > 0 then
-                    local pos_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(it, "D_POSITION"))
-                    local end_qn = reaper.TimeMap2_timeToQN(0, reaper.GetMediaItemInfo_Value(it, "D_POSITION") + reaper.GetMediaItemInfo_Value(it, "D_LENGTH"))
-                    if cur_qn >= pos_qn - 0.5 and cur_qn <= end_qn + 0.5 then
-                        return math.floor(pos_qn / qn_per_bar + 0.1) * qn_per_bar
-                    end
-                    local d = math.min(math.abs(cur_qn - pos_qn), math.abs(cur_qn - end_qn))
-                    if d < best_dist then
-                        best_dist = d
-                        best_ref_start = math.floor(pos_qn / qn_per_bar + 0.1) * qn_per_bar
-                    end
-                end
-            end
-        end
-    end
-
-    if best_ref_start ~= nil and best_dist <= 16.0 then
-        return best_ref_start
-    end
-
-    -- 3. Fallback: snap Edit Cursor to the start of its current Measure (Bar 1 beat 1 of that bar)
-    return math.floor(cur_qn / qn_per_bar + 0.05) * qn_per_bar
+    -- 2. Otherwise use the Edit Cursor position directly (snapped to beat/bar)
+    return snapped_cur_qn
 end
 
 --- Collects MIDI notes from reference track(s) strictly within [min_qn, max_qn]
@@ -542,9 +572,15 @@ local function score_harmony_at_qn(p, qn, dur_qn, ref_notes, prev_p, harmony_ble
 end
 
 --- Builds rhythmic onset/duration steps between `start_qn` and `end_qn`
+--- Guaranteed termination (no deadzone between outer and inner loop thresholds)
 local function subdivide_segment_rhythm(start_qn, end_qn, style_obj, density_level, ref_notes, is_counter_melody, rng, memorized_cell)
-    local span_qn = end_qn - start_qn
-    if span_qn <= 0.15 then return {} end
+    local span_qn = (tonumber(end_qn) or 0) - (tonumber(start_qn) or 0)
+    if span_qn <= 0.01 then return {} end
+
+    local MIN_STEP = 0.12
+    if span_qn < MIN_STEP then
+        return { { start_qn = start_qn, dur_qn = span_qn } }, (memorized_cell or { span_qn })
+    end
 
     local d_key = "medium"
     if density_level <= 0.35 then
@@ -556,8 +592,10 @@ local function subdivide_segment_rhythm(start_qn, end_qn, style_obj, density_lev
     local cells = (style_obj.rhythm_cells and style_obj.rhythm_cells[d_key]) or { { 1.0, 1.0, 1.0, 1.0 } }
     local steps = {}
     local cur = start_qn
+    local safety = 0
 
-    while cur < end_qn - 0.08 do
+    while (end_qn - cur) >= MIN_STEP - 1e-6 and safety < 256 do
+        safety = safety + 1
         local rem = end_qn - cur
 
         local cell_pool = cells
@@ -568,29 +606,60 @@ local function subdivide_segment_rhythm(start_qn, end_qn, style_obj, density_lev
                     ref_onsets_in_window = ref_onsets_in_window + 1
                 end
             end
-            if ref_onsets_in_window <= 1 and style_obj.rhythm_cells.dense then
+            if ref_onsets_in_window <= 1 and style_obj.rhythm_cells and style_obj.rhythm_cells.dense then
                 cell_pool = (density_level < 0.4) and style_obj.rhythm_cells.medium or style_obj.rhythm_cells.dense
-            elseif ref_onsets_in_window >= 5 and style_obj.rhythm_cells.sparse then
+            elseif ref_onsets_in_window >= 5 and style_obj.rhythm_cells and style_obj.rhythm_cells.sparse then
                 cell_pool = style_obj.rhythm_cells.sparse
             end
         end
 
-        local chosen_cell = memorized_cell
-        if not chosen_cell or rng() > 0.65 or is_counter_melody then
-            local c_idx = math.floor(rng() * #cell_pool) + 1
-            chosen_cell = cell_pool[c_idx] or cell_pool[1]
+        if not cell_pool or #cell_pool == 0 then
+            cell_pool = { { 1.0, 1.0, 1.0, 1.0 } }
         end
 
-        for _, d in ipairs(chosen_cell) do
-            if cur >= end_qn - 0.08 then break end
-            local dur = math.min(d, end_qn - cur)
-            if dur >= 0.12 then
+        local chosen_cell = memorized_cell
+        if not chosen_cell or #chosen_cell == 0 or rng() > 0.65 or is_counter_melody then
+            local c_idx = math.floor(rng() * #cell_pool) + 1
+            chosen_cell = cell_pool[c_idx] or cell_pool[1] or { 1.0 }
+        end
+
+        local advanced = false
+        for _, raw_d in ipairs(chosen_cell) do
+            local left = end_qn - cur
+            if left < MIN_STEP - 1e-6 then break end
+            local d = math.max(MIN_STEP, tonumber(raw_d) or 0.5)
+            local dur = math.min(d, left)
+            -- Absorb any tiny trailing remainder (< MIN_STEP) into this step so no deadzone gap remains
+            if (left - dur) > 0 and (left - dur) < MIN_STEP then
+                dur = left
+            end
+            if dur >= MIN_STEP - 1e-6 then
                 table.insert(steps, { start_qn = cur, dur_qn = dur })
                 cur = cur + dur
+                advanced = true
             else
                 break
             end
         end
+
+        if not advanced then
+            local left = end_qn - cur
+            if left >= 0.04 then
+                if #steps > 0 then
+                    steps[#steps].dur_qn = steps[#steps].dur_qn + left
+                else
+                    table.insert(steps, { start_qn = cur, dur_qn = left })
+                end
+            end
+            break
+        end
+    end
+
+    -- Absorb any microscopic residual into the last step so segment steps sum to exact span_qn
+    if #steps > 0 and (end_qn - cur) > 1e-4 then
+        steps[#steps].dur_qn = steps[#steps].dur_qn + (end_qn - cur)
+    elseif #steps == 0 then
+        table.insert(steps, { start_qn = start_qn, dur_qn = span_qn })
     end
 
     return steps, (memorized_cell or cells[1])
@@ -841,7 +910,7 @@ end
 
 --- Applies Melodic Inversion, Retrograde, or Retrograde-Inversion within scale degrees & Clef Register
 local function apply_contour_transform(notes, transform_id, pivot_pitch, scale_pitches, clef_reg)
-    if not transform_id or transform_id == "normal" or #notes <= 1 then
+    if not transform_id or transform_id == "normal" or not notes or #notes <= 1 then
         return notes
     end
 
@@ -853,7 +922,7 @@ local function apply_contour_transform(notes, transform_id, pivot_pitch, scale_p
         local folded = MelodyPathfinderService.fold_pitch_into_register(p, reg_min, reg_max, reg_center)
         local best_p = folded
         local best_d = 999
-        for _, sp in ipairs(scale_pitches) do
+        for _, sp in ipairs(scale_pitches or {}) do
             if sp >= reg_min and sp <= reg_max then
                 local d = math.abs(sp - folded)
                 if d < best_d then
@@ -869,37 +938,52 @@ local function apply_contour_transform(notes, transform_id, pivot_pitch, scale_p
     local do_retro  = (transform_id == "retrograde" or transform_id == "retrograde_inversion")
 
     if do_invert then
-        local axis = pivot_pitch or notes[1].pitch
+        local axis = tonumber(pivot_pitch) or tonumber(notes[1].pitch) or reg_center
         for _, n in ipairs(notes) do
-            if not n.is_waypoint or transform_id == "inversion" then
-                local mirrored = axis - (n.pitch - axis)
-                n.pitch = snap_to_scale_and_clef(mirrored)
-            end
+            local np = tonumber(n.pitch) or axis
+            local mirrored = axis - (np - axis)
+            n.pitch = snap_to_scale_and_clef(mirrored)
         end
     end
 
     if do_retro and #notes >= 2 then
-        local q0 = notes[1].start_qn
+        local q0 = tonumber(notes[1].start_qn) or 0
+        -- Compute exact inter-onset step durations from actual note start_qn positions
+        -- so reversing the motif preserves the exact start `q0` and total phrase span without drift
+        local actual_steps = {}
+        for i = 1, #notes do
+            if i < #notes then
+                local diff = (tonumber(notes[i + 1].start_qn) or q0) - (tonumber(notes[i].start_qn) or q0)
+                actual_steps[i] = math.max(0.05, diff)
+            else
+                actual_steps[i] = math.max(0.1, tonumber(notes[i].step_dur_qn) or tonumber(notes[i].dur_qn) or 0.5)
+            end
+        end
+
         local rev_pitches = {}
         local rev_durs = {}
         local rev_step_durs = {}
         local rev_vels = {}
         local rev_arts = {}
+        local rev_wps = {}
         for i = #notes, 1, -1 do
             table.insert(rev_pitches, notes[i].pitch)
-            table.insert(rev_durs, notes[i].dur_qn)
-            table.insert(rev_step_durs, notes[i].step_dur_qn or notes[i].dur_qn)
-            table.insert(rev_vels, notes[i].vel)
-            table.insert(rev_arts, notes[i].art)
+            table.insert(rev_durs, tonumber(notes[i].dur_qn) or 0.5)
+            table.insert(rev_step_durs, actual_steps[i])
+            table.insert(rev_vels, notes[i].vel or 90)
+            table.insert(rev_arts, notes[i].art or "normal")
+            table.insert(rev_wps, notes[i].is_waypoint == true)
         end
         local cur_q = q0
         for i = 1, #notes do
             notes[i].pitch = rev_pitches[i]
             notes[i].start_qn = math.floor(cur_q * 1000 + 0.5) / 1000
-            notes[i].dur_qn = rev_durs[i]
+            local max_allowed_dur = (i < #notes) and math.max(0.08, rev_step_durs[i] * 0.96) or rev_durs[i]
+            notes[i].dur_qn = math.max(0.08, math.floor(math.min(rev_durs[i], max_allowed_dur) * 1000 + 0.5) / 1000)
             notes[i].step_dur_qn = rev_step_durs[i]
             notes[i].vel = rev_vels[i]
             notes[i].art = rev_arts[i]
+            notes[i].is_waypoint = rev_wps[i]
             cur_q = cur_q + rev_step_durs[i]
         end
     end
@@ -938,47 +1022,92 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
     if #waypoints >= 2 then
         min_qn = waypoints[1].start_qn
         max_qn = waypoints[#waypoints].start_qn + waypoints[#waypoints].dur_qn
+        if max_qn <= min_qn + 0.25 then
+            max_qn = min_qn + qn_per_bar
+        end
     elseif #waypoints == 1 then
         min_qn = waypoints[1].start_qn
         max_qn = min_qn + (phrase_bars * qn_per_bar)
     else
         min_qn = MelodyPathfinderService.resolve_default_start_qn(state, target_track, opts.ref_track_mode, qn_per_bar)
-        max_qn = min_qn + (phrase_bars * qn_per_bar)
+        max_qn = (state and state.mpf_locked_max_qn) or (min_qn + (phrase_bars * qn_per_bar))
     end
 
     local ref_notes = MelodyPathfinderService.collect_reference_notes(
         opts.ref_track_mode, target_track, min_qn, max_qn
     )
 
+    -- When Counter-Melody mode is active on a selected multi-note pattern and no external reference track
+    -- has notes in [min_qn, max_qn], use the selected pattern notes themselves as the reference harmony!
+    if opts.counter_melody_mode and (#ref_notes == 0) and #waypoints >= 2 then
+        for _, wp in ipairs(waypoints) do
+            table.insert(ref_notes, {
+                pitch = wp.pitch,
+                start_qn = wp.start_qn,
+                end_qn = wp.start_qn + (wp.dur_qn or 0.5),
+                dur_qn = wp.dur_qn or 0.5,
+                vel = wp.vel or 90,
+            })
+        end
+    end
+
     -- Build effective waypoints anchored inside the Target Track's Clef Register
     local effective_waypoints = {}
-    for _, wp in ipairs(waypoints) do
-        local wp_p = wp.pitch
-        if opts.octave_shift and tonumber(opts.octave_shift) ~= 0 then
-            wp_p = math.max(21, math.min(108, wp_p + math.floor(tonumber(opts.octave_shift)) * 12))
+    local is_dense_pattern_counter = (opts.counter_melody_mode == true and #waypoints >= 3)
+
+    if not is_dense_pattern_counter then
+        for _, wp in ipairs(waypoints) do
+            local wp_p = wp.pitch
+            if opts.octave_shift and tonumber(opts.octave_shift) ~= 0 then
+                wp_p = math.max(21, math.min(108, wp_p + math.floor(tonumber(opts.octave_shift)) * 12))
+            end
+            table.insert(effective_waypoints, {
+                pitch = wp_p,
+                start_qn = wp.start_qn,
+                dur_qn = wp.dur_qn,
+                vel = wp.vel,
+                chan = wp.chan,
+                is_waypoint = true,
+            })
         end
-        table.insert(effective_waypoints, {
-            pitch = wp_p,
-            start_qn = wp.start_qn,
-            dur_qn = wp.dur_qn,
-            vel = wp.vel,
-            chan = wp.chan,
-            is_waypoint = true,
-        })
     end
 
     if #effective_waypoints < 2 then
         -- Default seed pitch uses the detected Clef's natural center pitch (e.g. C3=48 for Bass Clef, G4=67 for Treble)
-        local raw_seed = (effective_waypoints[1] and effective_waypoints[1].pitch) or clef_reg.center_p
+        local raw_seed = (effective_waypoints[1] and effective_waypoints[1].pitch)
+            or (waypoints[1] and waypoints[1].pitch)
+            or clef_reg.center_p
+        if opts.octave_shift and tonumber(opts.octave_shift) ~= 0 and waypoints[1] and #effective_waypoints == 0 then
+            raw_seed = math.max(21, math.min(108, raw_seed + math.floor(tonumber(opts.octave_shift)) * 12))
+        end
         local seed_pitch = raw_seed
-        if #effective_waypoints == 0 then
+        if #effective_waypoints == 0 and #waypoints == 0 then
             -- Snap default clef center to tonic or 5th of active scale inside clef register
             seed_pitch = MelodyPathfinderService.fold_pitch_into_register(
                 60 + tonic_pc, clef_reg.min_p, clef_reg.max_p, clef_reg.center_p
             )
+        elseif is_dense_pattern_counter then
+            -- Start the counter-melody on a consonant 3rd/6th/5th relative to the first note of the selected pattern
+            local iv_choices = { 3, 4, -3, -4, 7, -5, 8, 9 }
+            local pick_iv = iv_choices[math.floor(rng() * #iv_choices) + 1] or 4
+            local cand_seed = MelodyPathfinderService.fold_pitch_into_register(
+                raw_seed + pick_iv, clef_reg.min_p, clef_reg.max_p, clef_reg.center_p
+            )
+            local best_sp = cand_seed
+            local best_d = 999
+            for _, sp in ipairs(scale_pitches) do
+                if sp >= clef_reg.min_p and sp <= clef_reg.max_p then
+                    local d = math.abs(sp - cand_seed)
+                    if d < best_d then
+                        best_d = d
+                        best_sp = sp
+                    end
+                end
+            end
+            seed_pitch = best_sp
         end
-        local seed_chan = (effective_waypoints[1] and effective_waypoints[1].chan) or 0
-        local seed_vel  = (effective_waypoints[1] and effective_waypoints[1].vel) or 96
+        local seed_chan = (waypoints[1] and waypoints[1].chan) or 0
+        local seed_vel  = (waypoints[1] and waypoints[1].vel) or 96
 
         if #effective_waypoints == 0 then
             table.insert(effective_waypoints, {
@@ -991,16 +1120,21 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
             })
         end
 
+        local span_total = math.max(2.0, max_qn - min_qn)
+        local num_landmarks = math.max(1, math.min(8, math.ceil(span_total / qn_per_bar)))
+        local step_span = span_total / num_landmarks
         local arch_Offsets = { 4, 7, 3, 0, 5, 8, 2, 0 }
-        for b = 1, phrase_bars do
-            local w_qn = min_qn + (b * qn_per_bar)
+        for b = 1, num_landmarks do
+            local w_qn = (b == num_landmarks)
+                and math.max(min_qn + 0.5, max_qn - math.min(1.0, step_span * 0.4))
+                or (min_qn + (b * step_span))
             local target_p = seed_pitch + (arch_Offsets[((b - 1) % #arch_Offsets) + 1] or 0)
 
             -- If Reference Track has notes near `w_qn`, pick a consonant contrapuntal pitch class
             -- AND fold it into the Target Track's Clef & Seed Note octave!
             if #ref_notes > 0 then
                 for _, rn in ipairs(ref_notes) do
-                    if math.abs(rn.start_qn - (w_qn - qn_per_bar * 0.5)) < 2.0 then
+                    if math.abs(rn.start_qn - w_qn) < math.max(1.5, step_span * 0.6) then
                         local interval_choices = { 3, 4, 8, 9, -3, -4, 7 }
                         local pick_iv = interval_choices[math.floor(rng() * #interval_choices) + 1]
                         target_p = rn.pitch + pick_iv
@@ -1027,10 +1161,11 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
                 end
             end
 
+            local last_dur = (b == num_landmarks) and math.max(0.25, max_qn - w_qn) or 1.0
             table.insert(effective_waypoints, {
                 pitch = best_sp,
-                start_qn = (b == phrase_bars) and (max_qn - 1.0) or w_qn,
-                dur_qn = 1.0,
+                start_qn = w_qn,
+                dur_qn = last_dur,
                 vel = seed_vel,
                 chan = seed_chan,
                 is_waypoint = false,
@@ -1084,7 +1219,7 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
             table.insert(generated, {
                 pitch = p,
                 start_qn = math.floor(st.start_qn * 1000 + 0.5) / 1000,
-                dur_qn = math.max(0.1, math.floor(dur * 1000 + 0.5) / 1000),
+                dur_qn = math.max(0.08, math.floor(dur * 1000 + 0.5) / 1000),
                 step_dur_qn = st.dur_qn,
                 vel = vel,
                 chan = wA.chan or 0,
@@ -1158,8 +1293,18 @@ function MelodyPathfinderService.invert_selected_notes_in_place(state, active_tr
             end
         end
         reaper.MIDI_SetNote(target_take, wp.idx, nil, nil, nil, nil, nil, best_p, nil, true)
+        wp.pitch = best_p
     end
     reaper.MIDI_Sort(target_take)
+    reaper.SetEditCurPos2(0, reaper.TimeMap2_QNToTime(0, waypoints[1].start_qn), false, false)
+    if state then
+        state._suppress_autoscroll_frames = 2
+        state.active_tracks_cache = nil
+    end
+    local MidiService = package.loaded["services.midi_service"]
+    if MidiService and MidiService.invalidate_cache then
+        pcall(MidiService.invalidate_cache)
+    end
     if reaper.MarkTrackItemsDirty then
         reaper.MarkTrackItemsDirty(target_track, reaper.GetMediaItemTake_Item(target_take))
     end
@@ -1185,8 +1330,43 @@ function MelodyPathfinderService.apply_to_score(state, midi_service, preview, op
 
     reaper.Undo_BeginBlock()
 
+    local start_sec = reaper.TimeMap2_QNToTime(0, min_qn)
+    local end_sec   = reaper.TimeMap2_QNToTime(0, max_qn + 0.5)
+
+    -- Always place the REAPER Edit Cursor at the exact start of the selected/inserted pattern!
+    reaper.SetEditCurPos2(0, start_sec, false, false)
+    if state then
+        state._suppress_autoscroll_frames = 2
+    end
+
     local take = preview.target_take
     local item = take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.GetMediaItemTake_Item(take) or nil
+
+    -- Verify that `item` actually overlaps `[min_qn, max_qn]` if another item on the track covers this range
+    if item then
+        local ipos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+        local ilen = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+        local isqn = reaper.TimeMap2_timeToQN(0, ipos)
+        local ieqn = reaper.TimeMap2_timeToQN(0, ipos + ilen)
+        if ieqn < min_qn - 0.1 or isqn > max_qn + 0.1 then
+            local icnt = reaper.CountTrackMediaItems(track)
+            for ii = 0, icnt - 1 do
+                local it = reaper.GetTrackMediaItem(track, ii)
+                local tk = it and reaper.GetActiveTake(it)
+                if tk and reaper.TakeIsMIDI(tk) then
+                    local pos_s = reaper.GetMediaItemInfo_Value(it, "D_POSITION")
+                    local len_s = reaper.GetMediaItemInfo_Value(it, "D_LENGTH")
+                    local i_sqn = reaper.TimeMap2_timeToQN(0, pos_s)
+                    local i_eqn = reaper.TimeMap2_timeToQN(0, pos_s + len_s)
+                    if i_eqn >= min_qn - 0.1 and i_sqn <= max_qn + 0.1 then
+                        item = it
+                        take = tk
+                        break
+                    end
+                end
+            end
+        end
+    end
 
     if not item then
         local icnt = reaper.CountTrackMediaItems(track)
@@ -1207,21 +1387,21 @@ function MelodyPathfinderService.apply_to_score(state, midi_service, preview, op
         end
     end
 
-    local start_sec = reaper.TimeMap2_QNToTime(0, min_qn)
-    local end_sec   = reaper.TimeMap2_QNToTime(0, max_qn + 0.5)
-
     if not item or not take then
         item = reaper.CreateNewMIDIItemInProj(track, start_sec, end_sec, false)
+        if item then
+            reaper.SetMediaItemInfo_Value(item, "B_LOOPSRC", 0)
+        end
         take = item and reaper.GetActiveTake(item)
     else
         local item_pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
         local item_end = item_pos + reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
-        if end_sec > item_end then
-            reaper.MIDI_SetItemExtents(
-                item,
-                reaper.TimeMap2_timeToQN(0, item_pos),
-                reaper.TimeMap2_timeToQN(0, end_sec)
-            )
+        if start_sec < item_pos - 0.001 or end_sec > item_end + 0.001 then
+            local new_s_qn = math.min(reaper.TimeMap2_timeToQN(0, item_pos), min_qn)
+            local new_e_qn = math.max(reaper.TimeMap2_timeToQN(0, item_end), max_qn + 0.5)
+            reaper.SetMediaItemInfo_Value(item, "B_LOOPSRC", 0)
+            reaper.MIDI_SetItemExtents(item, new_s_qn, new_e_qn)
+            reaper.SetMediaItemInfo_Value(item, "B_LOOPSRC", 0)
         end
     end
 
@@ -1233,12 +1413,13 @@ function MelodyPathfinderService.apply_to_score(state, midi_service, preview, op
     local target_chan = (preview.notes[1] and preview.notes[1].chan) or 0
     local _, ncnt = reaper.MIDI_CountEvts(take)
     for ni = (ncnt or 0) - 1, 0, -1 do
-        local nok, _, _, sppq, eppq, chan = reaper.MIDI_GetNote(take, ni)
-        if nok and chan == target_chan then
+        local nok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, ni)
+        if nok then
             local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
-            local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
-            if sqn >= min_qn - 0.04 and sqn <= max_qn - 0.04 then
+            if chan == target_chan and sqn >= min_qn - 0.04 and sqn <= max_qn - 0.02 then
                 reaper.MIDI_DeleteNote(take, ni)
+            elseif sel then
+                reaper.MIDI_SetNote(take, ni, false, muted, sppq, eppq, chan, pitch, vel, true)
             end
         end
     end
@@ -1286,6 +1467,80 @@ function MelodyPathfinderService.apply_to_score(state, midi_service, preview, op
 
     reaper.MIDI_Sort(take)
 
+    -- Rebuild `state.selected_notes` with the exact post-MIDI_Sort indices of the newly inserted notes
+    -- and lock the original session waypoints so further adjustments in the open modal never drift!
+    if state then
+        local MidiNote = package.loaded["classes.note"] or require("classes.note")
+        local new_sel_notes = {}
+        local first_sel_note = nil
+        local inserted_raw = {}
+        local _, post_ncnt = reaper.MIDI_CountEvts(take)
+        for ni = 0, (post_ncnt or 0) - 1 do
+            local nok, sel, muted, sppq, eppq, chan, pitch, vel = reaper.MIDI_GetNote(take, ni)
+            if nok and sel and not muted then
+                local sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
+                local eqn = reaper.MIDI_GetProjQNFromPPQPos(take, eppq)
+                if sqn >= min_qn - 0.05 and sqn <= max_qn + 0.05 then
+                    local n_obj = MidiNote.new({
+                        idx = ni,
+                        pitch = pitch,
+                        start_qn = sqn,
+                        end_qn = eqn,
+                        dur_qn = math.max(0.05, eqn - sqn),
+                        vel = vel or 90,
+                        chan = chan or 0,
+                        take = take,
+                        item = item,
+                        track = track,
+                    })
+                    new_sel_notes[n_obj:get_key()] = n_obj
+                    if not first_sel_note or sqn < first_sel_note.start_qn then
+                        first_sel_note = n_obj
+                    end
+                    table.insert(inserted_raw, n_obj)
+                end
+            end
+        end
+        table.sort(inserted_raw, function(a, b)
+            if math.abs(a.start_qn - b.start_qn) > 0.02 then
+                return a.start_qn < b.start_qn
+            end
+            return a.pitch > b.pitch
+        end)
+
+        state.selected_notes = new_sel_notes
+        state.selected_note = first_sel_note
+        state.selected_item = item
+        state.selected_take = take
+
+        local wp_copy = {}
+        for _, wp in ipairs(preview.waypoints or {}) do
+            table.insert(wp_copy, {
+                pitch = wp.pitch,
+                start_qn = wp.start_qn,
+                end_qn = wp.end_qn,
+                dur_qn = wp.dur_qn,
+                vel = wp.vel,
+                chan = wp.chan,
+                take = take,
+                idx = wp.idx,
+                is_waypoint = true,
+            })
+        end
+        state.mpf_locked_waypoints = wp_copy
+        state.mpf_locked_min_qn = min_qn
+        state.mpf_locked_max_qn = max_qn
+        state.mpf_locked_track = track
+        state.mpf_locked_take = take
+        state.mpf_locked_sel_sig = string.format(
+            "%s_%d_%.2f_%.2f",
+            tostring(take),
+            #inserted_raw,
+            inserted_raw[1] and inserted_raw[1].start_qn or -1,
+            inserted_raw[#inserted_raw] and inserted_raw[#inserted_raw].start_qn or -1
+        )
+    end
+
     if midi_service and midi_service.invalidate_cache then
         pcall(midi_service.invalidate_cache)
     end
@@ -1304,11 +1559,12 @@ function MelodyPathfinderService.apply_to_score(state, midi_service, preview, op
     reaper.UpdateArrange()
 
     return true, string.format(
-        "Inserted %d notes (%s, %s, %s) on target track!",
+        "Inserted %d notes (%s, %s, %s) at Bar %d!",
         #preview.notes,
         mode_lbl,
         (preview.style and preview.style.name) or "Custom",
-        (preview.clef_register and preview.clef_register.label) or "Clef"
+        (preview.clef_register and preview.clef_register.label) or "Clef",
+        math.floor(min_qn / 4.0) + 1
     )
 end
 
