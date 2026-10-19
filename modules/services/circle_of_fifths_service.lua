@@ -230,15 +230,15 @@ local function tension_to_color_and_tier(tension_pct, is_anchor)
     if is_anchor then
         return 0x1ABC9CFF, 0x48C9B0FF, 0xFFFFFFFF, "Active Reference (Tonic / Anchor)"
     elseif tension_pct <= 18 then
-        return 0x27AE60EE, 0x2ECC71FF, 0xFFFFFFFF, "Consonant / Tonic Resolution"
+        return 0x27AE60FF, 0x2ECC71FF, 0xFFFFFFFF, "Consonant / Tonic Resolution"
     elseif tension_pct <= 32 then
-        return 0x52BE80DD, 0x82E0AAFF, 0x111111FF, "Diatonic (Subdominant / Dominant)"
+        return 0x48A874FF, 0x82E0AAFF, 0x111111FF, "Diatonic (Subdominant / Dominant)"
     elseif tension_pct <= 52 then
-        return 0xF1C40FDD, 0xF7DC6FFF, 0x111111FF, "Moderate Tension (Secondary / Modal)"
+        return 0xD4AC0DFF, 0xF7DC6FFF, 0x111111FF, "Moderate Tension (Secondary / Modal)"
     elseif tension_pct <= 75 then
-        return 0xE67E22DD, 0xF0B27AFF, 0xFFFFFFFF, "High Tension (Chromatic Mediant)"
+        return 0xCA6F1EFF, 0xF0B27AFF, 0xFFFFFFFF, "High Tension (Chromatic Mediant)"
     else
-        return 0xC0392BDD, 0xE74C3CFF, 0xFFFFFFFF, "Maximum Tension (Tritone / Distant)"
+        return 0xB03A2EFF, 0xE74C3CFF, 0xFFFFFFFF, "Maximum Tension (Tritone / Distant)"
     end
 end
 
@@ -312,8 +312,8 @@ function CircleOfFifthsService.compute_tension_map(tiles, active_slot_idx)
             local m_entry = {
                 tension = 0.0,
                 tension_pct = 0,
-                color = 0x2C3E50CC,
-                fill_col = 0x2C3E50CC,
+                color = 0x2C3E50FF,
+                fill_col = 0x2C3E50FF,
                 border_col = 0x5D6D7EFF,
                 text_col = 0xECF0F1FF,
                 relation = "Neutral (Drop a note on a tile to calculate tension)",
@@ -324,8 +324,8 @@ function CircleOfFifthsService.compute_tension_map(tiles, active_slot_idx)
             local n_entry = {
                 tension = 0.0,
                 tension_pct = 0,
-                color = 0x212F3DCC,
-                fill_col = 0x212F3DCC,
+                color = 0x212F3DFF,
+                fill_col = 0x212F3DFF,
                 border_col = 0x566573FF,
                 text_col = 0xBDC3C7FF,
                 relation = "Neutral (Drop a note on a tile to calculate tension)",
@@ -613,15 +613,99 @@ end
 -- AUDITION & SCORE INSERTION (WITH KEY SIGNATURE SPELLING & AUTO-DIVISI)
 -- ==============================================================================
 
-function CircleOfFifthsService.audition_tile(state, tile)
+--- Resolves the best target MediaTrack for Circle of Fifths auditioning and insertion.
+--- Prioritizes:
+---   1. Explicit user-selected track in the Circle of Fifths modal (`state.cof_preview_track`)
+---   2. `state.active_track` or `state.focused_track` (if it has an instrument/FX or is not a folder)
+---   3. Selected REAPER track (preferring one with an instrument/FX)
+---   4. First project track with an instrument/FX, or Track 1 as final fallback.
+function CircleOfFifthsService.resolve_audition_track(state)
+    local function is_valid_track(trk)
+        if not trk then return false end
+        if reaper and reaper.ValidatePtr then
+            return reaper.ValidatePtr(trk, "MediaTrack*")
+        end
+        return true
+    end
+
+    local function track_has_instrument_or_fx(trk)
+        if not is_valid_track(trk) then return false end
+        if reaper and reaper.TrackFX_GetInstrument and reaper.TrackFX_GetInstrument(trk) >= 0 then
+            return true
+        end
+        if reaper and reaper.TrackFX_GetCount and reaper.TrackFX_GetCount(trk) > 0 then
+            return true
+        end
+        return false
+    end
+
+    local function is_folder_parent(trk)
+        if not is_valid_track(trk) then return false end
+        if reaper and reaper.GetMediaTrackInfo_Value then
+            return (reaper.GetMediaTrackInfo_Value(trk, "I_FOLDERDEPTH") or 0) == 1
+        end
+        return false
+    end
+
+    -- 1. Explicit track chosen in the Circle of Fifths Track Selector
+    if type(state) == "table" and is_valid_track(state.cof_preview_track) then
+        return state.cof_preview_track
+    end
+
+    -- 2. Active / Focused track if it is an instrument track (not an empty folder track)
+    if type(state) == "table" then
+        if is_valid_track(state.active_track) and (track_has_instrument_or_fx(state.active_track) or not is_folder_parent(state.active_track)) then
+            return state.active_track
+        end
+        if is_valid_track(state.focused_track) and (track_has_instrument_or_fx(state.focused_track) or not is_folder_parent(state.focused_track)) then
+            return state.focused_track
+        end
+    end
+
+    -- 3. Selected track in REAPER
+    if reaper and reaper.GetSelectedTrack then
+        local sel_trk = reaper.GetSelectedTrack(0, 0)
+        if is_valid_track(sel_trk) and (track_has_instrument_or_fx(sel_trk) or not is_folder_parent(sel_trk)) then
+            return sel_trk
+        end
+    end
+
+    -- 4. First track in project that actually hosts a virtual instrument or FX
+    if reaper and reaper.CountTracks and reaper.GetTrack then
+        local cnt = reaper.CountTracks(0)
+        for i = 0, cnt - 1 do
+            local trk = reaper.GetTrack(0, i)
+            if track_has_instrument_or_fx(trk) then
+                return trk
+            end
+        end
+        -- Next best: first non-folder track
+        for i = 0, cnt - 1 do
+            local trk = reaper.GetTrack(0, i)
+            if not is_folder_parent(trk) then
+                return trk
+            end
+        end
+        if cnt > 0 then
+            return reaper.GetTrack(0, 0)
+        end
+    end
+
+    if type(state) == "table" then
+        return state.active_track or state.focused_track
+    end
+    return nil
+end
+
+function CircleOfFifthsService.audition_tile(state, tile, opt_track)
     if not tile then return end
     local pitches = CircleOfFifthsService.get_tile_pitches(tile)
     if #pitches == 0 then return end
-    local target_trk = (type(state) == "table" and state.focused_track)
-        or (reaper and reaper.GetSelectedTrack and reaper.GetSelectedTrack(0, 0))
-        or (reaper and reaper.GetTrack and reaper.GetTrack(0, 0))
-    if target_trk and AudioPreview and AudioPreview.play_note then
-        AudioPreview.play_note(state, pitches, 96, 0, target_trk)
+    local target_trk = opt_track or CircleOfFifthsService.resolve_audition_track(state)
+    if AudioPreview and AudioPreview.play_note then
+        -- Pass `force_audition = true` (8th arg) so clicking in the Circle of Fifths
+        -- ALWAYS arms the target track and plays the chord/note even if TopBar Audition is off!
+        AudioPreview.play_note(state, pitches, 96, 0, target_trk, nil, nil, true)
         if AudioPreview.on_mouse_released then
             AudioPreview.on_mouse_released(state)
         end
@@ -646,16 +730,25 @@ function CircleOfFifthsService.insert_tile_at_cursor(state, tile, midi_service)
         dur = dur * (2.0 / 3.0)
     end
 
+    local resolved_trk = CircleOfFifthsService.resolve_audition_track(state)
+    local prev_focused = state.focused_track
+    if resolved_trk then
+        state.focused_track = resolved_trk
+    end
+
     if RecordQuantizeService and RecordQuantizeService.insert_chord_cluster_at_qn then
         local inserted = RecordQuantizeService.insert_chord_cluster_at_qn(state, pitches, qn, dur, 96, MidiService)
+        state.focused_track = prev_focused
         if inserted and inserted > 0 then
+            CircleOfFifthsService.audition_tile(state, tile, resolved_trk)
             state.status_msg = string.format("🎡 Inserted '%s' (%d note%s) at %.2f QN",
                 CircleOfFifthsService.format_tile_label(tile), inserted, inserted == 1 and "" or "s", qn)
             return inserted
         end
     end
+    state.focused_track = prev_focused
 
-    local trk = state.focused_track or reaper.GetSelectedTrack(0, 0) or reaper.GetTrack(0, 0)
+    local trk = resolved_trk or state.focused_track or reaper.GetSelectedTrack(0, 0) or reaper.GetTrack(0, 0)
     local inserted_cnt = 0
     for _, p in ipairs(pitches) do
         if MidiService.insert_note_at_qn(state, qn, p, dur, trk) then
@@ -663,7 +756,7 @@ function CircleOfFifthsService.insert_tile_at_cursor(state, tile, midi_service)
         end
     end
     if inserted_cnt > 0 then
-        CircleOfFifthsService.audition_tile(state, tile)
+        CircleOfFifthsService.audition_tile(state, tile, trk)
         reaper.SetEditCurPos(reaper.TimeMap2_QNToTime(0, qn + dur), true, false)
         state.status_msg = string.format("🎡 Inserted '%s' at %.2f QN", CircleOfFifthsService.format_tile_label(tile), qn)
     end

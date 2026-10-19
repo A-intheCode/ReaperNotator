@@ -393,3 +393,4 @@ function ImGuiGuardService.safe_render(ctx, state, label, fn, ...)
 end
 
 return ImGuiGuardService
+

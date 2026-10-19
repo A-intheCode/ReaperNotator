@@ -116,8 +116,14 @@ function AudioPreview.restore_track(track)
 
     local r = AudioPreview.track_restore[track]
     if r then
+        if r.divisi_rec_fx and reaper.TrackFX_SetEnabled then
+            pcall(reaper.TrackFX_SetEnabled, track, r.divisi_rec_fx, true)
+        end
         if r.changed_arm and r.orig_arm ~= nil then
             reaper.SetMediaTrackInfo_Value(track, "I_RECARM", r.orig_arm)
+            if reaper.APIExists("CSurf_OnRecArmChange") then
+                pcall(reaper.CSurf_OnRecArmChange, track, r.orig_arm)
+            end
         end
         if r.changed_mon and r.orig_mon ~= nil then
             reaper.SetMediaTrackInfo_Value(track, "I_RECMON", r.orig_mon)
@@ -188,6 +194,9 @@ function AudioPreview.prepare_track(track)
                     }
                 end
                 reaper.SetMediaTrackInfo_Value(other_track, "I_RECARM", 0)
+                if reaper.APIExists("CSurf_OnRecArmChange") then
+                    pcall(reaper.CSurf_OnRecArmChange, other_track, 0)
+                end
             end
         end
     end
@@ -195,6 +204,24 @@ function AudioPreview.prepare_track(track)
     -- If track has record disabled (I_RECMODE == 2) left over from earlier, restore to normal 0
     if reaper.GetMediaTrackInfo_Value(track, "I_RECMODE") == 2 then
         reaper.SetMediaTrackInfo_Value(track, "I_RECMODE", 0)
+    end
+
+    -- Temporarily bypass Auto-Divisi Input FX Router on this track during single-track VKB audition
+    -- so Voice #2/#3 filters do not swallow audition notes
+    local divisi_fx_to_restore = nil
+    if reaper.TrackFX_GetRecCount and reaper.TrackFX_GetFXName and reaper.TrackFX_GetEnabled and reaper.TrackFX_SetEnabled then
+        local rcnt = reaper.TrackFX_GetRecCount(track) or 0
+        for ri = 0, rcnt - 1 do
+            local rfx = 0x1000000 + ri
+            local ok_nm, nm = reaper.TrackFX_GetFXName(track, rfx, "")
+            if ok_nm and nm and (nm:find("Notator_Auto_Divisi_Router", 1, true) or nm:find("Auto-Divisi Live Input Router", 1, true)) then
+                if reaper.TrackFX_GetEnabled(track, rfx) then
+                    reaper.TrackFX_SetEnabled(track, rfx, false)
+                    divisi_fx_to_restore = rfx
+                end
+                break
+            end
+        end
     end
 
     local orig_inp = reaper.GetMediaTrackInfo_Value(track, "I_RECINPUT")
@@ -207,7 +234,7 @@ function AudioPreview.prepare_track(track)
     local needs_mon = (orig_mon == 0)
 
     local just_switched = false
-    if needs_inp or needs_arm or needs_mon then
+    if needs_inp or needs_arm or needs_mon or divisi_fx_to_restore then
         if not AudioPreview.track_restore[track] then
             AudioPreview.track_restore[track] = {
                 track = track,
@@ -217,8 +244,11 @@ function AudioPreview.prepare_track(track)
                 changed_inp = needs_inp,
                 changed_arm = needs_arm,
                 changed_mon = needs_mon,
+                divisi_rec_fx = divisi_fx_to_restore,
                 switched_time = reaper.time_precise()
             }
+        elseif divisi_fx_to_restore and not AudioPreview.track_restore[track].divisi_rec_fx then
+            AudioPreview.track_restore[track].divisi_rec_fx = divisi_fx_to_restore
         end
         if needs_inp then
             reaper.SetMediaTrackInfo_Value(track, "I_RECINPUT", VKB_INPUT)
@@ -228,10 +258,13 @@ function AudioPreview.prepare_track(track)
         end
         if needs_arm then
             reaper.SetMediaTrackInfo_Value(track, "I_RECARM", 1)
+            if reaper.APIExists("CSurf_OnRecArmChange") then
+                pcall(reaper.CSurf_OnRecArmChange, track, 1)
+            end
         end
         reaper.TrackList_AdjustWindows(false)
         reaper.UpdateArrange()
-        just_switched = true
+        just_switched = (needs_inp or needs_arm or needs_mon)
     end
 
     AudioPreview.current_track = track
@@ -793,18 +826,20 @@ end
 --- @param track MediaTrack Optional REAPER track pointer
 --- @param qn number Optional position in QN (to detect dynamic markers & articulations)
 --- @param opt_note table Optional note object (to detect note-level articulation)
-function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
+--- @param force_audition boolean|nil If true, plays even when state.audition_notes == false
+function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note, force_audition)
     if type(state) == "userdata" then
         track = state
         state = AudioPreview._last_state
     elseif type(state) ~= "table" then
         state = AudioPreview._last_state
     end
-    if state and state.audition_notes == false then return end
+    local is_chord_table = (type(pitch) == "table")
+    if state and state.audition_notes == false and not force_audition and not is_chord_table then return end
     if not pitch then return end
 
     local extra_pitches = nil
-    if type(pitch) == "table" then
+    if is_chord_table then
         if #pitch == 0 then return end
         if #pitch > 1 then
             extra_pitches = {}
@@ -822,13 +857,39 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
     -- Stop active note beforehand (with chaining so active CC override stays intact while playing new note)
     AudioPreview.stop_note(state, true)
 
-    -- Determine target track
-    local target_track = (type(track) == "userdata" and track) or (opt_note and opt_note.track)
-    if not target_track and state and state.focused_track then
+    -- Determine and validate target track
+    local function is_valid_trk(t)
+        return t ~= nil and t ~= state and (not reaper.ValidatePtr or reaper.ValidatePtr(t, "MediaTrack*"))
+    end
+
+    local target_track = nil
+    if is_valid_trk(track) then
+        target_track = track
+    elseif opt_note and is_valid_trk(opt_note.track) then
+        target_track = opt_note.track
+    elseif state and is_valid_trk(state.cof_preview_track) and (force_audition or is_chord_table) then
+        target_track = state.cof_preview_track
+    elseif state and is_valid_trk(state.focused_track) then
         target_track = state.focused_track
     end
     if not target_track then
-        target_track = reaper.GetSelectedTrack(0, 0)
+        local sel_t = reaper.GetSelectedTrack(0, 0)
+        if is_valid_trk(sel_t) then
+            target_track = sel_t
+        end
+    end
+    if not target_track and reaper.CountTracks then
+        local cnt = reaper.CountTracks(0) or 0
+        for ti = 0, cnt - 1 do
+            local tr = reaper.GetTrack(0, ti)
+            if is_valid_trk(tr) and (not reaper.TrackFX_GetCount or reaper.TrackFX_GetCount(tr) > 0) then
+                target_track = tr
+                break
+            end
+        end
+        if not target_track and cnt > 0 then
+            target_track = reaper.GetTrack(0, 0)
+        end
     end
 
     local just_switched = false

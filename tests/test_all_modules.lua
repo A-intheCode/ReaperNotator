@@ -1728,6 +1728,8 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     assert_eq(env.imgui_child_depth, 0, "CircleOfFifthsModal drop release: zero unclosed ImGui_BeginChild")
     assert_eq(env.imgui_win_depth, 0, "CircleOfFifthsModal drop release: zero unclosed ImGui_Begin")
     env.mouse_released[0] = false
+    st.show_circle_of_fifths_modal = false
+    AudioPreview.restore_all_tracks()
 
     -- 4. MIDI Keyboard Step Input + Auto-Divisi across Armed Tracks
     -- Arm both Track 1 (High / Violin) and Track 2 (Low / Cello)
@@ -1788,6 +1790,34 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     assert_eq(env.imgui_win_depth, 0, "ImGuiGuardService automatically unwound ImGui_End (0 leaked windows)")
     assert_eq(env.imgui_style_color_depth, 0, "ImGuiGuardService automatically unwound ImGui_PopStyleColor")
     assert_eq(env.imgui_style_var_depth, 0, "ImGuiGuardService automatically unwound ImGui_PopStyleVar")
+
+    -- 6. Verify Circle of Fifths opaque sector colors (no radial AA seam bleed) & Audition Track resolution
+    local t_map = CircleOfFifthsService.compute_tension_map(loaded_pages[1].tiles, 1)
+    for s_idx = 1, 12 do
+        assert_eq(t_map.major[s_idx].color & 0xFF, 0xFF, "Circle of Fifths major sector color is 100% opaque (0xFF alpha)")
+        assert_eq(t_map.minor[s_idx].color & 0xFF, 0xFF, "Circle of Fifths minor sector color is 100% opaque (0xFF alpha)")
+    end
+    st.cof_preview_track = trk2
+    assert_eq(CircleOfFifthsService.resolve_audition_track(st), trk2, "resolve_audition_track prioritizes explicit state.cof_preview_track")
+    st.audition_notes = false -- Even when TopBar Audition is disabled, Circle of Fifths click must still arm & play!
+    local tile_gm = CircleOfFifthsService.create_tile(11, "minor", "minor", 4)
+    CircleOfFifthsService.audition_tile(st, tile_gm, trk2)
+    assert_eq(reaper.GetMediaTrackInfo_Value(trk2, "I_RECARM"), 1, "audition_tile arms target track even when state.audition_notes is false")
+    st.audition_notes = true
+    st.cof_preview_track = nil
+
+    -- 7. Verify Melodic Pathfinder Key Signature integration (Major & Minor keys via KeySignatureService)
+    local MelodyPathfinderService = require("services.melody_pathfinder_service")
+    local KeySignatureService = require("services.key_signature_service")
+    KeySignatureService.set_item_key_sig(st, item1, take1, -2, "minor", true) -- G Minor (2 flats)
+    local k_idx, k_mode, k_tonic, k_lbl = MelodyPathfinderService.resolve_track_key_signature(st, trk1, take1, 0)
+    assert_eq(k_idx, -2, "MelodyPathfinderService resolves item key_idx = -2 (2 flats)")
+    assert_eq(k_mode, "minor", "MelodyPathfinderService resolves item key_mode = minor")
+    assert_eq(k_tonic, 7, "MelodyPathfinderService resolves G minor tonic_pc = 7 (G)")
+    local _, _, gm_pc_set = MelodyPathfinderService.build_scale_pitches(k_tonic, "auto", nil, k_idx, k_mode)
+    assert_eq(gm_pc_set[10], true, "G minor scale contains Bb (pc 10)")
+    assert_eq(gm_pc_set[3], true, "G minor scale contains Eb (pc 3)")
+    assert_eq(gm_pc_set[11], nil, "G minor natural scale excludes B natural (pc 11)")
 end)
 
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 81 Modules", function()

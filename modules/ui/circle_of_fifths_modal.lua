@@ -10,6 +10,7 @@
 
 local CircleOfFifthsService = package.loaded["services.circle_of_fifths_service"] or require("services.circle_of_fifths_service")
 local KeySignatureService = package.loaded["services.key_signature_service"] or require("services.key_signature_service")
+local AudioPreview = package.loaded["services.audio_preview"] or require("services.audio_preview")
 local Engraver = package.loaded["rendering.engraver"] or require("rendering.engraver")
 
 local CircleOfFifthsModal = {}
@@ -29,25 +30,47 @@ local QUALITY_OPTIONS = {
     { id = "power5", label = "Power Chord (1-5)" }
 }
 
---- Helper to draw a filled annular sector (ring wedge) using convex quadrilateral strips
+--- Helper to ensure a 0xRRGGBBAA color is 100% opaque (blended over #16191E if alpha < 255)
+local function ensure_opaque_color(col)
+    local a = (col or 0xFF) & 0xFF
+    if a >= 0xFF then return col end
+    local r = (col >> 24) & 0xFF
+    local g = (col >> 16) & 0xFF
+    local b = (col >> 8)  & 0xFF
+    local alpha = a / 255.0
+    local bg_r, bg_g, bg_b = 0x16, 0x19, 0x1E
+    local out_r = math.floor(r * alpha + bg_r * (1.0 - alpha) + 0.5)
+    local out_g = math.floor(g * alpha + bg_g * (1.0 - alpha) + 0.5)
+    local out_b = math.floor(b * alpha + bg_b * (1.0 - alpha) + 0.5)
+    return (out_r << 24) | (out_g << 16) | (out_b << 8) | 0xFF
+end
+
+--- Helper to draw a seamless filled annular sector (ring wedge) without internal radial AA seams.
+--- By using 100% opaque fill colors and overlapping internal quad strip angles (`da * 0.38`),
+--- each sub-quad's 0.5px anti-aliased fringe lands inside the 100%-opaque solid interior
+--- of the neighboring sub-quad of identical color C: a*C + (1-a)*C = C (zero visible seams).
 local function draw_annular_sector(dl, cx, cy, r_in, r_out, a0, a1, fill_col, border_col, border_thickness)
-    local steps = 14
+    local opaque_fill = ensure_opaque_color(fill_col)
+    local steps = 24
     local da = (a1 - a0) / steps
+    local overlap = da * 0.38
     for s = 0, steps - 1 do
         local t0 = a0 + s * da
         local t1 = t0 + da
-        local c0, s0 = math.cos(t0), math.sin(t0)
-        local c1, s1 = math.cos(t1), math.sin(t1)
+        local t0_draw = (s > 0) and (t0 - overlap) or t0
+        local t1_draw = (s < steps - 1) and (t1 + overlap) or t1
+        local c0, s0 = math.cos(t0_draw), math.sin(t0_draw)
+        local c1, s1 = math.cos(t1_draw), math.sin(t1_draw)
         local x1, y1 = cx + r_in * c0,  cy + r_in * s0
         local x2, y2 = cx + r_out * c0, cy + r_out * s0
         local x3, y3 = cx + r_out * c1, cy + r_out * s1
         local x4, y4 = cx + r_in * c1,  cy + r_in * s1
-        reaper.ImGui_DrawList_AddQuadFilled(dl, x1, y1, x2, y2, x3, y3, x4, y4, fill_col)
+        reaper.ImGui_DrawList_AddQuadFilled(dl, x1, y1, x2, y2, x3, y3, x4, y4, opaque_fill)
     end
 
     if border_col and (border_thickness or 1) > 0 then
         local bt = border_thickness or 1.5
-        -- Outer arc
+        -- Outer and Inner arcs
         for s = 0, steps - 1 do
             local t0 = a0 + s * da
             local t1 = t0 + da
@@ -60,7 +83,7 @@ local function draw_annular_sector(dl, cx, cy, r_in, r_out, a0, a1, fill_col, bo
                 cx + r_in * math.cos(t1), cy + r_in * math.sin(t1),
                 border_col, bt)
         end
-        -- Radial spokes
+        -- Radial spokes at sector boundaries only
         reaper.ImGui_DrawList_AddLine(dl,
             cx + r_in * math.cos(a0), cy + r_in * math.sin(a0),
             cx + r_out * math.cos(a0), cy + r_out * math.sin(a0),
@@ -70,6 +93,29 @@ local function draw_annular_sector(dl, cx, cy, r_in, r_out, a0, a1, fill_col, bo
             cx + r_out * math.cos(a1), cy + r_out * math.sin(a1),
             border_col, bt)
     end
+end
+
+--- Returns a formatted human-readable label for a REAPER MediaTrack
+local function get_track_display_label(trk, idx_1based)
+    if not trk or (reaper.ValidatePtr and not reaper.ValidatePtr(trk, "MediaTrack*")) then
+        return "None"
+    end
+    local num = idx_1based
+    if not num and reaper.GetMediaTrackInfo_Value then
+        num = math.floor(reaper.GetMediaTrackInfo_Value(trk, "IP_TRACKNUMBER") or 1)
+    end
+    local name = ""
+    if reaper.GetTrackName then
+        local _, tname = reaper.GetTrackName(trk)
+        name = tname or ""
+    end
+    local fx_badge = ""
+    if reaper.TrackFX_GetInstrument and reaper.TrackFX_GetInstrument(trk) >= 0 then
+        fx_badge = " 🎹"
+    elseif reaper.TrackFX_GetCount and reaper.TrackFX_GetCount(trk) > 0 then
+        fx_badge = " 🔊"
+    end
+    return string.format("Track %d: %s%s", num or 1, name ~= "" and name or "Instrument", fx_badge)
 end
 
 --- Formats a tile's pitches as readable note names using its key signature
@@ -118,14 +164,17 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
     end
 
     if reaper.APIExists("ImGui_SetNextWindowSizeConstraints") then
-        reaper.ImGui_SetNextWindowSizeConstraints(ctx, 880, 560, 1450, 960)
+        reaper.ImGui_SetNextWindowSizeConstraints(ctx, 880, 580, 1450, 960)
     end
-    reaper.ImGui_SetNextWindowSize(ctx, 940, 610, reaper.ImGui_Cond_FirstUseEver())
+    reaper.ImGui_SetNextWindowSize(ctx, 960, 640, reaper.ImGui_Cond_FirstUseEver())
 
     local visible, open = reaper.ImGui_Begin(ctx, "🎡 Circle of Fifths & Global Harmonic Chord Palette###CircleOfFifthsModalWindow", true, flags)
     if not open then
         state.show_circle_of_fifths_modal = false
         state._cof_drag_payload = nil
+        if AudioPreview and AudioPreview.restore_all_tracks then
+            AudioPreview.restore_all_tracks()
+        end
     end
 
     if visible then
@@ -135,15 +184,91 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
             state.cof_active_page_idx = 1
         end
 
+        -- Validate explicit preview track pointer if set
+        if state.cof_preview_track and reaper.ValidatePtr and not reaper.ValidatePtr(state.cof_preview_track, "MediaTrack*") then
+            state.cof_preview_track = nil
+        end
+
+        -- Resolve current audition & insertion target track and keep it armed while modal is active!
+        local resolved_trk = CircleOfFifthsService.resolve_audition_track(state)
+        if resolved_trk and AudioPreview and AudioPreview.prepare_track then
+            if AudioPreview.prepared_track ~= resolved_trk then
+                if AudioPreview.prepared_track then
+                    AudioPreview.restore_track(AudioPreview.prepared_track)
+                end
+                AudioPreview.prepare_track(resolved_trk)
+            end
+            AudioPreview.last_activity_time = reaper.time_precise()
+        end
+
         -- Compute dynamic harmonic tension map from the current page's tiles
         local tension_map = CircleOfFifthsService.compute_tension_map(page.tiles, page.active_slot)
 
         -- ======================================================================
-        -- TOP TOOLBAR: VOICING MODE, OCTAVE & TENSION LEGEND
+        -- TOP TOOLBAR ROW 1: AUDITION & TARGET TRACK SELECTOR + VOICING + OCTAVE
         -- ======================================================================
-        reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "Drag & Click Mode:")
-        reaper.ImGui_SameLine(ctx, 0, 8)
-        reaper.ImGui_SetNextItemWidth(ctx, 220)
+        reaper.ImGui_TextColored(ctx, 0x2ECC71FF, "🔊 Audition & Target Track:")
+        reaper.ImGui_SameLine(ctx, 0, 6)
+        reaper.ImGui_SetNextItemWidth(ctx, 235)
+        local cur_trk_label = "⚡ Auto (" .. get_track_display_label(resolved_trk) .. ")"
+        if state.cof_preview_track then
+            cur_trk_label = get_track_display_label(state.cof_preview_track)
+        end
+        if reaper.ImGui_BeginCombo(ctx, "##CoFAuditionTrackCombo", cur_trk_label) then
+            local is_auto = (state.cof_preview_track == nil)
+            local auto_target = CircleOfFifthsService.resolve_audition_track({})
+            if reaper.ImGui_Selectable(ctx, "⚡ Auto (" .. get_track_display_label(auto_target) .. ")", is_auto) then
+                state.cof_preview_track = nil
+                local new_trk = CircleOfFifthsService.resolve_audition_track(state)
+                if new_trk and AudioPreview and AudioPreview.prepare_track then
+                    if AudioPreview.prepared_track and AudioPreview.prepared_track ~= new_trk then
+                        AudioPreview.restore_track(AudioPreview.prepared_track)
+                    end
+                    AudioPreview.prepare_track(new_trk)
+                end
+            end
+            reaper.ImGui_Separator(ctx)
+            local trk_cnt = reaper.CountTracks and reaper.CountTracks(0) or 0
+            for ti = 0, trk_cnt - 1 do
+                local t_ptr = reaper.GetTrack(0, ti)
+                if t_ptr then
+                    local t_lbl = get_track_display_label(t_ptr, ti + 1)
+                    local is_sel = (state.cof_preview_track == t_ptr)
+                    if reaper.ImGui_Selectable(ctx, t_lbl .. "##CoFTrk_" .. ti, is_sel) then
+                        state.cof_preview_track = t_ptr
+                        state.focused_track = t_ptr
+                        if AudioPreview and AudioPreview.prepare_track then
+                            if AudioPreview.prepared_track and AudioPreview.prepared_track ~= t_ptr then
+                                AudioPreview.restore_track(AudioPreview.prepared_track)
+                            end
+                            AudioPreview.prepare_track(t_ptr)
+                        end
+                        -- Play a quick C4 test note on the newly selected track
+                        local test_tile = tension_map.ref_tile or CircleOfFifthsService.create_tile(1, "major", state.cof_voicing_mode ~= "auto" and state.cof_voicing_mode or "major", state.cof_octave or 4)
+                        CircleOfFifthsService.audition_tile(state, test_tile, t_ptr)
+                    end
+                end
+            end
+            reaper.ImGui_EndCombo(ctx)
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Select which REAPER Instrument Track is automatically armed & used for auditioning and inserting chords from the Circle of Fifths.\n(🎹 = Virtual Instrument detected, 🔊 = FX chain present)")
+        end
+
+        reaper.ImGui_SameLine(ctx, 0, 6)
+        if reaper.ImGui_Button(ctx, "🔊 Test##CoFTestAuditionBtn", 58, 0) then
+            local test_tile = tension_map.ref_tile or CircleOfFifthsService.create_tile(1, "major", state.cof_voicing_mode ~= "auto" and state.cof_voicing_mode or "major", state.cof_octave or 4)
+            CircleOfFifthsService.audition_tile(state, test_tile, resolved_trk)
+            state.status_msg = string.format("🔊 Auditioning %s on %s", test_tile.label or "C", get_track_display_label(resolved_trk))
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "Play a test chord on the selected Audition Track right now.")
+        end
+
+        reaper.ImGui_SameLine(ctx, 0, 14)
+        reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "Mode:")
+        reaper.ImGui_SameLine(ctx, 0, 6)
+        reaper.ImGui_SetNextItemWidth(ctx, 195)
         local cur_q_label = "Auto (Outer=Maj, Inner=Min)"
         for _, qopt in ipairs(QUALITY_OPTIONS) do
             if qopt.id == state.cof_voicing_mode then
@@ -163,10 +288,10 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
             reaper.ImGui_SetTooltip(ctx, "Selects whether clicking/dragging a sector in the Circle of Fifths auditions & drops a Single Note, Triad, or 7th/Sus Chord.")
         end
 
-        reaper.ImGui_SameLine(ctx, 0, 14)
+        reaper.ImGui_SameLine(ctx, 0, 12)
         reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "Octave:")
         reaper.ImGui_SameLine(ctx, 0, 6)
-        reaper.ImGui_SetNextItemWidth(ctx, 75)
+        reaper.ImGui_SetNextItemWidth(ctx, 70)
         local oct_str = string.format("C%d", state.cof_octave or 4)
         if reaper.ImGui_BeginCombo(ctx, "##CoFOctaveCombo", oct_str) then
             for oct = 2, 6 do
@@ -177,13 +302,13 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
             reaper.ImGui_EndCombo(ctx)
         end
 
-        reaper.ImGui_SameLine(ctx, 0, 18)
+        -- TOP TOOLBAR ROW 2: HARMONIC TENSION LEGEND
         reaper.ImGui_TextColored(ctx, 0x2ECC71FF, "● Consonance (0-25%)")
-        reaper.ImGui_SameLine(ctx, 0, 10)
+        reaper.ImGui_SameLine(ctx, 0, 14)
         reaper.ImGui_TextColored(ctx, 0xF1C40FFF, "● Subdom/Mediant (26-50%)")
-        reaper.ImGui_SameLine(ctx, 0, 10)
+        reaper.ImGui_SameLine(ctx, 0, 14)
         reaper.ImGui_TextColored(ctx, 0xE67E22FF, "● Secondary/Borrowed (51-75%)")
-        reaper.ImGui_SameLine(ctx, 0, 10)
+        reaper.ImGui_SameLine(ctx, 0, 14)
         reaper.ImGui_TextColored(ctx, 0xE74C3CFF, "● Tritone Tension (76-100%)")
 
         reaper.ImGui_Separator(ctx)
@@ -263,8 +388,8 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                 local a1 = center_a + step_angle * 0.5 - 0.012
 
                 local sec_data = CircleOfFifthsService.SECTORS[idx]
-                local maj_t = tension_map.major[idx] or { color = 0x2ECC71CC, tension = 0, relation = "Diatonic" }
-                local min_t = tension_map.minor[idx] or { color = 0x27AE60CC, tension = 0, relation = "Diatonic" }
+                local maj_t = tension_map.major[idx] or { color = 0x2ECC71FF, tension = 0, relation = "Diatonic" }
+                local min_t = tension_map.minor[idx] or { color = 0x27AE60FF, tension = 0, relation = "Diatonic" }
 
                 local is_maj_hov = (hovered_ring == "major" and hovered_idx == idx)
                 local is_min_hov = (hovered_ring == "minor" and hovered_idx == idx)
@@ -351,22 +476,27 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                     local t_pct = math.floor(((t_info and t_info.tension) or 0) * 100 + 0.5)
                     local rel_str = (t_info and t_info.relation) or "Diatonic"
                     reaper.ImGui_SetTooltip(ctx, string.format(
-                        "🎵 %s  (%s)\nKey Signature: %s\nNotes: %s\nHarmonic Relation: %s\nTension from Reference: %d%%\n\n• Left-Click: Hear Tone\n• Drag & Drop onto Slot 1..8 to assign & recalculate Circle!",
+                        "🎵 %s  (%s)\nKey Signature: %s\nNotes: %s\nHarmonic Relation: %s\nTension from Reference: %d%%\nTarget Track: %s\n\n• Left-Click / Drag: Hear Tone on Track\n• Drag & Drop onto Slot 1..8 to assign & recalculate Circle!",
                         preview_tile.label,
                         preview_tile.quality_label or "",
                         sec_data.acc_label,
                         format_tile_pitches(preview_tile),
                         rel_str,
-                        t_pct
+                        t_pct,
+                        get_track_display_label(resolved_trk)
                     ))
 
-                    if reaper.ImGui_IsMouseClicked(ctx, 0) then
-                        -- 1. Play tone immediately when clicked in the Circle!
-                        CircleOfFifthsService.audition_tile(state, preview_tile)
-                        -- 2. Start Drag & Drop payload
+                    local sector_changed_while_dragging = state._cof_drag_payload
+                        and reaper.ImGui_IsMouseDown(ctx, 0)
+                        and (state._cof_drag_payload.sector_idx ~= hovered_idx or state._cof_drag_payload.ring ~= hovered_ring)
+
+                    if reaper.ImGui_IsMouseClicked(ctx, 0) or sector_changed_while_dragging then
+                        -- 1. Play tone immediately when clicked or swept in the Circle!
+                        CircleOfFifthsService.audition_tile(state, preview_tile, resolved_trk)
+                        -- 2. Start / update Drag & Drop payload
                         state._cof_drag_payload = preview_tile
-                        state.status_msg = string.format("🎵 Auditioning %s (%s) – Drag onto a Tile (Slot 1..8) to add to palette",
-                            preview_tile.label, format_tile_pitches(preview_tile))
+                        state.status_msg = string.format("🎵 Auditioning %s (%s) on %s – Drag onto a Tile (Slot 1..8) to add to palette",
+                            preview_tile.label, format_tile_pitches(preview_tile), get_track_display_label(resolved_trk))
                     end
                 end
             end

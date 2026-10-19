@@ -9,10 +9,11 @@
 --   • Reference Track Harmonic Consonance & Melodic Inversion / Retrograde
 -- ==============================================================================
 
-local Constants         = require("constants")
-local Engraver          = require("rendering.engraver")
-local MelodyStyleCorpus = require("services.melody_style_corpus")
-local SlurService       = require("services.slur_service")
+local Constants           = require("constants")
+local Engraver            = require("rendering.engraver")
+local MelodyStyleCorpus   = require("services.melody_style_corpus")
+local SlurService         = require("services.slur_service")
+local KeySignatureService = require("services.key_signature_service")
 
 local MelodyPathfinderService = {}
 
@@ -483,11 +484,63 @@ function MelodyPathfinderService.collect_reference_notes(ref_mode, target_track,
     return ref_notes
 end
 
+--- Resolves the active Key Signature (`key_idx`, `key_mode`, `tonic_pc`, `key_label`)
+--- at `qn` for `target_track` / `target_take` using KeySignatureService.resolve_effective_key.
+--- Supports Item Key Signatures, Track Key Signatures, Project Key Signatures, and both Major & Minor modes.
+function MelodyPathfinderService.resolve_track_key_signature(state, target_track, target_take, qn)
+    local key_idx = 0
+    local key_mode = "major"
+    local item = nil
+    if target_take and reaper and reaper.ValidatePtr and reaper.ValidatePtr(target_take, "MediaItem_Take*") then
+        item = reaper.GetMediaItemTake_Item(target_take)
+    end
+
+    if KeySignatureService and KeySignatureService.resolve_effective_key then
+        local resolved = KeySignatureService.resolve_effective_key(state, target_track, item, qn)
+        if type(resolved) == "table" then
+            key_idx = tonumber(resolved.key_idx or resolved.idx) or 0
+            key_mode = (resolved.mode and resolved.mode ~= "") and resolved.mode or "major"
+        elseif type(resolved) == "number" then
+            key_idx = resolved
+        end
+    elseif state and state.get_key_signature_at_qn then
+        key_idx = tonumber(state:get_key_signature_at_qn(target_track, qn or 0)) or 0
+        key_mode = (state and state.key_signature_mode) or "major"
+    elseif state then
+        key_idx = tonumber(state.key_signature) or 0
+        key_mode = state.key_signature_mode or "major"
+    end
+
+    local major_tonic_pc = KEY_IDX_TO_TONIC_PC[key_idx]
+    if major_tonic_pc == nil then
+        major_tonic_pc = ((key_idx * 7) % 12 + 12) % 12
+    end
+    local tonic_pc = (key_mode == "minor") and ((major_tonic_pc + 9) % 12) or major_tonic_pc
+
+    local key_label = "C Major"
+    local kdef = Constants and Constants.KEY_SIGNATURES and Constants.KEY_SIGNATURES[key_idx]
+    if kdef then
+        if key_mode == "minor" and kdef.minor_name then
+            key_label = kdef.minor_name
+        else
+            key_label = kdef.name or "C Major"
+        end
+    end
+
+    return key_idx, key_mode, tonic_pc, key_label
+end
+
 --- Builds a sorted list of scale pitches across MIDI 21..108
-function MelodyPathfinderService.build_scale_pitches(tonic_pc, scale_id, style_obj)
+function MelodyPathfinderService.build_scale_pitches(tonic_pc, scale_id, style_obj, key_idx, key_mode)
     local resolved_id = scale_id
     if not resolved_id or resolved_id == "auto" then
-        resolved_id = (style_obj and style_obj.default_scale) or "aeolian"
+        if key_mode == "minor" then
+            resolved_id = "aeolian"
+        elseif key_idx and tonumber(key_idx) ~= 0 then
+            resolved_id = "major"
+        else
+            resolved_id = (style_obj and style_obj.default_scale) or "major"
+        end
     end
     local sc = SCALE_BY_ID[resolved_id] or SCALE_BY_ID["aeolian"]
     local ivs = sc.intervals or { 0, 2, 3, 5, 7, 8, 10 }
@@ -1006,17 +1059,7 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         state, target_track, target_take, waypoints, opts.octave_shift
     )
 
-    -- Determine tonic pitch class from track's Key Signature (or C if 0)
-    local key_idx = 0
-    if state and state.get_key_signature_at_qn then
-        local first_qn = (waypoints[1] and waypoints[1].start_qn) or 0
-        key_idx = state:get_key_signature_at_qn(target_track, first_qn) or 0
-    end
-    local tonic_pc = KEY_IDX_TO_TONIC_PC[key_idx] or 0
-
-    local scale_pitches = MelodyPathfinderService.build_scale_pitches(tonic_pc, opts.scale_id, style_obj)
-
-    -- Determine time span & Reference Track notes
+    -- Determine time span first so we resolve Key Signature at the exact phrase start `min_qn`
     local phrase_bars = tonumber(opts.phrase_bars) or 4
     local qn_per_bar = 4.0
     local min_qn, max_qn
@@ -1033,6 +1076,15 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         min_qn = MelodyPathfinderService.resolve_default_start_qn(state, target_track, opts.ref_track_mode, qn_per_bar)
         max_qn = (state and state.mpf_locked_max_qn) or (min_qn + (phrase_bars * qn_per_bar))
     end
+
+    -- Resolve effective Key Signature (`key_idx`, `key_mode`, `tonic_pc`, `key_label`) at `min_qn`
+    local key_idx, key_mode, tonic_pc, key_label = MelodyPathfinderService.resolve_track_key_signature(
+        state, target_track, target_take, min_qn
+    )
+
+    local scale_pitches = MelodyPathfinderService.build_scale_pitches(
+        tonic_pc, opts.scale_id, style_obj, key_idx, key_mode
+    )
 
     local ref_notes = MelodyPathfinderService.collect_reference_notes(
         opts.ref_track_mode, target_track, min_qn, max_qn
@@ -1260,6 +1312,10 @@ function MelodyPathfinderService.generate_preview(state, active_tracks_data, opt
         style = style_obj,
         min_qn = min_qn,
         max_qn = max_qn,
+        key_idx = key_idx,
+        key_mode = key_mode,
+        tonic_pc = tonic_pc,
+        key_label = key_label,
     }
 end
 
@@ -1271,9 +1327,12 @@ function MelodyPathfinderService.invert_selected_notes_in_place(state, active_tr
     end
 
     local clef_reg = MelodyPathfinderService.get_clef_register(state, target_track, target_take, waypoints, 0)
-    local key_idx = (state and state.get_key_signature_at_qn and state:get_key_signature_at_qn(target_track, waypoints[1].start_qn)) or 0
-    local tonic_pc = KEY_IDX_TO_TONIC_PC[key_idx] or 0
-    local scale_pitches = MelodyPathfinderService.build_scale_pitches(tonic_pc, scale_id or "auto", nil)
+    local key_idx, key_mode, tonic_pc = MelodyPathfinderService.resolve_track_key_signature(
+        state, target_track, target_take, waypoints[1].start_qn
+    )
+    local scale_pitches = MelodyPathfinderService.build_scale_pitches(
+        tonic_pc, scale_id or "auto", nil, key_idx, key_mode
+    )
     local axis = waypoints[1].pitch
 
     reaper.Undo_BeginBlock()
@@ -1296,6 +1355,9 @@ function MelodyPathfinderService.invert_selected_notes_in_place(state, active_tr
         wp.pitch = best_p
     end
     reaper.MIDI_Sort(target_take)
+    if KeySignatureService and KeySignatureService.respell_item_notes then
+        KeySignatureService.respell_item_notes(state, target_take, key_idx, key_mode)
+    end
     reaper.SetEditCurPos2(0, reaper.TimeMap2_QNToTime(0, waypoints[1].start_qn), false, false)
     if state then
         state._suppress_autoscroll_frames = 2
@@ -1466,6 +1528,16 @@ function MelodyPathfinderService.apply_to_score(state, midi_service, preview, op
     end
 
     reaper.MIDI_Sort(take)
+
+    -- Respell inserted notes according to the active Key Signature (e.g. F# in G Major, Bb/Eb in Gm/Bb Major)
+    if KeySignatureService and KeySignatureService.respell_item_notes then
+        local eff_kidx = preview.key_idx
+        local eff_kmode = preview.key_mode
+        if eff_kidx == nil then
+            eff_kidx, eff_kmode = MelodyPathfinderService.resolve_track_key_signature(state, track, take, min_qn)
+        end
+        KeySignatureService.respell_item_notes(state, take, eff_kidx or 0, eff_kmode or "major")
+    end
 
     -- Rebuild `state.selected_notes` with the exact post-MIDI_Sort indices of the newly inserted notes
     -- and lock the original session waypoints so further adjustments in the open modal never drift!

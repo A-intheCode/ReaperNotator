@@ -13,14 +13,14 @@ local function resolve_item_and_take(item, take)
     local real_item = nil
     local real_take = nil
 
-    if type(item) == "table" then
+    if type(item) == "table" and not reaper.ValidatePtr(item, "MediaItem*") then
         real_item = item.item
         real_take = item.take
     elseif item and reaper.ValidatePtr(item, "MediaItem*") then
         real_item = item
     end
 
-    if type(take) == "table" then
+    if type(take) == "table" and not reaper.ValidatePtr(take, "MediaItem_Take*") then
         real_take = take.take or real_take
     elseif take and reaper.ValidatePtr(take, "MediaItem_Take*") then
         real_take = take

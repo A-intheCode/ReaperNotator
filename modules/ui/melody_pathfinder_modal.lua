@@ -8,12 +8,19 @@
 local MelodyStyleCorpus       = require("services.melody_style_corpus")
 local MelodyPathfinderService = require("services.melody_pathfinder_service")
 local PatternService          = require("services.pattern_service")
+local Engraver                = package.loaded["rendering.engraver"] or require("rendering.engraver")
 
 local MelodyPathfinderModal = {}
 
 local NOTE_NAMES = { "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B" }
-local function pitch_to_name(p)
+local function pitch_to_name(p, key_idx)
     if not p then return "-" end
+    if Engraver and Engraver.get_pitch_display_name then
+        local pname, poct = Engraver.get_pitch_display_name(p, nil, tonumber(key_idx) or 0)
+        if pname then
+            return string.format("%s%d", tostring(pname), tonumber(poct) or (math.floor(p / 12) - 1))
+        end
+    end
     local oct = math.floor(p / 12) - 1
     local semi = (p % 12) + 1
     return string.format("%s%d", NOTE_NAMES[semi] or "C", oct)
@@ -158,14 +165,20 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
     end
 
     if s_vis then
-        local target_track, waypoints = MelodyPathfinderService.get_selected_waypoints(state, active_tracks_data)
+        local target_track, waypoints, target_take = MelodyPathfinderService.get_selected_waypoints(state, active_tracks_data)
         local trk_guid = (target_track and reaper.ValidatePtr(target_track, "MediaTrack*") and reaper.GetTrackGUID(target_track)) or ""
         local cur_clef_setting = (state.track_clefs and state.track_clefs[trk_guid]) or "auto"
         local cur_q_bucket = (#waypoints == 0) and math.floor((reaper.GetCursorPosition() or 0) * 4) or 0
+        local probe_qn = (waypoints[1] and waypoints[1].start_qn) or reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition() or 0)
+        local eff_kidx, eff_kmode, _, eff_klabel = MelodyPathfinderService.resolve_track_key_signature(
+            state, target_track, target_take, probe_qn
+        )
         local wp_sig = string.format(
-            "%s_%s_%d_%s_%s_%d",
+            "%s_%s_%d_%s_%d_%s_%s_%d",
             trk_guid,
             cur_clef_setting,
+            eff_kidx or 0,
+            eff_kmode or "major",
             #waypoints,
             waypoints[1] and string.format("%.3f_%d", waypoints[1].start_qn, waypoints[1].pitch) or "0",
             waypoints[#waypoints] and string.format("%.3f_%d", waypoints[#waypoints].start_qn, waypoints[#waypoints].pitch) or "0",
@@ -187,9 +200,11 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         end
         local preview = state.mpf_preview
         local clef_reg = (preview and preview.clef_register) or { label = "Treble Clef", min_p = 55, max_p = 86 }
+        local active_kidx = (preview and preview.key_idx) or eff_kidx or 0
+        local active_klabel = (preview and preview.key_label) or eff_klabel or "C Major"
 
         -- ==================================================================
-        -- 1. HEADER: ACTIVE TRACK, CLEF REGISTER & WAYPOINT LANDMARK STATUS
+        -- 1. HEADER: ACTIVE TRACK, CLEF REGISTER, KEY SIG & WAYPOINT STATUS
         -- ==================================================================
         local trk_name = "Active Track"
         if target_track and reaper.ValidatePtr(target_track, "MediaTrack*") then
@@ -201,16 +216,18 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
         reaper.ImGui_TextColored(ctx, 0xF39C12FF, "TARGET STAFF:")
         reaper.ImGui_SameLine(ctx)
         reaper.ImGui_TextColored(ctx, 0x5DADE2FF, trk_name)
-        reaper.ImGui_SameLine(ctx, 0, 12)
+        reaper.ImGui_SameLine(ctx, 0, 10)
         reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format(
             "𝄞 %s [%s–%s]",
             clef_reg.label or "Clef",
-            pitch_to_name(clef_reg.min_p),
-            pitch_to_name(clef_reg.max_p)
+            pitch_to_name(clef_reg.min_p, active_kidx),
+            pitch_to_name(clef_reg.max_p, active_kidx)
         ))
+        reaper.ImGui_SameLine(ctx, 0, 10)
+        reaper.ImGui_TextColored(ctx, 0xFFD700FF, string.format("🔑 %s", active_klabel))
 
         -- Quick Register Octave Shift (-1 / Auto / +1)
-        reaper.ImGui_SameLine(ctx, 0, 12)
+        reaper.ImGui_SameLine(ctx, 0, 10)
         if reaper.ImGui_SmallButton(ctx, "-8vb##mpf_oct_dn") then
             opts.octave_shift = math.max(-2, (opts.octave_shift or 0) - 1)
             state.mpf_dirty = true
@@ -241,31 +258,34 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
 
         if #waypoints >= 2 then
             reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format(
-                "✓ %d Key Notes (Waypoints) selected [%s -> %s] — filling %d musical segment(s)",
+                "✓ %d Key Notes (Waypoints) selected [%s -> %s] — filling %d musical segment(s) in %s",
                 #waypoints,
-                pitch_to_name(waypoints[1].pitch),
-                pitch_to_name(waypoints[#waypoints].pitch),
-                #waypoints - 1
+                pitch_to_name(waypoints[1].pitch, active_kidx),
+                pitch_to_name(waypoints[#waypoints].pitch, active_kidx),
+                #waypoints - 1,
+                active_klabel
             ))
         elseif #waypoints == 1 then
             reaper.ImGui_TextColored(ctx, 0xF1C40FFF, string.format(
-                "★ 1 Seed Note selected (%s) — generating %d-Bar %s (Bars %d–%d) in %s register!",
-                pitch_to_name(waypoints[1].pitch),
+                "★ 1 Seed Note selected (%s) — generating %d-Bar %s (Bars %d–%d) in %s (%s)!",
+                pitch_to_name(waypoints[1].pitch, active_kidx),
                 opts.phrase_bars or 4,
                 opts.counter_melody_mode and "Counter-Melody" or "Melodic Phrase",
                 bar_start,
                 bar_end,
+                active_klabel,
                 clef_reg.label or "Clef"
             ))
         else
             reaper.ImGui_TextColored(ctx, 0xE67E22FF, string.format(
-                "ℹ No notes selected — generating %d-Bar phrase (Bars %d–%d) in %s register [%s–%s] aligned with Reference Track",
+                "ℹ No notes selected — generating %d-Bar phrase (Bars %d–%d) in %s (%s [%s–%s])",
                 opts.phrase_bars or 4,
                 bar_start,
                 bar_end,
+                active_klabel,
                 clef_reg.label or "Clef",
-                pitch_to_name(clef_reg.min_p),
-                pitch_to_name(clef_reg.max_p)
+                pitch_to_name(clef_reg.min_p, active_kidx),
+                pitch_to_name(clef_reg.max_p, active_kidx)
             ))
         end
 
@@ -484,8 +504,8 @@ function MelodyPathfinderModal.render(ctx, state, midi_service, audio_preview, a
             "LIVE MELODIC MAP PREVIEW (%d generated notes in %s [%s–%s] | %d reference harmony notes):",
             gen_cnt,
             clef_reg.label or "Clef",
-            pitch_to_name(clef_reg.min_p),
-            pitch_to_name(clef_reg.max_p),
+            pitch_to_name(clef_reg.min_p, active_kidx),
+            pitch_to_name(clef_reg.max_p, active_kidx),
             ref_cnt
         ))
         reaper.ImGui_TextColored(ctx, 0x8892B0FF, "🟠 Gold = Key Landmarks   🟢 Green = Generated Bridge/Counter-Melody   🟣 Purple = Reference Track Harmony")
