@@ -486,6 +486,12 @@ function State.new()
         rec_auto_divisi = false,           -- Distribute simultaneous notes & registers across armed tracks
         rec_auto_divisi_mode = "smart_register", -- "smart_register" | "top_down"
         rec_divisi_tol_ticks = 45,         -- Tick tolerance (960 PPQ) for chord attack grouping & legato transition de-overlap
+        rec_midi_step_input = false,       -- Trigger Step Input (1 Grid length) via MIDI keyboard (supports Auto-Divisi)
+        show_circle_of_fifths_modal = false, -- Circle of Fifths & Global Harmonic Chord Palette modal
+        cof_pages = nil,                   -- Global multi-tab 8-tile chord palettes
+        cof_active_page_idx = 1,
+        cof_voicing_mode = "auto",
+        cof_octave = 4,
         _was_recording = false,            -- Internal edge detector for record stop
         _rec_start_time = 0,
         
@@ -917,6 +923,7 @@ function State:load_settings()
     self.rec_auto_divisi = load_bool("rec_auto_divisi", false)
     self.rec_auto_divisi_mode = load_str("rec_auto_divisi_mode", "smart_register")
     self.rec_divisi_tol_ticks = load_num("rec_divisi_tol_ticks", 45)
+    self.rec_midi_step_input = load_bool("rec_midi_step_input", false)
     self.beam_grouping = load_str("beam_grouping", "beat")
     self.dyn_cc_a = load_num("dyn_cc_a", 1)
     self.dyn_cc_b = load_num("dyn_cc_b", 11)
@@ -1247,6 +1254,7 @@ function State.save_settings(self)
     save_val("rec_auto_divisi", self.rec_auto_divisi == true)
     save_val("rec_auto_divisi_mode", self.rec_auto_divisi_mode or "smart_register")
     save_val("rec_divisi_tol_ticks", math.floor(self.rec_divisi_tol_ticks or 45))
+    save_val("rec_midi_step_input", self.rec_midi_step_input == true)
     save_val("beam_grouping", self.beam_grouping or "beat")
     save_val("dyn_cc_a", self.dyn_cc_a or 1)
     save_val("dyn_cc_b", self.dyn_cc_b or 11)

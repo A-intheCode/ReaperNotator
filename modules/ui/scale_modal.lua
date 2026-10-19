@@ -4,6 +4,7 @@
 -- ==============================================================================
 
 local ScaleService = require("services.scale_service")
+local Engraver = require("rendering.engraver")
 
 local ScaleModal = {}
 
@@ -21,8 +22,8 @@ function ScaleModal.render(ctx, state)
         state.focus_scale_modal = nil
     end
 
-    reaper.ImGui_SetNextWindowSize(ctx, 460, 420, reaper.ImGui_Cond_FirstUseEver())
-    local s_vis, s_open = reaper.ImGui_Begin(ctx, "🎹 Scale Transpose###ScaleModalWindow", true, flags)
+    reaper.ImGui_SetNextWindowSize(ctx, 480, 440, reaper.ImGui_Cond_FirstUseEver())
+    local s_vis, s_open = reaper.ImGui_Begin(ctx, "🎹 Scale & Key Signature###ScaleModalWindow", true, flags)
 
     if not s_open then
         state.show_scale_modal = false
@@ -38,7 +39,7 @@ function ScaleModal.render(ctx, state)
         if sel_cnt > 0 then
             reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("✓ %d note(s) selected for scale transposition", sel_cnt))
         else
-            reaper.ImGui_TextColored(ctx, 0xE74C3CFF, "⚠ No notes selected. Select notes in score to transpose.")
+            reaper.ImGui_TextColored(ctx, 0x3498DBFF, "ℹ Set active Key Signature for note entry, or select notes to transpose.")
         end
         reaper.ImGui_Separator(ctx)
         reaper.ImGui_Spacing(ctx)
@@ -92,12 +93,14 @@ function ScaleModal.render(ctx, state)
             reaper.ImGui_EndCombo(ctx)
         end
 
-        -- 4. Scale Preview / Note Names in Scale
-        local root_name = ScaleService.ROOT_NAMES[state.scale_modal_root + 1]
+        -- 4. Scale Preview / Note Names in Scale (key-signature-aware spelling)
+        local kidx = ScaleService.get_key_signature_for_scale(state.scale_modal_root, state.scale_modal_type)
+        local root_name = (Engraver.get_pitch_display_name and Engraver.get_pitch_display_name(60 + state.scale_modal_root, nil, kidx)) or ScaleService.ROOT_NAMES[state.scale_modal_root + 1]
         local scale_notes = {}
         for _, iv in ipairs(cur_scale_def.intervals) do
             local pc = (state.scale_modal_root + iv) % 12
-            table.insert(scale_notes, ScaleService.ROOT_NAMES[pc + 1])
+            local n_str = (Engraver.get_pitch_display_name and Engraver.get_pitch_display_name(60 + pc, nil, kidx)) or ScaleService.ROOT_NAMES[pc + 1]
+            table.insert(scale_notes, n_str)
         end
         local notes_str = table.concat(scale_notes, " - ")
 
@@ -115,13 +118,23 @@ function ScaleModal.render(ctx, state)
         reaper.ImGui_Separator(ctx)
         reaper.ImGui_Spacing(ctx)
 
-        -- 5. Action Buttons (Cancel / Apply)
-        local btn_half_w = (reaper.ImGui_GetContentRegionAvail(ctx) - 10) * 0.5
-        if reaper.ImGui_Button(ctx, "Cancel", btn_half_w, 28) then
+        -- 5. Action Buttons (Cancel / Set Key Signature / Apply Scale Transpose)
+        local avail_w = reaper.ImGui_GetContentRegionAvail(ctx)
+        local btn_w_3 = (avail_w - 16) / 3.0
+        if reaper.ImGui_Button(ctx, "Cancel", btn_w_3, 28) then
             state.show_scale_modal = false
         end
 
-        reaper.ImGui_SameLine(ctx, 0, 10)
+        reaper.ImGui_SameLine(ctx, 0, 8)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x2980B9FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x3498DBFF)
+        if reaper.ImGui_Button(ctx, "🎼 Set Key Signature", btn_w_3, 28) then
+            ScaleService.apply_scale_as_key_signature(state, state.scale_modal_root, state.scale_modal_type)
+            state.show_scale_modal = false
+        end
+        reaper.ImGui_PopStyleColor(ctx, 2)
+
+        reaper.ImGui_SameLine(ctx, 0, 8)
         local can_apply = (sel_cnt > 0)
         if not can_apply then
             reaper.ImGui_BeginDisabled(ctx)
@@ -130,7 +143,8 @@ function ScaleModal.render(ctx, state)
             reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x2ECC71FF)
         end
 
-        if reaper.ImGui_Button(ctx, "🎹 Apply Scale Transpose", btn_half_w, 28) then
+        if reaper.ImGui_Button(ctx, "🎹 Transpose Notes", btn_w_3, 28) then
+            ScaleService.apply_scale_as_key_signature(state, state.scale_modal_root, state.scale_modal_type)
             local ok = ScaleService.transpose_selection_to_scale(state, state.scale_modal_root, state.scale_modal_type)
             if ok then
                 state.show_scale_modal = false

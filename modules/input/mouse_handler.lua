@@ -10,6 +10,7 @@ local MidiService = require("services.midi_service")
 local AudioPreview = require("services.audio_preview")
 local HairpinService = require("services.hairpin_service")
 local DynamicTextService = require("services.dynamic_text_service")
+local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
 
 local MouseHandler = {}
 
@@ -69,6 +70,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
 
     local is_ctrl = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftCtrl()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightCtrl())
     local is_shift = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftShift()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightShift())
+    local is_alt = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftAlt()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightAlt())
     
     -- 1. ITEM RESIZING
     if state.hovered_item_edge and reaper.ImGui_IsMouseClicked(ctx, 0) and not is_ctrl then
@@ -151,7 +153,15 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                 local treble_bot = target_trk.treble_bottom_y or (target_trk.band_y0 + 72 * s)
                 local bass_bot = target_trk.bass_bottom_y or (target_trk.is_grand and (target_trk.band_y0 + 148 * s) or (target_trk.band_y0 + 80 * s))
                 local mid_bot = target_trk.mid_bottom_y
-                local new_pitch, in_tr = Engraver.canvas_y_to_pitch(mouse_y, treble_bot, bass_bot, step_y, target_trk.is_grand, target_trk.clef, nil, mid_bot)
+                local drag_qn = (state.drag_note and state.drag_note.start_qn) or 0
+                local drag_key_idx = 0
+                if has_kss and KeySignatureService and KeySignatureService.resolve_effective_key then
+                    local res = KeySignatureService.resolve_effective_key(state, target_trk, state.drag_note and state.drag_note.item, drag_qn)
+                    drag_key_idx = (type(res) == "table" and (res.idx or res.key_idx)) or (type(res) == "number" and res) or 0
+                else
+                    drag_key_idx = state.key_signature or 0
+                end
+                local new_pitch, in_tr = Engraver.canvas_y_to_pitch(mouse_y, treble_bot, bass_bot, step_y, target_trk.is_grand, target_trk.clef, nil, mid_bot, drag_key_idx)
                 state.drag_target_pitch = math.max(0, math.min(127, new_pitch or (state.drag_note and state.drag_note.pitch) or 60))
             else
                 state.drag_target_pitch = state.drag_note and state.drag_note.pitch or 60
@@ -1103,9 +1113,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             if n_obj then
                 AudioPreview.play_note(state, n_obj.pitch or prev.pitch, n_obj.vel or 96, n_obj.chan or 0, n_obj.track or prev.track, n_obj.start_qn or prev.qn, n_obj)
                 local bpi = qn_per_measure or 4.0
-                local p_info = Constants.PITCH_MAP and Constants.PITCH_MAP[prev.pitch % 12]
-                local p_name = p_info and p_info.name or "C"
-                local p_oct = math.floor(prev.pitch / 12) - 1
+                local pref_acc = (prev.accidental and prev.accidental ~= 0) and prev.accidental or nil
+                local p_name, p_oct = Engraver.get_pitch_display_name(prev.pitch, pref_acc, prev.key_sig_idx or state.key_signature or 0)
                 local dur_str = state.dur_label or "1/4"
                 if state.is_dotted then dur_str = dur_str .. "." end
                 if state.tuplet_type then

@@ -2497,4 +2497,333 @@ function RecordQuantizeService.process_recording(state, start_time, stop_time)
     return stats
 end
 
+-- ==============================================================================
+-- 4. MIDI KEYBOARD STEP INPUT & AUTO-DIVISI CHORD CLUSTER INSERTION ENGINE
+-- Writes 1 Grid length per played MIDI note/chord into selected/armed tracks,
+-- fully supporting Auto-Divisi voice/register splitting and Key Signatures!
+-- ==============================================================================
+
+RecordQuantizeService._last_step_midi_seq = nil
+RecordQuantizeService._step_chord_buffer = {}
+RecordQuantizeService._step_chord_start_time = nil
+RecordQuantizeService._step_held_pitches = {}
+
+--- Resolves the step duration in Quarter Notes (1 Grid length, honoring tuplets)
+--- @param state table
+--- @return number step_dur_qn
+function RecordQuantizeService.get_step_input_grid_qn(state)
+    local dur = (state and (state.grid_qn or state.active_dur or state.rec_quantize_grid_qn)) or 1.0
+    if state and state.tuplet_type == "triplet" then
+        dur = dur * (2.0 / 3.0)
+    elseif state and state.tuplet_type == "quintuplet" then
+        dur = dur * (4.0 / 5.0)
+    end
+    return math.max(0.0625, dur)
+end
+
+--- Inserts a single note or multi-note chord cluster at `qn` with duration `dur` (1 Grid length),
+--- automatically distributing notes across armed tracks via Auto-Divisi when enabled!
+--- @param state table
+--- @param pitches table Array of MIDI pitch numbers or `{ pitch, vel, chan }` tables
+--- @param qn number|nil Start position in Quarter Notes (defaults to edit cursor)
+--- @param dur number|nil Duration in Quarter Notes (defaults to 1 Grid length)
+--- @param default_vel number|nil Default velocity (defaults to 96)
+--- @param midi_service table|nil Optional MidiService reference
+--- @return number inserted_count, number target_track_count
+function RecordQuantizeService.insert_chord_cluster_at_qn(state, pitches, qn, dur, default_vel, midi_service)
+    if not pitches or #pitches == 0 then
+        return 0, 0
+    end
+    local ms = midi_service or MidiService
+    local cur_pos = reaper.GetCursorPosition()
+    local target_qn = qn or reaper.TimeMap2_timeToQN(0, cur_pos)
+    local step_dur = dur or RecordQuantizeService.get_step_input_grid_qn(state)
+    local def_vel = default_vel or 96
+    local def_chan = (state and state.active_voice) and (state.active_voice - 1) or 0
+
+    -- Normalize and deduplicate pitches (sorted Highest -> Lowest)
+    local by_pitch = {}
+    local norm_notes = {}
+    for _, entry in ipairs(pitches) do
+        local p, v, c
+        if type(entry) == "table" then
+            p = tonumber(entry.pitch)
+            v = tonumber(entry.vel) or def_vel
+            c = tonumber(entry.chan) or def_chan
+        else
+            p = tonumber(entry)
+            v = def_vel
+            c = def_chan
+        end
+        if p and p >= 0 and p <= 127 then
+            if not by_pitch[p] then
+                local n_obj = { pitch = p, vel = v, chan = c }
+                by_pitch[p] = n_obj
+                table.insert(norm_notes, n_obj)
+            elseif v > (by_pitch[p].vel or 0) then
+                by_pitch[p].vel = v
+            end
+        end
+    end
+
+    if #norm_notes == 0 then
+        return 0, 0
+    end
+
+    table.sort(norm_notes, function(a, b) return a.pitch > b.pitch end)
+
+    local armed_profiles, armed_by_guid = RecordQuantizeService.get_armed_tracks_divisi_profile(state)
+    local use_divisi = (state and state.rec_auto_divisi == true) and (#armed_profiles >= 2)
+    local ap = package.loaded["services.audio_preview"]
+
+    reaper.Undo_BeginBlock2(0)
+
+    local inserted_count = 0
+    local used_tracks = {}
+    local used_track_cnt = 0
+
+    if use_divisi then
+        -- Build raw cluster for compute_auto_divisi_assignment
+        local raw_cluster = {}
+        for _, n_obj in ipairs(norm_notes) do
+            table.insert(raw_cluster, {
+                pitch = n_obj.pitch,
+                vel = n_obj.vel,
+                chan = n_obj.chan,
+                raw_sqn = target_qn,
+                raw_eqn = target_qn + step_dur,
+                sqn = target_qn,
+                eqn = target_qn + step_dur,
+                is_held = false
+            })
+        end
+
+        local assigned = RecordQuantizeService.compute_auto_divisi_assignment(raw_cluster, armed_profiles, state)
+        for _, u in ipairs(assigned or {}) do
+            if not u._divisi_drop and u.assigned_guid and armed_by_guid[u.assigned_guid] then
+                local prof = armed_by_guid[u.assigned_guid]
+                local trk = prof.track
+                if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+                    local ok_ins = ms.insert_note_at_qn(state, target_qn, u.pitch, step_dur, trk)
+                    if ok_ins then
+                        inserted_count = inserted_count + 1
+                        if not used_tracks[trk] then
+                            used_tracks[trk] = prof.name or "Track"
+                            used_track_cnt = used_track_cnt + 1
+                        end
+                        if ap and ap.play_note then
+                            ap.play_note(trk, u.pitch, u.vel or def_vel, u.chan or def_chan, 240)
+                        end
+                    end
+                end
+            end
+        end
+    else
+        -- Standard Step Input into all armed tracks, or focused/selected track if none armed
+        local target_tracks = {}
+        if #armed_profiles >= 1 then
+            for _, prof in ipairs(armed_profiles) do
+                if prof.track and reaper.ValidatePtr(prof.track, "MediaTrack*") then
+                    table.insert(target_tracks, prof.track)
+                end
+            end
+        else
+            local fallback_trk = (state and state.focused_track) or reaper.GetSelectedTrack(0, 0) or reaper.GetTrack(0, 0)
+            if fallback_trk and reaper.ValidatePtr(fallback_trk, "MediaTrack*") then
+                table.insert(target_tracks, fallback_trk)
+            end
+        end
+
+        for _, trk in ipairs(target_tracks) do
+            for _, n_obj in ipairs(norm_notes) do
+                local ok_ins = ms.insert_note_at_qn(state, target_qn, n_obj.pitch, step_dur, trk)
+                if ok_ins then
+                    inserted_count = inserted_count + 1
+                    if not used_tracks[trk] then
+                        used_tracks[trk] = true
+                        used_track_cnt = used_track_cnt + 1
+                    end
+                    if ap and ap.play_note then
+                        ap.play_note(trk, n_obj.pitch, n_obj.vel or def_vel, n_obj.chan or def_chan, 240)
+                    end
+                end
+            end
+        end
+    end
+
+    -- Advance edit cursor by 1 Grid length
+    local next_qn = target_qn + step_dur
+    reaper.SetEditCurPos(reaper.TimeMap2_QNToTime(0, next_qn), true, false)
+
+    local undo_lbl = use_divisi and "MIDI Step Input (Auto-Divisi)" or "MIDI Step Input"
+    reaper.Undo_EndBlock2(0, undo_lbl, -1)
+    ms.invalidate_cache()
+
+    if state and inserted_count > 0 then
+        local ok_eng, Engraver = pcall(require, "rendering.engraver")
+        local ok_ks, KeySigService = pcall(require, "services.key_signature_service")
+        local eff_key = (ok_ks and KeySigService and KeySigService.get_key_at_qn) and KeySigService.get_key_at_qn(state, target_qn) or 0
+        local names = {}
+        for _, n_obj in ipairs(norm_notes) do
+            if ok_eng and Engraver and Engraver.get_pitch_display_name then
+                local pname = Engraver.get_pitch_display_name(n_obj.pitch, eff_key, true)
+                table.insert(names, pname)
+            else
+                table.insert(names, tostring(n_obj.pitch))
+            end
+        end
+        local chord_str = table.concat(names, "+")
+        if use_divisi then
+            state.status_msg = string.format("🎹 MIDI Step Input (Auto-Divisi): %s → %d instrument(s) (+%.2f QN)",
+                chord_str, used_track_cnt, step_dur)
+        else
+            state.status_msg = string.format("🎹 MIDI Step Input: %s (+%.2f QN)", chord_str, step_dur)
+        end
+    end
+
+    return inserted_count, used_track_cnt
+end
+
+--- Moves the edit cursor back by 1 Grid length (Step Back)
+function RecordQuantizeService.step_back_cursor(state)
+    local step_dur = RecordQuantizeService.get_step_input_grid_qn(state)
+    local cur_qn = reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition())
+    local prev_qn = math.max(0, cur_qn - step_dur)
+    reaper.SetEditCurPos(reaper.TimeMap2_QNToTime(0, prev_qn), true, false)
+    if state then
+        state.status_msg = string.format("⏮ Step Back (-%.2f QN)", step_dur)
+    end
+    return prev_qn
+end
+
+--- Advances the edit cursor forward by 1 Grid length without inserting notes (Insert Step Rest)
+function RecordQuantizeService.step_rest_cursor(state)
+    local step_dur = RecordQuantizeService.get_step_input_grid_qn(state)
+    local cur_qn = reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition())
+    local next_qn = cur_qn + step_dur
+    reaper.SetEditCurPos(reaper.TimeMap2_QNToTime(0, next_qn), true, false)
+    if state then
+        state.status_msg = string.format("⏭ Step Rest (+%.2f QN)", step_dur)
+    end
+    return next_qn
+end
+
+--- Flushes any pending MIDI Step Input chord buffer immediately into the score
+function RecordQuantizeService.flush_midi_step_buffer(state, midi_service)
+    if not RecordQuantizeService._step_chord_buffer or #RecordQuantizeService._step_chord_buffer == 0 then
+        return 0, 0
+    end
+    local buf = RecordQuantizeService._step_chord_buffer
+    RecordQuantizeService._step_chord_buffer = {}
+    RecordQuantizeService._step_chord_start_time = nil
+    return RecordQuantizeService.insert_chord_cluster_at_qn(state, buf, nil, nil, nil, midi_service)
+end
+
+--- Polls incoming MIDI keyboard input when transport is stopped and MIDI Step Input is active.
+--- Collects simultaneous chord notes within a brief window (~42ms) so played chords are distributed
+--- together across armed instruments via Auto-Divisi and written with 1 Grid length.
+function RecordQuantizeService.update_midi_step_input(state, midi_service)
+    if not state then return end
+
+    local play_state = reaper.GetPlayState()
+    if play_state ~= 0 then
+        -- Transport is playing or recording; reset step input state
+        RecordQuantizeService._step_chord_buffer = {}
+        RecordQuantizeService._step_chord_start_time = nil
+        RecordQuantizeService._step_held_pitches = {}
+        if reaper.APIExists("MIDI_GetRecentInputEvent") then
+            local init_seq = reaper.MIDI_GetRecentInputEvent(0)
+            RecordQuantizeService._last_step_midi_seq = init_seq or 0
+        end
+        return
+    end
+
+    local is_step_enabled = (state.rec_midi_step_input == true) or (state.input_mode_type == "step" and state.rec_midi_step_input ~= false)
+    if not is_step_enabled then
+        if reaper.APIExists("MIDI_GetRecentInputEvent") then
+            local init_seq = reaper.MIDI_GetRecentInputEvent(0)
+            RecordQuantizeService._last_step_midi_seq = init_seq or 0
+        end
+        RecordQuantizeService._step_chord_buffer = {}
+        RecordQuantizeService._step_chord_start_time = nil
+        RecordQuantizeService._step_held_pitches = {}
+        return
+    end
+
+    if not reaper.APIExists("MIDI_GetRecentInputEvent") then
+        return
+    end
+
+    if not RecordQuantizeService._last_step_midi_seq then
+        local init_seq = reaper.MIDI_GetRecentInputEvent(0)
+        RecordQuantizeService._last_step_midi_seq = init_seq or 0
+        return
+    end
+
+    local new_evts = {}
+    local newest_seq = RecordQuantizeService._last_step_midi_seq
+    for idx = 0, 64 do
+        local seq, buf, ts, dev_idx, proj_pos = reaper.MIDI_GetRecentInputEvent(idx)
+        if not seq or seq == 0 or seq <= RecordQuantizeService._last_step_midi_seq then
+            break
+        end
+        if idx == 0 then
+            newest_seq = seq
+        end
+        table.insert(new_evts, {
+            seq = seq,
+            buf = buf,
+            dev_idx = dev_idx,
+            proj_pos = proj_pos
+        })
+    end
+    RecordQuantizeService._last_step_midi_seq = newest_seq
+
+    local now = reaper.APIExists("time_precise") and reaper.time_precise() or os.clock()
+    local target_dev = state.rec_midi_device or 63
+    local target_chan = state.rec_midi_channel or 0
+
+    for i = #new_evts, 1, -1 do
+        local ev = new_evts[i]
+        local buf = ev.buf
+        if buf and #buf >= 3 then
+            local status_byte = string.byte(buf, 1)
+            local status = status_byte & 0xF0
+            local chan = status_byte & 0x0F
+            local pitch = string.byte(buf, 2)
+            local vel = string.byte(buf, 3)
+
+            local dev_ok = (target_dev == 63) or (target_dev == 62) or (ev.dev_idx == nil) or (ev.dev_idx == target_dev)
+            local chan_ok = (target_chan == 0) or ((chan + 1) == target_chan)
+
+            if dev_ok and chan_ok and pitch >= 16 and pitch <= 127 then
+                if status == 0x90 and vel > 0 then
+                    if not RecordQuantizeService._step_held_pitches[pitch] then
+                        RecordQuantizeService._step_held_pitches[pitch] = true
+                        table.insert(RecordQuantizeService._step_chord_buffer, {
+                            pitch = pitch,
+                            vel = vel,
+                            chan = chan
+                        })
+                        if not RecordQuantizeService._step_chord_start_time then
+                            RecordQuantizeService._step_chord_start_time = now
+                        end
+                    end
+                elseif status == 0x80 or (status == 0x90 and vel == 0) then
+                    RecordQuantizeService._step_held_pitches[pitch] = nil
+                end
+            end
+        end
+    end
+
+    -- Flush chord cluster once the 42ms chord-gathering window elapses
+    if RecordQuantizeService._step_chord_start_time and #RecordQuantizeService._step_chord_buffer > 0 then
+        local chord_window_sec = 0.042
+        if (now - RecordQuantizeService._step_chord_start_time) >= chord_window_sec then
+            RecordQuantizeService.flush_midi_step_buffer(state, midi_service)
+        end
+    end
+end
+
 return RecordQuantizeService
+

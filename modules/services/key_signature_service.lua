@@ -617,15 +617,28 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
                 end
             end
             if found_item then
-                return KeySignatureService.resolve_effective_key(state, nil, found_item, qn)
+                return KeySignatureService.resolve_effective_key(state, track, found_item, qn)
             else
-                -- Not inside any item on this track: check track key or fall back directly to project key (ZERO C-API calls)
+                -- Not inside any item on this track: check track key, then closest item on this track, then project key
                 local guid = track.guid or (track.track and reaper.ValidatePtr(track.track, "MediaTrack*") and reaper.GetTrackGUID(track.track))
                 if guid and state and state.track_key_signatures and state.track_key_signatures[guid] then
                     local tsig = state.track_key_signatures[guid]
                     if type(tsig) == "table" then
                         local kidx = tsig.idx or tsig.key_idx or 0
                         return { idx = kidx, key_idx = kidx, mode = tsig.mode or "major" }
+                    elseif type(tsig) == "number" then
+                        return { idx = tsig, key_idx = tsig, mode = "major" }
+                    end
+                end
+                if #track.items > 0 then
+                    local ref_item = track.items[1]
+                    for _, it in ipairs(track.items) do
+                        if (it.start_qn or 0) <= qn + 0.005 then
+                            ref_item = it
+                        end
+                    end
+                    if ref_item then
+                        return KeySignatureService.resolve_effective_key(state, nil, ref_item, qn)
                     end
                 end
                 local p_idx = (state and state.key_signature) or 0
@@ -633,6 +646,7 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
                 return { idx = p_idx, key_idx = p_idx, mode = p_mode }
             end
         end
+        local fallback_item = nil
         if not found_item then
             local real_trk = (type(track) == "userdata" and reaper.ValidatePtr(track, "MediaTrack*") and track)
                 or (type(track) == "table" and track.track and reaper.ValidatePtr(track.track, "MediaTrack*") and track.track)
@@ -641,9 +655,13 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
                 local MidiService = package.loaded["services.midi_service"]
                 local cached_trk = MidiService and MidiService._track_cache and MidiService._track_cache[trk_guid]
                 if cached_trk and cached_trk.items_info then
+                    fallback_item = cached_trk.items_info[1]
                     for _, it in ipairs(cached_trk.items_info) do
                         local s_qn = it.start_qn or 0
                         local e_qn = it.end_qn or s_qn
+                        if s_qn <= qn + 0.005 then
+                            fallback_item = it
+                        end
                         if qn >= (s_qn - 0.005) and qn < (e_qn - 0.005) then
                             found_item = it
                             break
@@ -658,6 +676,9 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
                         if it then
                             local pos = reaper.GetMediaItemInfo_Value(it, "D_POSITION")
                             local len = reaper.GetMediaItemInfo_Value(it, "D_LENGTH")
+                            if ii == 0 or pos <= t_pos + 0.005 then
+                                fallback_item = it
+                            end
                             if t_pos >= (pos - 0.005) and t_pos < (pos + len - 0.005) then
                                 found_item = it
                                 break
@@ -678,9 +699,40 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
                 return { idx = isig.idx, key_idx = isig.idx, mode = isig.mode or "major" }
             end
         end
+
+        -- 2nd Priority: Track key
+        if track and state and state.track_key_signatures then
+            local guid = (type(track) == "string" and track)
+                or (type(track) == "table" and (track.guid or (track.track and reaper.ValidatePtr(track.track, "MediaTrack*") and reaper.GetTrackGUID(track.track))))
+                or (reaper.ValidatePtr(track, "MediaTrack*") and reaper.GetTrackGUID(track))
+            if guid and state.track_key_signatures[guid] then
+                local tsig = state.track_key_signatures[guid]
+                if type(tsig) == "table" then
+                    local kidx = tsig.idx or tsig.key_idx or 0
+                    return { idx = kidx, key_idx = kidx, mode = tsig.mode or "major" }
+                elseif type(tsig) == "number" then
+                    return { idx = tsig, key_idx = tsig, mode = "major" }
+                elseif type(tsig) == "string" then
+                    local kidx, kmode = tsig:match("^(%-?%d+):?(.*)$")
+                    if kidx then
+                        return { idx = tonumber(kidx), key_idx = tonumber(kidx), mode = (kmode and kmode ~= "") and kmode or "major" }
+                    end
+                end
+            end
+        end
+
+        -- Fallback to closest item on track if outside item bounds and no explicit track key
+        if fallback_item and not found_item then
+            local isig = KeySignatureService.get_item_key_sig(fallback_item, nil, qn)
+            if not isig and type(fallback_item) == "table" and fallback_item.key_sig then isig = fallback_item.key_sig end
+            if isig and (isig.key_idx ~= nil or isig.idx ~= nil) then
+                local kidx = isig.key_idx or isig.idx or 0
+                return { idx = kidx, key_idx = kidx, mode = isig.mode or "major" }
+            end
+        end
     end
 
-    -- 2nd Priority: Track key
+    -- 2nd Priority: Track key (when qn was nil)
     if track and state and state.track_key_signatures then
         local guid = (type(track) == "string" and track)
             or (type(track) == "table" and (track.guid or (track.track and reaper.ValidatePtr(track.track, "MediaTrack*") and reaper.GetTrackGUID(track.track))))

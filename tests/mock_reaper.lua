@@ -1203,7 +1203,7 @@ function Mock.create_environment(repo_root)
     function r.ImGui_GetItemRectMin(ctx) return 100.0, 100.0 end
     function r.ImGui_GetItemRectMax(ctx) return 180.0, 124.0 end
     function r.ImGui_GetItemRectSize(ctx) return 80.0, 24.0 end
-    function r.ImGui_IsItemHovered(ctx, flags) return false end
+    function r.ImGui_IsItemHovered(ctx, flags) return env.item_hovered == true end
     function r.ImGui_IsItemActive(ctx) return env.any_item_active end
     function r.ImGui_IsItemClicked(ctx, btn) return false end
     function r.ImGui_IsItemActivated(ctx) return false end

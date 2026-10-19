@@ -72,7 +72,14 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
         change_mode(cur_mode == "step" and "select" or "step")
     end
     if reaper.ImGui_IsItemHovered(ctx) then
-        reaper.ImGui_SetTooltip(ctx, "Step Input Mode: Insert notes using keys C, D, E, F, G, A, B at cursor")
+        reaper.ImGui_SetTooltip(ctx, "Step Input Mode: Insert notes using keys C, D, E, F, G, A, B at cursor (or via MIDI keyboard)")
+    end
+
+    if toggle_btn(ctx, "🎡 Circle of Fifths", state.show_circle_of_fifths_modal == true, -1, 25, 0x8E44ADFF) then
+        state.show_circle_of_fifths_modal = not state.show_circle_of_fifths_modal
+    end
+    if reaper.ImGui_IsItemHovered(ctx) then
+        reaper.ImGui_SetTooltip(ctx, "Open Circle of Fifths & Global Harmonic Chord Palette (Click to hear tone, Drag & Drop onto 8 tiles to compute harmonic tension)")
     end
     
     -- B. NOTE VALUES (1/1 to 1/32 with shortcuts [7] to [2])
@@ -217,25 +224,32 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
         end
     end
     
+    local has_sel_note = (target_note ~= nil)
     local is_flat_active = (cur_acc == -1)
-    local is_nat_active = (cur_acc == 0)
+    local is_nat_active = has_sel_note and (cur_acc == 0 or cur_acc == 2) or (cur_acc == 2 or (cur_acc == 0 and (state.key_signature or 0) == 0))
     local is_sharp_active = (cur_acc == 1)
+    local nat_active_col = (not has_sel_note and cur_acc == 2) and 0x27AE60FF or 0x444444FF
     
     if toggle_btn(ctx, "♭ Flat [-]", is_flat_active, third_w, 24) then
         if state:count_selected_notes() > 0 or state.selected_note then
             midi_service.apply_accidental_to_selected(state, -1)
         else
             state.accidental = (state.accidental == -1) and 0 or -1
-            state.status_msg = "Accidental: " .. (state.accidental == -1 and "♭ Flat" or "♮ Natural")
+            state.status_msg = "Accidental: " .. (state.accidental == -1 and "♭ Flat" or "Key Signature Default")
         end
     end
     reaper.ImGui_SameLine(ctx)
-    if toggle_btn(ctx, "♮ Natural [0]", is_nat_active, third_w, 24, 0x444444FF) then
+    if toggle_btn(ctx, "♮ Natural [0]", is_nat_active, third_w, 24, nat_active_col) then
         if state:count_selected_notes() > 0 or state.selected_note then
             midi_service.apply_accidental_to_selected(state, 0)
         else
-            state.accidental = 0
-            state.status_msg = "Accidental: ♮ Natural"
+            if state.accidental == 0 then
+                state.accidental = 2
+                state.status_msg = "Accidental: ♮ Natural (Override Key Signature)"
+            else
+                state.accidental = 0
+                state.status_msg = "Accidental: Key Signature Default"
+            end
         end
     end
     reaper.ImGui_SameLine(ctx)
@@ -244,7 +258,7 @@ function Sidebar.render(ctx, state, midi_service, clipboard_service, active_trac
             midi_service.apply_accidental_to_selected(state, 1)
         else
             state.accidental = (state.accidental == 1) and 0 or 1
-            state.status_msg = "Accidental: " .. (state.accidental == 1 and "♯ Sharp" or "♮ Natural")
+            state.status_msg = "Accidental: " .. (state.accidental == 1 and "♯ Sharp" or "Key Signature Default")
         end
     end
     

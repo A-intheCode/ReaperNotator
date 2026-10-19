@@ -446,6 +446,78 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
         end
 
         reaper.ImGui_Spacing(ctx)
+
+        -- MIDI KEYBOARD STEP INPUT (Writes 1 Grid length per played note/chord into selected/armed instruments, with Auto-Divisi!)
+        local step_active = (state.rec_midi_step_input == true) or (state.input_mode_type == "step")
+        if step_active then
+            reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0x2ECC71FF)
+        end
+        local chk_step, new_step = reaper.ImGui_Checkbox(
+            ctx,
+            "🎹 MIDI Keyboard Step Input (Write 1 Grid Length per Played Note/Chord into Armed Instruments)##RecMidiStepCb",
+            step_active
+        )
+        if step_active then
+            reaper.ImGui_PopStyleColor(ctx)
+        end
+        if chk_step then
+            state.rec_midi_step_input = new_step
+            state.input_mode_type = new_step and "step" or "select"
+            state.input_mode = new_step
+            require("state").save_settings(state)
+            state.status_msg = new_step
+                and "🎹 MIDI Keyboard Step Input ACTIVE – Play notes/chords on your MIDI keyboard to write 1 Grid length"
+                or "🎹 MIDI Keyboard Step Input disabled"
+        end
+        if reaper.ImGui_IsItemHovered(ctx) then
+            reaper.ImGui_SetTooltip(ctx, "When enabled (while transport is stopped), playing any note or chord on your MIDI keyboard automatically writes 1 Grid length at the edit cursor into your armed/selected instruments and advances the cursor.\n• Works seamlessly with 🎼 Auto-Divisi Mode to split played chords/registers across armed instruments!")
+        end
+
+        if step_active then
+            reaper.ImGui_Text(ctx, "Step Grid Length:")
+            reaper.ImGui_SameLine(ctx, 0, 8)
+            reaper.ImGui_SetNextItemWidth(ctx, 165)
+            local cur_step_qn = state.grid_qn or state.active_dur or 1.0
+            local step_lbl = state.grid_label or "1/4"
+            for _, g in ipairs(GRIDS) do
+                if math.abs(cur_step_qn - g.qn) < 0.001 then
+                    step_lbl = g.label
+                    break
+                end
+            end
+            if reaper.ImGui_BeginCombo(ctx, "##RecStepGridCombo", step_lbl) then
+                for _, g in ipairs(GRIDS) do
+                    local is_sel = (math.abs(cur_step_qn - g.qn) < 0.001)
+                    if reaper.ImGui_Selectable(ctx, g.label, is_sel) then
+                        local clean_lbl = g.label:match("^(%S+)")
+                        if state.set_active_duration then
+                            state:set_active_duration(g.qn, clean_lbl, midi_service)
+                        else
+                            state.grid_qn = g.qn
+                            state.grid_label = clean_lbl
+                            state.active_dur = g.qn
+                            state.dur_label = clean_lbl
+                        end
+                    end
+                end
+                reaper.ImGui_EndCombo(ctx)
+            end
+
+            reaper.ImGui_SameLine(ctx, 0, 10)
+            if reaper.ImGui_Button(ctx, "⏮ Step Back (-1 Grid)##RecStepBackBtn", 155, 22) then
+                RecordQuantizeService.step_back_cursor(state)
+            end
+            reaper.ImGui_SameLine(ctx, 0, 8)
+            if reaper.ImGui_Button(ctx, "⏭ Step Rest (+1 Grid)##RecStepRestBtn", 155, 22) then
+                RecordQuantizeService.step_rest_cursor(state)
+            end
+
+            if state.rec_auto_divisi then
+                reaper.ImGui_TextColored(ctx, 0xF1C40FFF, "   ↳ 🎼 Auto-Divisi is active for MIDI Step Input: Chords & registers automatically distribute across armed tracks!")
+            end
+        end
+
+        reaper.ImGui_Spacing(ctx)
         reaper.ImGui_Separator(ctx)
         reaper.ImGui_Spacing(ctx)
 

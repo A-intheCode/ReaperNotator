@@ -1098,6 +1098,73 @@ function Engraver.get_note_effective_pitch(raw_pitch, start_qn, track_guid, stat
     return eff_pitch, active_oct, oct_shift
 end
 
+-- Diatonic steps (0=C, 1=D, 2=E, 3=F, 4=G, 5=A, 6=B) altered by sharp/flat key signatures:
+local KEY_SHARP_DIATONIC_STEPS = { 3, 0, 4, 1, 5, 2, 6 } -- F#, C#, G#, D#, A#, E#, B#
+local KEY_FLAT_DIATONIC_STEPS  = { 6, 2, 5, 1, 4, 0, 3 } -- Bb, Eb, Ab, Db, Gb, Cb, Fb
+
+function Engraver.get_key_sig_step_accidental(step_in_oct, key_sig_idx)
+    if type(key_sig_idx) == "table" then
+        key_sig_idx = key_sig_idx.key_idx or key_sig_idx.idx or 0
+    end
+    local kidx = tonumber(key_sig_idx) or 0
+    if kidx == 0 then return 0 end
+    local step = ((step_in_oct or 0) % 7 + 7) % 7
+    if kidx > 0 then
+        local count = math.min(7, kidx)
+        for i = 1, count do
+            if KEY_SHARP_DIATONIC_STEPS[i] == step then
+                return 1
+            end
+        end
+    elseif kidx < 0 then
+        local count = math.min(7, math.abs(kidx))
+        for i = 1, count do
+            if KEY_FLAT_DIATONIC_STEPS[i] == step then
+                return -1
+            end
+        end
+    end
+    return 0
+end
+
+local function resolve_key_enharmonic_pref(p_mod, preferred_acc, key_sig_idx)
+    if preferred_acc ~= nil and preferred_acc ~= 0 then
+        return preferred_acc
+    end
+    local kidx = tonumber(key_sig_idx) or 0
+    if kidx > 0 then
+        if p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10
+           or (kidx >= 6 and p_mod == 5)
+           or (kidx >= 7 and p_mod == 0) then
+            return 1
+        end
+    elseif kidx < 0 then
+        if p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10
+           or (kidx <= -6 and p_mod == 11)
+           or (kidx <= -7 and p_mod == 4) then
+            return -1
+        end
+    end
+    return preferred_acc
+end
+
+function Engraver.get_pitch_display_name(pitch, preferred_acc, key_sig_idx)
+    if type(key_sig_idx) == "table" then
+        key_sig_idx = key_sig_idx.key_idx or key_sig_idx.idx or 0
+    end
+    local p = math.max(0, math.min(127, math.floor((pitch or 60) + 0.5)))
+    local p_mod = p % 12
+    local p_info = Constants.PITCH_MAP[p_mod]
+    local oct_shift = 0
+    local eff_pref_acc = resolve_key_enharmonic_pref(p_mod, preferred_acc, key_sig_idx)
+    if eff_pref_acc and ENHARMONIC_SPELLINGS[p_mod] and ENHARMONIC_SPELLINGS[p_mod][eff_pref_acc] then
+        p_info = ENHARMONIC_SPELLINGS[p_mod][eff_pref_acc]
+        oct_shift = p_info.oct_shift or 0
+    end
+    local octave = (math.floor(p / 12) - 1) + oct_shift
+    return (p_info and p_info.name or "C"), octave
+end
+
 function Engraver.pitch_to_canvas_y(pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, track_clef, preferred_acc, mid_bottom_y, key_sig_idx, force_staff)
     if type(key_sig_idx) == "table" then
         key_sig_idx = key_sig_idx.key_idx or key_sig_idx.idx or 0
@@ -1105,14 +1172,7 @@ function Engraver.pitch_to_canvas_y(pitch, treble_bottom_y, bass_bottom_y, step_
     local p_mod = pitch % 12
     local p_info = Constants.PITCH_MAP[p_mod]
     local oct_shift = 0
-    local eff_pref_acc = preferred_acc
-    if eff_pref_acc == nil and key_sig_idx and key_sig_idx ~= 0 then
-        if key_sig_idx > 0 and ENHARMONIC_SPELLINGS[p_mod] and ENHARMONIC_SPELLINGS[p_mod][1] then
-            eff_pref_acc = 1
-        elseif key_sig_idx < 0 and ENHARMONIC_SPELLINGS[p_mod] and ENHARMONIC_SPELLINGS[p_mod][-1] then
-            eff_pref_acc = -1
-        end
-    end
+    local eff_pref_acc = resolve_key_enharmonic_pref(p_mod, preferred_acc, key_sig_idx)
     if eff_pref_acc and ENHARMONIC_SPELLINGS[p_mod] and ENHARMONIC_SPELLINGS[p_mod][eff_pref_acc] then
         p_info = ENHARMONIC_SPELLINGS[p_mod][eff_pref_acc]
         oct_shift = p_info.oct_shift or 0
@@ -1175,7 +1235,7 @@ function Engraver.pitch_to_canvas_y(pitch, treble_bottom_y, bass_bottom_y, step_
             local eff_p = math.max(0, math.min(127, math.floor(pitch or 60)))
             offset = Constants.GM_DRUM_STEP_MAP[eff_p] or Constants.GM_DRUM_STEP_MAP[60 + (eff_p % 12)] or 4
             ny = target_bottom_y - (offset * step_y)
-            return ny, in_treble, offset, 0, staff_target
+            return ny, in_treble, offset, 0, staff_target, 0
         end
         local b_diatonic = (cdef and cdef.bottom_line_diatonic) or (track_clef == "bass" and -10 or 2)
         offset = diatonic_from_c4 - b_diatonic
@@ -1183,38 +1243,22 @@ function Engraver.pitch_to_canvas_y(pitch, treble_bottom_y, bass_bottom_y, step_
     end
     
     local final_acc = (cdef and cdef.unpitched) and 0 or (p_info and p_info.acc or 0)
-    if not (cdef and cdef.unpitched) and key_sig_idx and key_sig_idx ~= 0 then
-        local KEY_SHARPS_ORDER = { 6, 1, 8, 3, 10, 5, 0 } -- F#, C#, G#, D#, A#, E#, B#
-        local KEY_SHARPS_NATS  = { 5, 0, 7, 2, 9,  4, 11 } -- F,  C,  G,  D,  A,  E,  B
-        local KEY_FLATS_ORDER  = { 10, 3, 8, 1, 6, 11, 4 } -- Bb, Eb, Ab, Db, Gb, Cb, Fb
-        local KEY_FLATS_NATS   = { 11, 4, 9, 2, 7, 0,  5 } -- B,  E,  A,  D,  G,  C,  F
-
-        if key_sig_idx > 0 then
-            local count = math.min(7, key_sig_idx)
-            for i = 1, count do
-                if p_mod == KEY_SHARPS_ORDER[i] then
-                    final_acc = 0 -- Accidental dictated by key signature (suppress)
-                    break
-                elseif p_mod == KEY_SHARPS_NATS[i] then
-                    final_acc = 2 -- Non-diatonic cancellation (natural sign ♮)
-                    break
-                end
-            end
-        elseif key_sig_idx < 0 then
-            local count = math.min(7, math.abs(key_sig_idx))
-            for i = 1, count do
-                if p_mod == KEY_FLATS_ORDER[i] then
-                    final_acc = 0 -- Accidental dictated by key signature (suppress)
-                    break
-                elseif p_mod == KEY_FLATS_NATS[i] then
-                    final_acc = 2 -- Non-diatonic cancellation (natural sign ♮)
-                    break
-                end
-            end
+    local key_step_acc = 0
+    if not (cdef and cdef.unpitched) and key_sig_idx and key_sig_idx ~= 0 and p_info then
+        key_step_acc = Engraver.get_key_sig_step_accidental(p_info.step, key_sig_idx)
+        local raw_note_acc = (p_info.acc == 2) and 0 or (p_info.acc or 0)
+        if p_info.acc == 2 then
+            final_acc = 2
+        elseif raw_note_acc == key_step_acc then
+            final_acc = 0 -- Accidental dictated by key signature (suppress)
+        elseif raw_note_acc == 0 and key_step_acc ~= 0 then
+            final_acc = 2 -- Non-diatonic cancellation (natural sign ♮)
+        else
+            final_acc = raw_note_acc
         end
     end
 
-    return ny, in_treble, offset, final_acc, staff_target
+    return ny, in_treble, offset, final_acc, staff_target, key_step_acc
 end
 
 -- ==============================================================================
@@ -1257,8 +1301,9 @@ function Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure)
                 local shown_acc = 0
                 if raw_acc ~= active_acc then
                     if raw_acc == 0 and active_acc ~= 0 then
-                        -- Cancel previous sharp/flat in the same measure & octave with a natural (♮)
-                        shown_acc = 2
+                        -- Return to key-signature state for this step in the same measure:
+                        -- show sharp/flat if step is altered in key signature, otherwise natural (♮)
+                        shown_acc = (vn.key_step_acc and vn.key_step_acc ~= 0) and vn.key_step_acc or 2
                     else
                         shown_acc = raw_acc
                     end
@@ -1365,7 +1410,7 @@ local GM_STEP_TO_DRUM_PITCH = {
     [10] = 49, -- Crash Cymbal
 }
 
-function Engraver.canvas_y_to_pitch(y, treble_bottom_y, bass_bottom_y, step_y, is_grand, track_clef, accidental, mid_bottom_y)
+function Engraver.canvas_y_to_pitch(y, treble_bottom_y, bass_bottom_y, step_y, is_grand, track_clef, accidental, mid_bottom_y, key_sig_idx)
     local acc = accidental or 0
     local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[track_clef]
     local is_harp = (track_clef == "harp_3staff") or (cdef and cdef.is_multi_staff == "harp_3staff")
@@ -1402,12 +1447,12 @@ function Engraver.canvas_y_to_pitch(y, treble_bottom_y, bass_bottom_y, step_y, i
             diatonic_from_c4 = g2_offset - 10
         end
     else
-        local target_bottom_y = (track_clef == "bass" and bass_bottom_y) or treble_bottom_y
+        local target_bottom_y = (track_clef == "bass" and bass_bottom_y) or ((track_clef == "alto" and mid_bottom_y) and mid_bottom_y or treble_bottom_y)
         in_treble = (track_clef ~= "bass")
         local offset = math.floor(((target_bottom_y - y) / step_y) + 0.5)
         if cdef and cdef.unpitched then
             local dp = GM_STEP_TO_DRUM_PITCH[offset]
-            if dp then return dp, in_treble end
+            if dp then return dp, in_treble, offset, 0 end
         end
         local b_diatonic = (cdef and cdef.bottom_line_diatonic) or (track_clef == "bass" and -10 or 2)
         diatonic_from_c4 = offset + b_diatonic
@@ -1417,8 +1462,16 @@ function Engraver.canvas_y_to_pitch(y, treble_bottom_y, bass_bottom_y, step_y, i
     local octave = math.floor(total_diatonic_step / 7)
     local step_in_oct = total_diatonic_step % 7
     local semitone = DIATONIC_STEP_TO_SEMITONE[step_in_oct] or 0
-    local pitch = ((octave + 1) * 12) + semitone + acc
-    return math.max(0, math.min(127, pitch)), in_treble
+    local eff_acc
+    if acc == 1 or acc == -1 then
+        eff_acc = acc
+    elseif acc == 2 then
+        eff_acc = 0 -- Explicit Natural (♮) override cancels key signature
+    else
+        eff_acc = Engraver.get_key_sig_step_accidental(step_in_oct, key_sig_idx)
+    end
+    local pitch = ((octave + 1) * 12) + semitone + eff_acc
+    return math.max(0, math.min(127, pitch)), in_treble, step_in_oct, eff_acc
 end
 
 function Engraver.decompose_rest_gap(rests, start_qn, dur_qn, m, qn_per_measure)

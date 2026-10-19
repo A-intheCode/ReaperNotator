@@ -2067,8 +2067,8 @@ function MidiService.insert_note(take, qn, pitch, dur_qn, vel, chan, articulatio
     return note_obj
 end
 
-function MidiService.insert_note_at_qn(state, qn, pitch, dur)
-    local track = state.focused_track or reaper.GetSelectedTrack(0, 0)
+function MidiService.insert_note_at_qn(state, qn, pitch, dur, opt_track)
+    local track = opt_track or state.focused_track or reaper.GetSelectedTrack(0, 0)
     if not track then
         local take = MidiService.get_active_midi_take()
         if take then track = get_track_from_take(take) end
@@ -2143,21 +2143,65 @@ function MidiService.insert_note_at_qn(state, qn, pitch, dur)
     MidiService.invalidate_cache(track)
     
     if n_obj then
-        if state.accidental and state.accidental ~= 0 and state.note_accidentals then
-            local k = n_obj:get_key()
-            state.note_accidentals[k] = state.accidental
-            local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(n_obj.idx), qn)
-            state.note_accidentals[id_k] = state.accidental
-            local pos_k = string.format("%s_%.3f_%d", tostring(take), qn, pitch)
-            state.note_accidentals[pos_k] = state.accidental
+        local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
+        local key_sig_idx = (state and state.key_signature) or 0
+        if has_kss and KeySignatureService and KeySignatureService.resolve_effective_key then
+            local res = KeySignatureService.resolve_effective_key(state, track, item, qn)
+            key_sig_idx = (type(res) == "table" and (res.idx or res.key_idx)) or (type(res) == "number" and res) or 0
+        end
+
+        local p_mod = pitch % 12
+        local acc_pref = nil
+        local base_p = pitch
+        if state.accidental == 1 or state.accidental == -1 then
+            acc_pref = state.accidental
+            base_p = pitch - state.accidental
+        elseif state.accidental == 2 then
+            acc_pref = 2
+            base_p = pitch
+        else
+            if key_sig_idx > 0 then
+                if p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10 then
+                    acc_pref = 1
+                    base_p = pitch - 1
+                elseif key_sig_idx >= 6 and p_mod == 5 then
+                    acc_pref = 1
+                    base_p = pitch - 1
+                elseif key_sig_idx >= 7 and p_mod == 0 then
+                    acc_pref = 1
+                    base_p = pitch - 1
+                end
+            elseif key_sig_idx < 0 then
+                if p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10 then
+                    acc_pref = -1
+                    base_p = pitch + 1
+                elseif key_sig_idx <= -6 and p_mod == 11 then
+                    acc_pref = -1
+                    base_p = pitch + 1
+                elseif key_sig_idx <= -7 and p_mod == 4 then
+                    acc_pref = -1
+                    base_p = pitch + 1
+                end
+            else
+                if p_mod == 1 or p_mod == 6 or p_mod == 8 then
+                    base_p = pitch - 1
+                elseif p_mod == 3 or p_mod == 10 then
+                    base_p = pitch + 1
+                end
+            end
+        end
+
+        local k = n_obj:get_key()
+        local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(n_obj.idx), qn)
+        local pos_k = string.format("%s_%.3f_%d", tostring(take), qn, pitch)
+        if acc_pref ~= nil and state.note_accidentals then
+            state.note_accidentals[k] = acc_pref
+            state.note_accidentals[id_k] = acc_pref
+            state.note_accidentals[pos_k] = acc_pref
         end
         if state.note_base_pitch then
-            local base_p = pitch - (state.accidental or 0)
-            local k = n_obj:get_key()
             state.note_base_pitch[k] = base_p
-            local id_k = string.format("%s_%s_%.3f", tostring(take), tostring(n_obj.idx), qn)
             state.note_base_pitch[id_k] = base_p
-            local pos_k = string.format("%s_%.3f_%d", tostring(take), qn, pitch)
             state.note_base_pitch[pos_k] = base_p
         end
         state:clear_selection()
@@ -2842,9 +2886,21 @@ function MidiService.apply_accidental_to_selected(state, acc_type)
             local id_old = string.format("%s_%s_%.3f", tostring(take), tostring(sn.idx), sn.start_qn)
             local pos_old = string.format("%s_%.3f_%d", tostring(take), sn.start_qn, sn.pitch)
             local cur_pref = state.note_accidentals and (state.note_accidentals[k_old] or state.note_accidentals[id_old] or state.note_accidentals[pos_old])
+            local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
+            local note_key_idx = (state and state.key_signature) or 0
+            if has_kss and KeySignatureService and KeySignatureService.resolve_effective_key then
+                local res = KeySignatureService.resolve_effective_key(state, sn.track, sn.item, sn.start_qn)
+                note_key_idx = (type(res) == "table" and (res.idx or res.key_idx)) or (type(res) == "number" and res) or 0
+            end
             if cur_pref == nil then
-                local p_info = Constants.PITCH_MAP[p_mod]
-                cur_pref = p_info and p_info.acc or 0
+                if note_key_idx > 0 and (p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10) then
+                    cur_pref = 1
+                elseif note_key_idx < 0 and (p_mod == 1 or p_mod == 3 or p_mod == 6 or p_mod == 8 or p_mod == 10) then
+                    cur_pref = -1
+                else
+                    local p_info = Constants.PITCH_MAP[p_mod]
+                    cur_pref = p_info and p_info.acc or 0
+                end
             end
             
             -- Determine diatonic base pitch (natural note)

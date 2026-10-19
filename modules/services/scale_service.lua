@@ -987,4 +987,97 @@ function ScaleService.insert_test_midi_case(state, start_measure, track)
     return true
 end
 
+-- ------------------------------------------------------------------------------
+-- Maps a scale (root_pitch 0..11, scale_type) to its corresponding Key Signature
+-- (key_sig_idx -7..+7, mode "major"|"minor")
+-- ------------------------------------------------------------------------------
+function ScaleService.get_key_signature_for_scale(root_pitch, scale_type)
+    local r = (tonumber(root_pitch) or 0) % 12
+    local st = scale_type or "major"
+    local rel_maj = r
+    local mode = "major"
+
+    if st == "minor" or st == "harmonic_minor" or st == "melodic_minor" or st == "pentatonic_min" or st == "blues" then
+        rel_maj = (r + 3) % 12
+        mode = "minor"
+    elseif st == "dorian" then
+        rel_maj = (r + 10) % 12
+        mode = "minor"
+    elseif st == "phrygian" then
+        rel_maj = (r + 8) % 12
+        mode = "minor"
+    elseif st == "lydian" then
+        rel_maj = (r + 7) % 12
+        mode = "major"
+    elseif st == "mixolydian" then
+        rel_maj = (r + 5) % 12
+        mode = "major"
+    elseif st == "locrian" then
+        rel_maj = (r + 1) % 12
+        mode = "minor"
+    end
+
+    local maj_to_idx = {
+        [0]  = 0,   -- C Maj / A Min
+        [7]  = 1,   -- G Maj / E Min (1#)
+        [2]  = 2,   -- D Maj / B Min (2#)
+        [9]  = 3,   -- A Maj / F# Min (3#)
+        [4]  = 4,   -- E Maj / C# Min (4#)
+        [11] = 5,   -- B Maj / G# Min (5#)
+        [6]  = 6,   -- F# Maj / D# Min (6#)
+        [1]  = (r == 1 and mode == "major") and 7 or -5, -- C# Maj (7#) or Db Maj / Bb Min (5b)
+        [8]  = -4,  -- Ab Maj / F Min (4b)
+        [3]  = -3,  -- Eb Maj / C Min (3b)
+        [10] = -2,  -- Bb Maj / G Min (2b)
+        [5]  = -1,  -- F Maj / D Min (1b)
+    }
+
+    local kidx = maj_to_idx[rel_maj] or 0
+    return kidx, mode
+end
+
+function ScaleService.apply_scale_as_key_signature(state, root_pitch, scale_type)
+    if not state then return false end
+    local kidx, mode = ScaleService.get_key_signature_for_scale(root_pitch, scale_type)
+    state.key_signature = kidx
+    state.key_signature_mode = mode
+
+    local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
+    local cur_trk = state.focused_track or (reaper and reaper.GetSelectedTrack and reaper.GetSelectedTrack(0, 0))
+    if cur_trk and reaper and reaper.ValidatePtr and reaper.ValidatePtr(cur_trk, "MediaTrack*") then
+        local trk_guid = reaper.GetTrackGUID and reaper.GetTrackGUID(cur_trk)
+        if trk_guid and state.track_key_signatures and state.track_key_signatures[trk_guid] then
+            state.track_key_signatures[trk_guid] = { idx = kidx, key_idx = kidx, mode = mode }
+        end
+        local it_cnt = reaper.CountTrackMediaItems and reaper.CountTrackMediaItems(cur_trk) or 0
+        for i = 0, it_cnt - 1 do
+            local it = reaper.GetTrackMediaItem(cur_trk, i)
+            local tk = it and reaper.GetActiveTake(it)
+            if tk and reaper.TakeIsMIDI(tk) and has_kss and KeySignatureService and KeySignatureService.set_item_key_sig then
+                KeySignatureService.set_item_key_sig(state, it, tk, kidx, mode, false)
+            end
+        end
+    end
+
+    if has_kss and KeySignatureService and KeySignatureService.save then
+        KeySignatureService.save(state)
+    end
+    if state.save_settings then
+        state:save_settings()
+    end
+    state.cached_measure_map = nil
+    state.cached_measure_map_sig = nil
+    local MidiService = package.loaded["services.midi_service"]
+    if MidiService and MidiService.invalidate_cache then
+        MidiService.invalidate_cache()
+    end
+
+    local root_name = ScaleService.ROOT_NAMES[((tonumber(root_pitch) or 0) % 12) + 1] or "C"
+    local sdef = ScaleService.SCALES[scale_type or "major"]
+    local sname = sdef and sdef.name or (scale_type or "Major")
+    local acc_label = (kidx > 0 and string.format("%d♯", kidx)) or (kidx < 0 and string.format("%d♭", math.abs(kidx))) or "0♯/♭"
+    state.status_msg = string.format("🎼 Key Signature set to %s %s (%s)", root_name, sname, acc_label)
+    return true, kidx, mode
+end
+
 return ScaleService

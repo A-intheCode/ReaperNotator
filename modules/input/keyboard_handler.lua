@@ -6,6 +6,8 @@
 local KeyboardHandler = {}
 local ShortcutManager = require("services.shortcut_manager")
 local AudioPreview = require("services.audio_preview")
+local Engraver = require("rendering.engraver")
+local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
 
 function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dynamics_engine, active_tracks_data)
     -- When a shortcut is being captured in settings, or a text/chord/rehearsal/annotation layer item is being edited, do not execute ANY shortcuts!
@@ -153,27 +155,54 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     -- Highest priority in Step Input mode: note letters without Ctrl/Alt write notes directly!
     if is_step and not is_ctrl and not is_alt then
         local note_keys = {
-            { key = reaper.ImGui_Key_C(), semi = 0, name = "C" },
-            { key = reaper.ImGui_Key_D(), semi = 2, name = "D" },
-            { key = reaper.ImGui_Key_E(), semi = 4, name = "E" },
-            { key = reaper.ImGui_Key_F(), semi = 5, name = "F" },
-            { key = reaper.ImGui_Key_G(), semi = 7, name = "G" },
-            { key = reaper.ImGui_Key_A(), semi = 9, name = "A" },
-            { key = reaper.ImGui_Key_B(), semi = 11, name = "B" },
+            { key = reaper.ImGui_Key_C(), semi = 0,  step = 0, name = "C" },
+            { key = reaper.ImGui_Key_D(), semi = 2,  step = 1, name = "D" },
+            { key = reaper.ImGui_Key_E(), semi = 4,  step = 2, name = "E" },
+            { key = reaper.ImGui_Key_F(), semi = 5,  step = 3, name = "F" },
+            { key = reaper.ImGui_Key_G(), semi = 7,  step = 4, name = "G" },
+            { key = reaper.ImGui_Key_A(), semi = 9,  step = 5, name = "A" },
+            { key = reaper.ImGui_Key_B(), semi = 11, step = 6, name = "B" },
         }
         if reaper.APIExists("ImGui_Key_H") then
-            table.insert(note_keys, { key = reaper.ImGui_Key_H(), semi = 11, name = "H" })
+            table.insert(note_keys, { key = reaper.ImGui_Key_H(), semi = 11, step = 6, name = "H" })
         end
 
         for _, nk in ipairs(note_keys) do
             if reaper.ImGui_IsKeyPressed(ctx, nk.key, false) then
-                local oct = state.current_octave or 4
-                local acc = state.accidental or 0
-                local pitch = (oct + 1) * 12 + nk.semi + acc
-                pitch = math.max(0, math.min(127, pitch))
-
                 local cursor_pos = reaper.GetCursorPosition()
                 local qn = reaper.TimeMap2_timeToQN(0, cursor_pos)
+
+                local target_trk = state.focused_track
+                if active_tracks_data then
+                    for _, tdata in ipairs(active_tracks_data) do
+                        if tdata.track == state.focused_track then
+                            target_trk = tdata
+                            break
+                        end
+                    end
+                    if not target_trk then target_trk = active_tracks_data[1] end
+                end
+
+                local eff_key_idx = state.key_signature or 0
+                if has_kss and KeySignatureService and KeySignatureService.resolve_effective_key then
+                    local res = KeySignatureService.resolve_effective_key(state, target_trk, nil, qn)
+                    eff_key_idx = (type(res) == "table" and (res.idx or res.key_idx)) or (type(res) == "number" and res) or 0
+                end
+
+                local oct = state.current_octave or 4
+                local acc = state.accidental or 0
+                local eff_acc = 0
+                if acc == 1 or acc == -1 then
+                    eff_acc = acc
+                elseif acc == 2 then
+                    eff_acc = 0
+                else
+                    eff_acc = Engraver.get_key_sig_step_accidental(nk.step, eff_key_idx)
+                end
+
+                local pitch = (oct + 1) * 12 + nk.semi + eff_acc
+                pitch = math.max(0, math.min(127, pitch))
+
                 local dur = state.active_dur or 1.0
                 if state.is_dotted then dur = dur * 1.5 end
                 if state.get_tuplet_factor then
@@ -192,7 +221,14 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
                 local new_time = reaper.TimeMap2_QNToTime(0, new_qn)
                 reaper.SetEditCurPos(new_time, true, false)
 
-                local acc_str = (acc == 1 and "♯" or (acc == -1 and "♭" or ""))
+                local acc_str = ""
+                if acc == 2 then
+                    acc_str = "♮"
+                elseif eff_acc == 1 then
+                    acc_str = "♯"
+                elseif eff_acc == -1 then
+                    acc_str = "♭"
+                end
                 state.status_msg = string.format("Step Input: Inserted note %s%s%d (%.2f QN)", nk.name, acc_str, oct, dur)
                 return
             end
@@ -642,8 +678,13 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         if state:count_selected_notes() > 0 or state.selected_note then
             midi_service.apply_accidental_to_selected(state, 0)
         else
-            state.accidental = 0
-            state.status_msg = "Accidental: ♮ Natural"
+            if state.accidental == 0 then
+                state.accidental = 2
+                state.status_msg = "Accidental: ♮ Natural (Override Key Signature)"
+            else
+                state.accidental = 0
+                state.status_msg = "Accidental: Key Signature Default"
+            end
         end
     end
     

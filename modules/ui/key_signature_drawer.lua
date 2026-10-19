@@ -312,7 +312,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
                 elseif state.key_sig_scope == "track" then
                     if cur_trk and trk_guid then
                         if not state.track_key_signatures then state.track_key_signatures = {} end
-                        state.track_key_signatures[trk_guid] = { key_idx = sig.idx, mode = mode }
+                        state.track_key_signatures[trk_guid] = { idx = sig.idx, key_idx = sig.idx, mode = mode }
 
                         local it_cnt = reaper.CountTrackMediaItems(cur_trk)
                         for i = 0, it_cnt - 1 do

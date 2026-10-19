@@ -87,7 +87,7 @@ local function resolve_effective_key(state, track, item, qn)
         if guid and state.track_key_signatures[guid] then
             local entry = state.track_key_signatures[guid]
             if type(entry) == "table" then
-                return entry.idx or 0, entry.mode or "major"
+                return entry.idx or entry.key_idx or 0, entry.mode or "major"
             elseif type(entry) == "number" then
                 return entry, "major"
             end
@@ -420,7 +420,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
             end
         end
         
-        local ny, in_treble_b, dstep, acc, staff_target = Engraver.pitch_to_canvas_y(
+        local ny, in_treble_b, dstep, acc, staff_target, key_step_acc = Engraver.pitch_to_canvas_y(
             eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, note_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff
         )
         vn.nominal_ny = ny
@@ -428,6 +428,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         vn.in_treble = in_treble_b
         vn.dstep = dstep
         vn.acc = is_unpitched and 0 or acc
+        vn.key_step_acc = is_unpitched and 0 or (key_step_acc or 0)
         vn.track = tdata.track
         vn.track_guid = tdata.guid
         vn.notehead_type = Engraver.get_note_notehead_type(vn, state, is_unpitched, eff_pitch)
@@ -2080,12 +2081,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
                 
-                local ny, in_treble_b, dstep, acc, staff_target = Engraver.pitch_to_canvas_y(eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, note_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff)
+                local ny, in_treble_b, dstep, acc, staff_target, key_step_acc = Engraver.pitch_to_canvas_y(eff_pitch, treble_bottom_y, bass_bottom_y, step_y, is_grand, note_clef, pref_acc, mid_bottom_y, note_key_idx, force_staff)
                 vn.nominal_ny = ny
                 vn.in_staff = staff_target
                 vn.in_treble = in_treble_b
                 vn.dstep = dstep
                 vn.acc = is_unpitched and 0 or acc
+                vn.key_step_acc = is_unpitched and 0 or (key_step_acc or 0)
                 vn.track = tdata.track
                 vn.track_guid = tdata.guid
                 vn.notehead_type = Engraver.get_note_notehead_type(vn, state, is_unpitched, eff_pitch)
@@ -4134,7 +4136,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 -- 5. Context menu for measure header
                 local is_bar_hdr_hov = is_hovered
                     and not note_right_clicked_this_frame
-                    and not closest_hovered_vn
                     and not note_hovered_this_frame
                     and not dyn_hovered_this_frame
                     and not hairpin_hovered_this_frame
@@ -4494,7 +4495,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local target_qn = Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, snap_grid, measure_map)
             target_qn = math.max(0, target_qn)
             
-            local target_pitch, in_tr = Engraver.canvas_y_to_pitch(mouse_y, treble_bot, bass_bot, step_y, draw_trk.is_grand, draw_trk.clef, state.accidental, mid_bot)
+            local draw_key_idx = resolve_effective_key(state, draw_trk, nil, target_qn)
+            local target_pitch, in_tr = Engraver.canvas_y_to_pitch(mouse_y, treble_bot, bass_bot, step_y, draw_trk.is_grand, draw_trk.clef, state.accidental, mid_bot, draw_key_idx)
             target_pitch = math.max(0, math.min(127, target_pitch or 60))
             
             local active_dur = state.active_dur or 1.0
@@ -4504,11 +4506,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 qn = target_qn,
                 pitch = target_pitch,
                 dur = active_dur,
-                accidental = state.accidental or 0
+                accidental = state.accidental or 0,
+                key_sig_idx = draw_key_idx
             }
             
+            local pref_draw_acc = (state.accidental and state.accidental ~= 0) and state.accidental or nil
             local gx = Engraver.qn_to_canvas_x(target_qn, margin_left, s, qn_per_measure, measure_map)
-            local gy, _, dstep, _, staff_tgt = Engraver.pitch_to_canvas_y(target_pitch, treble_bot, bass_bot, step_y, draw_trk.is_grand, draw_trk.clef, state.accidental, mid_bot)
+            local gy, _, dstep, preview_acc, staff_tgt = Engraver.pitch_to_canvas_y(target_pitch, treble_bot, bass_bot, step_y, draw_trk.is_grand, draw_trk.clef, pref_draw_acc, mid_bot, draw_key_idx)
             
             -- Ledger lines
             local staff_bot = (staff_tgt == "treble") and treble_bot or ((staff_tgt == "alto") and mid_bot or bass_bot)
@@ -4525,9 +4529,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
             end
             
-            -- Accidental glyph to the left of the notehead
-            if state.accidental and state.accidental ~= 0 then
-                local acc_sym = (state.accidental == 1) and "♯" or ((state.accidental == -1) and "♭" or "♮")
+            -- Accidental glyph to the left of the notehead (when explicitly overridden or required against key signature)
+            local show_acc = (state.accidental and state.accidental ~= 0) and state.accidental or (preview_acc or 0)
+            if show_acc ~= 0 then
+                local acc_sym = (show_acc == 1) and "♯" or ((show_acc == -1) and "♭" or "♮")
                 reaper.ImGui_DrawList_AddText(draw_list, gx - 16 * s, gy - 8 * s, 0x2ECC71FF, acc_sym)
             end
             
@@ -4547,10 +4552,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 reaper.ImGui_DrawList_AddCircleFilled(draw_list, gx + 12 * s, gy - 2 * s, 2.2 * s, border_col)
             end
             
-            -- Floating info badge beside mouse cursor
-            local p_info = Constants.PITCH_MAP and Constants.PITCH_MAP[target_pitch % 12]
-            local p_name = p_info and p_info.name or "C"
-            local p_oct = math.floor(target_pitch / 12) - 1
+            -- Floating info badge beside mouse cursor (key-signature-aware spelling)
+            local p_name, p_oct = Engraver.get_pitch_display_name(target_pitch, pref_draw_acc, draw_key_idx)
             local bpi = qn_per_measure or 4.0
             local dur_str = state.dur_label or "1/4"
             if state.is_dotted then dur_str = dur_str .. "." end
@@ -4592,6 +4595,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         local delta_qn = state.drag_delta_qn or 0
         local delta_pitch = state.drag_delta_pitch or 0
         local bpi = qn_per_measure or 4
+        local primary_drag_key_idx = nil
         
         for _, sn in ipairs(state.drag_selected_snapshot) do
             local ghost_qn = (sn.start_qn or 0) + delta_qn
@@ -4613,7 +4617,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local step_y = line_spacing / 2.0
                 local treble_bot = ghost_trk.treble_bottom_y or (ghost_trk.band_y0 and (ghost_trk.band_y0 + 72 * s)) or (72 * s)
                 local bass_bot = ghost_trk.bass_bottom_y or (ghost_trk.is_grand and (ghost_trk.band_y0 and (ghost_trk.band_y0 + 148 * s) or (148 * s)) or (ghost_trk.band_y0 and (ghost_trk.band_y0 + 80 * s) or (80 * s)))
-                local gy = Engraver.pitch_to_canvas_y(ghost_pitch, treble_bot, bass_bot, step_y, ghost_trk.is_grand, ghost_trk.clef, nil, ghost_trk.mid_bottom_y)
+                local ghost_key_idx = resolve_effective_key(state, ghost_trk, nil, ghost_qn)
+                if primary_drag_key_idx == nil then primary_drag_key_idx = ghost_key_idx end
+                local gy = Engraver.pitch_to_canvas_y(ghost_pitch, treble_bot, bass_bot, step_y, ghost_trk.is_grand, ghost_trk.clef, nil, ghost_trk.mid_bottom_y, ghost_key_idx)
                 
                 -- Glowing semi-transparent gold-orange ghost note with outline
                 reaper.ImGui_DrawList_AddCircleFilled(draw_list, gx, gy, 7.5 * s, 0xFF9F1C88)
@@ -4624,11 +4630,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         -- Tooltip box beside mouse cursor with target pitch and measure position
         local base_pitch = (state.drag_note and state.drag_note.pitch) or 60
         local target_pitch = math.max(0, math.min(127, base_pitch + delta_pitch))
-        local p_info = Constants.PITCH_MAP and Constants.PITCH_MAP[target_pitch % 12]
-        local p_name = p_info and p_info.name or "C"
-        local p_oct = math.floor(target_pitch / 12) - 1
         local base_qn = (state.drag_note and state.drag_note.start_qn) or 0
         local target_qn = math.max(0, base_qn + delta_qn)
+        local badge_key_idx = primary_drag_key_idx or resolve_effective_key(state, active_tracks_data[1], nil, target_qn)
+        local p_name, p_oct = Engraver.get_pitch_display_name(target_pitch, nil, badge_key_idx)
         local tip = string.format("%s%d | Measure %.2f", p_name, p_oct, (target_qn / bpi) + 1)
         
         local bw = 120 * s

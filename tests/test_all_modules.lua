@@ -167,8 +167,9 @@ local all_modules = {
     "classes.glissando_mark", "classes.hairpin", "classes.item", "classes.note",
     "classes.octave_line", "classes.pedal_mark", "classes.portamento_mark",
     "classes.rehearsal_mark", "classes.tempo_marker", "classes.text_item", "classes.track",
-    -- Services (32)
-    "services.annotation_service", "services.audio_preview", "services.clipboard_service",
+    -- Services (33)
+    "services.annotation_service", "services.audio_preview", "services.circle_of_fifths_service",
+    "services.clipboard_service",
     "services.divisi_service", "services.divisio_vocum_service", "services.dynamic_text_service",
     "services.dynamics_engine", "services.fermata_service", "services.filter_notes_service",
     "services.frame_timer_service", "services.glissando_service", "services.hairpin_service",
@@ -186,9 +187,9 @@ local all_modules = {
     "rendering.score_canvas", "rendering.system_engraver",
     -- Input (2)
     "input.keyboard_handler", "input.mouse_handler",
-    -- UI (21)
+    -- UI (25)
     "ui.annotation_drawer", "ui.articulations_drawer", "ui.bank_picker_modal",
-    "ui.bottom_bar", "ui.clef_drawer", "ui.divisi_modal", "ui.divisio_vocum_modal",
+    "ui.bottom_bar", "ui.circle_of_fifths_modal", "ui.clef_drawer", "ui.divisi_modal", "ui.divisio_vocum_modal",
     "ui.dynamics_drawer", "ui.filter_irregular_modal", "ui.help_modal",
     "ui.key_signature_drawer", "ui.melody_pathfinder_modal", "ui.midi_editor_drawer",
     "ui.musicxml_modal", "ui.pattern_browser", "ui.quantize_modal", "ui.record_modal",
@@ -777,6 +778,13 @@ local ui_specs = {
         call = function(ctx, st, project_tracks, fonts)
             st.show_bank_picker = true
             require("ui.bank_picker_modal").render(ctx, st, st.focused_track, st.active_tracks_cache)
+        end
+    },
+    {
+        name = "ui.circle_of_fifths_modal",
+        call = function(ctx, st, project_tracks, fonts)
+            st.show_circle_of_fifths_modal = true
+            require("ui.circle_of_fifths_modal").render(ctx, st, MidiService)
         end
     },
     {
@@ -1416,7 +1424,314 @@ run_test("Automatic Percussion Clef Detection: True Unpitched Drums vs. Pitched 
     end
 end)
 
-run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 78 Modules", function()
+run_test("All Note Input Methods (Mouse Drawing, Step Input, Vertical Dragging, Accidental Overrides & C# Minor Scale/Key Signature)", function()
+    local Engraver = require("rendering.engraver")
+    local ScoreCanvas = require("rendering.score_canvas")
+    local MouseHandler = require("input.mouse_handler")
+    local KeyboardHandler = require("input.keyboard_handler")
+    local MidiService = require("services.midi_service")
+    local ScaleService = require("services.scale_service")
+    local KeySignatureService = require("services.key_signature_service")
+    local State = require("state")
+    local ClipboardService = require("services.clipboard_service")
+    local DynamicsEngine = require("services.dynamics_engine")
+
+    -- 1. ScaleService -> Key Signature mapping (e.g., C# minor -> 4 sharps, minor)
+    local kidx_csm, mode_csm = ScaleService.get_key_signature_for_scale(1, "minor")
+    assert_eq(kidx_csm, 4, "C# minor maps to key_sig_idx = 4 (4 sharps)")
+    assert_eq(mode_csm, "minor", "C# minor maps to mode = 'minor'")
+
+    local kidx_fm, mode_fm = ScaleService.get_key_signature_for_scale(5, "minor")
+    assert_eq(kidx_fm, -4, "F minor maps to key_sig_idx = -4 (4 flats)")
+    assert_eq(mode_fm, "minor", "F minor maps to mode = 'minor'")
+
+    local st = State.new()
+    ScaleService.apply_scale_as_key_signature(st, 1, "minor")
+    assert_eq(st.key_signature, 4, "apply_scale_as_key_signature sets state.key_signature = 4 for C# minor")
+    assert_eq(st.key_signature_mode, "minor", "apply_scale_as_key_signature sets state.key_signature_mode = 'minor'")
+
+    -- 2. Mouse Drawing (canvas_y_to_pitch) & Engraving (pitch_to_canvas_y) in C# Minor (key_sig_idx = 4)
+    -- Treble clef: bottom line E4 is dstep = 0, C4 is dstep = -2, D4 = -1, E4 = 0, F4 = 1, G4 = 2, A4 = 3, B4 = 4, C5 = 5
+    local treble_bot = 200.0
+    local bass_bot = 300.0
+    local step_y = 4.0
+    local c_sharp_minor_steps = {
+        { dstep = -2, expected_pitch = 61, expected_name = "C#" }, -- C#4
+        { dstep = -1, expected_pitch = 63, expected_name = "D#" }, -- D#4
+        { dstep =  0, expected_pitch = 64, expected_name = "E"  }, -- E4
+        { dstep =  1, expected_pitch = 66, expected_name = "F#" }, -- F#4
+        { dstep =  2, expected_pitch = 68, expected_name = "G#" }, -- G#4
+        { dstep =  3, expected_pitch = 69, expected_name = "A"  }, -- A4
+        { dstep =  4, expected_pitch = 71, expected_name = "B"  }, -- B4
+        { dstep =  5, expected_pitch = 73, expected_name = "C#" }, -- C#5
+    }
+    for _, tc in ipairs(c_sharp_minor_steps) do
+        local mouse_y = treble_bot - tc.dstep * step_y
+        local p = Engraver.canvas_y_to_pitch(mouse_y, treble_bot, bass_bot, step_y, false, "treble", 0, nil, 4)
+        assert_eq(p, tc.expected_pitch, string.format("Mouse Draw in C# Minor at dstep %d produces pitch %d (%s)", tc.dstep, tc.expected_pitch, tc.expected_name))
+
+        local ny, _, out_dstep, out_acc, _, out_key_acc = Engraver.pitch_to_canvas_y(p, treble_bot, bass_bot, step_y, false, "treble", nil, nil, 4)
+        assert_eq(out_dstep, tc.dstep, string.format("Engraver.pitch_to_canvas_y in C# Minor places pitch %d back on dstep %d", p, tc.dstep))
+        assert_eq(out_acc, 0, string.format("Diatonic note %s in C# Minor has acc = 0 (suppressed by key signature)", tc.expected_name))
+        assert_true(math.abs(ny - mouse_y) <= 0.01, "Roundtrip Y coordinate matches mouse_y")
+
+        local disp_name = Engraver.get_pitch_display_name(p, nil, 4)
+        assert_eq(disp_name, tc.expected_name, "Display name in C# Minor matches " .. tc.expected_name)
+    end
+
+    -- 3. Verify C natural (60) and F natural (65) in C# Minor (4 sharps) are placed on C and F steps with natural sign (acc = 2), NOT B# or E#!
+    local _, _, c_nat_dstep, c_nat_acc, _, c_key_acc = Engraver.pitch_to_canvas_y(60, treble_bot, bass_bot, step_y, false, "treble", nil, nil, 4)
+    assert_eq(c_nat_dstep, -2, "C4 natural (60) in C# Minor sits on C4 step (dstep -2), not B#3")
+    assert_eq(c_nat_acc, 2, "C4 natural (60) in C# Minor displays natural sign (acc = 2)")
+    assert_eq(c_key_acc, 1, "C4 step in C# Minor has key_step_acc = 1")
+
+    local _, _, f_nat_dstep, f_nat_acc, _, f_key_acc = Engraver.pitch_to_canvas_y(65, treble_bot, bass_bot, step_y, false, "treble", nil, nil, 4)
+    assert_eq(f_nat_dstep, 1, "F4 natural (65) in C# Minor sits on F4 step (dstep 1), not E#4")
+    assert_eq(f_nat_acc, 2, "F4 natural (65) in C# Minor displays natural sign (acc = 2)")
+    assert_eq(f_key_acc, 1, "F4 step in C# Minor has key_step_acc = 1")
+
+    -- 4. Verify Explicit Accidental Overrides (♮ = 2, ♭ = -1, ♯ = 1) during Mouse Drawing in C# Minor
+    local c5_y = treble_bot - 5 * step_y -- C5 space in treble clef
+    local p_c_sharp = Engraver.canvas_y_to_pitch(c5_y, treble_bot, bass_bot, step_y, false, "treble", 0, nil, 4)
+    local p_c_nat   = Engraver.canvas_y_to_pitch(c5_y, treble_bot, bass_bot, step_y, false, "treble", 2, nil, 4)
+    local p_c_flat  = Engraver.canvas_y_to_pitch(c5_y, treble_bot, bass_bot, step_y, false, "treble", -1, nil, 4)
+    assert_eq(p_c_sharp, 73, "Default (acc=0) at C5 space in C# Minor -> C#5 (73)")
+    assert_eq(p_c_nat,   72, "Natural override (acc=2) at C5 space in C# Minor -> C♮5 (72)")
+    assert_eq(p_c_flat,  71, "Flat override (acc=-1) at C5 space in C# Minor -> Cb5 (71)")
+
+    -- 5. Verify Mouse Drawing across Bass Clef, Alto Clef, Grand Staff, and Harp 3-Staff in F Minor (key_sig_idx = -4: Bb, Eb, Ab, Db)
+    -- In Bass Clef: G2 is dstep 0, A2 is dstep 1 -> in F Minor, A step is Ab2 (pitch 44)!
+    local a2_bass_y = bass_bot - 1 * step_y
+    local p_ab2 = Engraver.canvas_y_to_pitch(a2_bass_y, treble_bot, bass_bot, step_y, false, "bass", 0, nil, -4)
+    assert_eq(p_ab2, 44, "Bass Clef A2 step in F Minor (-4) produces Ab2 (44)")
+    local p_a2_nat = Engraver.canvas_y_to_pitch(a2_bass_y, treble_bot, bass_bot, step_y, false, "bass", 2, nil, -4)
+    assert_eq(p_a2_nat, 45, "Bass Clef A2 step with Natural override (2) in F Minor produces A♮2 (45)")
+
+    -- 6. End-to-End Mouse Drawing via ScoreCanvas.render + MouseHandler.handle click in C# Minor
+    local st2, env, trk1, item1, take1, project_tracks, fonts, canvas_info = setup_rich_mock_project()
+    local ctx = reaper.ImGui_CreateContext("note_input_test")
+    st2:set_input_mode("draw")
+    st2.key_signature = 4
+    st2.key_signature_mode = "minor"
+    st2.accidental = 0
+    st2.active_dur = 1.0
+    st2.focused_track = trk1
+    -- Clear track/item key sig overrides so st2.key_signature = 4 governs
+    st2.track_key_signatures = {}
+    reaper.GetSetMediaItemInfo_String(item1, "P_EXT:notator_key_sig", "", true)
+    if st2.active_tracks_cache then
+        for _, td in ipairs(st2.active_tracks_cache) do
+            td.clef = "treble"
+            td.is_grand = false
+            if td.items then
+                for _, it in ipairs(td.items) do
+                    it.key_sig = nil
+                    it.key_sig_events = nil
+                end
+            end
+        end
+    end
+
+    -- First render ScoreCanvas so band_y0 / treble_bottom_y are populated on st2.active_tracks_cache[1]
+    env.mouse_x = 300
+    env.mouse_y = 140
+    env.item_hovered = true
+    local cinfo = ScoreCanvas.render(ctx, st2, fonts, project_tracks, MidiService)
+
+    local t1 = (cinfo and cinfo.active_tracks_data and cinfo.active_tracks_data[1]) or st2.active_tracks_cache[1]
+    t1.clef = "treble"
+    t1.is_grand = false
+    local t1_treble_bot = t1.treble_bottom_y or ((t1.band_y0 or 80) + 72)
+    -- Position mouse exactly on C5 space (dstep = 5 -> 5 * 4 = 20px above treble_bottom_y)
+    env.mouse_x = 300
+    env.mouse_y = t1_treble_bot - 5 * 4.0
+    env.item_hovered = true
+    cinfo = ScoreCanvas.render(ctx, st2, fonts, project_tracks, MidiService)
+
+    assert_true(st2.draw_preview ~= nil, "ScoreCanvas.render created state.draw_preview in Draw Mode")
+    assert_eq(st2.draw_preview.pitch, 73, "Mouse Draw preview at C5 space in C# Minor targets pitch 73 (C#5)")
+
+    -- Simulate left click in MouseHandler to insert the drawn note
+    env.mouse_clicked[0] = true
+    MouseHandler.handle(ctx, st2, cinfo, MidiService, DynamicsEngine)
+    env.mouse_clicked[0] = false
+    assert_true(st2.selected_note ~= nil, "Clicking in Mouse Draw mode inserted and selected a note")
+    assert_eq(st2.selected_note.pitch, 73, "Inserted note via Mouse Draw in C# Minor has pitch 73 (C#5)")
+    assert_true(st2.status_msg:find("C#5", 1, true) ~= nil, "Status message reports 'C#5' (got: " .. tostring(st2.status_msg) .. ")")
+
+    -- Now test Mouse Draw with explicit Natural override (state.accidental = 2) at the exact same C5 space
+    st2.accidental = 2
+    cinfo = ScoreCanvas.render(ctx, st2, fonts, project_tracks, MidiService)
+    assert_eq(st2.draw_preview.pitch, 72, "Mouse Draw preview with Natural override (acc=2) at C5 space in C# Minor targets pitch 72 (C♮5)")
+    env.mouse_clicked[0] = true
+    MouseHandler.handle(ctx, st2, cinfo, MidiService, DynamicsEngine)
+    env.mouse_clicked[0] = false
+    env.item_hovered = false
+    assert_eq(st2.selected_note.pitch, 72, "Inserted note with Natural override in C# Minor has pitch 72 (C♮5)")
+
+    -- 7. Step Input Mode ([S]) Note Entry (C, D, E, F, G, A, B, H) in C# Minor
+    st2:set_input_mode("step")
+    st2.key_signature = 4
+    st2.current_octave = 4
+    st2.accidental = 0
+    reaper.SetEditCurPos(2.0, false, false)
+    local step_expectations = {
+        { key = reaper.ImGui_Key_C(), expected_pitch = 61, label = "C#4" },
+        { key = reaper.ImGui_Key_D(), expected_pitch = 63, label = "D#4" },
+        { key = reaper.ImGui_Key_E(), expected_pitch = 64, label = "E4"  },
+        { key = reaper.ImGui_Key_F(), expected_pitch = 66, label = "F#4" },
+        { key = reaper.ImGui_Key_G(), expected_pitch = 68, label = "G#4" },
+        { key = reaper.ImGui_Key_A(), expected_pitch = 69, label = "A4"  },
+        { key = reaper.ImGui_Key_B(), expected_pitch = 71, label = "B4"  },
+        { key = reaper.ImGui_Key_H(), expected_pitch = 71, label = "H4"  },
+    }
+    for _, se in ipairs(step_expectations) do
+        env.active_keys_pressed[se.key] = true
+        KeyboardHandler.handle(ctx, st2, MidiService, ClipboardService, DynamicsEngine, st2.active_tracks_cache)
+        env.active_keys_pressed[se.key] = false
+        assert_true(st2.selected_note ~= nil, "Step Input created note for " .. se.label)
+        assert_eq(st2.selected_note.pitch, se.expected_pitch, "Step Input in C# Minor for key " .. se.label .. " produced pitch " .. se.expected_pitch)
+    end
+
+    -- Test pressing '0' (Natural override) in Step Input Mode (with no selected notes) and then pressing 'C'
+    st2:clear_selection()
+    st2.selected_note = nil
+    st2.accidental = 0
+    env.active_keys_pressed[reaper.ImGui_Key_0()] = true
+    KeyboardHandler.handle(ctx, st2, MidiService, ClipboardService, DynamicsEngine, st2.active_tracks_cache)
+    env.active_keys_pressed[reaper.ImGui_Key_0()] = false
+    assert_eq(st2.accidental, 2, "Pressing '0' with no note selected toggles state.accidental = 2 (Natural override)")
+
+    env.active_keys_pressed[reaper.ImGui_Key_C()] = true
+    KeyboardHandler.handle(ctx, st2, MidiService, ClipboardService, DynamicsEngine, st2.active_tracks_cache)
+    env.active_keys_pressed[reaper.ImGui_Key_C()] = false
+    assert_eq(st2.selected_note.pitch, 60, "Step Input 'C' with Natural override (acc=2) in C# Minor produces C♮4 (60)")
+
+    -- 8. In-Bar Accidental Memory in C# Minor: C#4 -> C♮4 -> C#4
+    local mock_bar_notes = {
+        { start_qn = 0.0, dstep = -2, acc = 0, key_step_acc = 1, in_staff = "treble" }, -- C#4 (matches key sig)
+        { start_qn = 1.0, dstep = -2, acc = 2, key_step_acc = 1, in_staff = "treble" }, -- C♮4 (cancels key sig)
+        { start_qn = 2.0, dstep = -2, acc = 0, key_step_acc = 1, in_staff = "treble" }, -- C#4 (restores key sig sharp!)
+    }
+    Engraver.apply_measure_accidental_memory(mock_bar_notes, 4.0, nil)
+    assert_eq(mock_bar_notes[1].acc, 0, "1st note (C#4) in C# Minor has acc = 0")
+    assert_eq(mock_bar_notes[2].acc, 2, "2nd note (C♮4) in C# Minor has acc = 2 (natural)")
+    assert_eq(mock_bar_notes[3].acc, 1, "3rd note (returning to C#4 after C♮4 in same bar) displays sharp (acc = 1)")
+end)
+
+run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input with Auto-Divisi", function()
+    local st, env, trk1, item1, take1, project_tracks, fonts = setup_rich_mock_project()
+    local CircleOfFifthsService = require("services.circle_of_fifths_service")
+    local CircleOfFifthsModal = require("ui.circle_of_fifths_modal")
+    local RecordQuantizeService = require("services.record_quantize_service")
+    local MidiService = require("services.midi_service")
+    local ctx = reaper.ImGui_CreateContext("cof_and_midi_step_test")
+
+    -- 1. Verify all 12 sectors (Major & Minor) and chord qualities
+    assert_eq(#CircleOfFifthsService.SECTORS, 12, "12 sectors in Circle of Fifths")
+    local tile_c_maj = CircleOfFifthsService.create_tile(1, "major", nil, 4)
+    assert_eq(tile_c_maj.label, "C", "Sector 1 Major is C")
+    assert_eq(#tile_c_maj.pitches, 3, "C Major triad has 3 notes")
+    assert_eq(tile_c_maj.pitches[1], 60, "C4 = 60")
+    assert_eq(tile_c_maj.pitches[2], 64, "E4 = 64")
+    assert_eq(tile_c_maj.pitches[3], 67, "G4 = 67")
+
+    local tile_csm = CircleOfFifthsService.create_tile(5, "minor", nil, 4)
+    assert_eq(tile_csm.label, "C#m", "Sector 5 Minor is C#m")
+    assert_eq(tile_csm.key_sig_idx, 4, "C#m key signature is +4 (4 sharps)")
+
+    local tile_single = CircleOfFifthsService.create_tile(2, "major", "single", 4)
+    assert_eq(#tile_single.pitches, 1, "Single note quality has 1 pitch")
+    assert_eq(tile_single.pitches[1], 67, "G4 = 67")
+
+    -- 2. Dynamic Harmonic Tension Calculation & Re-coloring as Tiles are added
+    local tiles = { nil, nil, nil, nil, nil, nil, nil, nil }
+    local map_empty = CircleOfFifthsService.compute_tension_map(tiles, nil)
+    assert_eq(map_empty.has_reference, false, "Empty tiles have no reference")
+
+    -- Drop C Major into Slot #1 -> Circle colors relative to C Major
+    tiles[1] = tile_c_maj
+    local map1 = CircleOfFifthsService.compute_tension_map(tiles, 1)
+    assert_eq(map1.has_reference, true, "Slot 1 is active reference")
+    assert_eq(map1.ref_slot, 1, "ref_slot is 1")
+    assert_true(math.abs(map1.major[1].tension - 0.0) < 0.01, "Tonic C Major has 0% tension")
+    assert_true(map1.major[2].tension < 0.25, "Dominant G Major has low diatonic tension (<25%)")
+    assert_true(map1.major[12].tension < 0.25, "Subdominant F Major has low diatonic tension (<25%)")
+    assert_true(map1.major[7].tension > 0.80, "Tritone F# Major has high tension (>80%)")
+
+    -- Drop F# Major (Tritone) into Slot #2 -> Circle automatically recalculates relative to Slot #2 (F# Major)!
+    local tile_fs_maj = CircleOfFifthsService.create_tile(7, "major", nil, 4)
+    tiles[2] = tile_fs_maj
+    local map2 = CircleOfFifthsService.compute_tension_map(tiles, 2)
+    assert_eq(map2.ref_slot, 2, "Active reference updated to Slot 2")
+    assert_true(math.abs(map2.major[7].tension - 0.0) < 0.01, "New reference F# Major now has 0% tension")
+    assert_true(map2.major[1].tension > 0.80, "C Major is now the Tritone pole (>80% tension) relative to F# Major")
+    assert_true(map2.tile_step_tensions[2] ~= nil and map2.tile_step_tensions[2].tension > 0.80, "Step tension from Slot 1 (C) to Slot 2 (F#) is >80%")
+
+    -- 3. Global Multi-Tab Palette Persistence in REAPER ExtState
+    local pages = {
+        { name = "Heroic Theme", tiles = tiles, active_slot = 2 }
+    }
+    CircleOfFifthsService.add_page(pages, "Dark Suspense")
+    assert_eq(#pages, 2, "Added 2nd palette tab")
+    pages[2].tiles[1] = tile_csm
+    CircleOfFifthsService.save_palettes(pages)
+
+    local loaded_pages = CircleOfFifthsService.load_palettes()
+    assert_eq(#loaded_pages, 2, "Loaded 2 global palette tabs from REAPER ExtState")
+    assert_eq(loaded_pages[1].name, "Heroic Theme", "Tab 1 name persisted")
+    assert_eq(loaded_pages[1].tiles[1].label, "C", "Tab 1 Slot 1 persisted as C")
+    assert_eq(loaded_pages[1].tiles[2].label, "F#", "Tab 1 Slot 2 persisted as F#")
+    assert_eq(loaded_pages[2].name, "Dark Suspense", "Tab 2 name persisted")
+    assert_eq(loaded_pages[2].tiles[1].label, "C#m", "Tab 2 Slot 1 persisted as C#m")
+
+    -- Render CircleOfFifthsModal with populated tiles and simulated drag payload
+    st.show_circle_of_fifths_modal = true
+    st.cof_pages = loaded_pages
+    st.cof_active_page_idx = 1
+    st._cof_drag_payload = tile_csm
+    env.mouse_down[0] = true
+    CircleOfFifthsModal.render(ctx, st, MidiService)
+    env.mouse_down[0] = false
+    CircleOfFifthsModal.render(ctx, st, MidiService)
+
+    -- 4. MIDI Keyboard Step Input + Auto-Divisi across Armed Tracks
+    -- Arm both Track 1 (High / Violin) and Track 2 (Low / Cello)
+    local trk2 = project_tracks[2].track
+    reaper.SetMediaTrackInfo_Value(trk1, "I_RECARM", 1)
+    reaper.SetMediaTrackInfo_Value(trk2, "I_RECARM", 1)
+    st.rec_auto_divisi = true
+    st.rec_auto_divisi_mode = "smart_register"
+    st.rec_midi_step_input = true
+    st.grid_qn = 0.5 -- 1/8 note grid
+
+    reaper.SetEditCurPos(reaper.TimeMap2_QNToTime(0, 4.0), false, false)
+    local _, before_cnt1 = reaper.MIDI_CountEvts(take1)
+    local item2 = reaper.GetTrackMediaItem(trk2, 0)
+    local take2 = reaper.GetActiveTake(item2)
+    local _, before_cnt2 = reaper.MIDI_CountEvts(take2)
+
+    -- Insert a 2-note dyad (G5 = 79 for Violin, C3 = 48 for Cello) via MIDI Step Input cluster engine
+    local ins_cnt, trk_cnt = RecordQuantizeService.insert_chord_cluster_at_qn(st, { 79, 48 }, nil, nil, 100, MidiService)
+    assert_eq(ins_cnt, 2, "Inserted 2 notes via MIDI Step Input")
+    assert_eq(trk_cnt, 2, "Auto-Divisi distributed the 2 notes across 2 armed tracks")
+
+    local _, after_cnt1 = reaper.MIDI_CountEvts(take1)
+    local _, after_cnt2 = reaper.MIDI_CountEvts(take2)
+    assert_eq(after_cnt1, before_cnt1 + 1, "Track 1 (High register) received 1 note (G5)")
+    assert_eq(after_cnt2, before_cnt2 + 1, "Track 2 (Low register) received 1 note (C3)")
+
+    local new_cur_qn = reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition())
+    assert_true(math.abs(new_cur_qn - 4.5) < 0.01, "Edit cursor advanced by 1 Grid length (0.5 QN)")
+
+    -- Test Step Back (-1 Grid) and Step Rest (+1 Grid)
+    RecordQuantizeService.step_back_cursor(st)
+    assert_true(math.abs(reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition()) - 4.0) < 0.01, "step_back_cursor moved cursor back to 4.0 QN")
+    RecordQuantizeService.step_rest_cursor(st)
+    assert_true(math.abs(reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition()) - 4.5) < 0.01, "step_rest_cursor advanced cursor to 4.5 QN")
+end)
+
+run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 80 Modules", function()
     local total_exported_functions = 0
     for _, mod_name in ipairs(all_modules) do
         local mod = require(mod_name)

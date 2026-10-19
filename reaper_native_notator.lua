@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.50-beta.3
+-- @version 2.50-beta.4
 -- @changelog
+--   + v2.50-beta.4: New: Circle of Fifths & Global Harmonic Chord Palette Modal (`🎡 Circle of Fifths` below Step Input in Sidebar with 8 drag-and-drop tiles, click-to-audition, dynamic harmonic tension calculation & Circle re-coloring, and global multi-tab REAPER persistence) + MIDI Keyboard Step Input in Record Modal (writes 1 Grid length per played note/chord with full Auto-Divisi support) + Key Signature & Scale Note Input fixes across Mouse Drawing (`[D]`), Step Input (`[S]`), Vertical Note Dragging, `♮ Natural [0]` override & `🎼 Set Key Signature` in Scale Modal
 --   + v2.50-beta.3: Hotfix: Extend Percussion Clef staff mapping (`GM_DRUM_STEP_MAP`) across the full MIDI pitch range C0–C9 (`0..127`) so pitching notes below C2 (`< 35`) or above A5 (`> 81`) always keeps them centered in the Percussion System without ledger-line jumps
 --   + v2.50-beta.2: Hotfix: Restore Percussion Clef staff mapping (`GM_DRUM_STEP_MAP` & `GM_STEP_TO_DRUM_PITCH`) exactly as in v2.50-beta while keeping automatic Cross/Percussion noteheads disabled (manual assignment only via right-click menu) + display `Percussion` in track header subtitle
 --   + v2.50-beta.1: Hotfix: Do not automatically convert notes in Percussion Clef systems to percussion noteheads (`x`, `circle_x`, `triangle`, `diamond`) — all notes default to standard noteheads (`●`) unless manually changed via the right-click menu (`🥁 Notehead / Percussion Head`)
@@ -185,10 +186,13 @@ local MelodyPathfinderModal = safe_require("ui.melody_pathfinder_modal", { rende
 local ExplodeChordsModal    = DivisioVocumModal
 local FilterIrregularModal  = safe_require("ui.filter_irregular_modal", { render = function() end })
 local RecordModal           = safe_require("ui.record_modal", { render = function() end })
+local CircleOfFifthsService = safe_require("services.circle_of_fifths_service", {})
+local CircleOfFifthsModal   = safe_require("ui.circle_of_fifths_modal", { render = function() end })
 local RecordQuantizeService = safe_require("services.record_quantize_service", {
     on_record_start = function() end,
     process_recording = function() end,
-    update_live_recording = function() end
+    update_live_recording = function() end,
+    update_midi_step_input = function() end
 })
 
 -- 4. Initialization of State & Fonts
@@ -352,6 +356,8 @@ local function loop()
     if is_recording then
         state._last_rec_play_pos = reaper.GetPlayPosition()
         RecordQuantizeService.update_live_recording(state)
+    elseif RecordQuantizeService and RecordQuantizeService.update_midi_step_input then
+        RecordQuantizeService.update_midi_step_input(state, MidiService)
     end
     
     -- Authentic dark pro color theme
@@ -811,6 +817,7 @@ local function loop()
         MelodyPathfinderModal.render(ctx, state, MidiService, AudioPreview, state.active_tracks_cache)
         FilterIrregularModal.render(ctx, state, MidiService, state.active_tracks_cache)
         RecordModal.render(ctx, state, MidiService, project_tracks, state.active_tracks_cache)
+        CircleOfFifthsModal.render(ctx, state, MidiService)
         ArticulationsDrawer.render_last_resort_modal(ctx, state, state.active_tracks_cache)
         
         -- ======================================================================
