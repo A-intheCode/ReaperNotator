@@ -24,6 +24,40 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
+- **Circle of Fifths & Global Harmonic Chord Palette (v2.50)**:
+  - **Interactive 24-Sector Harmonic Wheel (`CircleOfFifthsModal` & `CircleOfFifthsService`)**: Located directly below `Step Input` in the Left Sidebar (`🎡 Circle of Fifths`). Features an outer ring of 12 Major keys (`C, G, D, A, E, B, F#, Db, Ab, Eb, Bb, F`) and an inner ring of 12 Relative Minor keys (`Am, Em, Bm, F#m, C#m, G#m, Ebm, Bbm, Fm, Cm, Gm, Dm`) rendered with seamless concentric annular geometry.
+  - **Audition & Target Track Selector (`🔊 Audition & Target Track:`)**: Choose `Auto (Active / Armed / First MIDI Track)` or any specific REAPER project track (`1..N`) with a 1-click `🔊 Test` button. Clicking or dragging any sector or harmonic tile automatically record-arms and enables input monitoring on the target track for instant zero-latency chord auditioning.
+  - **8 Drag-and-Drop Harmonic Tiles & Dynamic Tension Analysis**: Drag any sector from the Circle of Fifths onto the 8 global progression slots (`Slot 1..8`). Selecting a tile dynamically re-colors the entire Circle of Fifths by harmonic tension (`0%` Tonic to `95%` Tritone/Chromatic) and displays pairwise transition tension badges between adjacent tiles.
+  - **Chord Extensions, Inversions, Score Insertion & Global Multi-Tab Persistence**: Customize Triad, 7th (`Maj7`/`m7`/`Dom7`), `9th`, `sus4`, `add9`, `6th`, or `dim7` extensions, inversions (`Root`, `1st Inv`, `2nd Inv`, `Spread`), and base octave (`C2`–`C5`). Insert single tiles or all 8 tiles at the Edit Cursor (with full Auto-Divisi support across armed tracks), set the active Key Signature from any tile (`🎼 Set Key Sig`), and share your 8-tile progression palette across all open REAPER project tabs via global `ExtState`.
+
+- **MIDI Keyboard Step Input & Auto-Divisi Live Recording Suite (v2.36–v2.50)**:
+  - **MIDI Keyboard Step Input (`🎹 Enable MIDI Keyboard Step Input`)**: Toggle in the Right-Click Record Modal when stopped. Playing single notes or chords on any hardware MIDI keyboard writes notes of exact active Grid duration (`1/1` to `1/32`, including dotted notes) at the Edit Cursor, auditions the notes, and advances the Edit Cursor by 1 Grid step—complete with `⏮ Step Back` and `⏭ Step Rest` buttons.
+  - **Auto-Divisi Live Recording & Zero-Latency Input FX Router (`Notator_Auto_Divisi_Router.jsfx`)**: When 2 or more orchestral tracks are armed, live MIDI playing and Step Input automatically route single notes to their matching instrument register (e.g. `C2` $\rightarrow$ Double Bass) and distribute simultaneous chords harmonically across armed tracks (`Smart Register & Voice Split` or `Top-Down Voice Split`) with live audible JSFX routing and legato voice handover.
+
+- **Percussion Clef Auto-Detection, Full C0–C9 Drum Map & 9 SMuFL Custom Noteheads (v2.47–v2.50)**:
+  - **Automatic Unpitched Percussion Clef (`percussion_1`)**: Automatically assigns Percussion Clef to drum and unpitched percussion tracks (`Snare`, `Drums`, `Kick`, `Gran Cassa`, `Toms`, `Taiko`, `Cymbals`, `Hi-Hat`, `Tambourine`, `Percussion`, etc.) while preserving pitched clefs for `Timpani` (Bass Clef), mallets (Treble Clef), and `Celesta` (Grand Staff).
+  - **Full C0–C9 (`0..127`) Percussion Staff Mapping**: Maps General MIDI drum pitches cleanly across the 5-line percussion staff and folds extreme octaves (`< 35` or `> 81`) into the Percussion System without ledger-line jumps.
+  - **9 SMuFL Custom & Percussion Noteheads (`🥁 Notehead / Percussion Head`)**: Right-click any note or multi-note selection to assign `standard`, `x`, `circle_x`, `diamond`, `triangle`, `triangle_down`, `plus`, `slash`, or `square` noteheads with exact Elaine Gould stem attachment coordinates, MIDI Type 15 persistence, Clipboard Copy/Paste, and MusicXML `<notehead>` round-tripping.
+
+- **Elaine Gould ("Behind Bars") Optical Spacing & Engraving Engine (v2.43–v2.44)**:
+  - **Non-Linear Proportional Spacing ($\Delta t^{0.70}$) & Collision-Free Measure Expansion**: Weights intra-measure rhythmic intervals optically and dynamically expands dense measures so noteheads, dots, and accidentals never collide.
+  - **Intra-Bar Accidental Memory & Multi-Column Chord Stacking**: Automatically tracks altered steps within each bar, emits natural ($\natural$) cancellations when returning to diatonic pitches, stacks chord accidentals into up to 3 collision-free diagonal columns, and leaves a clean visual gap between Clef and Key Signature.
+  - **Complete Gould & Read Engraving Details**: 32nd/64th flag & beam stem lengthening with inner-beam clearance, rest-breaking beams, paired fractional stubs, strict 2-side chord 2nd alternation, dotted chord 2nd separation, curved S-bezier Piano/Harp accolade brace (`{`), and stem-centered tremolo slashes.
+
+- **Melodic Pathfinder & Counter-Melody Generator (v2.18–v2.50)**:
+  - **Corpus-Trained 2nd-Order Viterbi Inpainting (`MelodyPathfinderService`)**: Trained on the 1,500-pattern orchestral library ($>126,000$ notes) across 10 musical & Film Composer style profiles. Connects selected Key Waypoint notes ($W_1 \rightarrow W_2 \dots \rightarrow W_k$), grows multi-bar phrases from a single Seed note, or generates species Counter-Melodies against any Reference Track.
+  - **Clef Register Intelligence & Full Key Signature Integration**: Automatically bounds generated notes to the track's active Clef and orchestral instrument register, respects active Major & Minor Key Signatures (`KeySignatureService.resolve_effective_key` & `respell_item_notes`), and supports Melodic Inversion, Retrograde, and Retrograde-Inversion.
+
+- **Per-Track Freehand Annotation Layer System (v2.28–v2.34)**:
+  - **Multi-Layer Freehand Pen & Eraser (`AnnotationService` & `AnnotationDrawer`)**: Draw directly on the score across per-bar transparent PNG tiles with 12 color presets, Analytical Capsule SDF anti-aliasing, quadratic Bézier curve smoothing, and 4 resolution steps (`1x`–`3x`) per instrument track.
+
+- **Global `ImGuiGuardService` & 159-Test Automated Verification Suite (v2.45–v2.50)**:
+  - **Zero-Leak ImGui Stack Protection**: Wraps `ImGui_Begin`/`End` and `ImGui_BeginChild`/`EndChild` across all UI modals, drawers, and panels to guarantee zero `Missing EndChild()` errors even on runtime exceptions.
+  - **159 Automated Unit Tests (`tests/test_all_modules.lua`)**: Verifies all 89 Lua modules and 644 exported functions with strict `_G` global-leak protection and 0 failures.
+
+- **1,500 Curated Orchestral Patterns Across 10 Categories (v2.17)**:
+  - Added **150 Orchestral & Cinematic Percussion** (`09_Orchestral_Percussion`) and **150 Low Strings — Celli & Double Basses** (`10_Low_Strings_Celli_Basses`) patterns to the 1-click Pattern Browser library.
+
 - **Divisi — Split Voices to Duplicated Instrument Tracks (v2.15)**:
   - **True Orchestral Section Divisi (`DivisiService` & `DivisiModal`)**: Splits polyphonic voices (`Voice 1..16` / MIDI Channels `1..16`, e.g., after running *Auto-Voice on Selection* or *Auto-Voice Track Overlaps*) onto newly duplicated REAPER tracks directly below the source staff (`<Track Name> (Divisi 2)`, `<Track Name> (Divisi 3)`, ...).
   - **Full FX, Kontakt/VSTi & Reaticulate Duplication**: Uses REAPER's native track duplication (`Action 40062`) to clone all Kontakt/VSTi instances, Reaticulate JSFX, Reaticulate bank assignments (`P_EXT:reaticulate`), sends/routing, folder hierarchy (`I_FOLDERDEPTH`), Notator clefs, and MIDI items.

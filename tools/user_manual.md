@@ -1,7 +1,7 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
-**Version:** 2.50-beta.3  
-**Date:** 2026-10-18  
+**Version:** 2.50  
+**Date:** 2026-10-19  
 **License:** GNU General Public License v3.0  
 
 ---
@@ -66,7 +66,7 @@ REAPER-Notator can run as a floating window or docked directly into any REAPER d
 
 ### 2.1 Title & Version Indicator
 
-Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.50-beta.3), synchronized directly with modules/version.lua and the main @version header. When running in a Git repository environment, Notator automatically detects and displays the active commit hash via pure-Lua .git/HEAD inspection.
+Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.50), synchronized directly with modules/version.lua and the main @version header. When running in a Git repository environment, Notator automatically detects and displays the active commit hash via pure-Lua .git/HEAD inspection.
 
 ### 2.2 Transport & Playhead Controls
 
@@ -87,7 +87,7 @@ Functions:
 - Non-Destructive Live Clamping (Zero Infinite Tie Artifacts): While recording in MIDI Overdub mode, REAPER temporarily sets the Note-Off of held notes to the end of the MIDI item until the key is released. REAPER-Notator performs real-time auto-quantize preview non-destructively on the ScoreCanvas (strictly clamping held notes to the current red playhead position) without calling MIDI_SetNote/MIDI_Sort mid-recording, and commits the final quantized notes and stop-position clamping cleanly to the REAPER take the instant recording stops.
 - Continuous 60 FPS Auto-Scroll & Counter Tracking: The score viewport smoothly tracks the live recording playhead and updates the top bar Measure.Beat and elapsed time counters continuously.
 
-### 2.4 Right-Click Record Modal: Track Arming, MIDI Input Routing, Auto-Divisi Live Recording, Pre-Roll & Count-In (v2.0 - v2.50)
+### 2.4 Right-Click Record Modal: Track Arming, MIDI Input Routing, Auto-Divisi Live Recording, MIDI Keyboard Step Input, Pre-Roll & Count-In (v2.0 - v2.50)
 
 Functions (accessible by right-clicking the Record button in the Top Toolbar):
 - Bidirectional REAPER Track Arming: Lists all REAPER project tracks (including empty tracks that do not yet contain MIDI items). Toggling a track's checkbox in the Record Modal immediately synchronizes REAPER's native TCP/MCP Record-Arm button (I_RECARM = 1), enables Input Monitoring (I_RECMON = 1), configures MIDI Overdub (I_RECMODE = 7) so REAPER records directly into MIDI score takes without popping up Audio '.wav' Save prompts, and makes the track visible on the score canvas.
@@ -96,6 +96,10 @@ Functions (accessible by right-clicking the Record button in the Top Toolbar):
   * 1 Note Played -> Only the single matching register instrument sounds and records (e.g. playing C2 triggers only Double Bass).
   * 2+ Notes Played Simultaneously -> Chords are distributed harmonically across the armed instruments (Low -> Celli/Basses, Mid -> Violas, High -> Violins I/II) using either 'Smart Register & Voice Split' or 'Top-Down Voice Split'.
   * Tick-Based Chord & Legato Transition Guard (+/-10 to +/-160 Ticks, default +/-45 Ticks at 960 PPQ): Groups chord finger attacks within +/-N ticks into one simultaneous chord, trims brief legato finger-release overlaps (<= N ticks) so monophonic melodies stay on the same instrument without false Divisi jumps, and filters out accidental micro-splinter notes.
+- MIDI Keyboard Step Input (v2.50): Toggle 'Enable MIDI Keyboard Step Input' directly inside the Record Modal when playback/recording is stopped:
+  * Playing single notes or simultaneous chords (within a 60ms chord-gathering window) on any connected hardware MIDI keyboard writes notes of exact active Grid duration (1/1 to 1/32, including dotted notes) at the REAPER Edit Cursor, auditions the notes, and automatically advances the Edit Cursor by 1 Grid step.
+  * Full Auto-Divisi Step Input Support: When 2+ tracks are armed and Auto-Divisi Mode is enabled, played chords or notes are automatically distributed across the armed orchestral tracks according to their playable register or voice order.
+  * Step Navigation Controls: Includes 'Step Back (1 Grid)' and 'Step Rest (Advance 1 Grid)' buttons directly in the Record Modal.
 - MIDI Input Device & Channel Selector: Choose from all connected hardware MIDI keyboards, REAPER's Virtual MIDI Keyboard (VKB), or 'All MIDI Inputs', alongside the target MIDI Channel ('All Channels' or 'Channel 1..16'), assignable globally across armed tracks or individually per track.
 - Pre-Roll on Record (Action 41818): Toggle to audition preceding measures before recording punches in, with selectable Pre-Roll Bar Length (1, 2, or 4 bars synchronized with REAPER's prerollmeas configuration).
 - Metronome Count-In before Record (Action 40364): Enables audible metronome lead-in clicks before recording starts, plus a 1-click shortcut button to open REAPER's native Metronome / Pre-Roll Settings dialog (Action 40049).
@@ -230,11 +234,11 @@ Functions:
 - Alt + Shift + Left / Right Arrows: Extends and expands note selections chronologically across the measure and score.
 - Auto-Scroll Synchronization: When Follow Playhead / Auto-Scroll is active, the score canvas smoothly glides to keep newly selected notes centered in view.
 
-### 3.9 Percussion Clef Systems, General MIDI (GM) Drum Mapping (C0-C9) & Custom Percussion Noteheads (v2.48 - v2.50-beta.3)
+### 3.9 Percussion Clef Systems, General MIDI (GM) Drum Mapping (C0-C9) & Custom Percussion Noteheads (v2.48 - v2.50)
 
 Functions & Drum / Percussion Notation Architecture:
 - Unpitched Percussion Clef Staves (percussion_1 / percussion_2): On any Percussion Clef staff, key signature accidentals and chromatic notehead accidentals (#, b, nat) are automatically suppressed so drum notation remains completely clean.
-- Full-Range General MIDI (GM) Drum Map (MIDI 0..127 / C0 to C9, v2.50-beta.3): Clicking or dragging notes on a Percussion Clef staff directly triggers and maps General MIDI standard drum pitches (Constants.GM_DRUM_STEP_MAP and Constants.GM_STEP_TO_DRUM_PITCH):
+- Full-Range General MIDI (GM) Drum Map (MIDI 0..127 / C0 to C9, v2.50): Clicking or dragging notes on a Percussion Clef staff directly triggers and maps General MIDI standard drum pitches (Constants.GM_DRUM_STEP_MAP and Constants.GM_STEP_TO_DRUM_PITCH):
   * Step 36 (1st Space from bottom, F4): Kick / Bass Drum (MIDI 36 C2 & MIDI 35 B1).
   * Step 37 (2nd Line, G4): Low Floor Tom (MIDI 41 F2).
   * Step 38 (2nd Space, A4): High Floor Tom / Pedal Hi-Hat (MIDI 43 G2 & MIDI 44 G#2).
@@ -245,9 +249,9 @@ Functions & Drum / Percussion Notation Architecture:
   * Step 43 (Top Line, F5): Ride Cymbal / Closed & Open Hi-Hat / Tambourine (MIDI 51 D#3, 42 F#2, 46 A#2, 53 F3, 54 F#3).
   * Step 44 (Space above staff, G5): Ride Cymbal 2 / Chinese Cymbal (MIDI 59 B3 & 52 E3).
   * Step 45 (1st Ledger Line above staff, A5): Crash Cymbal 1 & 2 / Splash Cymbal (MIDI 49 C#3, 55 G3, 57 A3).
-  * Full C0-C9 Octave-Consistent Extension (v2.50-beta.3): Any MIDI note pitched below B1 (< 35, down to C0 = 0) or above A5 (> 81, up to G9 = 127) is automatically mapped via pitch-class folding (60 + (pitch % 12)) onto the exact same fixed Percussion Clef staff positions (Steps 36..45) without ever falling back to Treble Clef ledger lines.
+  * Full C0-C9 Octave-Consistent Extension (v2.50): Any MIDI note pitched below B1 (< 35, down to C0 = 0) or above A5 (> 81, up to G9 = 127) is automatically mapped via pitch-class folding (60 + (pitch % 12)) onto the exact same fixed Percussion Clef staff positions (Steps 36..45) without ever falling back to Treble Clef ledger lines.
 - Manual Custom & Percussion Notehead Assignment ('[Drum] Notehead / Percussion Head'):
-  * Standard Oval Default (v2.50-beta.1): All newly entered notes on Percussion Clef staves default to standard oval noteheads ('standard')—no cross or triangle noteheads are forced automatically.
+  * Standard Oval Default (v2.50): All newly entered notes on Percussion Clef staves default to standard oval noteheads ('standard')—no cross or triangle noteheads are forced automatically.
   * Right-Click Notehead Submenu: Right-click any note (or multi-note selection) on any staff and open '[Drum] Notehead / Percussion Head' to manually assign any of the 9 Elaine Gould / SMuFL notehead types:
     1. Standard (Default Oval) - Standard filled/half/whole oval notehead.
     2. Cross (X) - Hi-Hat / Cymbal (U+E0A9 / U+E0A8 / U+E0A6).
@@ -673,7 +677,7 @@ Interactive Dialog Controls & Features:
 
 Functions: Pressing Ctrl+T inserts a floating score text item at the cursor. Double-click any text item to open an in-place editing field. Configure font size, standard/italic/bold styling, and staff attachment anchor points.
 
-### 11.8 Melodic Pathfinder: Corpus-Trained Key-Note Inpainting & Counter-Melody Engine (v2.32 - v2.50-beta.3)
+### 11.8 Melodic Pathfinder: Corpus-Trained Key-Note Inpainting & Counter-Melody Engine (v2.32 - v2.50)
 
 Overview & Musical Architecture:
 Melodic Pathfinder (implemented in modules/services/melody_pathfinder_service.lua, modules/services/melody_style_corpus.lua, and modules/ui/melody_pathfinder_modal.lua) is an intelligent, corpus-trained melodic composition, key-note inpainting, and contrapuntal counter-melody generator built directly into REAPER-Notator. Trained via tools/train_melody_style_models.py on the 1,500-pattern orchestral library (>126,000 notes), it computes optimal musical pathways connecting user-placed landmark notes or generates complete phrases and counter-melodies harmonized against other tracks in your REAPER project.
@@ -692,8 +696,9 @@ How the 5-Stage Mathematical & Musical Engine Works Under the Hood:
   * Queries MelodyStyleCorpus for empirical rhythm cells (sparse, medium, or dense) controlled by the Density (10%-100%) slider.
   * In Counter-Melody Mode ('Generate Counter-Melody'), the engine analyzes the Reference Track's rhythm in real time to synthesize complementary contrapuntal rhythm: when the Reference Track holds a long sustained note or rests, the Counter-Melody becomes rhythmically active (8th/16th motion); when the Reference Track plays fast runs, the Counter-Melody breathes with broader sustained notes (classical 1st/2nd species counterpoint).
   * Automatically inserts natural breathing rests at phrase midpoints and bar boundaries so wind, brass, and vocal lines sound phrasing-authentic.
-- Stage 2 - Scale / Mode Construction & Strict Playable Instrument / Clef Register Bounding:
+- Stage 2 - Scale / Mode Construction, Key Signature Integration & Strict Playable Instrument / Clef Register Bounding:
   * Builds candidate pitches in the chosen Scale / Mode (Auto, Major/Ionian, Natural Minor/Aeolian, Harmonic Minor, Dorian, Phrygian, Lydian, Mixolydian, Minor Pentatonic, or Chromatic) transposed to the active Key Signature root.
+  * Full Key Signature Integration (v2.50): Queries KeySignatureService.resolve_effective_key(state, item, qn) so item-scoped, timeline, and project Key Signatures (both Major and Relative Minor) automatically determine the root pitch class and scale mode when Scale / Mode is set to 'Auto', and automatically calls KeySignatureService.respell_item_notes(state, item) after inserting generated notes for standard-compliant enharmonic spelling.
   * Automatically detects both the track's active Clef (Treble [57..81], Bass [36..62], Alto [48..72], Tenor [45..69], Grand Staff [48..81]) and 16 specific orchestral instrument playable registers from the track name (Contrabass [28..55], Cello [36..67], Viola [48..74], Violin [55..88], Tuba, Trombone, French Horn, Trumpet, Bassoon, Clarinet, Oboe, Flute, Piccolo, Timpani, Harp, Piano).
   * Interactive Octave Shift Buttons ('-8vb Low', 'Normal', '+8va High', 'Auto') in the modal header shift the target generation register by +/-12 semitones while clamping strictly to MIDI 0..127.
   * Octave-Folding: Any landmark or reference harmony note from another track is folded into the target track's playable clef register so a Bass/Cello track never receives high Violin ledger lines and vice versa.
@@ -738,6 +743,17 @@ Overview & Workflow (modules/services/annotation_service.lua & modules/ui/annota
 - Pen & Eraser Tools with Capsule SDF Anti-Aliasing: Draw directly over staves, measures, and notes using the Pen tool (with configurable brush radius and 12 curated color presets) or erase strokes cleanly with the Eraser tool. Strokes are rasterized using smooth Capsule Signed-Distance-Field (SDF) anti-aliasing.
 - 4 Configurable Instrument Tile Resolutions: Choose from 4 resolution steps per instrument track for crisp vector-like ink fidelity at any zoom level.
 - Transparent PNG Persistence & Inline Layer Renaming: Annotation tiles are automatically saved as transparent PNGs linked to your project, and double-clicking any layer name opens an inline rename box (automatically suppressing global single-key score shortcuts while typing).
+
+### 11.10 Circle of Fifths & Global Harmonic Chord Palette Modal (v2.50)
+
+Overview & Workflow (modules/services/circle_of_fifths_service.lua & modules/ui/circle_of_fifths_modal.lua):
+- Accessing the Modal: Click the 'Circle of Fifths' button located directly below 'Step Input' in the Left Sidebar.
+- Interactive 24-Sector Harmonic Wheel: Displays a vector-drawn concentric wheel with 12 Major keys on the outer ring (C, G, D, A, E, B, F#, Db, Ab, Eb, Bb, F) and 12 Relative Minor keys on the inner ring (Am, Em, Bm, F#m, C#m, G#m, Ebm, Bbm, Fm, Cm, Gm, Dm), rendered with seamless annular sector geometry.
+- Audition & Target Track Selector ('Audition & Target Track:'): Located at the top of the modal, allowing you to choose 'Auto (Active / Armed / First MIDI Track)' or any specific REAPER project track (1..N) alongside a 1-click 'Test' button. Clicking or dragging any sector on the wheel or any harmonic tile automatically record-arms and enables input monitoring on the chosen track for immediate acoustic chord auditioning.
+- Chord Extensions, Inversions & Octave Voicing: Select chord extensions (Triad, 7th, 9th, sus4, add9, 6th, or dim7), chord inversions (Root Position, 1st Inversion, 2nd Inversion, or Spread Orchestral Voicing), and Base Octave (C2 to C5).
+- 8 Global Drag-and-Drop Harmonic Tiles (Slot 1..8): Drag any sector from the Circle of Fifths onto any of the 8 progression slots on the right (or double-click a sector to assign it to the active slot). Clicking a populated tile auditions its stored chord and dynamically re-colors the entire Circle of Fifths to visualize harmonic tension relative to that tile (0% Tonic emerald green, 15-20% Subdominant/Dominant cyan, 25-35% Relative/Parallel blue, 45-65% Mediant/Secondary amber, 80-95% Chromatic/Tritone crimson), complete with pairwise transition tension badges between adjacent tiles.
+- 1-Click Score Insertion & Key Signature Sync: Click 'Insert' on any individual tile or 'Insert All Tiles at Cursor' to write the chord progression into the score at the Edit Cursor (with full Auto-Divisi support across armed tracks), or click 'Set Key Sig' to apply the tile's root and Major/Minor mode as the score/item Key Signature.
+- Global Multi-Tab REAPER Persistence: All 8 harmonic tiles and voicing settings are persisted globally via reaper.SetExtState('REAPER_Notator_Global', 'CircleOfFifths_Palette_v1', ..., true), remaining synchronized across all open REAPER project tabs and sessions.
 
 ---
 
@@ -985,10 +1001,11 @@ Quick reference table for high-speed score entry, MIDI editing, and viewport nav
 - Glissando & Portamento Endpoint Gaps: Wavy glissando and straight portamento lines automatically start to the right of any augmentation dot on the starting note and stop to the left of any accidental on the target note.
 - System Braces vs. Brackets: Orchestral family groups use a straight system bracket with winged tips, while Grand Staff (Piano) and Harp tracks use a curved S-Bezier accolade brace tapering to a central point.
 
-### 18.9 Tremolo Slash Stem Centering & Automated Unit Test Suite (Behind Bars pp. 220-224, v2.46 - v2.50-beta.3)
+### 18.9 Tremolo Slash Stem Centering, ImGuiGuardService & 159-Test Automated Verification Suite (Behind Bars pp. 220-224, v2.46 - v2.50)
 
-- Unmeasured & Measured Tremolo Slash Centering (v2.49-beta): Tremolo slashes (1 to 3 diagonal slashes) are horizontally centered directly on the exact stem X-coordinate (stem_x) for both unbeamed notes and beamed groups across all zoom levels (0.6x to 2.0x), maintaining clearance from noteheads and positioning inside beam groups.
-- Comprehensive Automated Unit Test Suite (tests/test_all_modules.lua & tests/mock_reaper.lua): Verifies all 19 core modules and services via 152 headless automated unit tests—covering Constants,GM Drum Maps (C0-C9), Automatic Clef & Percussion Detection, Custom Notehead Persistence, Note Deletion Cleanup,Tremolo Stem Placement, Engraver Rules, Dynamics, Slurs/Ties, MusicXML Import/Export, Divisi/Divisio Vocum, Melodic Pathfinder, Annotation Layers, and Record/Auto-Quantize.
+- Unmeasured & Measured Tremolo Slash Centering (v2.49): Tremolo slashes (1 to 3 diagonal slashes) are horizontally centered directly on the exact stem X-coordinate (stem_x) for both unbeamed notes and beamed groups across all zoom levels (0.6x to 2.0x), maintaining clearance from noteheads and positioning inside beam groups.
+- Global ImGui Stack Guard Engine (modules/services/imgui_guard_service.lua, v2.50): Wraps ImGui_Begin/ImGui_End and ImGui_BeginChild/ImGui_EndChild across all UI modals, drawers, and panels, automatically unwinding any open scopes on error so 'Missing EndChild()' or 'Missing End()' exceptions can never occur.
+- Comprehensive Automated Unit Test Suite (tests/test_all_modules.lua & tests/mock_reaper.lua): Verifies all 89 Lua modules and 644 exported functions via 159 headless automated unit tests—covering Constants, GM Drum Maps (C0-C9), Automatic Clef & Percussion Detection, Custom Notehead Persistence, Note Deletion Cleanup, Tremolo Stem Placement, Engraver Rules, Dynamics, Slurs/Ties, MusicXML Import/Export, Divisi/Divisio Vocum, Melodic Pathfinder, Circle of Fifths, MIDI Keyboard Step Input, ImGuiGuardService, Annotation Layers, and Record/Auto-Quantize.
 
 ---
 

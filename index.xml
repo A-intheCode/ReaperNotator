@@ -159,8 +159,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/Bravura.otf</source>
       </version>
-      <version name="2.17" author="A-intheCode" time="2026-10-16T19:50:00Z">
+      <version name="2.50" author="A-intheCode" time="2026-10-19T23:00:00Z">
         <changelog><![CDATA[
++ v2.50: Major Release: Circle of Fifths & Global Harmonic Chord Palette Modal (`🎡 Circle of Fifths` with 24-sector Major/Minor wheel, Audition & Target Track Selector `🔊 Audition & Target Track:`, 8 drag-and-drop progression tiles, dynamic harmonic tension analysis, score insertion & global multi-tab REAPER persistence) + MIDI Keyboard Step Input in Record Modal (writes 1 Grid length per played note/chord with Auto-Divisi support) + Auto-Divisi Live Recording & Input FX Router (`Notator_Auto_Divisi_Router.jsfx`) + Automatic Percussion Clef detection (`percussion_1`), full C0–C9 drum staff mapping & 9 SMuFL Custom/Percussion Noteheads (`🥁 Notehead / Percussion Head`) + Elaine Gould ("Behind Bars") Optical Spacing (Δt^0.70), intra-bar accidental memory & multi-column chord stacking + Melodic Pathfinder & Counter-Melody Generator (with full Key Signature integration) + Per-Track Freehand Annotation Layer System + Global `ImGuiGuardService` zero-leak UI stack protection & 159-test automated verification suite
 + v2.17: New: 300 Percussion & Low Strings patterns (1,500 total) + Pattern Browser UI refinements
 + v2.16: Hotfix: Fix severe UI lag when docked in REAPER Docker
 + v2.15: New: Divisi (split voices to duplicated tracks)
@@ -209,7 +210,9 @@
         <source file="modules/rendering/font_manager.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/font_manager.lua</source>
         <source file="modules/rendering/score_canvas.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/score_canvas.lua</source>
         <source file="modules/rendering/system_engraver.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/rendering/system_engraver.lua</source>
+        <source file="modules/services/annotation_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/annotation_service.lua</source>
         <source file="modules/services/audio_preview.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/audio_preview.lua</source>
+        <source file="modules/services/circle_of_fifths_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/circle_of_fifths_service.lua</source>
         <source file="modules/services/clipboard_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/clipboard_service.lua</source>
         <source file="modules/services/divisi_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/divisi_service.lua</source>
         <source file="modules/services/divisio_vocum_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/divisio_vocum_service.lua</source>
@@ -220,8 +223,11 @@
         <source file="modules/services/frame_timer_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/frame_timer_service.lua</source>
         <source file="modules/services/glissando_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/glissando_service.lua</source>
         <source file="modules/services/hairpin_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/hairpin_service.lua</source>
+        <source file="modules/services/imgui_guard_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/imgui_guard_service.lua</source>
         <source file="modules/services/json_helper.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/json_helper.lua</source>
         <source file="modules/services/key_signature_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/key_signature_service.lua</source>
+        <source file="modules/services/melody_pathfinder_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/melody_pathfinder_service.lua</source>
+        <source file="modules/services/melody_style_corpus.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/melody_style_corpus.lua</source>
         <source file="modules/services/midi_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/midi_service.lua</source>
         <source file="modules/services/musicxml_export_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/musicxml_export_service.lua</source>
         <source file="modules/services/musicxml_import_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/musicxml_import_service.lua</source>
@@ -241,9 +247,11 @@
         <source file="modules/services/slur_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/slur_service.lua</source>
         <source file="modules/services/tempo_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/tempo_service.lua</source>
         <source file="modules/services/text_item_service.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/services/text_item_service.lua</source>
+        <source file="modules/ui/annotation_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/annotation_drawer.lua</source>
         <source file="modules/ui/articulations_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/articulations_drawer.lua</source>
         <source file="modules/ui/bank_picker_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/bank_picker_modal.lua</source>
         <source file="modules/ui/bottom_bar.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/bottom_bar.lua</source>
+        <source file="modules/ui/circle_of_fifths_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/circle_of_fifths_modal.lua</source>
         <source file="modules/ui/clef_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/clef_drawer.lua</source>
         <source file="modules/ui/divisi_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/divisi_modal.lua</source>
         <source file="modules/ui/divisio_vocum_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/divisio_vocum_modal.lua</source>
@@ -251,6 +259,7 @@
         <source file="modules/ui/filter_irregular_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/filter_irregular_modal.lua</source>
         <source file="modules/ui/help_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/help_modal.lua</source>
         <source file="modules/ui/key_signature_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/key_signature_drawer.lua</source>
+        <source file="modules/ui/melody_pathfinder_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/melody_pathfinder_modal.lua</source>
         <source file="modules/ui/midi_editor_drawer.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/midi_editor_drawer.lua</source>
         <source file="modules/ui/musicxml_modal.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/musicxml_modal.lua</source>
         <source file="modules/ui/pattern_browser.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/pattern_browser.lua</source>
