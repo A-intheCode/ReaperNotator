@@ -243,10 +243,18 @@ end
 --- @param state table
 --- @param is_chaining boolean|nil If true, another note is playing immediately so CC override stays active
 function AudioPreview.stop_note(state, is_chaining)
+    if type(state) ~= "table" then
+        state = AudioPreview._last_state
+    end
     local an = AudioPreview.active_note or (state and state.audition_active_note)
     if an then
         local ch = (an.chan or 0) & 0x0F
         reaper.StuffMIDIMessage(0, 0x80 + ch, an.pitch, 0)
+        if an.extra_pitches then
+            for _, ep in ipairs(an.extra_pitches) do
+                reaper.StuffMIDIMessage(0, 0x80 + ch, ep, 0)
+            end
+        end
         AudioPreview.active_note = nil
         if state then state.audition_active_note = nil end
     end
@@ -263,7 +271,7 @@ end
 --- @param track MediaTrack
 --- @param qn number
 function AudioPreview.find_written_dynamic(state, track, qn)
-    if not state or not track or not qn then return nil end
+    if type(state) ~= "table" or not track or not qn then return nil end
     local tracks_data = state.active_tracks_cache
     if not tracks_data then return nil end
 
@@ -786,14 +794,36 @@ end
 --- @param qn number Optional position in QN (to detect dynamic markers & articulations)
 --- @param opt_note table Optional note object (to detect note-level articulation)
 function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
+    if type(state) == "userdata" then
+        track = state
+        state = AudioPreview._last_state
+    elseif type(state) ~= "table" then
+        state = AudioPreview._last_state
+    end
     if state and state.audition_notes == false then return end
     if not pitch then return end
+
+    local extra_pitches = nil
+    if type(pitch) == "table" then
+        if #pitch == 0 then return end
+        if #pitch > 1 then
+            extra_pitches = {}
+            for i = 2, #pitch do
+                local ep = tonumber(pitch[i])
+                if ep then
+                    table.insert(extra_pitches, math.max(0, math.min(127, math.floor(ep))))
+                end
+            end
+        end
+        pitch = tonumber(pitch[1])
+        if not pitch then return end
+    end
 
     -- Stop active note beforehand (with chaining so active CC override stays intact while playing new note)
     AudioPreview.stop_note(state, true)
 
     -- Determine target track
-    local target_track = track or (opt_note and opt_note.track)
+    local target_track = (type(track) == "userdata" and track) or (opt_note and opt_note.track)
     if not target_track and state and state.focused_track then
         target_track = state.focused_track
     end
@@ -808,7 +838,7 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
 
     local p = math.max(0, math.min(127, math.floor(pitch)))
     local ch = (chan or (opt_note and opt_note.chan) or 0) & 0x0F
-    local qn_pos = qn or (opt_note and opt_note.start_qn) or 0
+    local qn_pos = (type(qn) == "number" and qn) or (opt_note and opt_note.start_qn) or 0
     local opt_take = opt_note and opt_note.take
 
     -- Dynamics and volume calculation based on audition_volume slider:
@@ -920,6 +950,7 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
         -- Timing: Wait 50 ms for Virtual MIDI Keyboard & arming to settle, then another 50 ms before Note On
         AudioPreview.pending_note = {
             pitch = p,
+            extra_pitches = extra_pitches,
             chan = ch,
             vel = final_vel,
             track = target_track,
@@ -957,6 +988,7 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
             -- Wait 40 ms after Program Change so Reaticulate & VSTi keyswitch complete before Note On arrives
             AudioPreview.pending_note = {
                 pitch = p,
+                extra_pitches = extra_pitches,
                 chan = ch,
                 vel = final_vel,
                 track = target_track,
@@ -980,8 +1012,14 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note)
         end
 
         reaper.StuffMIDIMessage(0, 0x90 + ch, p, final_vel)
+        if extra_pitches then
+            for _, ep in ipairs(extra_pitches) do
+                reaper.StuffMIDIMessage(0, 0x90 + ch, ep, final_vel)
+            end
+        end
         local note_info = {
             pitch = p,
+            extra_pitches = extra_pitches,
             chan = ch,
             vel = final_vel,
             track = target_track,
@@ -1003,7 +1041,9 @@ end
 --- runs continuously and sequentially from ONE single click without requiring any second click.
 --- @param state table
 function AudioPreview.start_sequence_loop(state)
-    AudioPreview._last_state = state or AudioPreview._last_state
+    if type(state) == "table" then
+        AudioPreview._last_state = state
+    end
     if AudioPreview._timer_running then return end
     AudioPreview._timer_running = true
 
@@ -1021,6 +1061,9 @@ end
 --- Signals that the mouse button was released
 --- @param state table
 function AudioPreview.on_mouse_released(state)
+    if type(state) ~= "table" then
+        state = AudioPreview._last_state
+    end
     if AudioPreview.active_note then
         AudioPreview.active_note.released = true
     end
@@ -1032,6 +1075,9 @@ end
 --- Stops all notes on all channels and restores all tracks
 --- @param state table
 function AudioPreview.stop_all(state)
+    if type(state) ~= "table" then
+        state = AudioPreview._last_state
+    end
     AudioPreview.pending_note = nil
     AudioPreview.pending_release_note = nil
     AudioPreview.arm_click_note = nil
@@ -1047,7 +1093,7 @@ end
 --- @param state table
 --- @param ctx ImGui_Context
 function AudioPreview.update(state, ctx)
-    if state then AudioPreview._last_state = state end
+    if type(state) == "table" then AudioPreview._last_state = state else state = AudioPreview._last_state end
     local now = reaper.time_precise()
 
     -- 1. Check pending note (Two-stage delay: 50ms arming/VKB stage + additional 45ms settling stage before note)
@@ -1089,8 +1135,14 @@ function AudioPreview.update(state, ctx)
             end
 
             reaper.StuffMIDIMessage(0, 0x90 + ch, pn.pitch, pn.vel)
+            if pn.extra_pitches then
+                for _, ep in ipairs(pn.extra_pitches) do
+                    reaper.StuffMIDIMessage(0, 0x90 + ch, ep, pn.vel)
+                end
+            end
             local note_info = {
                 pitch = pn.pitch,
+                extra_pitches = pn.extra_pitches,
                 chan = ch,
                 vel = pn.vel,
                 track = pn.track,

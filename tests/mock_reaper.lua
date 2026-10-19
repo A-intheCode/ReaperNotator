@@ -1083,11 +1083,32 @@ function Mock.create_environment(repo_root)
     end
     function r.ImGui_DrawList_PopClipRect(dl) end
 
-    -- ReaImGui Windows, Layout & Interactive Widgets
-    function r.ImGui_Begin(ctx, name, p_open, flags) return true, true end
-    function r.ImGui_End(ctx) end
-    function r.ImGui_BeginChild(ctx, id, w, h, child_flags, win_flags) return true end
-    function r.ImGui_EndChild(ctx) end
+    -- ReaImGui Windows, Layout & Interactive Widgets (with strict stack balance tracking!)
+    env.imgui_win_depth = 0
+    env.imgui_child_depth = 0
+    env.imgui_style_color_depth = 0
+    env.imgui_style_var_depth = 0
+
+    function r.ImGui_Begin(ctx, name, p_open, flags)
+        env.imgui_win_depth = (env.imgui_win_depth or 0) + 1
+        return true, true
+    end
+    function r.ImGui_End(ctx)
+        if (env.imgui_win_depth or 0) <= 0 then
+            error("[ReaImGui Stack Error] ImGui_End called without matching ImGui_Begin!", 2)
+        end
+        env.imgui_win_depth = env.imgui_win_depth - 1
+    end
+    function r.ImGui_BeginChild(ctx, id, w, h, child_flags, win_flags)
+        env.imgui_child_depth = (env.imgui_child_depth or 0) + 1
+        return true
+    end
+    function r.ImGui_EndChild(ctx)
+        if (env.imgui_child_depth or 0) <= 0 then
+            error("[ReaImGui Stack Error] ImGui_EndChild called without matching ImGui_BeginChild!", 2)
+        end
+        env.imgui_child_depth = env.imgui_child_depth - 1
+    end
     function r.ImGui_BeginGroup(ctx) end
     function r.ImGui_EndGroup(ctx) end
     function r.ImGui_BeginPopup(ctx, id, flags) return true end
@@ -1194,10 +1215,18 @@ function Mock.create_environment(repo_root)
     function r.ImGui_SetNextItemWidth(ctx, w) end
     function r.ImGui_PushItemWidth(ctx, w) end
     function r.ImGui_PopItemWidth(ctx) end
-    function r.ImGui_PushStyleColor(ctx, idx, col) end
-    function r.ImGui_PopStyleColor(ctx, cnt) end
-    function r.ImGui_PushStyleVar(ctx, idx, val1, val2) end
-    function r.ImGui_PopStyleVar(ctx, cnt) end
+    function r.ImGui_PushStyleColor(ctx, idx, col)
+        env.imgui_style_color_depth = (env.imgui_style_color_depth or 0) + 1
+    end
+    function r.ImGui_PopStyleColor(ctx, cnt)
+        env.imgui_style_color_depth = math.max(0, (env.imgui_style_color_depth or 0) - (cnt or 1))
+    end
+    function r.ImGui_PushStyleVar(ctx, idx, val1, val2)
+        env.imgui_style_var_depth = (env.imgui_style_var_depth or 0) + 1
+    end
+    function r.ImGui_PopStyleVar(ctx, cnt)
+        env.imgui_style_var_depth = math.max(0, (env.imgui_style_var_depth or 0) - (cnt or 1))
+    end
     function r.ImGui_PushID(ctx, id) end
     function r.ImGui_PopID(ctx) end
     function r.ImGui_GetItemRectMin(ctx) return 100.0, 100.0 end

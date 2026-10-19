@@ -167,12 +167,13 @@ local all_modules = {
     "classes.glissando_mark", "classes.hairpin", "classes.item", "classes.note",
     "classes.octave_line", "classes.pedal_mark", "classes.portamento_mark",
     "classes.rehearsal_mark", "classes.tempo_marker", "classes.text_item", "classes.track",
-    -- Services (33)
+    -- Services (34)
     "services.annotation_service", "services.audio_preview", "services.circle_of_fifths_service",
     "services.clipboard_service",
     "services.divisi_service", "services.divisio_vocum_service", "services.dynamic_text_service",
     "services.dynamics_engine", "services.fermata_service", "services.filter_notes_service",
     "services.frame_timer_service", "services.glissando_service", "services.hairpin_service",
+    "services.imgui_guard_service",
     "services.json_helper", "services.key_signature_service", "services.melody_pathfinder_service",
     "services.melody_style_corpus", "services.midi_service", "services.musicxml_export_service",
     "services.musicxml_import_service", "services.octave_service", "services.path_service",
@@ -909,6 +910,13 @@ local ui_specs = {
             require("ui.tools_drawer").render(ctx, st, MidiService, st.active_tracks_cache, 236, 600, 1, 0, fonts.font_music, fonts.font_main)
         end
     },
+    {
+        name = "ui.circle_of_fifths_modal",
+        call = function(ctx, st, project_tracks, fonts)
+            st.show_circle_of_fifths_modal = true
+            require("ui.circle_of_fifths_modal").render(ctx, st, MidiService)
+        end
+    },
 }
 
 for _, u in ipairs(ui_specs) do
@@ -920,14 +928,22 @@ for _, u in ipairs(ui_specs) do
         env.widget_counter = 0
         env.max_widget_seen = 0
         env.click_target_idx = nil
+        env.imgui_win_depth = 0
+        env.imgui_child_depth = 0
         u.call(ctx, st, project_tracks, fonts)
+        assert_eq(env.imgui_child_depth, 0, u.name .. " pass 0: zero unclosed ImGui_BeginChild (Missing EndChild check)")
+        assert_eq(env.imgui_win_depth, 0, u.name .. " pass 0: zero unclosed ImGui_Begin (Missing End check)")
         local total_widgets = math.min(env.max_widget_seen, 60)
 
         -- Passes 1..total_widgets: Click each button/checkbox/selectable one by one!
         for w_idx = 1, total_widgets do
             env.widget_counter = 0
             env.click_target_idx = w_idx
+            env.imgui_win_depth = 0
+            env.imgui_child_depth = 0
             u.call(ctx, st, project_tracks, fonts)
+            assert_eq(env.imgui_child_depth, 0, u.name .. " click #" .. w_idx .. ": zero unclosed ImGui_BeginChild")
+            assert_eq(env.imgui_win_depth, 0, u.name .. " click #" .. w_idx .. ": zero unclosed ImGui_Begin")
         end
         env.click_target_idx = nil
     end)
@@ -1685,15 +1701,33 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     assert_eq(loaded_pages[2].name, "Dark Suspense", "Tab 2 name persisted")
     assert_eq(loaded_pages[2].tiles[1].label, "C#m", "Tab 2 Slot 1 persisted as C#m")
 
-    -- Render CircleOfFifthsModal with populated tiles and simulated drag payload
+    -- Render CircleOfFifthsModal with populated tiles, simulated sector click, and drag payload
+    CircleOfFifthsService.audition_tile(st, tile_c_maj)
+    CircleOfFifthsService.audition_tile(st, tile_csm)
+    local AudioPreview = require("services.audio_preview")
+    AudioPreview.play_note(trk1, { 60, 64, 67 }, 96, 0) -- Verify legacy userdata 1st-arg + chord table compatibility
+    AudioPreview.on_mouse_released(st)
+
     st.show_circle_of_fifths_modal = true
     st.cof_pages = loaded_pages
     st.cof_active_page_idx = 1
     st._cof_drag_payload = tile_csm
+    env.mouse_x = 300.0
+    env.mouse_y = 200.0
+    env.mouse_clicked[0] = true
     env.mouse_down[0] = true
+    env.imgui_win_depth = 0
+    env.imgui_child_depth = 0
     CircleOfFifthsModal.render(ctx, st, MidiService)
+    assert_eq(env.imgui_child_depth, 0, "CircleOfFifthsModal sector click: zero unclosed ImGui_BeginChild")
+    assert_eq(env.imgui_win_depth, 0, "CircleOfFifthsModal sector click: zero unclosed ImGui_Begin")
+    env.mouse_clicked[0] = false
     env.mouse_down[0] = false
+    env.mouse_released[0] = true
     CircleOfFifthsModal.render(ctx, st, MidiService)
+    assert_eq(env.imgui_child_depth, 0, "CircleOfFifthsModal drop release: zero unclosed ImGui_BeginChild")
+    assert_eq(env.imgui_win_depth, 0, "CircleOfFifthsModal drop release: zero unclosed ImGui_Begin")
+    env.mouse_released[0] = false
 
     -- 4. MIDI Keyboard Step Input + Auto-Divisi across Armed Tracks
     -- Arm both Track 1 (High / Violin) and Track 2 (Low / Cello)
@@ -1729,9 +1763,34 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     assert_true(math.abs(reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition()) - 4.0) < 0.01, "step_back_cursor moved cursor back to 4.0 QN")
     RecordQuantizeService.step_rest_cursor(st)
     assert_true(math.abs(reaper.TimeMap2_timeToQN(0, reaper.GetCursorPosition()) - 4.5) < 0.01, "step_rest_cursor advanced cursor to 4.5 QN")
+
+    -- 5. Verify ImGuiGuardService auto-unwinds crashed Begin / BeginChild / Style stacks ("Missing EndChild()" prevention)
+    local ImGuiGuardService = require("services.imgui_guard_service")
+    ImGuiGuardService._installed = false
+    ImGuiGuardService.install(reaper)
+    ImGuiGuardService.reset_stack(ctx)
+    env.imgui_win_depth = 0
+    env.imgui_child_depth = 0
+    env.imgui_style_color_depth = 0
+    env.imgui_style_var_depth = 0
+
+    local ok_guard, _ = ImGuiGuardService.safe_render(ctx, st, "SimulatedCrashModal", function()
+        reaper.ImGui_Begin(ctx, "TestCrashWindow")
+        reaper.ImGui_PushStyleColor(ctx, 1, 0xFF0000FF)
+        if reaper.ImGui_BeginChild(ctx, "##CrashChild", 200, 200) then
+            reaper.ImGui_PushStyleVar(ctx, 1, 4.0)
+            error("Simulated error inside BeginChild")
+        end
+        reaper.ImGui_End(ctx)
+    end)
+    assert_eq(ok_guard, false, "ImGuiGuardService.safe_render caught the simulated error")
+    assert_eq(env.imgui_child_depth, 0, "ImGuiGuardService automatically unwound ImGui_EndChild (0 leaked children)")
+    assert_eq(env.imgui_win_depth, 0, "ImGuiGuardService automatically unwound ImGui_End (0 leaked windows)")
+    assert_eq(env.imgui_style_color_depth, 0, "ImGuiGuardService automatically unwound ImGui_PopStyleColor")
+    assert_eq(env.imgui_style_var_depth, 0, "ImGuiGuardService automatically unwound ImGui_PopStyleVar")
 end)
 
-run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 80 Modules", function()
+run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 81 Modules", function()
     local total_exported_functions = 0
     for _, mod_name in ipairs(all_modules) do
         local mod = require(mod_name)
@@ -1742,7 +1801,7 @@ run_test("Full Reflection Audit: Count & Verify All Exported Functions Across Al
             end
         end
     end
-    assert_true(total_exported_functions >= 300, string.format("Verified %d exported functions across all 78 modules", total_exported_functions))
+    assert_true(total_exported_functions >= 300, string.format("Verified %d exported functions across all %d modules", total_exported_functions, #all_modules))
     print(string.format("    -> Audited %d exported functions across %d modules", total_exported_functions, #all_modules))
 end)
 

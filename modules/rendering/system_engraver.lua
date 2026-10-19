@@ -84,7 +84,8 @@ function SystemEngraver.build_page_measure_map(active_tracks, start_m, end_m, ma
         end
     end
     local key_sig_w = Engraver.get_key_signature_width(key_idx, eng_s)
-    local clef_w = (start_m == 0 and 50.0 or 28.0) * eng_s + key_sig_w
+    local has_ks = (key_sig_w > 0)
+    local clef_w = (start_m == 0 and (has_ks and 64.0 or 52.0) or (has_ks and 42.0 or 30.0)) * eng_s + key_sig_w
     local avail_score_w = math.max(10.0, score_w - clef_w)
     local starts = {}
     local widths = {}
@@ -276,14 +277,14 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
             -- Key Signature on all systems
             local key_idx = mmap.key_idx or 0
             if key_idx ~= 0 then
-                local keysig_draw_x = bounds.margin_l + (24.0 * eng_s)
+                local keysig_draw_x = bounds.margin_l + (36.0 * eng_s)
                 Engraver.draw_key_signature(dl, key_idx, keysig_draw_x, tdata.upper_bot, staff_ls, eng_s, col_ink, font_music, "treble")
                 Engraver.draw_key_signature(dl, key_idx, keysig_draw_x, tdata.lower_bot, staff_ls, eng_s, col_ink, font_music, "bass")
             end
 
             -- Time Signature on Bar 1 (Measure 1 of piece only)
             if start_m == 0 and font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
-                local ts_x = bounds.margin_l + (28.0 * eng_s) + (mmap.key_sig_w or 0)
+                local ts_x = bounds.margin_l + (((mmap.key_sig_w or 0) > 0 and 42.0 or 30.0) * eng_s) + (mmap.key_sig_w or 0)
                 reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, (tdata.upper_bot - 2 * staff_ls) - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
                 reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, tdata.upper_bot - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
                 reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, (tdata.lower_bot - 2 * staff_ls) - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
@@ -342,13 +343,13 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
             -- Key Signature on all systems
             local key_idx = mmap.key_idx or 0
             if key_idx ~= 0 then
-                local keysig_draw_x = bounds.margin_l + (24.0 * eng_s)
+                local keysig_draw_x = bounds.margin_l + (36.0 * eng_s)
                 Engraver.draw_key_signature(dl, key_idx, keysig_draw_x, tdata.bot_y, staff_ls, eng_s, col_ink, font_music, tdata.clef or "treble")
             end
 
             -- Time Signature on Bar 1
             if start_m == 0 and font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
-                local ts_x = bounds.margin_l + (28.0 * eng_s) + (mmap.key_sig_w or 0)
+                local ts_x = bounds.margin_l + (((mmap.key_sig_w or 0) > 0 and 42.0 or 30.0) * eng_s) + (mmap.key_sig_w or 0)
                 reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, (tdata.bot_y - 2 * staff_ls) - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
                 reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, tdata.bot_y - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
             end

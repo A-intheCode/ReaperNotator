@@ -1091,7 +1091,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local hdr_x1 = hdr_x0 + hdr_w
     local system_start_x = hdr_x1 + 14 * s
 
-    local margin_left = system_start_x + 68 * s + max_key_sig_w
+    local margin_left = system_start_x + (max_key_sig_w > 0 and 82 or 72) * s + max_key_sig_w
     
     -- Dynamic measure width calculation (cached across frames)
     local measure_map = nil
@@ -1656,7 +1656,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local trk_ts_num = eff_ts_num or timesig_num or 4
             local trk_ts_den = eff_ts_den or timesig_denom or 4
 
-            local keysig_x = system_start_x + 36 * s
+            local keysig_x = system_start_x + 48 * s
             local cdef = Constants.CLEF_DEFS[track_clef]
             local is_unpitched = cdef and cdef.unpitched
             if not is_unpitched and eff_key_idx and eff_key_idx ~= 0 then
@@ -1674,7 +1674,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
 
             -- 3. Time signature (4/4, 3/4 etc.) directly following key signature in the gap before measure 1
-            local timesig_x = system_start_x + 46 * s + max_key_sig_w
+            local timesig_x = system_start_x + (max_key_sig_w > 0 and 60 or 50) * s + max_key_sig_w
             local ts_col = Constants.COLORS.timesig_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
             if is_harp then
                 draw_time_signature(draw_list, timesig_x, treble_bottom_y, line_spacing, s, ts_col, trk_ts_num, trk_ts_den, font_music, font_main)

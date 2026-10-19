@@ -2530,7 +2530,7 @@ end
 --- @param default_vel number|nil Default velocity (defaults to 96)
 --- @param midi_service table|nil Optional MidiService reference
 --- @return number inserted_count, number target_track_count
-function RecordQuantizeService.insert_chord_cluster_at_qn(state, pitches, qn, dur, default_vel, midi_service)
+function RecordQuantizeService.insert_chord_cluster_at_qn(state, pitches, qn, dur, default_vel, midi_service, skip_audition)
     if not pitches or #pitches == 0 then
         return 0, 0
     end
@@ -2611,9 +2611,6 @@ function RecordQuantizeService.insert_chord_cluster_at_qn(state, pitches, qn, du
                             used_tracks[trk] = prof.name or "Track"
                             used_track_cnt = used_track_cnt + 1
                         end
-                        if ap and ap.play_note then
-                            ap.play_note(trk, u.pitch, u.vel or def_vel, u.chan or def_chan, 240)
-                        end
                     end
                 end
             end
@@ -2634,6 +2631,11 @@ function RecordQuantizeService.insert_chord_cluster_at_qn(state, pitches, qn, du
             end
         end
 
+        local plain_pitches = {}
+        for _, n_obj in ipairs(norm_notes) do
+            table.insert(plain_pitches, n_obj.pitch)
+        end
+
         for _, trk in ipairs(target_tracks) do
             for _, n_obj in ipairs(norm_notes) do
                 local ok_ins = ms.insert_note_at_qn(state, target_qn, n_obj.pitch, step_dur, trk)
@@ -2643,9 +2645,12 @@ function RecordQuantizeService.insert_chord_cluster_at_qn(state, pitches, qn, du
                         used_tracks[trk] = true
                         used_track_cnt = used_track_cnt + 1
                     end
-                    if ap and ap.play_note then
-                        ap.play_note(trk, n_obj.pitch, n_obj.vel or def_vel, n_obj.chan or def_chan, 240)
-                    end
+                end
+            end
+            if not skip_audition and #armed_profiles == 0 and ap and ap.play_note then
+                ap.play_note(state, plain_pitches, norm_notes[1].vel or def_vel, norm_notes[1].chan or def_chan, trk, target_qn)
+                if ap.on_mouse_released then
+                    ap.on_mouse_released(state)
                 end
             end
         end
@@ -2666,7 +2671,7 @@ function RecordQuantizeService.insert_chord_cluster_at_qn(state, pitches, qn, du
         local names = {}
         for _, n_obj in ipairs(norm_notes) do
             if ok_eng and Engraver and Engraver.get_pitch_display_name then
-                local pname = Engraver.get_pitch_display_name(n_obj.pitch, eff_key, true)
+                local pname = Engraver.get_pitch_display_name(n_obj.pitch, nil, eff_key)
                 table.insert(names, pname)
             else
                 table.insert(names, tostring(n_obj.pitch))
@@ -2716,7 +2721,7 @@ function RecordQuantizeService.flush_midi_step_buffer(state, midi_service)
     local buf = RecordQuantizeService._step_chord_buffer
     RecordQuantizeService._step_chord_buffer = {}
     RecordQuantizeService._step_chord_start_time = nil
-    return RecordQuantizeService.insert_chord_cluster_at_qn(state, buf, nil, nil, nil, midi_service)
+    return RecordQuantizeService.insert_chord_cluster_at_qn(state, buf, nil, nil, nil, midi_service, true)
 end
 
 --- Polls incoming MIDI keyboard input when transport is stopped and MIDI Step Input is active.

@@ -81,8 +81,8 @@ local function format_tile_pitches(tile)
     local parts = {}
     for _, p in ipairs(tile.pitches) do
         if Engraver and Engraver.get_pitch_display_name then
-            local pname = Engraver.get_pitch_display_name(p, key_idx, true)
-            table.insert(parts, pname)
+            local pname, poct = Engraver.get_pitch_display_name(p, nil, key_idx)
+            table.insert(parts, tostring(pname or "C") .. tostring(poct or 4))
         else
             table.insert(parts, tostring(p))
         end
@@ -202,6 +202,7 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
         -- LEFT PANEL: INTERACTIVE VECTOR CIRCLE OF FIFTHS
         -- ----------------------------------------------------------------------
         if reaper.ImGui_BeginChild(ctx, "##CoFCirclePanel", left_w, panel_h, child_border) then
+            local ok_c, err_c = pcall(function()
             reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "🎡 Interactive Circle of Fifths")
             reaper.ImGui_TextDisabled(ctx, "Left-Click: Hear Tone • Drag & Drop onto Tile 1..8")
             reaper.ImGui_Spacing(ctx)
@@ -377,7 +378,10 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
             else
                 reaper.ImGui_TextDisabled(ctx, "Drop a note/chord onto any tile to compute harmonic tension.")
             end
-
+            end)
+            if not ok_c and reaper.ShowConsoleMsg then
+                reaper.ShowConsoleMsg("[CircleOfFifthsModal LeftPanel Error] " .. tostring(err_c) .. "\n")
+            end
             reaper.ImGui_EndChild(ctx)
         end
 
@@ -387,6 +391,7 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
         -- RIGHT PANEL: GLOBAL CHORD PALETTE TABS & 8 TILES (SLOT 1..8)
         -- ----------------------------------------------------------------------
         if reaper.ImGui_BeginChild(ctx, "##CoFTilesPanel", right_w, panel_h, child_border) then
+            local ok_r, err_r = pcall(function()
             -- 1. PALETTE TAB BAR (Global in REAPER)
             reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "🗂 Global Chord Palette Pages (Saved Globally in REAPER):")
             reaper.ImGui_Spacing(ctx)
@@ -729,6 +734,10 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                 state.status_msg = string.format("Cleared all 8 tiles in '%s'", page.name or "Palette")
             end
 
+            end)
+            if not ok_r then
+                state.status_msg = "CoF Tiles Error: " .. tostring(err_r)
+            end
             reaper.ImGui_EndChild(ctx)
         end
 

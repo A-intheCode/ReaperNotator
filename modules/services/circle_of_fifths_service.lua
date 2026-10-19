@@ -617,12 +617,13 @@ function CircleOfFifthsService.audition_tile(state, tile)
     if not tile then return end
     local pitches = CircleOfFifthsService.get_tile_pitches(tile)
     if #pitches == 0 then return end
-    local target_trk = (state and state.focused_track)
+    local target_trk = (type(state) == "table" and state.focused_track)
         or (reaper and reaper.GetSelectedTrack and reaper.GetSelectedTrack(0, 0))
         or (reaper and reaper.GetTrack and reaper.GetTrack(0, 0))
     if target_trk and AudioPreview and AudioPreview.play_note then
-        for _, p in ipairs(pitches) do
-            AudioPreview.play_note(target_trk, p, 96, 0, 260)
+        AudioPreview.play_note(state, pitches, 96, 0, target_trk)
+        if AudioPreview.on_mouse_released then
+            AudioPreview.on_mouse_released(state)
         end
     end
 end

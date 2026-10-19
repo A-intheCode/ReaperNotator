@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.50-beta.4
+-- @version 2.50-beta.5
 -- @changelog
+--   + v2.50-beta.5: Hotfix: Fix `AudioPreview.play_note` `userdata` state indexing crash in MIDI Keyboard Step Input & Circle of Fifths click audition + add global `ImGuiGuardService` stack auto-unwinder preventing `Missing EndChild()` / `Missing End()` errors across all UI modals, drawers & panels + add clear visual gap between Clef and Key Signature in Continuous & Page View + immediate cache invalidation after Scale Transposition
 --   + v2.50-beta.4: New: Circle of Fifths & Global Harmonic Chord Palette Modal (`🎡 Circle of Fifths` below Step Input in Sidebar with 8 drag-and-drop tiles, click-to-audition, dynamic harmonic tension calculation & Circle re-coloring, and global multi-tab REAPER persistence) + MIDI Keyboard Step Input in Record Modal (writes 1 Grid length per played note/chord with full Auto-Divisi support) + Key Signature & Scale Note Input fixes across Mouse Drawing (`[D]`), Step Input (`[S]`), Vertical Note Dragging, `♮ Natural [0]` override & `🎼 Set Key Signature` in Scale Modal
 --   + v2.50-beta.3: Hotfix: Extend Percussion Clef staff mapping (`GM_DRUM_STEP_MAP`) across the full MIDI pitch range C0–C9 (`0..127`) so pitching notes below C2 (`< 35`) or above A5 (`> 81`) always keeps them centered in the Percussion System without ledger-line jumps
 --   + v2.50-beta.2: Hotfix: Restore Percussion Clef staff mapping (`GM_DRUM_STEP_MAP` & `GM_STEP_TO_DRUM_PITCH`) exactly as in v2.50-beta while keeping automatic Cross/Percussion noteheads disabled (manual assignment only via right-click menu) + display `Percussion` in track header subtitle
@@ -188,6 +189,13 @@ local FilterIrregularModal  = safe_require("ui.filter_irregular_modal", { render
 local RecordModal           = safe_require("ui.record_modal", { render = function() end })
 local CircleOfFifthsService = safe_require("services.circle_of_fifths_service", {})
 local CircleOfFifthsModal   = safe_require("ui.circle_of_fifths_modal", { render = function() end })
+local ImGuiGuardService     = safe_require("services.imgui_guard_service", {
+    install = function() end,
+    safe_render = function(_ctx, _st, _lbl, fn, ...) return pcall(fn, ...) end,
+    snapshot = function() return nil end,
+    unwind_to_snapshot = function() end,
+})
+ImGuiGuardService.install(reaper)
 local RecordQuantizeService = safe_require("services.record_quantize_service", {
     on_record_start = function() end,
     process_recording = function() end,
@@ -804,21 +812,21 @@ local function loop()
             reaper.ShowConsoleMsg("[KeyboardHandler Error] " .. tostring(kb_err) .. "\n")
         end
         
-        -- Modal dialogs (track selection & help)
-        TrackPicker.render(ctx, state, project_tracks)
-        HelpModal.render(ctx, state)
-        SettingsModal.render(ctx, state, ShortcutManager)
-        QuantizeModal.render(ctx, state, MidiService, state.active_tracks_cache)
-        BankPickerModal.render(ctx, state, state.focused_track, state.active_tracks_cache)
-        ScaleModal.render(ctx, state)
-        MusicXmlModal.render(ctx, state, project_tracks)
-        DivisioVocumModal.render(ctx, state, MidiService, state.active_tracks_cache)
-        DivisiModal.render(ctx, state, MidiService, state.active_tracks_cache)
-        MelodyPathfinderModal.render(ctx, state, MidiService, AudioPreview, state.active_tracks_cache)
-        FilterIrregularModal.render(ctx, state, MidiService, state.active_tracks_cache)
-        RecordModal.render(ctx, state, MidiService, project_tracks, state.active_tracks_cache)
-        CircleOfFifthsModal.render(ctx, state, MidiService)
-        ArticulationsDrawer.render_last_resort_modal(ctx, state, state.active_tracks_cache)
+        -- Modal dialogs (track selection & help) — all guarded against stack leaks ("Missing EndChild()" / "Missing End()")
+        ImGuiGuardService.safe_render(ctx, state, "TrackPicker", TrackPicker.render, ctx, state, project_tracks)
+        ImGuiGuardService.safe_render(ctx, state, "HelpModal", HelpModal.render, ctx, state)
+        ImGuiGuardService.safe_render(ctx, state, "SettingsModal", SettingsModal.render, ctx, state, ShortcutManager)
+        ImGuiGuardService.safe_render(ctx, state, "QuantizeModal", QuantizeModal.render, ctx, state, MidiService, state.active_tracks_cache)
+        ImGuiGuardService.safe_render(ctx, state, "BankPickerModal", BankPickerModal.render, ctx, state, state.focused_track, state.active_tracks_cache)
+        ImGuiGuardService.safe_render(ctx, state, "ScaleModal", ScaleModal.render, ctx, state)
+        ImGuiGuardService.safe_render(ctx, state, "MusicXmlModal", MusicXmlModal.render, ctx, state, project_tracks)
+        ImGuiGuardService.safe_render(ctx, state, "DivisioVocumModal", DivisioVocumModal.render, ctx, state, MidiService, state.active_tracks_cache)
+        ImGuiGuardService.safe_render(ctx, state, "DivisiModal", DivisiModal.render, ctx, state, MidiService, state.active_tracks_cache)
+        ImGuiGuardService.safe_render(ctx, state, "MelodyPathfinderModal", MelodyPathfinderModal.render, ctx, state, MidiService, AudioPreview, state.active_tracks_cache)
+        ImGuiGuardService.safe_render(ctx, state, "FilterIrregularModal", FilterIrregularModal.render, ctx, state, MidiService, state.active_tracks_cache)
+        ImGuiGuardService.safe_render(ctx, state, "RecordModal", RecordModal.render, ctx, state, MidiService, project_tracks, state.active_tracks_cache)
+        ImGuiGuardService.safe_render(ctx, state, "CircleOfFifthsModal", CircleOfFifthsModal.render, ctx, state, MidiService)
+        ImGuiGuardService.safe_render(ctx, state, "ArticulationsLastResortModal", ArticulationsDrawer.render_last_resort_modal, ctx, state, state.active_tracks_cache)
         
         -- ======================================================================
         -- 1. TOP BAR (Transport, time display, layout, tracks, zoom, lock, dynamics)
@@ -830,7 +838,7 @@ local function loop()
         if reaper.APIExists("ImGui_WindowFlags_NoMove") then
             topbar_flags = topbar_flags | reaper.ImGui_WindowFlags_NoMove()
         end
-        TopBar.render(ctx, state, ClipboardService, MidiService, state.active_tracks_cache, #project_tracks, child_border, topbar_flags, project_tracks)
+        ImGuiGuardService.safe_render(ctx, state, "TopBar", TopBar.render, ctx, state, ClipboardService, MidiService, state.active_tracks_cache, #project_tracks, child_border, topbar_flags, project_tracks)
         
         -- ======================================================================
         -- 2. MAIN AREA: Left sidebar (palette) | Center canvas | Right drawer (resizable)
@@ -872,7 +880,7 @@ local function loop()
         end
         
         -- LEFT SIDEBAR: MAIN PALETTE (Resizable via splitter)
-        Sidebar.render(ctx, state, MidiService, ClipboardService, state.active_tracks_cache, state.sidebar_w, main_content_h, child_border, sidebar_flags)
+        ImGuiGuardService.safe_render(ctx, state, "Sidebar", Sidebar.render, ctx, state, MidiService, ClipboardService, state.active_tracks_cache, state.sidebar_w, main_content_h, child_border, sidebar_flags)
         
         -- VERTICAL SPLITTER 1: Left sidebar resizing
         reaper.ImGui_SameLine(ctx, 0, 2)
@@ -1054,15 +1062,10 @@ local function loop()
                 end
             end
             
-            local ok, canvas_info = pcall(ScoreCanvas.render, ctx, state, fonts, project_tracks, MidiService)
+            local ok, canvas_info = ImGuiGuardService.safe_render(ctx, state, "ScoreCanvas", ScoreCanvas.render, ctx, state, fonts, project_tracks, MidiService)
             if ok and canvas_info then
                 state.active_tracks_cache = canvas_info.active_tracks_data
-                local m_ok, m_err = pcall(MouseHandler.handle, ctx, state, canvas_info, MidiService, DynamicsEngine)
-                if not m_ok then
-                    reaper.ShowConsoleMsg("[ScoreCanvas MouseHandler Error] " .. tostring(m_err) .. "\n")
-                end
-            elseif not ok then
-                reaper.ShowConsoleMsg("[ScoreCanvas Render Error] " .. tostring(canvas_info) .. "\n")
+                ImGuiGuardService.safe_render(ctx, state, "ScoreCanvas MouseHandler", MouseHandler.handle, ctx, state, canvas_info, MidiService, DynamicsEngine)
             end
             reaper.ImGui_EndChild(ctx)
         end
@@ -1090,19 +1093,19 @@ local function loop()
             
             reaper.ImGui_SameLine(ctx, 0, 2)
             if state.show_tools_drawer then
-                ToolsDrawer.render(ctx, state, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
+                ImGuiGuardService.safe_render(ctx, state, "ToolsDrawer", ToolsDrawer.render, ctx, state, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
             elseif state.show_clefs then
-                ClefDrawer.render(ctx, state, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
+                ImGuiGuardService.safe_render(ctx, state, "ClefDrawer", ClefDrawer.render, ctx, state, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
             elseif state.show_key_signatures then
-                KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
+                ImGuiGuardService.safe_render(ctx, state, "KeySignatureDrawer", KeySignatureDrawer.render, ctx, state, KeySignatureService, MidiService, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
             elseif state.show_tempo then
-                TempoDrawer.render(ctx, state, state.drawer_w, main_content_h, child_border, sidebar_flags)
+                ImGuiGuardService.safe_render(ctx, state, "TempoDrawer", TempoDrawer.render, ctx, state, state.drawer_w, main_content_h, child_border, sidebar_flags)
             elseif state.show_dynamics then
-                DynamicsDrawer.render(ctx, state, DynamicsEngine, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
+                ImGuiGuardService.safe_render(ctx, state, "DynamicsDrawer", DynamicsDrawer.render, ctx, state, DynamicsEngine, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
             elseif state.show_articulations_drawer then
-                ArticulationsDrawer.render(ctx, state, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
+                ImGuiGuardService.safe_render(ctx, state, "ArticulationsDrawer", ArticulationsDrawer.render, ctx, state, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
             elseif state.show_annotations_drawer then
-                AnnotationDrawer.render(ctx, state, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
+                ImGuiGuardService.safe_render(ctx, state, "AnnotationDrawer", AnnotationDrawer.render, ctx, state, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
             end
         end
         
@@ -1132,7 +1135,7 @@ local function loop()
                 reaper.SetExtState("REAPER_Notator", "PatternBrowserHeight", "240", true)
             end
             
-            PatternBrowser.render(ctx, state, MidiService, AudioPreview, main_avail_w, state.pattern_browser_h, project_tracks, fonts.font_music, fonts.font_main)
+            ImGuiGuardService.safe_render(ctx, state, "PatternBrowser", PatternBrowser.render, ctx, state, MidiService, AudioPreview, main_avail_w, state.pattern_browser_h, project_tracks, fonts.font_music, fonts.font_main)
         end
 
         -- ======================================================================
@@ -1161,7 +1164,7 @@ local function loop()
                 reaper.SetExtState("REAPER_Notator", "MidiEditorHeight", "180", true)
             end
 
-            MidiEditorDrawer.render(ctx, state, MidiService, AudioPreview, DynamicsEngine, main_avail_w, state.midi_editor_h, project_tracks, fonts.font_main)
+            ImGuiGuardService.safe_render(ctx, state, "MidiEditorDrawer", MidiEditorDrawer.render, ctx, state, MidiService, AudioPreview, DynamicsEngine, main_avail_w, state.midi_editor_h, project_tracks, fonts.font_main)
         end
         
         -- ======================================================================
@@ -1177,7 +1180,7 @@ local function loop()
         if reaper.APIExists("ImGui_WindowFlags_NoMove") then
             bottom_flags = bottom_flags | reaper.ImGui_WindowFlags_NoMove()
         end
-        BottomBar.render(ctx, state, bottom_bar_h, child_border, bottom_flags)
+        ImGuiGuardService.safe_render(ctx, state, "BottomBar", BottomBar.render, ctx, state, bottom_bar_h, child_border, bottom_flags)
     end
     
     reaper.ImGui_End(ctx)

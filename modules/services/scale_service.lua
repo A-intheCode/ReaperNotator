@@ -836,6 +836,15 @@ function ScaleService.transpose_selection_to_scale(state, root, scale_type)
         if item then reaper.UpdateItemInProject(item) end
     end
 
+    local MidiService = package.loaded["services.midi_service"] or (package.loaded["modules.services.midi_service"])
+    if MidiService and MidiService.invalidate_cache then
+        MidiService.invalidate_cache()
+    end
+    if state then
+        state.active_tracks_cache = nil
+        state.cached_measure_map = nil
+        state.cached_measure_map_sig = nil
+    end
     reaper.Undo_EndBlock2(0, string.format("Notator: Transpose to %s %s (%d notes)", ScaleService.ROOT_NAMES[root + 1], scale_type, changed_count), -1)
     reaper.UpdateArrange()
 
