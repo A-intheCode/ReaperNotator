@@ -2763,7 +2763,7 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping, timesi
         local cur_group_start = nil
         local prev_onset = nil
         for _, o in ipairs(onsets) do
-            local m_idx, m_sqn, _, m_bpi, m_ts_n, m_ts_d = Engraver.qn_to_measure_info(o.qn + 0.001, default_bpi, measure_map)
+            local m_idx, m_sqn, m_bpi, m_ts_n, m_ts_d = Engraver.qn_to_measure_info(o.qn + 0.001, default_bpi, measure_map)
             local eff_ts_n = m_ts_n or timesig_num
             local eff_ts_d = m_ts_d or timesig_denom
             local group_size = get_measure_group_size(m_bpi, eff_ts_n, eff_ts_d)

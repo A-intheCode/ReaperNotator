@@ -2008,6 +2008,67 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     ScoreCanvas.render(ctx, st, { font_main = 1, font_music = 2 }, { trk1 }, MidiService)
     SystemEngraver.render_system_imgui(1, ctx, { trk1 }, 0, 4, { margin_l = 60, score_w = 600, top_y = 80, bot_y = 400 }, 1.0, { font_main = 1, font_music = 2 }, st)
 
+    -- 6. Explicit Bar 5 (3/4 after 4 bars of 4/4) End-to-End Test (Requirements A, B, C):
+    --    Even if a note in Bar 1 is still selected AND a MIDI take has a legacy "NOTATOR_TIME_SIG 2 4" event,
+    --    moving the Edit Cursor to Bar 5 (16.0 QN) and clicking 3/4 must:
+    --    (A) Engrave 3/4 at Bar 5 in the Score,
+    --    (B) Place a REAPER 3/4 TimeSignature Marker at Bar 5 (16.0 QN) while Bar 1 stays 4/4,
+    --    (C) Keep Bars 1..4 in 4/4 (0..16 QN) and make Bar 5+ 3/4 (16..19, 19..22, 22..25 QN).
+    reaper.SetEditCurPos(0.0, false, false)
+    KeySignatureService.set_project_time_sig(st, 4, 4)
+    reaper.MIDI_InsertTextSysexEvt(take1, false, false, 0, 15, "NOTATOR_TIME_SIG 2 4")
+    local note_bar1 = MidiNote.new({ idx = 1, pitch = 60, start_qn = 0.0, end_qn = 1.0, dur_qn = 1.0, chan = 0 })
+    st.selected_note = note_bar1
+    st.selected_notes = { ["bar1_n"] = note_bar1 }
+    KeySignatureService.get_target_measure_for_time_sig(st)
+
+    -- Now move REAPER Edit Cursor to Bar 5 (16.0 QN) while note_bar1 is still selected, and click 3/4:
+    reaper.SetEditCurPos(reaper.TimeMap2_QNToTime(0, 16.0), false, false)
+    env.force_button_click_pattern = "3/4##TS_3_4"
+    KeySignatureDrawer.render(ctx, st, KeySignatureService, MidiService, 260, 620, 1, 0, 1, 2)
+    env.force_button_click_pattern = nil
+
+    -- Check (A): Score state & measure_map at Bar 5 (m = 4)
+    assert_true(st.time_sig_changes[4] ~= nil, "Bar 5 (m=4) entry exists in state.time_sig_changes")
+    assert_eq(st.time_sig_changes[4].num, 3, "Bar 5 (m=4) is 3/4 numerator (never overwritten by legacy 2/4 item event)")
+    assert_eq(st.time_sig_changes[4].denom, 4, "Bar 5 (m=4) is 3/4 denominator")
+    local mmap_b5 = Engraver.build_measure_map({}, 10, 4.0, 100.0, 1.0, st)
+    assert_true(mmap_b5.time_changes and mmap_b5.time_changes[4] ~= nil, "(A) Score measure_map has mid-piece 3/4 Time Signature change at Bar 5 (m=4)")
+    assert_eq(mmap_b5.time_changes[4].num, 3, "(A) Score mid-piece Time Signature at Bar 5 has numerator 3")
+    assert_eq(mmap_b5.time_changes[4].denom, 4, "(A) Score mid-piece Time Signature at Bar 5 has denominator 4")
+
+    -- Check (B): REAPER Tempo/TimeSignature Markers at Bar 1 (0.0 QN -> 4/4) and Bar 5 (16.0 QN -> 3/4)
+    local found_reaper_bar1_44 = false
+    local found_reaper_bar5_34 = false
+    local marker_cnt = reaper.CountTempoTimeSigMarkers(0)
+    for mi = 0, marker_cnt - 1 do
+        local ok_m, tpos, _, _, _, m_num, m_den = reaper.GetTempoTimeSigMarker(0, mi)
+        if ok_m then
+            local mqn = reaper.TimeMap2_timeToQN(0, tpos)
+            if math.abs(mqn - 0.0) < 0.05 and m_num == 4 and m_den == 4 then
+                found_reaper_bar1_44 = true
+            elseif math.abs(mqn - 16.0) < 0.05 and m_num == 3 and m_den == 4 then
+                found_reaper_bar5_34 = true
+            end
+        end
+    end
+    assert_true(found_reaper_bar1_44, "(B) REAPER TimeMap has 4/4 marker at Bar 1 (0.0 QN)")
+    assert_true(found_reaper_bar5_34, "(B) REAPER TimeMap has 3/4 marker at Bar 5 (16.0 QN)")
+
+    -- Check (C): Bars 1..4 (m = 0..3) are 4/4 (4.0 QN each), Bar 5+ (m = 4, 5, 6...) are 3/4 (3.0 QN each)
+    for m = 0, 3 do
+        assert_eq(mmap_b5.m_ts_num[m], 4, string.format("(C) Bar %d remains 4/4 numerator", m + 1))
+        assert_eq(mmap_b5.m_ts_den[m], 4, string.format("(C) Bar %d remains 4/4 denominator", m + 1))
+        assert_true(math.abs(mmap_b5.m_bpi[m] - 4.0) < 0.001, string.format("(C) Bar %d has 4.0 QN length", m + 1))
+    end
+    for m = 4, 8 do
+        assert_eq(mmap_b5.m_ts_num[m], 3, string.format("(C) Bar %d is 3/4 numerator", m + 1))
+        assert_eq(mmap_b5.m_ts_den[m], 4, string.format("(C) Bar %d is 3/4 denominator", m + 1))
+        assert_true(math.abs(mmap_b5.m_bpi[m] - 3.0) < 0.001, string.format("(C) Bar %d has 3.0 QN length", m + 1))
+    end
+    assert_true(math.abs(mmap_b5.m_start_qn[4] - 16.0) < 0.001 and math.abs(mmap_b5.m_end_qn[4] - 19.0) < 0.001, "(C) Bar 5 spans 16.0 .. 19.0 QN")
+    assert_true(math.abs(mmap_b5.m_start_qn[5] - 19.0) < 0.001 and math.abs(mmap_b5.m_end_qn[5] - 22.0) < 0.001, "(C) Bar 6 spans 19.0 .. 22.0 QN")
+
     -- Restore 4/4 for subsequent tests if any
     reaper.SetEditCurPos(0.0, false, false)
     KeySignatureService.set_project_time_sig(st, 4, 4)

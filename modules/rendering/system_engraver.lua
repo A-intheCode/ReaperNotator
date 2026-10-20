@@ -150,7 +150,7 @@ end
 function SystemEngraver.qn_to_page_x(qn, mmap, s)
     if not qn then return (mmap and mmap.margin_l) or 0 end
     local bpi = mmap.bpi or 4.0
-    local m_idx, m_sqn, _, m_bpi = Engraver.qn_to_measure_info(qn + 0.0001, bpi, mmap)
+    local m_idx, m_sqn, m_bpi = Engraver.qn_to_measure_info(qn + 0.0001, bpi, mmap)
     local bi = m_idx - mmap.start_m
 
     if bi < 0 then

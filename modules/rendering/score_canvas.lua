@@ -2645,6 +2645,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                     if min_sel_qn then
                         reaper.SetEditCurPos2(0, reaper.TimeMap2_QNToTime(0, min_sel_qn), false, false)
+                        state._ts_target_mode = "note"
+                        state.ts_manual_target_measure = nil
                     end
                     if state.auto_scroll then
                         state.jump_to_note_qn = min_sel_qn or n.start_qn
@@ -2670,6 +2672,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     else
                         state:select_note(n)
                     end
+                    state._ts_target_mode = "note"
+                    state.ts_manual_target_measure = nil
                     midi_service.sync_selection_to_reaper(state, active_tracks_data)
                     state.last_reaper_sel_item = reaper.GetSelectedMediaItem(0, 0)
                     state.last_reaper_sel_track = reaper.GetSelectedTrack(0, 0)

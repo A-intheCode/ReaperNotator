@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.50.5
+-- @version 2.50.6
 -- @changelog
+--   + v2.50.6: Hotfix: Fix ReaPack index.xml source URLs (/main/ instead of /testing/), prevent legacy MIDI-item NOTATOR_TIME_SIG events from overwriting mid-piece Time Signatures, prioritize Edit Cursor bar when moving cursor to a new measure, add [ - ] / [ + ] target bar stepper in Time Signature Drawer, and commit REAPER TimeMap after each measure marker
 --   + v2.50.5: Hotfix: Mid-piece Time Signature changes at the barline before the selected note or Edit Cursor across all staves (independent of MIDI items), preserving all preceding measures' time signatures and barline positions + double barline & SMuFL Time Signature engraving at mid-piece meter changes across all staves + remove remaining German words ("Taktart", "Tonart", "Dur", "Moll") from Key & Time Signature Drawer
 --   + v2.50.4: Hotfix: Move Time Signature section to the top of Key & Time Signature Drawer, unify Time Signature across all staves & sync with REAPER TimeMap, and fix compound meter (6/8, 9/8, 12/8) dotted-quarter beam grouping
 --   + v2.50.3: Hotfix: Increase vertical clearance of Tuplet brackets above and below noteheads, stems, beams & articulations
@@ -215,6 +216,7 @@ local state = State.new()
 SettingsModal.apply_theme(state)
 PathService.cleanup_legacy_artifacts(state)
 ShortcutManager.init()
+KeySignatureService.load(state)
 FermataService.load_fermatas(state)
 TempoService.load_markers(state)
 OctaveService.load_lines(state)
@@ -225,7 +227,6 @@ TextItemService.load_text_items(state)
 RepeatService.load_repeat_marks(state)
 RehearsalMarkService.load_marks(state)
 ScaleService.load_chord_items(state)
-KeySignatureService.load(state)
 SlurService.load_slurs(state)
 PortamentoService.load_portamentos(state)
 GlissandoService.load_glissandos(state)
@@ -333,6 +334,7 @@ local function loop()
         MidiService.invalidate_cache()
         state:load_settings()
         SettingsModal.apply_theme(state)
+        KeySignatureService.load(state)
         FermataService.load_fermatas(state)
         TempoService.load_markers(state)
         OctaveService.load_lines(state)

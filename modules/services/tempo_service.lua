@@ -620,7 +620,8 @@ function TempoService.sync_all_to_reaper(state)
     end
 
     -- Synchronize Notator per-measure Time Signature changes (state.time_sig_changes)
-    if state.time_sig_changes and next(state.time_sig_changes) ~= nil then
+    local has_notator_ts_changes = (state.time_sig_changes and next(state.time_sig_changes) ~= nil)
+    if has_notator_ts_changes then
         local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
         if not has_kss or not KeySignatureService then
             has_kss, KeySignatureService = pcall(require, "modules.services.key_signature_service")
@@ -635,41 +636,41 @@ function TempoService.sync_all_to_reaper(state)
                 end
             end
         end
-    end
-
-    -- Also synchronize mid-piece NOTATOR_TIME_SIG events from MIDI takes (e.g. MusicXML imports)
-    local trk_cnt = reaper.CountTracks(0)
-    for ti = 0, trk_cnt - 1 do
-        local trk = reaper.GetTrack(0, ti)
-        if trk then
-            local found_in_track = false
-            local item_cnt = reaper.CountTrackMediaItems(trk)
-            for ii = 0, item_cnt - 1 do
-                local it = reaper.GetTrackMediaItem(trk, ii)
-                local tk = it and reaper.GetActiveTake(it)
-                if tk and reaper.TakeIsMIDI(tk) then
-                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(tk)
-                    for tx = 0, (text_cnt or 0) - 1 do
-                        local ok_t, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(tk, tx)
-                        if ok_t and ev_type == 15 and msg then
-                            local tn, td = msg:match("NOTATOR_TIME_SIG%s+(%d+)%s+(%d+)")
-                            if not tn then tn, td = msg:match("^time%s+(%d+)/(%d+)") end
-                            if tn and td then
-                                local ev_qn = reaper.MIDI_GetProjQNFromPPQPos(tk, ppq)
-                                ev_qn = math.floor(ev_qn * 100 + 0.5) / 100
-                                if ev_qn <= 0.05 then
-                                    bpi = tonumber(tn) or bpi
-                                    bpi_d = tonumber(td) or bpi_d
-                                else
-                                    add_time_sig_at_qn(ev_qn, tonumber(tn), tonumber(td))
+    else
+        -- Fallback only when state.time_sig_changes is not active: check MIDI takes (e.g. MusicXML imports)
+        local trk_cnt = reaper.CountTracks(0)
+        for ti = 0, trk_cnt - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local found_in_track = false
+                local item_cnt = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_cnt - 1 do
+                    local it = reaper.GetTrackMediaItem(trk, ii)
+                    local tk = it and reaper.GetActiveTake(it)
+                    if tk and reaper.TakeIsMIDI(tk) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(tk)
+                        for tx = 0, (text_cnt or 0) - 1 do
+                            local ok_t, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(tk, tx)
+                            if ok_t and ev_type == 15 and msg then
+                                local tn, td = msg:match("NOTATOR_TIME_SIG%s+(%d+)%s+(%d+)")
+                                if not tn then tn, td = msg:match("^time%s+(%d+)/(%d+)") end
+                                if tn and td then
+                                    local ev_qn = reaper.MIDI_GetProjQNFromPPQPos(tk, ppq)
+                                    ev_qn = math.floor(ev_qn * 100 + 0.5) / 100
+                                    if ev_qn <= 0.05 then
+                                        bpi = tonumber(tn) or bpi
+                                        bpi_d = tonumber(td) or bpi_d
+                                    else
+                                        add_time_sig_at_qn(ev_qn, tonumber(tn), tonumber(td))
+                                    end
+                                    found_in_track = true
                                 end
-                                found_in_track = true
                             end
                         end
                     end
                 end
+                if found_in_track then break end
             end
-            if found_in_track then break end
         end
     end
 
@@ -677,10 +678,12 @@ function TempoService.sync_all_to_reaper(state)
     -- If REAPER already has markers, update marker 0.
     -- If REAPER has 0 markers, ptidx MUST be -1 to insert the first marker!
     if cnt_before > 0 then
-        local ok, _, _, _, _, m0_num, m0_den = reaper.GetTempoTimeSigMarker(0, 0)
-        if ok and m0_num > 0 and m0_den > 0 then
-            bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or m0_num
-            bpi_d = (state.time_sig_denom and state.time_sig_denom > 0) and state.time_sig_denom or m0_den
+        if not has_notator_ts_changes then
+            local ok, _, _, _, _, m0_num, m0_den = reaper.GetTempoTimeSigMarker(0, 0)
+            if ok and m0_num > 0 and m0_den > 0 then
+                bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or m0_num
+                bpi_d = (state.time_sig_denom and state.time_sig_denom > 0) and state.time_sig_denom or m0_den
+            end
         end
         reaper.SetTempoTimeSigMarker(0, 0, 0.0, -1, -1, bpm0, bpi, bpi_d, lin0)
     else
@@ -700,6 +703,7 @@ function TempoService.sync_all_to_reaper(state)
     for i = cnt_after_pt0 - 1, 1, -1 do
         reaper.DeleteTempoTimeSigMarker(0, i)
     end
+    if reaper.UpdateTimeline then reaper.UpdateTimeline() end
     
     -- Merge any standalone time signature changes into merged_points so all markers are created in strict QN order
     for _, ts in ipairs(existing_time_sigs) do
@@ -733,6 +737,9 @@ function TempoService.sync_all_to_reaper(state)
         local ts_n = pt.ts_num or 0
         local ts_d = pt.ts_den or 0
         reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, pt.bpm, ts_n, ts_d, pt.linear == true)
+        if (ts_n > 0 and ts_d > 0) or pt.linear then
+            if reaper.UpdateTimeline then reaper.UpdateTimeline() end
+        end
     end
     
     reaper.UpdateTimeline()

@@ -898,9 +898,9 @@ function KeySignatureService.qn_to_measure_info(state, qn, total_measures)
 end
 
 --- Determines the target measure (0-based) for applying a Time Signature change:
--- 1st priority: Barline immediately before the earliest selected note across any staff.
--- 2nd priority: Barline of the measure containing the REAPER Edit Cursor.
--- @return number target_m, number bar_start_qn, number active_num, number active_den, boolean is_from_note, number ref_qn
+-- Tracks whether the user most recently moved the REAPER Edit Cursor or selected a note,
+-- and also supports manual bar stepping via state.ts_manual_target_measure.
+-- @return number target_m, number bar_start_qn, number active_num, number active_den, boolean is_from_note, number ref_qn, boolean is_manual
 function KeySignatureService.get_target_measure_for_time_sig(state)
     local min_sel_qn = nil
     if state then
@@ -918,18 +918,57 @@ function KeySignatureService.get_target_measure_for_time_sig(state)
         end
     end
 
-    local is_from_note = (min_sel_qn ~= nil)
-    local ref_qn = 0.0
-    if is_from_note then
-        ref_qn = math.max(0.0, min_sel_qn)
-    else
-        local cur_pos = (reaper.GetCursorPosition and reaper.GetCursorPosition()) or 0.0
-        ref_qn = (reaper.TimeMap2_timeToQN and reaper.TimeMap2_timeToQN(0, cur_pos)) or 0.0
-        ref_qn = math.max(0.0, ref_qn)
+    local cur_pos = (reaper.GetCursorPosition and reaper.GetCursorPosition()) or 0.0
+    local cur_qn = (reaper.TimeMap2_timeToQN and reaper.TimeMap2_timeToQN(0, cur_pos)) or 0.0
+    cur_qn = math.max(0.0, cur_qn)
+
+    if state then
+        local cur_changed = (state._ts_last_cur_qn ~= nil and math.abs(cur_qn - state._ts_last_cur_qn) > 0.005)
+        local sel_changed = (min_sel_qn ~= nil and (state._ts_last_sel_qn == nil or math.abs(min_sel_qn - state._ts_last_sel_qn) > 0.005))
+        local sel_cleared = (min_sel_qn == nil and state._ts_last_sel_qn ~= nil)
+
+        if cur_changed and not (sel_changed and math.abs(cur_qn - min_sel_qn) <= 0.01) then
+            state._ts_target_mode = "cursor"
+            state.ts_manual_target_measure = nil
+        elseif sel_changed then
+            state._ts_target_mode = "note"
+            state.ts_manual_target_measure = nil
+        elseif sel_cleared then
+            state._ts_target_mode = "cursor"
+            state.ts_manual_target_measure = nil
+        end
+
+        state._ts_last_cur_qn = cur_qn
+        state._ts_last_sel_qn = min_sel_qn
+
+        if state.ts_manual_target_measure ~= nil then
+            local man_m = math.max(0, math.floor(tonumber(state.ts_manual_target_measure) or 0))
+            local tmap = KeySignatureService.get_measure_time_map(state, math.max(256, man_m + 8))
+            local m_sqn = (tmap.m_start_qn and tmap.m_start_qn[man_m]) or (man_m * 4.0)
+            local ts_n  = (tmap.m_ts_num and tmap.m_ts_num[man_m]) or state.time_sig_num or 4
+            local ts_d  = (tmap.m_ts_den and tmap.m_ts_den[man_m]) or state.time_sig_denom or 4
+            return man_m, m_sqn, ts_n, ts_d, false, m_sqn, true
+        end
     end
 
+    local is_from_note = false
+    if min_sel_qn ~= nil then
+        if state and state._ts_target_mode == "cursor" then
+            is_from_note = false
+        elseif state and state._ts_target_mode == "note" then
+            is_from_note = true
+        else
+            if cur_qn > 0.05 and min_sel_qn < 0.05 then
+                is_from_note = false
+            else
+                is_from_note = true
+            end
+        end
+    end
+
+    local ref_qn = is_from_note and math.max(0.0, min_sel_qn) or cur_qn
     local m, m_sqn, _, ts_n, ts_d = KeySignatureService.qn_to_measure_info(state, ref_qn, 256)
-    return m, m_sqn, ts_n, ts_d, is_from_note, ref_qn
+    return m, m_sqn, ts_n, ts_d, is_from_note, ref_qn, false
 end
 
 --- Synchronizes all Notator Time Signatures (Bar 1 + all mid-piece barline changes) to REAPER's Tempo/TimeMap.
@@ -947,19 +986,21 @@ function KeySignatureService.sync_time_sigs_to_reaper(state)
 
     -- Fallback when TempoService markers are not active: update REAPER TimeMap directly
     local cur_bpm = (reaper.Master_GetTempo and reaper.Master_GetTempo()) or 120
+    local use_bpm = cur_bpm
     local cnt = (reaper.CountTempoTimeSigMarkers and reaper.CountTempoTimeSigMarkers(0)) or 0
     if cnt > 0 then
         local ok, _, _, _, mbpm, _, _, lin = reaper.GetTempoTimeSigMarker(0, 0)
-        local use_bpm = (ok and mbpm and mbpm > 0) and mbpm or cur_bpm
+        if ok and mbpm and mbpm > 0 then use_bpm = mbpm end
         reaper.SetTempoTimeSigMarker(0, 0, 0.0, -1, -1, use_bpm, m0_num, m0_den, lin or false)
     else
-        reaper.SetTempoTimeSigMarker(0, -1, 0.0, -1, -1, cur_bpm, m0_num, m0_den, false)
+        reaper.SetTempoTimeSigMarker(0, -1, 0.0, -1, -1, use_bpm, m0_num, m0_den, false)
     end
 
     local cnt_after = (reaper.CountTempoTimeSigMarkers and reaper.CountTempoTimeSigMarkers(0)) or 0
     for i = cnt_after - 1, 1, -1 do
         reaper.DeleteTempoTimeSigMarker(0, i)
     end
+    if reaper.UpdateTimeline then reaper.UpdateTimeline() end
 
     local sorted_tc = {}
     for _, tc in pairs(tmap.time_changes or {}) do
@@ -969,7 +1010,8 @@ function KeySignatureService.sync_time_sigs_to_reaper(state)
 
     for _, tc in ipairs(sorted_tc) do
         local t_pos = (reaper.TimeMap2_QNToTime and reaper.TimeMap2_QNToTime(0, tc.qn)) or 0.0
-        reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, cur_bpm, tc.num, tc.denom, false)
+        reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, use_bpm, tc.num, tc.denom, false)
+        if reaper.UpdateTimeline then reaper.UpdateTimeline() end
     end
 end
 
@@ -992,6 +1034,35 @@ function KeySignatureService.set_time_sig_at_target(state, num, denom, explicit_
         target_m = KeySignatureService.get_target_measure_for_time_sig(state)
     end
     target_m = math.max(0, math.floor(tonumber(target_m) or 0))
+
+    -- Purge any legacy per-item NOTATOR_TIME_SIG / time X/Y text events and P_EXT:notator_time_sig
+    -- so no MIDI item can ever override the global/mid-piece Score & REAPER Time Signature map
+    local num_trks = (reaper.CountTracks and reaper.CountTracks(0)) or 0
+    for ti = 0, num_trks - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+            local it_cnt = reaper.CountTrackMediaItems(trk)
+            for ii = 0, it_cnt - 1 do
+                local it = reaper.GetTrackMediaItem(trk, ii)
+                if it and reaper.ValidatePtr(it, "MediaItem*") then
+                    reaper.GetSetMediaItemInfo_String(it, "P_EXT:notator_time_sig", "", true)
+                    local tk = reaper.GetActiveTake(it)
+                    if tk and reaper.TakeIsMIDI(tk) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(tk)
+                        local deleted_any = false
+                        for tx = (text_cnt or 0) - 1, 0, -1 do
+                            local ok_e, _, _, _, etype, msg = reaper.MIDI_GetTextSysexEvt(tk, tx)
+                            if ok_e and etype == 15 and msg and (msg:match("^NOTATOR_TIME_SIG") or msg:match("^time%s+%d+/%d+")) then
+                                reaper.MIDI_DeleteTextSysexEvt(tk, tx)
+                                deleted_any = true
+                            end
+                        end
+                        if deleted_any then reaper.MIDI_Sort(tk) end
+                    end
+                end
+            end
+        end
+    end
 
     if state then
         state.time_sig_changes = state.time_sig_changes or {}
@@ -1029,6 +1100,11 @@ function KeySignatureService.set_time_sig_at_target(state, num, denom, explicit_
                     end
                     if tdata.rests_cache then
                         for k in pairs(tdata.rests_cache) do tdata.rests_cache[k] = nil end
+                    end
+                    if tdata.items then
+                        for _, it in ipairs(tdata.items) do
+                            it.time_sig = nil
+                        end
                     end
                 end
             end
@@ -1613,6 +1689,31 @@ function KeySignatureService.load(state)
             state._ts0_from_changes_num = state.time_sig_num
             state._ts0_from_changes_den = state.time_sig_denom
         end
+        KeySignatureService.sync_time_sigs_to_reaper(state)
+    else
+        state.time_sig_changes = {
+            [0] = { num = state.time_sig_num or 4, denom = state.time_sig_denom or 4 }
+        }
+        local cnt = (reaper.CountTempoTimeSigMarkers and reaper.CountTempoTimeSigMarkers(0)) or 0
+        for i = 0, cnt - 1 do
+            local ok_m, tpos, _, _, _, ts_n, ts_d = reaper.GetTempoTimeSigMarker(0, i)
+            if ok_m and ts_n and ts_n > 0 and ts_d and ts_d > 0 then
+                local m_qn = (reaper.TimeMap2_timeToQN and reaper.TimeMap2_timeToQN(0, tpos or 0.0)) or 0.0
+                if m_qn <= 0.05 then
+                    state.time_sig_changes[0] = { num = ts_n, denom = ts_d }
+                    state.time_sig_num = ts_n
+                    state.time_sig_denom = ts_d
+                else
+                    local m_idx = KeySignatureService.qn_to_measure_info(state, m_qn, 512)
+                    if m_idx and m_idx >= 0 then
+                        state.time_sig_changes[m_idx] = { num = ts_n, denom = ts_d }
+                    end
+                end
+            end
+        end
+        state._ts0_from_changes = true
+        state._ts0_from_changes_num = state.time_sig_changes[0].num
+        state._ts0_from_changes_den = state.time_sig_changes[0].denom
     end
 
     local ok_t, raw_t = reaper.GetProjExtState(0, "REAPER_Notator", "track_key_signatures")

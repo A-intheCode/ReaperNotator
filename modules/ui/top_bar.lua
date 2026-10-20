@@ -165,7 +165,10 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     local beat = math.floor(qn % timesig_num) + 1
     local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
     if has_kss and KeySignatureService and KeySignatureService.qn_to_measure_info then
-        local m_idx, m_sqn, _, _, m_ts_n, m_ts_d = KeySignatureService.qn_to_measure_info(state, qn)
+        if KeySignatureService.get_target_measure_for_time_sig then
+            KeySignatureService.get_target_measure_for_time_sig(state)
+        end
+        local m_idx, m_sqn, _, m_ts_n, m_ts_d = KeySignatureService.qn_to_measure_info(state, qn)
         if m_idx then
             bar = m_idx + 1
             timesig_num = m_ts_n or timesig_num

@@ -61,9 +61,9 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     -- 2. TIME SIGNATURE SECTION (Always Global Across All Staves & REAPER)
     -- ==================================================================
     reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "⏱ TIME SIGNATURE")
-    local target_m, target_sqn, active_ts_n, active_ts_d, is_from_note = 0, 0.0, 4, 4
+    local target_m, target_sqn, active_ts_n, active_ts_d, is_from_note, _, is_manual = 0, 0.0, 4, 4, false, 0.0, false
     if KeySignatureService and KeySignatureService.get_target_measure_for_time_sig then
-        target_m, target_sqn, active_ts_n, active_ts_d, is_from_note = KeySignatureService.get_target_measure_for_time_sig(state)
+        target_m, target_sqn, active_ts_n, active_ts_d, is_from_note, _, is_manual = KeySignatureService.get_target_measure_for_time_sig(state)
     end
     local cur_ts_n = active_ts_n or state.time_sig_num
     local cur_ts_d = active_ts_d or state.time_sig_denom
@@ -72,8 +72,18 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
         cur_ts_n = (rn and rn > 0) and rn or 4
         cur_ts_d = (rd and rd > 0) and rd or 4
     end
-    local target_src_lbl = is_from_note and "Selected Note" or "Edit Cursor"
-    reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("Target: Bar %d (%s)  |  Active: %d/%d", (target_m or 0) + 1, target_src_lbl, cur_ts_n, cur_ts_d))
+    local target_src_lbl = is_manual and "Manual" or (is_from_note and "Selected Note" or "Edit Cursor")
+    reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("Target: Bar %d (%s)", (target_m or 0) + 1, target_src_lbl))
+    reaper.ImGui_SameLine(ctx, 0, 6)
+    if reaper.ImGui_SmallButton(ctx, "-##DecTargetBar") then
+        state.ts_manual_target_measure = math.max(0, (target_m or 0) - 1)
+    end
+    reaper.ImGui_SameLine(ctx, 0, 2)
+    if reaper.ImGui_SmallButton(ctx, "+##IncTargetBar") then
+        state.ts_manual_target_measure = (target_m or 0) + 1
+    end
+    reaper.ImGui_SameLine(ctx, 0, 8)
+    reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("| Active: %d/%d", cur_ts_n, cur_ts_d))
 
     state.key_sig_ts_num = state.key_sig_ts_num or cur_ts_n
     state.key_sig_ts_den = state.key_sig_ts_den or cur_ts_d
@@ -83,7 +93,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
         state.key_sig_ts_den = denom
         local applied_m = target_m or 0
         if KeySignatureService and KeySignatureService.set_time_sig_at_target then
-            applied_m = KeySignatureService.set_time_sig_at_target(state, num, denom)
+            applied_m = KeySignatureService.set_time_sig_at_target(state, num, denom, target_m)
         elseif KeySignatureService and KeySignatureService.set_project_time_sig then
             KeySignatureService.set_project_time_sig(state, num, denom)
         else
