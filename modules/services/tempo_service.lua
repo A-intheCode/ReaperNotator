@@ -609,12 +609,30 @@ function TempoService.sync_all_to_reaper(state)
         table.insert(existing_time_sigs, { qn = qn_val, num = num_val, den = den_val })
     end
 
-    if cnt_before > 1 then
+    if cnt_before > 1 and not (state.time_sig_changes and next(state.time_sig_changes) ~= nil) then
         for i = 1, cnt_before - 1 do
             local ok, tpos, _, _, _, ts_num, ts_den = reaper.GetTempoTimeSigMarker(0, i)
             if ok and ts_num > 0 and ts_den > 0 then
                 local ts_qn = reaper.TimeMap2_timeToQN(0, tpos)
                 add_time_sig_at_qn(ts_qn, ts_num, ts_den)
+            end
+        end
+    end
+
+    -- Synchronize Notator per-measure Time Signature changes (state.time_sig_changes)
+    if state.time_sig_changes and next(state.time_sig_changes) ~= nil then
+        local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
+        if not has_kss or not KeySignatureService then
+            has_kss, KeySignatureService = pcall(require, "modules.services.key_signature_service")
+        end
+        if has_kss and KeySignatureService and KeySignatureService.get_measure_time_map then
+            local tmap = KeySignatureService.get_measure_time_map(state, 256)
+            if tmap then
+                if tmap.m_ts_num and tmap.m_ts_num[0] then bpi = tmap.m_ts_num[0] end
+                if tmap.m_ts_den and tmap.m_ts_den[0] then bpi_d = tmap.m_ts_den[0] end
+                for _, tc in pairs(tmap.time_changes or {}) do
+                    add_time_sig_at_qn(tc.qn, tc.num, tc.denom)
+                end
             end
         end
     end

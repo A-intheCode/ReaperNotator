@@ -163,6 +163,17 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
     local qn = reaper.TimeMap2_timeToQN(0, time_pos)
     local bar = math.floor(qn / timesig_num) + 1
     local beat = math.floor(qn % timesig_num) + 1
+    local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
+    if has_kss and KeySignatureService and KeySignatureService.qn_to_measure_info then
+        local m_idx, m_sqn, _, _, m_ts_n, m_ts_d = KeySignatureService.qn_to_measure_info(state, qn)
+        if m_idx then
+            bar = m_idx + 1
+            timesig_num = m_ts_n or timesig_num
+            timesig_denom = m_ts_d or timesig_denom
+            local beat_unit_qn = 4.0 / (timesig_denom > 0 and timesig_denom or 4)
+            beat = math.floor((math.max(0.0, qn - (m_sqn or 0.0)) + 0.001) / beat_unit_qn) + 1
+        end
+    end
     local beat_str = string.format("%d.%d.00", bar, beat)
     
     reaper.ImGui_TextColored(ctx, 0x5BC0DEFF, time_str)

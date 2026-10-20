@@ -20,6 +20,7 @@ local TextItemService    = require("services.text_item_service")
 local DynamicTextService = require("services.dynamic_text_service")
 local RepeatService      = require("services.repeat_service")
 local SlurService        = require("services.slur_service")
+local KeySignatureService = require("services.key_signature_service")
 
 local SystemEngraver = {}
 
@@ -28,23 +29,29 @@ local SystemEngraver = {}
 -- ------------------------------------------------------------------------------
 function SystemEngraver.build_page_measure_map(active_tracks, start_m, end_m, margin_l, score_w, s, state_or_key)
     local page_bars = math.max(1, end_m - start_m)
+    local state_tbl = (type(state_or_key) == "table") and state_or_key or nil
     local ts_num, ts_den = 4, 4
-    if type(state_or_key) == "table" and state_or_key.time_sig_num and state_or_key.time_sig_denom then
-        ts_num = state_or_key.time_sig_num
-        ts_den = state_or_key.time_sig_denom
+    if state_tbl and state_tbl.time_sig_num and state_tbl.time_sig_denom then
+        ts_num = state_tbl.time_sig_num
+        ts_den = state_tbl.time_sig_denom
     else
         local rn, rd = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
         if rn and rn > 0 and rd and rd > 0 then ts_num, ts_den = rn, rd end
     end
     local bpi = ts_num * (4.0 / ts_den)
     local eng_s = s or 1.0
+    local ts_map = (KeySignatureService and KeySignatureService.get_measure_time_map)
+        and KeySignatureService.get_measure_time_map(state_tbl, math.max(16, end_m + 4), bpi, eng_s)
+        or nil
+
     local raw_widths = {}
     local total_raw = 0
 
     for bi = 0, page_bars - 1 do
         local m = start_m + bi
-        local m_sqn = m * bpi
-        local m_eqn = (m + 1) * bpi
+        local m_sqn = (ts_map and ts_map.m_start_qn and ts_map.m_start_qn[m]) or (m * bpi)
+        local m_eqn = (ts_map and ts_map.m_end_qn and ts_map.m_end_qn[m]) or ((m + 1) * bpi)
+        local m_bpi = (ts_map and ts_map.m_bpi and ts_map.m_bpi[m]) or bpi
         local note_density = 0
         local has_acc = false
 
@@ -60,15 +67,17 @@ function SystemEngraver.build_page_measure_map(active_tracks, start_m, end_m, ma
             end
         end
 
-        -- Base weight according to Gardner Read spacing
-        local weight = 1.0 + (math.min(16, note_density) * 0.12) + (has_acc and 0.15 or 0.0)
+        -- Base weight according to Gardner Read spacing, scaled by measure length and mid-piece time signature change
+        local bpi_scale = math.max(0.55, math.min(1.6, m_bpi / 4.0))
+        local ts_change_extra = (m > start_m and ts_map and ts_map.time_changes and ts_map.time_changes[m]) and 0.25 or 0.0
+        local weight = (1.0 * bpi_scale) + (math.min(16, note_density) * 0.12) + (has_acc and 0.15 or 0.0) + ts_change_extra
 
         raw_widths[bi] = weight
         total_raw = total_raw + weight
     end
 
     -- Dedicated Clef & Time Signature Reserve Area at start of system
-    -- start_m == 0 has Clef + TimeSig (50 * eng_s); subsequent systems have Clef only (28 * eng_s)
+    -- start_m == 0 (or system starting with a time signature change) has Clef + TimeSig; subsequent systems have Clef only
     local key_idx = 0
     if type(state_or_key) == "number" then
         key_idx = state_or_key
@@ -93,7 +102,8 @@ function SystemEngraver.build_page_measure_map(active_tracks, start_m, end_m, ma
     end
     local key_sig_w = Engraver.get_key_signature_width(key_idx, eng_s)
     local has_ks = (key_sig_w > 0)
-    local clef_w = (start_m == 0 and (has_ks and 64.0 or 52.0) or (has_ks and 42.0 or 30.0)) * eng_s + key_sig_w
+    local has_start_ts = (start_m == 0) or (ts_map and ts_map.time_changes and ts_map.time_changes[start_m] ~= nil)
+    local clef_w = (has_start_ts and (has_ks and 64.0 or 52.0) or (has_ks and 42.0 or 30.0)) * eng_s + key_sig_w
     local avail_score_w = math.max(10.0, score_w - clef_w)
     local starts = {}
     local widths = {}
@@ -107,6 +117,9 @@ function SystemEngraver.build_page_measure_map(active_tracks, start_m, end_m, ma
     end
     starts[page_bars] = cur_x
 
+    local start_ts_num = (ts_map and ts_map.m_ts_num and ts_map.m_ts_num[start_m]) or ts_num
+    local start_ts_den = (ts_map and ts_map.m_ts_den and ts_map.m_ts_den[start_m]) or ts_den
+
     return {
         start_m = start_m,
         end_m = end_m,
@@ -119,8 +132,15 @@ function SystemEngraver.build_page_measure_map(active_tracks, start_m, end_m, ma
         starts = starts,
         widths = widths,
         bpi = bpi,
-        ts_num = ts_num,
-        ts_den = ts_den
+        ts_num = start_ts_num,
+        ts_den = start_ts_den,
+        has_start_ts = has_start_ts,
+        m_start_qn = ts_map and ts_map.m_start_qn or nil,
+        m_end_qn = ts_map and ts_map.m_end_qn or nil,
+        m_bpi = ts_map and ts_map.m_bpi or nil,
+        m_ts_num = ts_map and ts_map.m_ts_num or nil,
+        m_ts_den = ts_map and ts_map.m_ts_den or nil,
+        time_changes = ts_map and ts_map.time_changes or nil
     }
 end
 
@@ -130,7 +150,7 @@ end
 function SystemEngraver.qn_to_page_x(qn, mmap, s)
     if not qn then return (mmap and mmap.margin_l) or 0 end
     local bpi = mmap.bpi or 4.0
-    local m_idx = math.floor((qn + 0.0001) / bpi)
+    local m_idx, m_sqn, _, m_bpi = Engraver.qn_to_measure_info(qn + 0.0001, bpi, mmap)
     local bi = m_idx - mmap.start_m
 
     if bi < 0 then
@@ -141,12 +161,14 @@ function SystemEngraver.qn_to_page_x(qn, mmap, s)
 
     local bx = mmap.starts[bi]
     local bw = mmap.widths[bi]
-    local pad_l = 14.0 * (s or 1.0)
+    local ts_change = (bi > 0 and mmap.time_changes and mmap.time_changes[m_idx])
+    local ts_pad = ts_change and (ts_change.width or (22.0 * (s or 1.0))) or 0.0
+    local pad_l = 14.0 * (s or 1.0) + ts_pad
     local pad_r = 14.0 * (s or 1.0)
     local usable_w = math.max(10.0, bw - pad_l - pad_r)
 
-    local qn_in_bar = qn - (m_idx * bpi)
-    local frac = math.max(0.0, math.min(1.0, qn_in_bar / bpi))
+    local qn_in_bar = qn - m_sqn
+    local frac = math.max(0.0, math.min(1.0, qn_in_bar / m_bpi))
     return bx + pad_l + (frac * usable_w)
 end
 
@@ -269,7 +291,16 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
             -- Barlines across both staves (continuous through Grand Staff)
             for bi = 1, page_bars do
                 local bx = mmap.starts[bi]
-                reaper.ImGui_DrawList_AddLine(dl, bx, tdata.upper_top, bx, tdata.lower_bot, col_ink, 1.0 * eng_s)
+                local m_at_bar = start_m + bi
+                local ts_chg = (bi < page_bars) and mmap.time_changes and mmap.time_changes[m_at_bar]
+                if ts_chg then
+                    reaper.ImGui_DrawList_AddLine(dl, bx - 3.5 * eng_s, tdata.upper_top, bx - 3.5 * eng_s, tdata.lower_bot, col_ink, 1.3 * eng_s)
+                    reaper.ImGui_DrawList_AddLine(dl, bx, tdata.upper_top, bx, tdata.lower_bot, col_ink, 1.3 * eng_s)
+                    Engraver.draw_time_signature(dl, bx + 5.0 * eng_s, tdata.upper_bot, staff_ls, eng_s, col_ink, ts_chg.num, ts_chg.denom, font_music, font_main)
+                    Engraver.draw_time_signature(dl, bx + 5.0 * eng_s, tdata.lower_bot, staff_ls, eng_s, col_ink, ts_chg.num, ts_chg.denom, font_music, font_main)
+                else
+                    reaper.ImGui_DrawList_AddLine(dl, bx, tdata.upper_top, bx, tdata.lower_bot, col_ink, 1.0 * eng_s)
+                end
             end
 
             -- Clefs at start of system
@@ -292,8 +323,8 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
                 Engraver.draw_key_signature(dl, key_idx, keysig_draw_x, tdata.lower_bot, staff_ls, eng_s, col_ink, font_music, "bass")
             end
 
-            -- Time Signature on Bar 1 (Measure 1 of piece only)
-            if start_m == 0 and font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+            -- Time Signature on Bar 1 (or system starting with a time signature change)
+            if mmap.has_start_ts and font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
                 local ts_x = bounds.margin_l + (((mmap.key_sig_w or 0) > 0 and 42.0 or 30.0) * eng_s) + (mmap.key_sig_w or 0)
                 local n_str = tostring(mmap.ts_num or 4)
                 local d_str = tostring(mmap.ts_den or 4)
@@ -344,7 +375,15 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
             -- Barlines across this staff
             for bi = 1, page_bars do
                 local bx = mmap.starts[bi]
-                reaper.ImGui_DrawList_AddLine(dl, bx, tdata.top_y, bx, tdata.bot_y, col_ink, 1.0 * eng_s)
+                local m_at_bar = start_m + bi
+                local ts_chg = (bi < page_bars) and mmap.time_changes and mmap.time_changes[m_at_bar]
+                if ts_chg then
+                    reaper.ImGui_DrawList_AddLine(dl, bx - 3.5 * eng_s, tdata.top_y, bx - 3.5 * eng_s, tdata.bot_y, col_ink, 1.3 * eng_s)
+                    reaper.ImGui_DrawList_AddLine(dl, bx, tdata.top_y, bx, tdata.bot_y, col_ink, 1.3 * eng_s)
+                    Engraver.draw_time_signature(dl, bx + 5.0 * eng_s, tdata.bot_y, staff_ls, eng_s, col_ink, ts_chg.num, ts_chg.denom, font_music, font_main)
+                else
+                    reaper.ImGui_DrawList_AddLine(dl, bx, tdata.top_y, bx, tdata.bot_y, col_ink, 1.0 * eng_s)
+                end
             end
 
             -- Clef at start of system
@@ -372,8 +411,8 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
                 Engraver.draw_key_signature(dl, key_idx, keysig_draw_x, tdata.bot_y, staff_ls, eng_s, col_ink, font_music, tdata.clef or "treble")
             end
 
-            -- Time Signature on Bar 1
-            if start_m == 0 and font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+            -- Time Signature on Bar 1 (or system starting with a time signature change)
+            if mmap.has_start_ts and font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
                 local ts_x = bounds.margin_l + (((mmap.key_sig_w or 0) > 0 and 42.0 or 30.0) * eng_s) + (mmap.key_sig_w or 0)
                 local n_str = tostring(mmap.ts_num or 4)
                 local d_str = tostring(mmap.ts_den or 4)
@@ -404,8 +443,8 @@ end
 -- ------------------------------------------------------------------------------
 function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap, staff_bot_y, staff_ls, eng_s, font_music, font_main, clef_type, state, track_guid, dynamics)
     local bpi = mmap.bpi or 4.0
-    local start_qn_page = start_m * bpi
-    local end_qn_page   = end_m * bpi
+    local start_qn_page = (Engraver.measure_to_qn_info(start_m, bpi, mmap))
+    local end_qn_page   = (Engraver.measure_to_qn_info(end_m, bpi, mmap))
     local font_sz       = math.floor(40 * eng_s + 0.5)
     local step_y        = staff_ls * 0.5
 
@@ -417,12 +456,12 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
         end
     end
 
-    local visual_notes, bar_ties = Engraver.get_visual_notes(raw_notes_in_range, bpi, start_qn_page, end_qn_page, state and state.user_ties)
+    local visual_notes, bar_ties = Engraver.get_visual_notes(raw_notes_in_range, bpi, start_qn_page, end_qn_page, state and state.user_ties, mmap)
 
     -- Filter out repeated bars
     local display_notes = {}
     for _, vn in ipairs(visual_notes) do
-        local note_bar = math.floor((vn.start_qn + 0.001) / bpi)
+        local note_bar = vn.bar or Engraver.qn_to_measure_info(vn.start_qn + 0.001, bpi, mmap)
         if not RepeatService.has_repeat_mark(state, track_guid, note_bar) then
             table.insert(display_notes, vn)
         end
@@ -519,7 +558,7 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
     end
 
     -- 2. Ganztaktpausen & Rests via core Engraver module (Voice-Separated)
-    local track_rests = Engraver.generate_voice_rests(raw_notes_in_range, end_m, bpi, nil, start_m, end_m - 1)
+    local track_rests = Engraver.generate_voice_rests(raw_notes_in_range, end_m, bpi, nil, start_m, end_m - 1, mmap)
     for _, r in ipairs(track_rests) do
         if r.measure_idx and r.measure_idx >= start_m and r.measure_idx < end_m then
             local bi = r.measure_idx - start_m
@@ -561,7 +600,7 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
     end
 
     -- 3. Beaming Engine (using core Engraver module)
-    local beam_groups = Engraver.get_beam_groups(display_notes, bpi, "beat", mmap.ts_num, mmap.ts_den)
+    local beam_groups = Engraver.get_beam_groups(display_notes, bpi, "beat", mmap.ts_num, mmap.ts_den, mmap)
     local beamed_notes_map = {}
     for _, bgroup in ipairs(beam_groups) do
         local bmap = Engraver.calculate_and_draw_beams(dl, bgroup, eng_s, 0x111111FF, nil)

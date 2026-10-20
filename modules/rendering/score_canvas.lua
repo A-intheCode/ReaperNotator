@@ -473,7 +473,7 @@ local function is_note_irregular_preview(n, vn, state)
 end
 
 local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
-    local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil, state and state.user_ties)
+    local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil, state and state.user_ties, measure_map)
     
     -- Voice filtering and ghosting (MIDI channels 0-15)
     if filter_chan ~= nil then
@@ -570,7 +570,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
     end)
 
     -- Elaine Gould ("Behind Bars", pp. 78-80): Intra-bar accidental memory & natural (♮) cancellation
-    Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure)
+    Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure, measure_map)
     
     -- Compute measure-local voice counts on each staff (Gould "Behind Bars" p. 301):
     -- Stems split by voice (Voice 1 up, Voice 2 down) ONLY in measures where multiple voices actually coexist!
@@ -578,7 +578,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
     local measure_staff_pitch_balance = {}
     local staff_pitch_balance = {}
     for _, vn in ipairs(visual_notes) do
-        local m = math.floor((vn.start_qn + 0.001) / bpi)
+        local m = vn.bar or Engraver.qn_to_measure_info(vn.start_qn + 0.001, bpi, measure_map)
         local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
         local key = string.format("%d_%s", m, st)
         if not measure_staff_voices[key] then measure_staff_voices[key] = {} end
@@ -598,7 +598,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         end
     end
     for _, vn in ipairs(visual_notes) do
-        local m = math.floor((vn.start_qn + 0.001) / bpi)
+        local m = vn.bar or Engraver.qn_to_measure_info(vn.start_qn + 0.001, bpi, measure_map)
         local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
         local key = string.format("%d_%s", m, st)
         local bal = measure_staff_pitch_balance[key]
@@ -688,7 +688,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
             chord_stem_down = not prefer_stem_up
         end
         
-        local m = math.floor((cluster.start_qn + 0.001) / bpi)
+        local m = Engraver.qn_to_measure_info(cluster.start_qn + 0.001, bpi, measure_map)
         local key = string.format("%d_%s", m, cluster.staff or (cluster.in_treble and "treble" or "bass"))
         local m_voice_cnt = measure_staff_voice_counts[key] or 1
 
@@ -816,14 +816,14 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
 
     for ci = 2, #chord_clusters do
         local cur_c = chord_clusters[ci]
-        local cur_m = math.floor(cur_c.start_qn / bpi)
+        local cur_m = Engraver.qn_to_measure_info(cur_c.start_qn + 0.001, bpi, measure_map)
         -- 2. Sequential spacing safety check against earlier temporal notes on the same staff and measure
         local prev_max_x = nil
         local max_prev_start_qn = -1
         for pi = ci - 1, 1, -1 do
             local prev = chord_clusters[pi]
             if prev.staff == cur_c.staff and (cur_c.start_qn - prev.start_qn) >= 0.03 then
-                local prev_m = math.floor(prev.start_qn / bpi)
+                local prev_m = Engraver.qn_to_measure_info(prev.start_qn + 0.001, bpi, measure_map)
                 if prev_m == cur_m then
                     if prev.start_qn > max_prev_start_qn then
                         max_prev_start_qn = prev.start_qn
@@ -849,7 +849,8 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
             local min_gap = 10.5 * s
             if cur_min_x < prev_max_x + min_gap then
                 local push = (prev_max_x + min_gap) - cur_min_x
-                local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or Engraver.cursor_qn_to_canvas_x((cur_m + 1) * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
+                local _, cur_m_end_qn = Engraver.measure_to_qn_info(cur_m, qn_per_measure, measure_map)
+                local m_end_x = (measure_map and measure_map.starts and measure_map.starts[cur_m + 1]) or Engraver.cursor_qn_to_canvas_x(cur_m_end_qn, margin_left, s, qn_per_measure, measure_map)
                 local max_allowed_x = m_end_x - 18 * s
                 for _, cvn in ipairs(cur_c.notes) do
                     local pushed_x = math.min(max_allowed_x, cvn.vis_nx + push)
@@ -864,12 +865,12 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
     
     local display_notes = {}
     for _, vn in ipairs(visual_notes) do
-        local note_bar = math.floor((vn.start_qn + 0.001) / bpi)
+        local note_bar = vn.bar or Engraver.qn_to_measure_info(vn.start_qn + 0.001, bpi, measure_map)
         if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
             table.insert(display_notes, vn)
         end
     end
-    local beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping, state.time_sig_num, state.time_sig_denom)
+    local beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping, state.time_sig_num, state.time_sig_denom, measure_map)
     
     -- ======================================================================
     -- PRECOMPUTED RESTS WITH O(1) COLLISION ELIMINATION (Cached per track)
@@ -913,8 +914,8 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
     -- Pre-bucket eff_notes by measure bar for O(1) rest collision lookup
     local eff_notes_by_bar = {}
     for _, en in ipairs(eff_notes) do
-        local mb_start = math.floor(en.start_qn / bpi)
-        local mb_end = math.floor(math.max(en.start_qn, en.end_qn - 0.001) / bpi)
+        local mb_start = Engraver.qn_to_measure_info(en.start_qn + 0.001, bpi, measure_map)
+        local mb_end = Engraver.qn_to_measure_info(math.max(en.start_qn, en.end_qn - 0.001), bpi, measure_map)
         for mb = mb_start, mb_end do
             local blist = eff_notes_by_bar[mb]
             if not blist then
@@ -926,7 +927,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
     end
     
     local staff_rests_jobs = {}
-    local num_measures = total_measures or math.max(16, math.ceil((visual_notes[#visual_notes] and visual_notes[#visual_notes].end_qn or 64) / bpi) + 2)
+    local num_measures = total_measures or math.max(16, (Engraver.qn_to_measure_info(visual_notes[#visual_notes] and visual_notes[#visual_notes].end_qn or 64, bpi, measure_map)) + 2)
     if is_harp then
         local treble_eff, alto_eff, bass_eff = {}, {}, {}
         for _, en in ipairs(eff_notes) do
@@ -938,9 +939,9 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 table.insert(bass_eff, en)
             end
         end
-        local tr_rests  = Engraver.generate_voice_rests(treble_eff, num_measures, qn_per_measure, dq)
-        local mid_rests = Engraver.generate_voice_rests(alto_eff, num_measures, qn_per_measure, dq)
-        local b_rests   = Engraver.generate_voice_rests(bass_eff, num_measures, qn_per_measure, dq)
+        local tr_rests  = Engraver.generate_voice_rests(treble_eff, num_measures, qn_per_measure, dq, nil, nil, measure_map)
+        local mid_rests = Engraver.generate_voice_rests(alto_eff, num_measures, qn_per_measure, dq, nil, nil, measure_map)
+        local b_rests   = Engraver.generate_voice_rests(bass_eff, num_measures, qn_per_measure, dq, nil, nil, measure_map)
         table.insert(staff_rests_jobs, { rests = tr_rests, staff_id = "treble", staff_is_treble = true, staff_bot_type = "treble" })
         table.insert(staff_rests_jobs, { rests = mid_rests, staff_id = "mid", staff_is_treble = false, staff_bot_type = "mid" })
         table.insert(staff_rests_jobs, { rests = b_rests, staff_id = "bass", staff_is_treble = false, staff_bot_type = "bass" })
@@ -953,15 +954,15 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
                 table.insert(bass_eff, en)
             end
         end
-        local tr_rests = Engraver.generate_voice_rests(treble_eff, num_measures, qn_per_measure, dq)
-        local b_rests  = Engraver.generate_voice_rests(bass_eff, num_measures, qn_per_measure, dq)
+        local tr_rests = Engraver.generate_voice_rests(treble_eff, num_measures, qn_per_measure, dq, nil, nil, measure_map)
+        local b_rests  = Engraver.generate_voice_rests(bass_eff, num_measures, qn_per_measure, dq, nil, nil, measure_map)
         table.insert(staff_rests_jobs, { rests = tr_rests, staff_id = "treble", staff_is_treble = true, staff_bot_type = "treble" })
         table.insert(staff_rests_jobs, { rests = b_rests, staff_id = "bass", staff_is_treble = false, staff_bot_type = "bass" })
     elseif track_clef == "bass" then
-        local trk_rests = Engraver.generate_voice_rests(eff_notes, num_measures, qn_per_measure, dq)
+        local trk_rests = Engraver.generate_voice_rests(eff_notes, num_measures, qn_per_measure, dq, nil, nil, measure_map)
         table.insert(staff_rests_jobs, { rests = trk_rests, staff_id = "bass", staff_is_treble = false, staff_bot_type = "bass" })
     else
-        local trk_rests = Engraver.generate_voice_rests(eff_notes, num_measures, qn_per_measure, dq)
+        local trk_rests = Engraver.generate_voice_rests(eff_notes, num_measures, qn_per_measure, dq, nil, nil, measure_map)
         table.insert(staff_rests_jobs, { rests = trk_rests, staff_id = "treble", staff_is_treble = true, staff_bot_type = "staff" })
     end
     
@@ -974,24 +975,23 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         
         for _, r in ipairs(r_list) do
             local collision = false
-            local r_bar = r.measure_idx or math.floor(r.start_qn / bpi)
+            local r_bar = r.measure_idx or Engraver.qn_to_measure_info(r.start_qn + 0.001, bpi, measure_map)
+            local bar_sqn, bar_eqn, bar_bpi = Engraver.measure_to_qn_info(r_bar, bpi, measure_map)
             if RepeatService.has_repeat_mark(state, tdata.guid, r_bar) then
                 collision = true
             end
             
             local bar_eff_notes = eff_notes_by_bar[r_bar] or {}
             local r_start = r.start_qn
-            local r_end = r_start + (r.is_full_measure and qn_per_measure or r.dur_qn)
+            local r_end = r_start + (r.is_full_measure and bar_bpi or r.dur_qn)
             
             if not collision then
                 if r.is_full_measure then
                     local m_idx = r_bar
-                    local bar_sqn = m_idx * bpi
-                    local bar_eqn = (m_idx + 1) * bpi
                     for _, en in ipairs(bar_eff_notes) do
                         local matches_staff = (not is_grand and not is_harp) or (is_harp and (en.in_staff == staff_id)) or (is_grand and (en.in_treble == staff_is_tr))
                         if matches_staff then
-                            local en_bar = math.floor((en.start_qn + 0.001) / bpi)
+                            local en_bar = Engraver.qn_to_measure_info(en.start_qn + 0.001, bpi, measure_map)
                             if en_bar == m_idx or (en.start_qn < bar_eqn - 0.001 and en.end_qn > bar_sqn + 0.001) then
                                 collision = true
                                 break
@@ -1085,7 +1085,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local cur_time = reaper.GetCursorPosition()
     local time_pos = (is_playing or is_recording) and reaper.GetPlayPosition() or cur_time
     
-    local timesig_num, timesig_denom = reaper.TimeMap_GetTimeSigAtTime(0, time_pos)
+    local timesig_num, timesig_denom = reaper.TimeMap_GetTimeSigAtTime(0, 0)
     if state.time_sig_num and state.time_sig_denom and state.time_sig_num > 0 and state.time_sig_denom > 0 then
         timesig_num = state.time_sig_num
         timesig_denom = state.time_sig_denom
@@ -1095,9 +1095,24 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         state.time_sig_num = timesig_num
         state.time_sig_denom = timesig_denom
     end
+    if state.time_sig_changes and state.time_sig_changes[0] then
+        timesig_num = state.time_sig_changes[0].num or timesig_num
+        timesig_denom = state.time_sig_changes[0].denom or timesig_denom
+    end
     local qn_per_measure = timesig_num * (4 / timesig_denom)
     local bpi = qn_per_measure
     local proj_change_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
+    local ts_changes_sig = ""
+    if state and type(state.time_sig_changes) == "table" then
+        local parts = {}
+        for m_k, ts_v in pairs(state.time_sig_changes) do
+            if type(ts_v) == "table" and ts_v.num and ts_v.denom then
+                table.insert(parts, string.format("%d:%d/%d", tonumber(m_k) or 0, ts_v.num, ts_v.denom))
+            end
+        end
+        table.sort(parts)
+        ts_changes_sig = table.concat(parts, ",")
+    end
     
     local RecordQuantizeService = package.loaded["services.record_quantize_service"] or require("services.record_quantize_service")
     if is_recording then
@@ -1150,7 +1165,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     state.active_tracks_cache = active_tracks_data
     
-    local total_measures = math.max(16, math.ceil(max_proj_qn / qn_per_measure) + 2)
+    local last_m_idx = (KeySignatureService and KeySignatureService.qn_to_measure_info) and KeySignatureService.qn_to_measure_info(state, max_proj_qn, 512) or math.ceil(max_proj_qn / qn_per_measure)
+    local total_measures = math.max(16, (last_m_idx or 16) + 3)
     local measure_w = Engraver.get_measure_layout(s, qn_per_measure)
     
     -- Dynamically calculate optimal track header width and key signature width based on track names (cached)
@@ -1196,9 +1212,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local measure_map = nil
     do
         local live_note_cnt = is_recording and #(RecordQuantizeService._live_notes or {}) or 0
-        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%d_%d_%s_%d",
+        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%d_%d_%s_%d_%s",
             s, total_measures, qn_per_measure, timesig_num, timesig_denom, proj_change_cnt, #active_tracks_data,
-            (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid), live_note_cnt)
+            (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid), live_note_cnt, ts_changes_sig)
         if state.cached_measure_map and state.cached_measure_map_sig == mmap_sig then
             measure_map = state.cached_measure_map
             Engraver.reanchor_measure_map(measure_map, margin_left)
@@ -1210,7 +1226,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     state.measure_map = measure_map
     local min_scroll_reach_x = canvas_p0_x + (reaper.ImGui_GetScrollX(ctx) or 0) + avail_w + 200 * s
-    local staff_end_x = math.max(min_scroll_reach_x, ((measure_map and measure_map.starts and measure_map.starts[total_measures]) or Engraver.cursor_qn_to_canvas_x(total_measures * qn_per_measure, margin_left, s, qn_per_measure, measure_map)) + 40 * s)
+    local _, total_end_qn = Engraver.measure_to_qn_info(total_measures, qn_per_measure, measure_map)
+    local staff_end_x = math.max(min_scroll_reach_x, ((measure_map and measure_map.starts and measure_map.starts[total_measures]) or Engraver.cursor_qn_to_canvas_x(total_end_qn, margin_left, s, qn_per_measure, measure_map)) + 40 * s)
     
     local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
     local rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
@@ -1330,8 +1347,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     local vis_min_qn = math.max(0, Engraver.canvas_x_to_qn(cull_min_x, margin_left, s, qn_per_measure, 0.001, measure_map) - 2.0)
     local vis_max_qn = Engraver.canvas_x_to_qn(cull_max_x, margin_left, s, qn_per_measure, 0.001, measure_map) + 2.0
-    local vis_min_measure = math.max(0, math.floor(vis_min_qn / qn_per_measure))
-    local vis_max_measure = math.ceil(vis_max_qn / qn_per_measure)
+    local vis_min_measure = math.max(0, Engraver.qn_to_measure_info(vis_min_qn, qn_per_measure, measure_map))
+    local vis_max_measure = Engraver.qn_to_measure_info(vis_max_qn, qn_per_measure, measure_map) + 1
 
     local is_annotation_paint_mode = (state.show_annotations_drawer == true) and (state.annotation_tool == "pen" or state.annotation_tool == "eraser")
     local is_hovered_raw = reaper.ImGui_IsItemHovered(ctx) and not is_playing
@@ -1797,10 +1814,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         elseif not is_dragging_notes and tdata.layout_cache then
             local dq_sig = string.format("%s_%.3f", tostring(state.display_quantize), tonumber(state.display_quantize_grid) or 0)
             local rep_cnt = state.repeat_marks and #state.repeat_marks or 0
-            layout_key = string.format("%.3f_%s_%s_%s_%.3f_%d_%d_%s_%s_%d_%d_%d",
+            layout_key = string.format("%.3f_%s_%s_%s_%.3f_%d_%d_%s_%s_%d_%d_%d_%s",
                 s, tostring(track_clef), tostring(filter_chan),
                 tostring(state.hide_inactive_voices), qn_per_measure, timesig_num, timesig_denom,
-                tostring(state.beam_grouping), dq_sig, rep_cnt, (state.accidental_change_cnt or 0), total_measures)
+                tostring(state.beam_grouping), dq_sig, rep_cnt, (state.accidental_change_cnt or 0), total_measures, ts_changes_sig)
             cached_layout = tdata.layout_cache[layout_key]
             if not cached_layout then
                 cached_layout = build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
@@ -2039,7 +2056,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     table.insert(all_note_render_data, vn)
                     all_note_render_by_key[vn.key] = vn
                     
-                    local note_bar = math.floor(((vn.start_qn or 0) + 0.001) / bpi)
+                    local note_bar = vn.bar or Engraver.qn_to_measure_info((vn.start_qn or 0) + 0.001, bpi, measure_map)
                     if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
                         table.insert(display_notes, vn)
                     end
@@ -2097,7 +2114,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             end
                         end
                     end
-                    local bg_m = math.floor(((bgroup[1] and bgroup[1].start_qn or 0) + 0.001) / bpi)
+                    local bg_m = (bgroup[1] and bgroup[1].bar) or Engraver.qn_to_measure_info((bgroup[1] and bgroup[1].start_qn or 0) + 0.001, bpi, measure_map)
                     local bg_st = bgroup[1] and (bgroup[1].in_staff or (bgroup[1].in_treble and "treble" or "bass"))
                     local bg_is_poly = cached_layout and cached_layout.measure_staff_voice_counts and ((cached_layout.measure_staff_voice_counts[string.format("%d_%s", bg_m, bg_st)] or 1) > 1)
                     local bmap = Engraver.calculate_and_draw_beams(draw_list, bgroup, s, beam_col, all_note_render_by_key, state, bg_is_poly)
@@ -2137,7 +2154,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         else
             -- Fallback / Live Drag path: un-cached dynamic calculation
             local live_ties
-            visual_notes, live_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn, state and state.user_ties)
+            visual_notes, live_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn, state and state.user_ties, measure_map)
             for _, bt in ipairs(live_ties) do table.insert(all_bar_ties, bt) end
             
             if filter_chan ~= nil then
@@ -2212,13 +2229,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 return a.pitch < b.pitch
             end)
 
-            Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure)
+            Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure, measure_map)
             
             local live_measure_staff_voices = {}
             local live_measure_staff_pitch_balance = {}
             local live_staff_pitch_balance = {}
             for _, vn in ipairs(visual_notes) do
-                local m = math.floor((vn.start_qn + 0.001) / bpi)
+                local m = vn.bar or Engraver.qn_to_measure_info(vn.start_qn + 0.001, bpi, measure_map)
                 local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
                 local key = string.format("%d_%s", m, st)
                 if not live_measure_staff_voices[key] then live_measure_staff_voices[key] = {} end
@@ -2238,7 +2255,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
             end
             for _, vn in ipairs(visual_notes) do
-                local m = math.floor((vn.start_qn + 0.001) / bpi)
+                local m = vn.bar or Engraver.qn_to_measure_info(vn.start_qn + 0.001, bpi, measure_map)
                 local st = vn.in_staff or (vn.in_treble and "treble" or "bass")
                 local key = string.format("%d_%s", m, st)
                 local bal = live_measure_staff_pitch_balance[key]
@@ -2324,7 +2341,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     chord_stem_down = not prefer_stem_up
                 end
                 
-                local m = math.floor((cluster.start_qn + 0.001) / bpi)
+                local m = Engraver.qn_to_measure_info(cluster.start_qn + 0.001, bpi, measure_map)
                 local key = string.format("%d_%s", m, cluster.staff or (cluster.in_treble and "treble" or "bass"))
                 local m_voice_cnt = live_measure_staff_voice_counts[key] or 1
 
@@ -2481,12 +2498,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
             
             for _, vn in ipairs(visual_notes) do
-                local note_bar = math.floor((vn.start_qn + 0.001) / bpi)
+                local note_bar = vn.bar or Engraver.qn_to_measure_info(vn.start_qn + 0.001, bpi, measure_map)
                 if not RepeatService.has_repeat_mark(state, tdata.guid, note_bar) then
                     table.insert(display_notes, vn)
                 end
             end
-            beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping)
+            beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping, state.time_sig_num, state.time_sig_denom, measure_map)
             for _, bgroup in ipairs(beam_groups) do
                 local all_ghost = true
                 for _, bvn in ipairs(bgroup) do
@@ -4136,10 +4153,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local has_add_text_ex = (reaper.APIExists("ImGui_DrawList_AddTextEx") and font_main ~= nil)
 
     for m = start_m, end_m do
-        local mx = (measure_map and measure_map.starts and measure_map.starts[m]) or Engraver.cursor_qn_to_canvas_x(m * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
+        local m_sqn, m_eqn = Engraver.measure_to_qn_info(m, qn_per_measure, measure_map)
+        local mx = (measure_map and measure_map.starts and measure_map.starts[m]) or Engraver.cursor_qn_to_canvas_x(m_sqn, margin_left, s, qn_per_measure, measure_map)
         if mx >= cull_min_x - 10 * s and mx <= cull_max_x + 10 * s and mx <= (staff_end_x + 2000 * s) then
             local is_key_change = (measure_map and measure_map.key_changes and measure_map.key_changes[m])
-            local mx_next = (measure_map and measure_map.starts and measure_map.starts[m + 1]) or Engraver.cursor_qn_to_canvas_x((m + 1) * qn_per_measure, margin_left, s, qn_per_measure, measure_map)
+            local is_time_change = (measure_map and measure_map.time_changes and measure_map.time_changes[m])
+            local mx_next = (measure_map and measure_map.starts and measure_map.starts[m + 1]) or Engraver.cursor_qn_to_canvas_x(m_eqn, margin_left, s, qn_per_measure, measure_map)
             local rep_cx = (mx + mx_next) / 2
             local num_val = m + 1
             local bar_str = BAR_NUM_STRINGS[num_val] or tostring(num_val)
@@ -4150,7 +4169,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 -- 1. Barline per instrument (only within respective staff and visible track)
                 local trk_info = is_key_change and is_key_change.tracks and (is_key_change.tracks[tdata] or is_key_change.tracks[tdata.track] or (tdata.guid and is_key_change.tracks[tdata.guid]) or is_key_change.tracks[t_idx])
                 local has_this_trk_change = trk_info and (trk_info.curr_idx ~= trk_info.prev_idx)
-                if (is_key_change and m > 0) and has_this_trk_change then
+                if m > 0 and ((is_key_change and has_this_trk_change) or is_time_change) then
                     reaper.ImGui_DrawList_AddLine(draw_list, mx - 4.0 * s, tdata.staff_top_y, mx - 4.0 * s, tdata.staff_bottom_y, bar_col, 1.8 * s)
                     reaper.ImGui_DrawList_AddLine(draw_list, mx, tdata.staff_top_y, mx, tdata.staff_bottom_y, bar_col, 1.8 * s)
                 else
@@ -4179,6 +4198,26 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             local s_clef = (tdata.clef == "bass" and "bass") or (tdata.clef == "alto" and "alto") or "treble"
                             Engraver.draw_key_signature(draw_list, new_k, kx, tdata.staff_bottom_y, l_spacing, s, bar_col, font_music, s_clef, cancel_k)
                         end
+                    end
+                end
+
+                -- 2b. Draw mid-piece Time Signature change across ALL staves right after the barline
+                if is_time_change and m > 0 then
+                    local ts_num = is_time_change.num or 4
+                    local ts_den = is_time_change.denom or 4
+                    local key_pad_w = (is_key_change and is_key_change.max_width and is_key_change.max_width > 0) and (is_key_change.max_width + 4.0 * s) or 0
+                    local ts_x = mx + 6.0 * s + key_pad_w
+                    local l_spacing = tdata.line_spacing or (8.0 * s)
+                    local ts_col = Constants.COLORS.timesig_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
+                    if tdata.is_harp then
+                        draw_time_signature(draw_list, ts_x, tdata.treble_bottom_y, l_spacing, s, ts_col, ts_num, ts_den, font_music, font_main)
+                        draw_time_signature(draw_list, ts_x, tdata.mid_bottom_y, l_spacing, s, ts_col, ts_num, ts_den, font_music, font_main)
+                        draw_time_signature(draw_list, ts_x, tdata.bass_bottom_y, l_spacing, s, ts_col, ts_num, ts_den, font_music, font_main)
+                    elseif tdata.is_grand then
+                        draw_time_signature(draw_list, ts_x, tdata.treble_bottom_y, l_spacing, s, ts_col, ts_num, ts_den, font_music, font_main)
+                        draw_time_signature(draw_list, ts_x, tdata.bass_bottom_y, l_spacing, s, ts_col, ts_num, ts_den, font_music, font_main)
+                    else
+                        draw_time_signature(draw_list, ts_x, tdata.staff_bottom_y, l_spacing, s, ts_col, ts_num, ts_den, font_music, font_main)
                     end
                 end
                 

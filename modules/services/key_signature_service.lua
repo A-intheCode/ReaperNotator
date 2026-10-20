@@ -759,12 +759,311 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
     return { idx = p_idx, key_idx = p_idx, mode = p_mode }
 end
 
---- Sets the global Time Signature across the entire score (all staves/items) and REAPER's Project TimeMap.
--- Time Signature is always uniform across all staves so measure barlines and REAPER's metronome match 100%.
+--- Builds a complete per-measure timeline map supporting mid-piece Time Signature changes.
+-- Every measure m (0-based) has its own start QN, end QN, QN length (bpi), numerator, and denominator.
+-- @param state Notator state object
+-- @param total_measures Number of measures to map
+-- @param default_bpi Fallback QN per measure when state has no time signature
+-- @param s UI zoom scale factor (optional, default 1.0)
+-- @return table { m_start_qn, m_end_qn, m_bpi, m_ts_num, m_ts_den, time_changes }
+function KeySignatureService.get_measure_time_map(state, total_measures, default_bpi, s)
+    local scale = s or 1.0
+    local num_m = math.max((total_measures or 32) + 64, 64)
+    local m_start_qn = {}
+    local m_end_qn = {}
+    local m_bpi = {}
+    local m_ts_num = {}
+    local m_ts_den = {}
+    local time_changes = {}
+
+    local init_num = 4
+    local init_den = 4
+    if state and state.time_sig_num and state.time_sig_denom and state.time_sig_num > 0 and state.time_sig_denom > 0 then
+        init_num = state.time_sig_num
+        init_den = state.time_sig_denom
+        if state.time_sig_changes and state.time_sig_changes[0] then
+            if state._ts0_from_changes and (state.time_sig_num ~= state._ts0_from_changes_num or state.time_sig_denom ~= state._ts0_from_changes_den) then
+                state.time_sig_changes[0] = { num = init_num, denom = init_den }
+                state._ts0_from_changes_num = init_num
+                state._ts0_from_changes_den = init_den
+            else
+                init_num = state.time_sig_changes[0].num or init_num
+                init_den = state.time_sig_changes[0].denom or init_den
+            end
+        end
+    elseif state and state.time_sig_changes and state.time_sig_changes[0] then
+        init_num = state.time_sig_changes[0].num or 4
+        init_den = state.time_sig_changes[0].denom or 4
+    elseif default_bpi and default_bpi > 0 then
+        if math.abs(default_bpi - 3.0) < 0.05 then
+            init_num, init_den = 3, 4
+        elseif math.abs(default_bpi - 2.0) < 0.05 then
+            init_num, init_den = 2, 4
+        elseif math.abs(default_bpi - 1.5) < 0.05 then
+            init_num, init_den = 3, 8
+        elseif math.abs(default_bpi - 3.5) < 0.05 then
+            init_num, init_den = 7, 8
+        elseif math.abs(default_bpi - 5.0) < 0.05 then
+            init_num, init_den = 5, 4
+        elseif math.abs(default_bpi - 6.0) < 0.05 then
+            init_num, init_den = 12, 8
+        else
+            init_num, init_den = math.max(1, math.floor(default_bpi + 0.5)), 4
+        end
+    else
+        local r_num, r_den = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
+        if r_num and r_num > 0 and r_den and r_den > 0 then
+            init_num, init_den = r_num, r_den
+        end
+    end
+
+    local cur_num = init_num
+    local cur_den = init_den
+    local prev_num = init_num
+    local prev_den = init_den
+    local cur_qn = 0.0
+    local ts_changes_tbl = state and state.time_sig_changes
+
+    for m = 0, num_m + 1 do
+        local tc = ts_changes_tbl and ts_changes_tbl[m]
+        if tc and tc.num and tc.denom and tc.num > 0 and tc.denom > 0 then
+            if m > 0 or not (state and state.time_sig_num and not state._ts0_from_changes and (tc.num ~= state.time_sig_num or tc.denom ~= state.time_sig_denom)) then
+                cur_num = tc.num
+                cur_den = tc.denom
+            end
+        end
+        local mb = cur_num * (4.0 / cur_den)
+        if mb <= 0.1 then mb = 4.0 end
+
+        m_start_qn[m] = cur_qn
+        m_end_qn[m]   = cur_qn + mb
+        m_bpi[m]      = mb
+        m_ts_num[m]   = cur_num
+        m_ts_den[m]   = cur_den
+
+        if m > 0 and (cur_num ~= prev_num or cur_den ~= prev_den) then
+            local digits = math.max(#tostring(cur_num), #tostring(cur_den))
+            local ts_w = (digits * 13.0 + 10.0) * scale
+            time_changes[m] = {
+                measure    = m,
+                qn         = cur_qn,
+                num        = cur_num,
+                denom      = cur_den,
+                prev_num   = prev_num,
+                prev_denom = prev_den,
+                width      = ts_w
+            }
+        end
+
+        cur_qn = cur_qn + mb
+        prev_num = cur_num
+        prev_den = cur_den
+    end
+
+    return {
+        m_start_qn   = m_start_qn,
+        m_end_qn     = m_end_qn,
+        m_bpi        = m_bpi,
+        m_ts_num     = m_ts_num,
+        m_ts_den     = m_ts_den,
+        time_changes = time_changes
+    }
+end
+
+--- Resolves the 0-based measure index, measure start QN, measure length (bpi), and active Time Signature at qn.
+function KeySignatureService.qn_to_measure_info(state, qn, total_measures)
+    local q = math.max(0.0, tonumber(qn) or 0.0)
+    local tmap = KeySignatureService.get_measure_time_map(state, total_measures or 256)
+    local m_start = tmap.m_start_qn
+    local m_end   = tmap.m_end_qn
+    local m_bpi   = tmap.m_bpi
+    local m_num   = tmap.m_ts_num
+    local m_den   = tmap.m_ts_den
+    local max_m   = #m_start
+
+    for m = 0, max_m do
+        if m_start[m] and m_end[m] and q + 0.001 >= m_start[m] and q + 0.001 < m_end[m] then
+            return m, m_start[m], m_bpi[m], m_num[m], m_den[m]
+        end
+    end
+
+    local last_m = max_m
+    local last_sqn = m_start[last_m] or 0.0
+    local last_bpi = m_bpi[last_m] or 4.0
+    local last_num = m_num[last_m] or 4
+    local last_den = m_den[last_m] or 4
+    local extra_m = math.floor(math.max(0.0, q - last_sqn + 0.001) / last_bpi)
+    local res_m = last_m + extra_m
+    return res_m, last_sqn + extra_m * last_bpi, last_bpi, last_num, last_den
+end
+
+--- Determines the target measure (0-based) for applying a Time Signature change:
+-- 1st priority: Barline immediately before the earliest selected note across any staff.
+-- 2nd priority: Barline of the measure containing the REAPER Edit Cursor.
+-- @return number target_m, number bar_start_qn, number active_num, number active_den, boolean is_from_note, number ref_qn
+function KeySignatureService.get_target_measure_for_time_sig(state)
+    local min_sel_qn = nil
+    if state then
+        if state.selected_notes then
+            for _, sn in pairs(state.selected_notes) do
+                local sqn = sn and (sn.start_qn or sn.sqn)
+                if sqn and (min_sel_qn == nil or sqn < min_sel_qn) then
+                    min_sel_qn = sqn
+                end
+            end
+        end
+        if min_sel_qn == nil and state.selected_note then
+            local sqn = state.selected_note.start_qn or state.selected_note.sqn
+            if sqn then min_sel_qn = sqn end
+        end
+    end
+
+    local is_from_note = (min_sel_qn ~= nil)
+    local ref_qn = 0.0
+    if is_from_note then
+        ref_qn = math.max(0.0, min_sel_qn)
+    else
+        local cur_pos = (reaper.GetCursorPosition and reaper.GetCursorPosition()) or 0.0
+        ref_qn = (reaper.TimeMap2_timeToQN and reaper.TimeMap2_timeToQN(0, cur_pos)) or 0.0
+        ref_qn = math.max(0.0, ref_qn)
+    end
+
+    local m, m_sqn, _, ts_n, ts_d = KeySignatureService.qn_to_measure_info(state, ref_qn, 256)
+    return m, m_sqn, ts_n, ts_d, is_from_note, ref_qn
+end
+
+--- Synchronizes all Notator Time Signatures (Bar 1 + all mid-piece barline changes) to REAPER's Tempo/TimeMap.
+function KeySignatureService.sync_time_sigs_to_reaper(state)
+    if not state then return end
+    local tmap = KeySignatureService.get_measure_time_map(state, 256)
+    local m0_num = (tmap.m_ts_num and tmap.m_ts_num[0]) or state.time_sig_num or 4
+    local m0_den = (tmap.m_ts_den and tmap.m_ts_den[0]) or state.time_sig_denom or 4
+
+    local TempoService = package.loaded["services.tempo_service"] or (pcall(require, "services.tempo_service") and package.loaded["services.tempo_service"])
+    if TempoService and TempoService.sync_all_to_reaper and state.tempo_markers and #state.tempo_markers > 0 then
+        TempoService.sync_all_to_reaper(state)
+        return
+    end
+
+    -- Fallback when TempoService markers are not active: update REAPER TimeMap directly
+    local cur_bpm = (reaper.Master_GetTempo and reaper.Master_GetTempo()) or 120
+    local cnt = (reaper.CountTempoTimeSigMarkers and reaper.CountTempoTimeSigMarkers(0)) or 0
+    if cnt > 0 then
+        local ok, _, _, _, mbpm, _, _, lin = reaper.GetTempoTimeSigMarker(0, 0)
+        local use_bpm = (ok and mbpm and mbpm > 0) and mbpm or cur_bpm
+        reaper.SetTempoTimeSigMarker(0, 0, 0.0, -1, -1, use_bpm, m0_num, m0_den, lin or false)
+    else
+        reaper.SetTempoTimeSigMarker(0, -1, 0.0, -1, -1, cur_bpm, m0_num, m0_den, false)
+    end
+
+    local cnt_after = (reaper.CountTempoTimeSigMarkers and reaper.CountTempoTimeSigMarkers(0)) or 0
+    for i = cnt_after - 1, 1, -1 do
+        reaper.DeleteTempoTimeSigMarker(0, i)
+    end
+
+    local sorted_tc = {}
+    for _, tc in pairs(tmap.time_changes or {}) do
+        table.insert(sorted_tc, tc)
+    end
+    table.sort(sorted_tc, function(a, b) return a.qn < b.qn end)
+
+    for _, tc in ipairs(sorted_tc) do
+        local t_pos = (reaper.TimeMap2_QNToTime and reaper.TimeMap2_QNToTime(0, tc.qn)) or 0.0
+        reaper.SetTempoTimeSigMarker(0, -1, t_pos, -1, -1, cur_bpm, tc.num, tc.denom, false)
+    end
+end
+
+--- Applies a Time Signature at the barline before the selected note or edit cursor (or explicit_measure),
+-- across all staves and independent of any MIDI item.
 -- @param state Notator state object
 -- @param num Numerator (e.g. 3, 4, 5, 6, 7, 12)
 -- @param denom Denominator (e.g. 2, 4, 8, 16)
-function KeySignatureService.set_project_time_sig(state, num, denom)
+-- @param explicit_measure Optional 0-based measure index
+-- @return number target_m, number t_num, number t_den
+function KeySignatureService.set_time_sig_at_target(state, num, denom, explicit_measure)
+    local t_num = math.max(1, math.min(32, math.floor((tonumber(num) or 4) + 0.5)))
+    local t_den = tonumber(denom) or 4
+    if t_den ~= 2 and t_den ~= 4 and t_den ~= 8 and t_den ~= 16 then
+        t_den = 4
+    end
+
+    local target_m = explicit_measure
+    if target_m == nil then
+        target_m = KeySignatureService.get_target_measure_for_time_sig(state)
+    end
+    target_m = math.max(0, math.floor(tonumber(target_m) or 0))
+
+    if state then
+        state.time_sig_changes = state.time_sig_changes or {}
+        if not state.time_sig_changes[0] then
+            local init_n = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or 4
+            local init_d = (state.time_sig_denom and state.time_sig_denom > 0) and state.time_sig_denom or 4
+            state.time_sig_changes[0] = { num = init_n, denom = init_d }
+        end
+
+        state.time_sig_changes[target_m] = { num = t_num, denom = t_den }
+        state._ts0_from_changes = true
+        state._ts0_from_changes_num = state.time_sig_changes[0].num
+        state._ts0_from_changes_den = state.time_sig_changes[0].denom
+
+        if target_m == 0 then
+            state.time_sig_num = t_num
+            state.time_sig_denom = t_den
+            state._ts0_from_changes_num = t_num
+            state._ts0_from_changes_den = t_den
+        else
+            state.time_sig_num = state.time_sig_changes[0].num
+            state.time_sig_denom = state.time_sig_changes[0].denom
+        end
+        state.key_sig_ts_num = t_num
+        state.key_sig_ts_den = t_den
+
+        KeySignatureService.sync_time_sigs_to_reaper(state)
+
+        local track_lists = { state.active_tracks_data, state.active_tracks_cache }
+        for _, tlist in ipairs(track_lists) do
+            if type(tlist) == "table" then
+                for _, tdata in ipairs(tlist) do
+                    if tdata.layout_cache then
+                        for k in pairs(tdata.layout_cache) do tdata.layout_cache[k] = nil end
+                    end
+                    if tdata.rests_cache then
+                        for k in pairs(tdata.rests_cache) do tdata.rests_cache[k] = nil end
+                    end
+                end
+            end
+        end
+        state.cached_measure_map = nil
+        state.cached_measure_map_sig = nil
+        state._cached_hdr_metrics = nil
+        state._cached_k_changes = nil
+        state.active_tracks_cache = nil
+        KeySignatureService.save(state)
+    end
+
+    KeySignatureService.invalidate_cache()
+    local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+    if MidiService and MidiService.invalidate_cache then
+        MidiService.invalidate_cache()
+    end
+    if reaper.UpdateTimeline then reaper.UpdateTimeline() end
+    if reaper.UpdateArrange then reaper.UpdateArrange() end
+    reaper.Undo_OnStateChange2(0, string.format("Notator: Set Time Signature %d/%d at Bar %d", t_num, t_den, target_m + 1))
+    if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
+    return target_m, t_num, t_den
+end
+
+--- Sets the global Time Signature across the entire score (all staves/items) and REAPER's Project TimeMap,
+-- or at a specific measure when target_measure is provided.
+-- @param state Notator state object
+-- @param num Numerator (e.g. 3, 4, 5, 6, 7, 12)
+-- @param denom Denominator (e.g. 2, 4, 8, 16)
+-- @param target_measure Optional 0-based measure index
+function KeySignatureService.set_project_time_sig(state, num, denom, target_measure)
+    if target_measure ~= nil then
+        return KeySignatureService.set_time_sig_at_target(state, num, denom, target_measure)
+    end
+
     local t_num = math.max(1, math.min(32, math.floor((tonumber(num) or 4) + 0.5)))
     local t_den = tonumber(denom) or 4
     if t_den ~= 2 and t_den ~= 4 and t_den ~= 8 and t_den ~= 16 then
@@ -776,6 +1075,10 @@ function KeySignatureService.set_project_time_sig(state, num, denom)
         state.time_sig_denom = t_den
         state.key_sig_ts_num = t_num
         state.key_sig_ts_den = t_den
+        state.time_sig_changes = { [0] = { num = t_num, denom = t_den } }
+        state._ts0_from_changes = true
+        state._ts0_from_changes_num = t_num
+        state._ts0_from_changes_den = t_den
     end
 
     -- 1. Update REAPER's initial Tempo/TimeSignature Marker at t = 0.0 (Bar 1)
@@ -844,6 +1147,7 @@ function KeySignatureService.set_project_time_sig(state, num, denom)
         state.cached_measure_map = nil
         state.cached_measure_map_sig = nil
         state._cached_hdr_metrics = nil
+        state._cached_k_changes = nil
         state.active_tracks_cache = nil
         KeySignatureService.save(state)
     end
@@ -860,14 +1164,28 @@ function KeySignatureService.set_project_time_sig(state, num, denom)
 end
 
 --- Resolves the effective time signature for a given position.
--- Time Signature is global across all staves (state.time_sig_num / REAPER TimeMap), with fallback to item metadata.
+-- Time Signature is global across all staves (state.time_sig_changes / state.time_sig_num / REAPER TimeMap), with fallback to item metadata.
 -- @param state Notator state object
 -- @param track MediaTrack* or track GUID string
 -- @param item MediaItem* or MidiItem wrapper
 -- @param qn Time position in quarter notes (optional)
 -- @return table { num = number, denom = number }, number, number
 function KeySignatureService.resolve_effective_time_sig(state, track, item, qn)
-    -- 1st Priority: Explicit Notator global Time Signature when set in state
+    -- 1st Priority: Per-measure Time Signature map when state has time_sig_changes or global time_sig
+    if state and state.time_sig_changes and next(state.time_sig_changes) ~= nil then
+        if qn and qn > 0.05 then
+            local _, _, _, ts_n, ts_d = KeySignatureService.qn_to_measure_info(state, qn, 256)
+            if ts_n and ts_d then
+                return make_timesig_table(ts_n, ts_d), ts_n, ts_d
+            end
+        else
+            local ts0 = state.time_sig_changes[0]
+            if ts0 and ts0.num and ts0.denom then
+                return make_timesig_table(ts0.num, ts0.denom), ts0.num, ts0.denom
+            end
+        end
+    end
+
     if state and state.time_sig_num and state.time_sig_denom and state.time_sig_num > 0 and state.time_sig_denom > 0 then
         if qn == nil or qn <= 0.05 then
             return make_timesig_table(state.time_sig_num, state.time_sig_denom), state.time_sig_num, state.time_sig_denom
@@ -928,6 +1246,18 @@ function KeySignatureService.get_measure_key_signature_changes(state, active_tra
     end
 
     -- Fast pass: find candidate measures where key signature could change
+    local tmap = KeySignatureService.get_measure_time_map(state, total_measures, qn_per_m, scale)
+    local m_start_qn = tmap.m_start_qn
+    local m_end_qn   = tmap.m_end_qn
+    local m_bpi      = tmap.m_bpi
+    local function qn_to_m(q)
+        for m = 0, total_measures do
+            if m_start_qn[m] and m_end_qn[m] and q + 0.05 >= m_start_qn[m] and q + 0.05 < m_end_qn[m] then
+                return m
+            end
+        end
+        return math.floor((q / qn_per_m) + 0.05)
+    end
     local candidate_measures = {}
     local has_any_custom_key = false
 
@@ -945,8 +1275,8 @@ function KeySignatureService.get_measure_key_signature_changes(state, active_tra
             if it_k ~= proj_k or (it.key_sig_events and #it.key_sig_events > 0) then
                 has_any_custom_key = true
             end
-            local m_start = math.floor((s_qn / qn_per_m) + 0.05)
-            local m_end   = math.floor((e_qn / qn_per_m) + 0.05)
+            local m_start = qn_to_m(s_qn)
+            local m_end   = qn_to_m(e_qn)
             if m_start >= 1 and m_start <= total_measures then
                 candidate_measures[m_start] = true
             end
@@ -959,7 +1289,7 @@ function KeySignatureService.get_measure_key_signature_changes(state, active_tra
                     if it.take and reaper.ValidatePtr(it.take, "MediaItem_Take*") then
                         eq_qn = reaper.MIDI_GetProjQNFromPPQPos(it.take, evt.ppq)
                     end
-                    local m_evt = math.floor((eq_qn / qn_per_m) + 0.05)
+                    local m_evt = qn_to_m(eq_qn)
                     if m_evt >= 1 and m_evt <= total_measures then
                         candidate_measures[m_evt] = true
                     end
@@ -984,8 +1314,11 @@ function KeySignatureService.get_measure_key_signature_changes(state, active_tra
 
     -- Evaluate ONLY candidate measures where key boundaries exist
     for m in pairs(candidate_measures) do
-        local qn_curr = (m + 0.5) * qn_per_m
-        local qn_prev = (m - 0.5) * qn_per_m
+        local m_sqn = (m_start_qn and m_start_qn[m]) or (m * qn_per_m)
+        local m_cur_bpi = (m_bpi and m_bpi[m]) or qn_per_m
+        local m_prev_bpi = (m_bpi and m_bpi[m - 1]) or qn_per_m
+        local qn_curr = m_sqn + (0.5 * m_cur_bpi)
+        local qn_prev = m_sqn - (0.5 * m_prev_bpi)
         local change_info = nil
         local max_kw = 0
 
@@ -1001,7 +1334,7 @@ function KeySignatureService.get_measure_key_signature_changes(state, active_tra
                 if not change_info then
                     change_info = {
                         measure = m,
-                        qn = m * qn_per_m,
+                        qn = m_sqn,
                         tracks = {},
                         has_change = true
                     }
@@ -1198,6 +1531,21 @@ function KeySignatureService.save(state)
     if state.time_sig_num and state.time_sig_denom then
         reaper.SetProjExtState(0, "REAPER_Notator", "TIME_SIGNATURE", string.format("%d|%d", state.time_sig_num, state.time_sig_denom))
     end
+    if state.time_sig_changes then
+        local ts_parts = {}
+        local m_keys = {}
+        for m in pairs(state.time_sig_changes) do
+            table.insert(m_keys, m)
+        end
+        table.sort(m_keys)
+        for _, m in ipairs(m_keys) do
+            local tc = state.time_sig_changes[m]
+            if tc and tc.num and tc.denom then
+                table.insert(ts_parts, string.format("%d:%d:%d", m, tc.num, tc.denom))
+            end
+        end
+        reaper.SetProjExtState(0, "REAPER_Notator", "TIME_SIG_CHANGES", table.concat(ts_parts, ";"))
+    end
 
     if state.track_key_signatures then
         local parts = {}
@@ -1241,6 +1589,29 @@ function KeySignatureService.load(state)
             state.time_sig_denom = r_den
             state.key_sig_ts_num = r_num
             state.key_sig_ts_den = r_den
+        end
+    end
+
+    local ok_tsc, raw_tsc = reaper.GetProjExtState(0, "REAPER_Notator", "TIME_SIG_CHANGES")
+    if ok_tsc == 1 and raw_tsc and raw_tsc ~= "" then
+        state.time_sig_changes = {}
+        for entry in raw_tsc:gmatch("([^;]+)") do
+            local m_s, n_s, d_s = entry:match("^(%d+):(%d+):(%d+)$")
+            if m_s and n_s and d_s then
+                local m_idx = tonumber(m_s)
+                local tn = tonumber(n_s)
+                local td = tonumber(d_s)
+                if m_idx and tn and td and tn > 0 and td > 0 then
+                    state.time_sig_changes[m_idx] = { num = tn, denom = td }
+                end
+            end
+        end
+        if state.time_sig_changes[0] then
+            state.time_sig_num = state.time_sig_changes[0].num
+            state.time_sig_denom = state.time_sig_changes[0].denom
+            state._ts0_from_changes = true
+            state._ts0_from_changes_num = state.time_sig_num
+            state._ts0_from_changes_den = state.time_sig_denom
         end
     end
 

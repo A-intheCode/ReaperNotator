@@ -1943,17 +1943,73 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     assert_eq(#beams_6_8[1], 3, "In 6/8, first beam group has 3 eighth notes")
     assert_eq(#beams_6_8[2], 3, "In 6/8, second beam group has 3 eighth notes")
 
-    -- Test clicking 12/8 preset button in KeySignatureDrawer (even when key_sig_scope == "item")
+    -- Test clicking 12/8 preset button in KeySignatureDrawer at Bar 1 (even when key_sig_scope == "item")
+    st.selected_notes = {}
+    st.selected_note = nil
+    reaper.SetEditCurPos(0.0, false, false)
     st.show_key_signatures = true
     st.key_sig_scope = "item"
     env.imgui_style_color_depth = 0
     env.force_button_click_pattern = "12/8##TS_12_8"
     KeySignatureDrawer.render(ctx, st, KeySignatureService, MidiService, 260, 620, 1, 0, 1, 2)
     env.force_button_click_pattern = nil
-    assert_eq(st.time_sig_num, 12, "Clicking 12/8 in KeySignatureDrawer updates global state.time_sig_num to 12 even in item scope")
-    assert_eq(st.time_sig_denom, 8, "Clicking 12/8 in KeySignatureDrawer updates global state.time_sig_denom to 8")
+    assert_eq(st.time_sig_num, 12, "Clicking 12/8 at Bar 1 in KeySignatureDrawer updates global state.time_sig_num to 12 even in item scope")
+    assert_eq(st.time_sig_denom, 8, "Clicking 12/8 at Bar 1 in KeySignatureDrawer updates global state.time_sig_denom to 8")
     assert_eq(env.imgui_style_color_depth, 0, "KeySignatureDrawer keeps ImGui style color stack balanced")
+
+    -- Test Mid-Piece Time Signature changes at the barline before the selected note / edit cursor across all staves (independent of MIDI item boundaries):
+    -- 1. Set Bar 1 (m = 0) to 4/4 (0.0 .. 4.0 QN)
+    KeySignatureService.set_project_time_sig(st, 4, 4)
+    assert_eq(st.time_sig_num, 4, "Bar 1 starts at 4/4 numerator")
+    assert_eq(st.time_sig_denom, 4, "Bar 1 starts at 4/4 denominator")
+
+    -- 2. Select a note in Bar 2 (at 4.5 QN) and click 3/4 in KeySignatureDrawer:
+    --    Bar 1 (m = 0) MUST stay 4/4 (0.0 .. 4.0 QN), and Bar 2 (m = 1) MUST become 3/4 (4.0 .. 7.0 QN, 3.0 QN length)!
+    local note_bar2 = MidiNote.new({ idx = 10, pitch = 67, start_qn = 4.5, end_qn = 5.5, dur_qn = 1.0, chan = 0 })
+    st.selected_note = note_bar2
+    st.selected_notes = { ["bar2_n"] = note_bar2 }
+    env.force_button_click_pattern = "3/4##TS_3_4"
+    KeySignatureDrawer.render(ctx, st, KeySignatureService, MidiService, 260, 620, 1, 0, 1, 2)
+    env.force_button_click_pattern = nil
+
+    assert_eq(st.time_sig_num, 4, "Bar 1 keeps 4/4 numerator when 3/4 is applied at Bar 2")
+    assert_eq(st.time_sig_denom, 4, "Bar 1 keeps 4/4 denominator when 3/4 is applied at Bar 2")
+    assert_true(st.time_sig_changes and st.time_sig_changes[1] ~= nil, "state.time_sig_changes[1] created for Bar 2")
+    assert_eq(st.time_sig_changes[1].num, 3, "Bar 2 (m=1) time signature numerator is 3")
+    assert_eq(st.time_sig_changes[1].denom, 4, "Bar 2 (m=1) time signature denominator is 4")
+
+    -- 3. Move Edit Cursor to Bar 3 (at 7.5 QN, since Bar 1 = 0..4 QN and Bar 2 = 4..7 QN) with no note selected, and click 6/8:
+    st.selected_note = nil
+    st.selected_notes = {}
+    reaper.SetEditCurPos(reaper.TimeMap2_QNToTime(0, 7.5), false, false)
+    env.force_button_click_pattern = "6/8##TS_6_8"
+    KeySignatureDrawer.render(ctx, st, KeySignatureService, MidiService, 260, 620, 1, 0, 1, 2)
+    env.force_button_click_pattern = nil
+
+    assert_true(st.time_sig_changes[2] ~= nil, "state.time_sig_changes[2] created for Bar 3")
+    assert_eq(st.time_sig_changes[2].num, 6, "Bar 3 (m=2) time signature numerator is 6")
+    assert_eq(st.time_sig_changes[2].denom, 8, "Bar 3 (m=2) time signature denominator is 8")
+
+    -- 4. Verify measure_map QN boundaries and mid-piece time signature change markers:
+    local mmap = Engraver.build_measure_map({}, 8, 4.0, 100.0, 1.0, st)
+    assert_true(math.abs(mmap.m_start_qn[0] - 0.0) < 0.001, "Bar 1 starts at 0.0 QN")
+    assert_true(math.abs(mmap.m_end_qn[0] - 4.0) < 0.001, "Bar 1 ends at 4.0 QN (4/4)")
+    assert_true(math.abs(mmap.m_start_qn[1] - 4.0) < 0.001, "Bar 2 starts at 4.0 QN")
+    assert_true(math.abs(mmap.m_end_qn[1] - 7.0) < 0.001, "Bar 2 ends at 7.0 QN (3/4 = 3.0 QN)")
+    assert_true(math.abs(mmap.m_start_qn[2] - 7.0) < 0.001, "Bar 3 starts at 7.0 QN")
+    assert_true(math.abs(mmap.m_end_qn[2] - 10.0) < 0.001, "Bar 3 ends at 10.0 QN (6/8 = 3.0 QN)")
+    assert_true(mmap.time_changes and mmap.time_changes[1] ~= nil, "measure_map.time_changes[1] exists for Bar 2")
+    assert_true(mmap.time_changes and mmap.time_changes[2] ~= nil, "measure_map.time_changes[2] exists for Bar 3")
+    assert_true(mmap.pad_lefts[1] > mmap.pad_left, "Bar 2 reserves extra left padding for mid-piece 3/4 Time Signature")
+
+    -- 5. Verify ScoreCanvas and SystemEngraver render mid-piece Time Signatures across all staves without error
+    local ScoreCanvas = require("rendering.score_canvas")
+    local SystemEngraver = require("rendering.system_engraver")
+    ScoreCanvas.render(ctx, st, { font_main = 1, font_music = 2 }, { trk1 }, MidiService)
+    SystemEngraver.render_system_imgui(1, ctx, { trk1 }, 0, 4, { margin_l = 60, score_w = 600, top_y = 80, bot_y = 400 }, 1.0, { font_main = 1, font_music = 2 }, st)
+
     -- Restore 4/4 for subsequent tests if any
+    reaper.SetEditCurPos(0.0, false, false)
     KeySignatureService.set_project_time_sig(st, 4, 4)
     st.show_key_signatures = false
 end)

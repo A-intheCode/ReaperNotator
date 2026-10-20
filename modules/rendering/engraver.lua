@@ -70,6 +70,57 @@ function Engraver.is_dotted_duration(dur_qn)
     return false
 end
 
+function Engraver.qn_to_measure_info(qn, bpi, measure_map)
+    local q = math.max(0.0, tonumber(qn) or 0.0)
+    if measure_map and measure_map.m_start_qn and measure_map.m_end_qn and measure_map.m_bpi then
+        local m_start = measure_map.m_start_qn
+        local m_end   = measure_map.m_end_qn
+        local m_bpi   = measure_map.m_bpi
+        local m_num   = measure_map.m_ts_num
+        local m_den   = measure_map.m_ts_den
+        local max_m   = measure_map.num_m or #m_start
+        for m = 0, max_m do
+            if m_start[m] and m_end[m] and q + 0.0005 >= m_start[m] and q + 0.0005 < m_end[m] then
+                return m, m_start[m], m_bpi[m], m_num and m_num[m], m_den and m_den[m]
+            end
+        end
+        local last_m   = max_m
+        local last_sqn = m_start[last_m] or 0.0
+        local last_bpi = m_bpi[last_m] or (measure_map.bpi or 4.0)
+        local extra_m  = math.floor(math.max(0.0, q - last_sqn + 0.0005) / last_bpi)
+        local res_m    = last_m + extra_m
+        return res_m, last_sqn + extra_m * last_bpi, last_bpi, m_num and m_num[last_m], m_den and m_den[last_m]
+    end
+    local eff_bpi = (measure_map and measure_map.bpi) or ((bpi and bpi > 0) and bpi or 4.0)
+    local m = math.max(0, math.floor((q + 0.0005) / eff_bpi))
+    return m, m * eff_bpi, eff_bpi, nil, nil
+end
+
+function Engraver.measure_to_qn_info(m, bpi, measure_map)
+    local m_idx = math.max(0, math.floor(tonumber(m) or 0))
+    if measure_map and measure_map.m_start_qn and measure_map.m_bpi then
+        local m_start = measure_map.m_start_qn
+        local m_end   = measure_map.m_end_qn
+        local m_bpi   = measure_map.m_bpi
+        local m_num   = measure_map.m_ts_num
+        local m_den   = measure_map.m_ts_den
+        if m_start[m_idx] and m_bpi[m_idx] then
+            local sqn = m_start[m_idx]
+            local mb  = m_bpi[m_idx]
+            local eqn = (m_end and m_end[m_idx]) or (sqn + mb)
+            return sqn, eqn, mb, m_num and m_num[m_idx], m_den and m_den[m_idx]
+        end
+        local last_m   = measure_map.num_m or #m_start
+        local last_sqn = m_start[last_m] or 0.0
+        local last_bpi = m_bpi[last_m] or (measure_map.bpi or 4.0)
+        local extra_m  = math.max(0, m_idx - last_m)
+        local sqn      = last_sqn + extra_m * last_bpi
+        return sqn, sqn + last_bpi, last_bpi, m_num and m_num[last_m], m_den and m_den[last_m]
+    end
+    local eff_bpi = (measure_map and measure_map.bpi) or ((bpi and bpi > 0) and bpi or 4.0)
+    return m_idx * eff_bpi, (m_idx + 1) * eff_bpi, eff_bpi, nil, nil
+end
+
 function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_measure, margin_left, s, state)
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
     local base_w = 260.0 * s * (bpi / 4.0)
@@ -86,6 +137,42 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
     if not has_kss or not KeySignatureService then
         has_kss, KeySignatureService = pcall(require, "modules.services.key_signature_service")
     end
+
+    local tmap = nil
+    if has_kss and KeySignatureService and KeySignatureService.get_measure_time_map then
+        tmap = KeySignatureService.get_measure_time_map(state, num_m, bpi, s)
+    end
+    local m_start_qn   = (tmap and tmap.m_start_qn) or {}
+    local m_end_qn     = (tmap and tmap.m_end_qn) or {}
+    local m_bpi        = (tmap and tmap.m_bpi) or {}
+    local m_ts_num     = (tmap and tmap.m_ts_num) or {}
+    local m_ts_den     = (tmap and tmap.m_ts_den) or {}
+    local time_changes = (tmap and tmap.time_changes) or {}
+    if not tmap then
+        for m = 0, num_m + 1 do
+            m_start_qn[m] = m * bpi
+            m_end_qn[m]   = (m + 1) * bpi
+            m_bpi[m]      = bpi
+            m_ts_num[m]   = 4
+            m_ts_den[m]   = 4
+        end
+    end
+    if m_bpi[0] and m_bpi[0] > 0 then
+        bpi = m_bpi[0]
+        base_w = 260.0 * s * (bpi / 4.0)
+    end
+
+    local time_map_ref = {
+        bpi          = bpi,
+        num_m        = num_m,
+        m_start_qn   = m_start_qn,
+        m_end_qn     = m_end_qn,
+        m_bpi        = m_bpi,
+        m_ts_num     = m_ts_num,
+        m_ts_den     = m_ts_den,
+        time_changes = time_changes
+    }
+
     local key_changes = nil
     if has_kss and KeySignatureService and KeySignatureService.get_measure_key_signature_changes then
         key_changes = KeySignatureService.get_measure_key_signature_changes(state, active_tracks_data, num_m, bpi, s)
@@ -97,16 +184,17 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
     local track_vnotes_by_bar = {}
     local track_rests_by_bar = {}
     local user_ties = state and state.user_ties
+    local max_map_qn = m_end_qn[num_m + 1] or ((num_m + 1) * bpi)
 
     for _, tdata in ipairs(active_tracks_data or {}) do
-        local vnotes = Engraver.get_visual_notes(tdata.notes or {}, bpi, nil, (num_m + 1) * bpi, user_ties)
+        local vnotes = Engraver.get_visual_notes(tdata.notes or {}, bpi, nil, max_map_qn, user_ties, time_map_ref)
         local vnotes_by_bar = {}
         track_vnotes_by_bar[tdata] = vnotes_by_bar
 
         local eff_notes = {}
         local eff_notes_by_bar = {}
         for _, vn in ipairs(vnotes) do
-            local m = vn.bar or math.floor((vn.start_qn + 0.0001) / bpi)
+            local m = vn.bar or Engraver.qn_to_measure_info(vn.start_qn + 0.0001, bpi, time_map_ref)
             if m >= 0 and m <= num_m then
                 local blist = vnotes_by_bar[m]
                 if not blist then
@@ -126,8 +214,8 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
                 chan = (vn.orig and vn.orig.chan) or (vn.chan or 0)
             }
             table.insert(eff_notes, en)
-            local mb_start = math.floor(en.start_qn / bpi)
-            local mb_end = math.floor(math.max(en.start_qn, en.end_qn - 0.001) / bpi)
+            local mb_start = Engraver.qn_to_measure_info(en.start_qn, bpi, time_map_ref)
+            local mb_end = Engraver.qn_to_measure_info(math.max(en.start_qn, en.end_qn - 0.001), bpi, time_map_ref)
             for mb = mb_start, mb_end do
                 local eblist = eff_notes_by_bar[mb]
                 if not eblist then
@@ -138,11 +226,13 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
             end
         end
 
-        local r_key = string.format("v2_%d_%.3f_%s_%d", num_m + 1, bpi, tostring(dq), #vnotes)
+        local tc_cnt = 0
+        for _ in pairs(time_changes) do tc_cnt = tc_cnt + 1 end
+        local r_key = string.format("v2_%d_%.3f_%d_%s_%d", num_m + 1, bpi, tc_cnt, tostring(dq), #vnotes)
         local r_cache = tdata.rests_cache
         local tr_rests = r_cache and r_cache[r_key]
         if not tr_rests then
-            tr_rests = Engraver.generate_voice_rests(eff_notes, num_m + 1, bpi, dq)
+            tr_rests = Engraver.generate_voice_rests(eff_notes, num_m + 1, bpi, dq, nil, nil, time_map_ref)
             if r_cache then
                 r_cache[r_key] = tr_rests
             end
@@ -153,7 +243,7 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
         if tr_rests and #tr_rests > 0 then
             for _, r in ipairs(tr_rests) do
                 if not r.is_full_measure then
-                    local m = r.measure_idx or math.floor(r.start_qn / bpi + 0.0001)
+                    local m = r.measure_idx or Engraver.qn_to_measure_info(r.start_qn + 0.0001, bpi, time_map_ref)
                     if m >= 0 and m <= num_m then
                         local r_start = r.start_qn
                         local r_end = r_start + (r.dur_qn or 0.25)
@@ -185,15 +275,21 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
 
     -- For each measure from 0 to num_m: build Elaine Gould optical spacing anchors & dynamic measure width
     for m = 0, num_m do
-        local m_start_qn = m * bpi
+        local m_sqn = m_start_qn[m] or (m * bpi)
+        local mb = m_bpi[m] or bpi
+        local m_base_w = 260.0 * s * (mb / 4.0)
         local base_pad_l = pad_left
         if key_changes and key_changes[m] and key_changes[m].has_change then
             local extra_kw = (key_changes[m].max_kw or 0) + 12.0 * s
             base_pad_l = base_pad_l + extra_kw
         end
+        if m > 0 and time_changes and time_changes[m] then
+            local extra_tw = (time_changes[m].width or (24.0 * s)) + 8.0 * s
+            base_pad_l = base_pad_l + extra_tw
+        end
         local m_pad_l = base_pad_l
 
-        local m_combined_onsets = { [0.0] = true, [bpi] = true }
+        local m_combined_onsets = { [0.0] = true, [mb] = true }
         local measure_track_onsets = {}
 
         for _, tdata in ipairs(active_tracks_data or {}) do
@@ -203,14 +299,14 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
 
             if bar_vnotes then
                 for _, vn in ipairs(bar_vnotes) do
-                    local raw_rel = math.max(0.0, math.min(bpi - 0.03125, vn.start_qn - m_start_qn))
+                    local raw_rel = math.max(0.0, math.min(mb - 0.03125, vn.start_qn - m_sqn))
                     local rel_qn = math.floor(raw_rel * 32.0 + 0.5) / 32.0
                     m_combined_onsets[rel_qn] = true
                     local o = onsets[rel_qn]
                     if not o then
                         o = {
                             rel_qn = rel_qn,
-                            qn = m_start_qn + rel_qn,
+                            qn = m_sqn + rel_qn,
                             acc_count = 0,
                             has_dot = false,
                             has_arpeggio = false,
@@ -271,13 +367,13 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
             local bar_rests = track_rests_by_bar[tdata] and track_rests_by_bar[tdata][m]
             if bar_rests then
                 for _, r in ipairs(bar_rests) do
-                    local raw_rel = math.max(0.0, math.min(bpi - 0.03125, r.start_qn - m_start_qn))
+                    local raw_rel = math.max(0.0, math.min(mb - 0.03125, r.start_qn - m_sqn))
                     local rel_qn = math.floor(raw_rel * 32.0 + 0.5) / 32.0
                     m_combined_onsets[rel_qn] = true
                     if not onsets[rel_qn] then
                         onsets[rel_qn] = {
                             rel_qn = rel_qn,
-                            qn = m_start_qn + rel_qn,
+                            qn = m_sqn + rel_qn,
                             acc_count = 0,
                             has_dot = false,
                             has_arpeggio = false,
@@ -338,14 +434,14 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
 
         local sorted_bar_onsets = {}
         for _, o_qn in ipairs(anchor_qns) do
-            if o_qn < bpi - 0.001 then
+            if o_qn < mb - 0.001 then
                 table.insert(sorted_bar_onsets, o_qn)
             end
         end
         onsets_by_bar[m] = sorted_bar_onsets
 
         local K = #anchor_qns
-        local base_usable_w = math.max(40.0 * s, base_w - pad_left - pad_right)
+        local base_usable_w = math.max(40.0 * s, m_base_w - pad_left - pad_right)
 
         if K > 2 and #measure_track_onsets > 0 then
             local qn_to_idx = {}
@@ -366,8 +462,8 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
             local seg_w = {}
             for k = 1, K - 1 do
                 local dt = math.max(0.03125, anchor_qns[k + 1] - anchor_qns[k])
-                local prop_w = (sum_w > 0) and (base_usable_w * (weights[k] / sum_w)) or ((dt / bpi) * base_usable_w)
-                local min_lin_w = (dt / bpi) * base_usable_w * 0.82
+                local prop_w = (sum_w > 0) and (base_usable_w * (weights[k] / sum_w)) or ((dt / mb) * base_usable_w)
+                local min_lin_w = (dt / mb) * base_usable_w * 0.82
                 seg_w[k] = math.max(prop_w, min_lin_w)
             end
 
@@ -457,7 +553,7 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
                 usable_w = total_usable_w
             }
             pad_lefts[m] = m_pad_l
-            widths[m] = math.max(base_w, m_pad_l + total_usable_w + pad_right)
+            widths[m] = math.max(m_base_w, m_pad_l + total_usable_w + pad_right)
         else
             -- Check single beat-1 onset accidental padding even when K == 2
             for _, trk_onsets in ipairs(measure_track_onsets) do
@@ -470,7 +566,7 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
                 end
             end
             pad_lefts[m] = m_pad_l
-            widths[m] = math.max(base_w, m_pad_l + base_usable_w + pad_right)
+            widths[m] = math.max(m_base_w, m_pad_l + base_usable_w + pad_right)
         end
     end
     
@@ -497,7 +593,13 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
         total_score_w = cur_x - margin_left,
         onsets_by_bar = onsets_by_bar,
         bar_anchors = bar_anchors,
-        key_changes = key_changes
+        key_changes = key_changes,
+        time_changes = time_changes,
+        m_start_qn = m_start_qn,
+        m_end_qn = m_end_qn,
+        m_bpi = m_bpi,
+        m_ts_num = m_ts_num,
+        m_ts_den = m_ts_den
     }
 end
 
@@ -526,14 +628,13 @@ end
 
 function Engraver.qn_to_canvas_x(qn, margin_left, s, qn_per_measure, measure_map)
     local bpi = (measure_map and measure_map.bpi) or ((qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4)
-    local m_idx = math.floor(qn / bpi)
-    if m_idx < 0 then m_idx = 0 end
-    local qn_in_m = qn - (m_idx * bpi)
+    local m_idx, m_sqn, mb = Engraver.qn_to_measure_info(qn, bpi, measure_map)
+    local qn_in_m = math.max(0.0, qn - m_sqn)
     
     if not measure_map or not measure_map.starts then
-        local measure_w, pad_left, pad_right, usable_w = Engraver.get_measure_layout(s, bpi)
+        local measure_w, pad_left, pad_right, usable_w = Engraver.get_measure_layout(s, mb)
         local m_x = margin_left + (m_idx * measure_w)
-        return m_x + pad_left + (qn_in_m / bpi) * usable_w
+        return m_x + pad_left + (qn_in_m / mb) * usable_w
     end
     
     local m_start_x = measure_map.starts[m_idx]
@@ -571,7 +672,7 @@ function Engraver.qn_to_canvas_x(qn, margin_left, s, qn_per_measure, measure_map
         end
     end
     
-    return m_start_x + pad_l + (qn_in_m / bpi) * usable_w
+    return m_start_x + pad_l + (qn_in_m / mb) * usable_w
 end
 
 function Engraver.cursor_qn_to_canvas_x(qn, margin_left, s, qn_per_measure, measure_map)
@@ -585,9 +686,8 @@ function Engraver.cursor_qn_to_canvas_x(qn, margin_left, s, qn_per_measure, meas
     end
     
     local bpi = measure_map.bpi
-    local m_idx = math.floor(qn / bpi)
-    if m_idx < 0 then m_idx = 0 end
-    local qn_in_m = qn - (m_idx * bpi)
+    local m_idx, m_sqn, mb = Engraver.qn_to_measure_info(qn, bpi, measure_map)
+    local qn_in_m = math.max(0.0, qn - m_sqn)
     
     local m_start_x = measure_map.starts[m_idx]
     local m_w = measure_map.widths[m_idx]
@@ -598,7 +698,7 @@ function Engraver.cursor_qn_to_canvas_x(qn, margin_left, s, qn_per_measure, meas
     end
     m_w = m_w or measure_map.base_w
     
-    return m_start_x + (qn_in_m / bpi) * m_w
+    return m_start_x + (qn_in_m / mb) * m_w
 end
 
 function Engraver.canvas_x_to_qn(x, margin_left, s, qn_per_measure, grid_qn, measure_map)
@@ -606,6 +706,7 @@ function Engraver.canvas_x_to_qn(x, margin_left, s, qn_per_measure, grid_qn, mea
     local snap = (grid_qn and grid_qn > 0) and grid_qn or 0.25
     
     local function calc_measure_qn(m_idx, m_start_x, m_w, cur_x, pad_l, pad_r)
+        local m_sqn, _, mb = Engraver.measure_to_qn_info(m_idx, bpi, measure_map)
         local eff_pad_l = (measure_map and measure_map.pad_lefts and measure_map.pad_lefts[m_idx]) or pad_l
         local usable_w = math.max(10.0 * s, m_w - eff_pad_l - pad_r)
         local rel_x = cur_x - m_start_x
@@ -613,7 +714,7 @@ function Engraver.canvas_x_to_qn(x, margin_left, s, qn_per_measure, grid_qn, mea
         if rel_x <= eff_pad_l then
             raw_qn_in_m = 0.0
         elseif rel_x >= eff_pad_l + usable_w then
-            raw_qn_in_m = bpi - 0.0001
+            raw_qn_in_m = mb - 0.0001
         else
             local ux = rel_x - eff_pad_l
             local anchors = measure_map and measure_map.bar_anchors and measure_map.bar_anchors[m_idx]
@@ -626,7 +727,7 @@ function Engraver.canvas_x_to_qn(x, margin_left, s, qn_per_measure, grid_qn, mea
                 elseif ux >= xs[n_pts] then
                     raw_qn_in_m = qns[n_pts] - 0.0001
                 else
-                    raw_qn_in_m = (ux / usable_w) * bpi
+                    raw_qn_in_m = (ux / usable_w) * mb
                     for k = 1, n_pts - 1 do
                         local x0, x1 = xs[k], xs[k + 1]
                         if ux >= x0 and ux <= x1 then
@@ -638,13 +739,13 @@ function Engraver.canvas_x_to_qn(x, margin_left, s, qn_per_measure, grid_qn, mea
                     end
                 end
             else
-                raw_qn_in_m = (ux / usable_w) * bpi
+                raw_qn_in_m = (ux / usable_w) * mb
             end
         end
         local snapped = math.floor((raw_qn_in_m / snap) + 0.5) * snap
-        local max_snap = (snap <= bpi) and (bpi - snap) or 0.0
+        local max_snap = (snap <= mb) and (mb - snap) or 0.0
         snapped = math.max(0.0, math.min(max_snap, snapped))
-        return (m_idx * bpi) + snapped
+        return m_sqn + snapped
     end
     
     if not measure_map or not measure_map.starts then
@@ -1268,14 +1369,14 @@ end
 -- 3. Suppression of redundant accidentals on tied continuation segments
 -- 4. Multi-column high-to-low chord accidental staggering (7ths/octaves share column)
 -- ==============================================================================
-function Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure)
+function Engraver.apply_measure_accidental_memory(visual_notes, qn_per_measure, measure_map)
     if not visual_notes or #visual_notes == 0 then return end
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
     local state_by_bar_staff = {}
 
     for _, vn in ipairs(visual_notes) do
         local qn = vn.display_qn or vn.start_qn or 0
-        local m = vn.bar or math.floor((qn + 0.001) / bpi)
+        local m = vn.bar or (Engraver.qn_to_measure_info(qn + 0.001, bpi, measure_map))
         local staff = vn.in_staff or (vn.in_treble and "treble" or "bass")
         local key = tostring(m) .. "_" .. tostring(staff)
         if not state_by_bar_staff[key] then
@@ -1474,9 +1575,10 @@ function Engraver.canvas_y_to_pitch(y, treble_bottom_y, bass_bottom_y, step_y, i
     return math.max(0, math.min(127, pitch)), in_treble, step_in_oct, eff_acc
 end
 
-function Engraver.decompose_rest_gap(rests, start_qn, dur_qn, m, qn_per_measure)
+function Engraver.decompose_rest_gap(rests, start_qn, dur_qn, m, qn_per_measure, bar_start_qn)
     if not dur_qn or dur_qn < 0.05 then return end
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
+    local b_sqn = bar_start_qn or (m * bpi)
     local rem = dur_qn
     local cur = start_qn
     
@@ -1490,7 +1592,7 @@ function Engraver.decompose_rest_gap(rests, start_qn, dur_qn, m, qn_per_measure)
     local guard = 0
     while guard < 8 and rem >= 0.05 do
         guard = guard + 1
-        local beat_offset = cur % 1.0
+        local beat_offset = (cur - b_sqn) % 1.0
         if beat_offset <= 0.03 or beat_offset >= 0.97 then break end
         local needed_to_beat = 1.0 - beat_offset
         local matched_sub = false
@@ -1533,7 +1635,7 @@ function Engraver.decompose_rest_gap(rests, start_qn, dur_qn, m, qn_per_measure)
     -- 2. Main rest decomposition observing metric beat hierarchy (half rests only on beats 1 & 3 in 4/4)
     while rem >= 0.05 do
         local matched = false
-        local cur_in_bar = cur % bpi
+        local cur_in_bar = math.max(0.0, cur - b_sqn)
         local is_half_bar_aligned = (math.abs(cur_in_bar % 2.0) < 0.02)
         
         if rem >= 2.0 - 0.01 and is_half_bar_aligned then
@@ -1607,7 +1709,7 @@ function Engraver.decompose_rest_gap(rests, start_qn, dur_qn, m, qn_per_measure)
     end
 end
 
-function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measure, dq, min_m, max_m)
+function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measure, dq, min_m, max_m, measure_map)
     local rests = {}
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
     local start_m = math.max(0, min_m or 0)
@@ -1621,8 +1723,8 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
         local n_start = dq and (math.floor((n.start_qn / dq) + 0.5) * dq) or n.start_qn
         local n_dur = dq and (math.max(dq, math.floor(((n.dur_qn or (n.end_qn - n.start_qn)) / dq) + 0.5) * dq)) or (n.dur_qn or (n.end_qn - n.start_qn))
         local n_end = n_start + n_dur
-        local start_bar = math.floor((n_start + 0.001) / bpi)
-        local end_bar = math.floor(math.max(n_start, n_end - 0.001) / bpi)
+        local start_bar = Engraver.qn_to_measure_info(n_start + 0.001, bpi, measure_map)
+        local end_bar = Engraver.qn_to_measure_info(math.max(n_start, n_end - 0.001), bpi, measure_map)
         local from_b = math.max(start_m, start_bar)
         local to_b = math.min(stop_m, end_bar)
         for m = from_b, to_b do
@@ -1632,14 +1734,13 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
     
     for m = start_m, stop_m do
         local bar_notes = notes_by_bar[m]
-        local bar_start_qn = m * bpi
-        local bar_end_qn = (m + 1) * bpi
+        local bar_start_qn, bar_end_qn, bar_bpi = Engraver.measure_to_qn_info(m, bpi, measure_map)
         
         if #bar_notes == 0 then
             table.insert(rests, {
                 type = "whole",
                 start_qn = bar_start_qn,
-                dur_qn = bpi,
+                dur_qn = bar_bpi,
                 measure_idx = m,
                 is_full_measure = true
             })
@@ -1705,7 +1806,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
             -- IMPORTANT: If notes rhythmically fill the measure completely,
             -- NO rests must be generated!
             local fill_tol = dq and (dq * 0.5) or 0.20
-            if total_nom_dur < bpi - fill_tol then
+            if total_nom_dur < bar_bpi - fill_tol then
                 local intervals = {}
                 for idx, slot in ipairs(distinct_onsets) do
                     local s_qn = math.max(bar_start_qn, slot.s)
@@ -1747,17 +1848,17 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
                     covered = covered + (inv.e - inv.s)
                 end
                 
-                if covered < bpi - fill_tol then
+                if covered < bar_bpi - fill_tol then
                     local cur_pos = bar_start_qn
                     for _, inv in ipairs(merged) do
                         if inv.s > cur_pos + fill_tol then
                             local gap_dur = inv.s - cur_pos
-                            Engraver.decompose_rest_gap(rests, cur_pos, gap_dur, m, bpi)
+                            Engraver.decompose_rest_gap(rests, cur_pos, gap_dur, m, bar_bpi, bar_start_qn)
                         end
                         cur_pos = math.max(cur_pos, inv.e)
                     end
                     if bar_end_qn > cur_pos + fill_tol then
-                        Engraver.decompose_rest_gap(rests, cur_pos, bar_end_qn - cur_pos, m, bpi)
+                        Engraver.decompose_rest_gap(rests, cur_pos, bar_end_qn - cur_pos, m, bar_bpi, bar_start_qn)
                     end
                 end
             end
@@ -1767,7 +1868,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
 end
 
 
-function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measure, dq, min_m, max_m)
+function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measure, dq, min_m, max_m, measure_map)
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
     
     -- Check if track has multiple voices
@@ -1782,7 +1883,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
     
     -- Monophonic track: standard rest generation
     if voice_count <= 1 then
-        return Engraver.generate_track_rests(track_notes, total_measures, qn_per_measure, dq, min_m, max_m)
+        return Engraver.generate_track_rests(track_notes, total_measures, qn_per_measure, dq, min_m, max_m, measure_map)
     end
     
     -- Polyphonic track (Elaine Gould "Behind Bars" p. 308 / Gardner Read):
@@ -1804,8 +1905,8 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
         local n_start = dq and (math.floor((n.start_qn / dq) + 0.5) * dq) or n.start_qn
         local n_dur = dq and (math.max(dq, math.floor(((n.dur_qn or (n.end_qn - n.start_qn)) / dq) + 0.5) * dq)) or (n.dur_qn or (n.end_qn - n.start_qn))
         local n_end = n_start + n_dur
-        local start_bar = math.floor((n_start + 0.001) / bpi)
-        local end_bar = math.floor(math.max(n_start, n_end - 0.001) / bpi)
+        local start_bar = Engraver.qn_to_measure_info(n_start + 0.001, bpi, measure_map)
+        local end_bar = Engraver.qn_to_measure_info(math.max(n_start, n_end - 0.001), bpi, measure_map)
         local from_b = math.max(start_m, start_bar)
         local to_b = math.min(stop_m, end_bar)
         for m = from_b, to_b do
@@ -1815,8 +1916,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
     
     for m = start_m, stop_m do
         local bar_notes = notes_by_bar[m]
-        local bar_sqn = m * bpi
-        local bar_eqn = (m + 1) * bpi
+        local bar_sqn, bar_eqn, bar_bpi = Engraver.measure_to_qn_info(m, bpi, measure_map)
         local bar_end_qn = bar_eqn
         
         if #bar_notes == 0 then
@@ -1824,7 +1924,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
             table.insert(all_rests, {
                 type = "whole",
                 start_qn = bar_sqn,
-                dur_qn = bpi,
+                dur_qn = bar_bpi,
                 measure_idx = m,
                 is_full_measure = true
             })
@@ -1846,7 +1946,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
                 -- Only ONE voice is active in this measure.
                 -- Inactive voices emit 0 rests. The active voice behaves like a standard single voice.
                 local v = voices_in_bar[1]
-                local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m)
+                local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m, measure_map)
                 for _, r in ipairs(v_rests) do
                     if not r.is_full_measure then
                         r.voice = nil -- Standard centered rest for monophonic measure
@@ -1950,20 +2050,20 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
                     end
                     
                     local fill_tol = dq and (dq * 0.5) or 0.20
-                    if covered < bpi - fill_tol then
+                    if covered < bar_bpi - fill_tol then
                         local cur_pos = bar_sqn
                         for _, inv in ipairs(merged) do
                             if inv.s > cur_pos + fill_tol then
                                 local gap_dur = inv.s - cur_pos
-                                Engraver.decompose_rest_gap(all_rests, cur_pos, gap_dur, m, bpi)
+                                Engraver.decompose_rest_gap(all_rests, cur_pos, gap_dur, m, bar_bpi, bar_sqn)
                             end
                             cur_pos = math.max(cur_pos, inv.e)
                         end
                         if bar_eqn > cur_pos + fill_tol then
-                            Engraver.decompose_rest_gap(all_rests, cur_pos, bar_eqn - cur_pos, m, bpi)
+                            Engraver.decompose_rest_gap(all_rests, cur_pos, bar_eqn - cur_pos, m, bar_bpi, bar_sqn)
                         end
                     end
-                    -- If covered >= bpi - fill_tol: completely full consecutively, 0 rests!
+                    -- If covered >= bar_bpi - fill_tol: completely full consecutively, 0 rests!
                 else
                     -- Overlapping voices: true polyphony in this measure (Elaine Gould "Behind Bars" p. 308-310).
                     -- 1. Analyze voice activity spans in this measure
@@ -1984,7 +2084,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
                     -- 2. Generate rests per voice with subordinate entry/exit suppression
                     local raw_poly_rests = {}
                     for _, v in ipairs(voices_in_bar) do
-                        local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m)
+                        local v_rests = Engraver.generate_track_rests(notes_by_v[v], total_measures, qn_per_measure, dq, m, m, measure_map)
                         local stats = v_stats[v]
                         for _, r in ipairs(v_rests) do
                             if not r.is_full_measure then
@@ -2210,7 +2310,7 @@ function Engraver.decompose_bar_segment(start_in_bar, raw_dur, bpi, depth, allow
     return segments
 end
 
-function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn, user_ties)
+function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn, user_ties, measure_map)
     local visual_notes = {}
     local bar_ties = {}
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
@@ -2394,18 +2494,18 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                 local clean_eqn = clean_sqn + snapped_dur
 
                 if (not vis_min_qn or clean_eqn >= vis_min_qn) and (not vis_max_qn or clean_sqn <= vis_max_qn) then
-                    local start_bar = math.floor((clean_sqn + 0.001) / bpi)
-                    local end_bar = math.floor(math.max(clean_sqn, clean_eqn - 0.001) / bpi)
+                    local start_bar = Engraver.qn_to_measure_info(clean_sqn + 0.001, bpi, measure_map)
+                    local end_bar = Engraver.qn_to_measure_info(math.max(clean_sqn, clean_eqn - 0.001), bpi, measure_map)
 
                     for bar = start_bar, end_bar do
-                        local bar_sqn = bar * bpi
+                        local bar_sqn, bar_eqn, bar_bpi = Engraver.measure_to_qn_info(bar, bpi, measure_map)
                         local seg_sqn = math.max(clean_sqn, bar_sqn)
-                        local seg_eqn = math.min(clean_eqn, (bar + 1) * bpi)
+                        local seg_eqn = math.min(clean_eqn, bar_eqn)
                         local seg_dur = seg_eqn - seg_sqn
 
                         if seg_dur > 0.01 then
                             local start_in_bar = seg_sqn - bar_sqn
-                            local sub_segs = Engraver.decompose_bar_segment(start_in_bar, seg_dur, bpi)
+                            local sub_segs = Engraver.decompose_bar_segment(start_in_bar, seg_dur, bar_bpi)
 
                             for sub_i, sub in ipairs(sub_segs) do
                                 unit_serial = unit_serial + 1
@@ -2502,20 +2602,22 @@ end
 -- STANDARD-COMPLIANT BEAMING ENGINE
 -- ==============================================================================
 
-function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping, timesig_num, timesig_denom)
+function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping, timesig_num, timesig_denom, measure_map)
     local groups = {}
     if grouping == "none" then return groups end
-    
-    local group_size = 1.0
-    if grouping == "bar" then
-        group_size = qn_per_measure
-    elseif grouping == "half_bar" then
-        group_size = qn_per_measure / 2.0
-    elseif timesig_denom == 8 and timesig_num and timesig_num >= 6 and (timesig_num % 3 == 0) then
-        -- Compound meters (6/8, 9/8, 12/8): beat is a dotted quarter note (1.5 QN = 3 eighth notes per beam)
-        group_size = 1.5
-    else
-        group_size = 1.0 -- Standard simple meter: per quarter-note beat
+    local default_bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
+
+    local function get_measure_group_size(m_bpi, ts_n, ts_d)
+        if grouping == "bar" then
+            return m_bpi
+        elseif grouping == "half_bar" then
+            return m_bpi / 2.0
+        elseif ts_d == 8 and ts_n and ts_n >= 6 and (ts_n % 3 == 0) then
+            -- Compound meters (6/8, 9/8, 12/8): beat is a dotted quarter note (1.5 QN = 3 eighth notes per beam)
+            return 1.5
+        else
+            return 1.0 -- Standard simple meter: per quarter-note beat
+        end
     end
     
     local function is_genuine_tuplet_step(step, tn)
@@ -2550,7 +2652,7 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping, timesi
         local staff_below, staff_above = 0, 0
         for _, vn in ipairs(notes_list) do
             local qn = vn.display_qn or vn.start_qn
-            local m = math.floor((qn + 0.001) / qn_per_measure)
+            local m = vn.bar or Engraver.qn_to_measure_info(qn + 0.001, default_bpi, measure_map)
             if not measure_balance[m] then measure_balance[m] = { below = 0, above = 0 } end
             local ds = vn.dstep or 4
             if ds < 4 then
@@ -2565,7 +2667,7 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping, timesi
         end
         for _, vn in ipairs(notes_list) do
             local qn = vn.display_qn or vn.start_qn
-            local m = math.floor((qn + 0.001) / qn_per_measure)
+            local m = vn.bar or Engraver.qn_to_measure_info(qn + 0.001, default_bpi, measure_map)
             local bal = measure_balance[m]
             if bal and bal.below ~= bal.above then
                 vn._measure_prefer_stem_up = (bal.below > bal.above)
@@ -2620,8 +2722,8 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping, timesi
                 if o_idx + tn - 1 <= num_o then
                     local first_o = onsets[o_idx]
                     local last_o = onsets[o_idx + tn - 1]
-                    local m_first = math.floor((first_o.qn + 0.001) / qn_per_measure)
-                    local m_last  = math.floor((last_o.qn + 0.001) / qn_per_measure)
+                    local m_first = Engraver.qn_to_measure_info(first_o.qn + 0.001, default_bpi, measure_map)
+                    local m_last  = Engraver.qn_to_measure_info(last_o.qn + 0.001, default_bpi, measure_map)
                     if m_first == m_last then
                         local span = last_o.qn - first_o.qn
                         local step = span / (tn - 1)
@@ -2661,8 +2763,12 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping, timesi
         local cur_group_start = nil
         local prev_onset = nil
         for _, o in ipairs(onsets) do
-            local m_idx = math.floor((o.qn + 0.001) / qn_per_measure)
-            local beat_idx = math.floor((o.qn + 0.001) / group_size)
+            local m_idx, m_sqn, _, m_bpi, m_ts_n, m_ts_d = Engraver.qn_to_measure_info(o.qn + 0.001, default_bpi, measure_map)
+            local eff_ts_n = m_ts_n or timesig_num
+            local eff_ts_d = m_ts_d or timesig_denom
+            local group_size = get_measure_group_size(m_bpi, eff_ts_n, eff_ts_d)
+            local rel_qn = math.max(0.0, (o.qn + 0.001) - m_sqn)
+            local beat_idx = math.floor(rel_qn / group_size)
             local g_idx = tuplet_assigned[o] or string.format("%d_%d", m_idx, beat_idx)
             -- Break beam group whenever separated by a rest gap (>= 0.11 QN) so beams never slice through rest glyphs
             local has_rest_gap = false
@@ -3359,6 +3465,76 @@ function Engraver.draw_key_signature(draw_list, key_idx, x, bot_y, line_spacing,
     end
 
     return x + (count * acc_spacing)
+end
+
+local SMUFL_TIME_SIG_DIGITS = {
+    ["0"] = "\u{E080}",
+    ["1"] = "\u{E081}",
+    ["2"] = "\u{E082}",
+    ["3"] = "\u{E083}",
+    ["4"] = "\u{E084}",
+    ["5"] = "\u{E085}",
+    ["6"] = "\u{E086}",
+    ["7"] = "\u{E087}",
+    ["8"] = "\u{E088}",
+    ["9"] = "\u{E089}",
+}
+
+function Engraver.get_time_signature_width(num, denom, s)
+    local scale = s or 1.0
+    local num_str = tostring(math.floor(tonumber(num) or 4))
+    local den_str = tostring(math.floor(tonumber(denom) or 4))
+    local max_digits = math.max(#num_str, #den_str)
+    return (max_digits * 13.0 + 9.0) * scale
+end
+
+function Engraver.draw_time_signature(draw_list, x, bot_y, line_spacing, s, col, num, denom, font_music, font_main)
+    local scale = s or 1.0
+    local draw_col = col or 0x111111FF
+    local lsp = line_spacing or (8.0 * scale)
+    local top_y = bot_y - 4.0 * lsp
+    local num_val = math.max(1, math.floor(tonumber(num) or 4))
+    local den_val = math.max(1, math.floor(tonumber(denom) or 4))
+    local num_str = tostring(num_val)
+    local den_str = tostring(den_val)
+    local max_digits = math.max(#num_str, #den_str)
+    local digit_adv = 12.5 * scale
+    local total_w = max_digits * digit_adv
+
+    if font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+        local ts_sz = math.floor(32.0 * scale + 0.5)
+        -- SMuFL timeSig0..9 sit 2 staff spaces tall centered on the baseline:
+        -- Numerator sits in upper half of staff (lines 3..5, centered at top_y + 1*lsp),
+        -- Denominator sits in lower half of staff (lines 1..3, centered at top_y + 3*lsp).
+        local num_base_y = top_y + (1.0 * lsp) - (ts_sz * 2.012)
+        local den_base_y = top_y + (3.0 * lsp) - (ts_sz * 2.012)
+
+        local num_start_x = x + (total_w - (#num_str * digit_adv)) * 0.5
+        for i = 1, #num_str do
+            local ch = num_str:sub(i, i)
+            local glyph = SMUFL_TIME_SIG_DIGITS[ch] or ch
+            reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, ts_sz, num_start_x + (i - 1) * digit_adv, num_base_y, draw_col, glyph)
+        end
+
+        local den_start_x = x + (total_w - (#den_str * digit_adv)) * 0.5
+        for i = 1, #den_str do
+            local ch = den_str:sub(i, i)
+            local glyph = SMUFL_TIME_SIG_DIGITS[ch] or ch
+            reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, ts_sz, den_start_x + (i - 1) * digit_adv, den_base_y, draw_col, glyph)
+        end
+    else
+        local fb_font = font_main or font_music
+        local fb_sz = math.floor(15.0 * scale + 0.5)
+        if fb_font and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+            reaper.ImGui_DrawList_AddTextEx(draw_list, fb_font, fb_sz, x + 2 * scale, top_y - 1 * scale, draw_col, num_str)
+            reaper.ImGui_DrawList_AddTextEx(draw_list, fb_font, fb_sz, x + 2 * scale, top_y + 2.0 * lsp - 1 * scale, draw_col, den_str)
+        else
+            reaper.ImGui_DrawList_AddText(draw_list, x + 2 * scale, top_y - 1 * scale, draw_col, num_str)
+            reaper.ImGui_DrawList_AddText(draw_list, x + 2 * scale, top_y + 2.0 * lsp - 1 * scale, draw_col, den_str)
+        end
+    end
+
+    return x + total_w + (6.0 * scale)
 end
 
 function Engraver.draw_dot(draw_list, cx, cy, s, col, font_music, dstep, step_y)

@@ -60,14 +60,20 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     -- ==================================================================
     -- 2. TIME SIGNATURE SECTION (Always Global Across All Staves & REAPER)
     -- ==================================================================
-    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "⏱ TIME SIGNATURE (TAKTART)")
-    local cur_ts_n, cur_ts_d = state.time_sig_num, state.time_sig_denom
+    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "⏱ TIME SIGNATURE")
+    local target_m, target_sqn, active_ts_n, active_ts_d, is_from_note = 0, 0.0, 4, 4
+    if KeySignatureService and KeySignatureService.get_target_measure_for_time_sig then
+        target_m, target_sqn, active_ts_n, active_ts_d, is_from_note = KeySignatureService.get_target_measure_for_time_sig(state)
+    end
+    local cur_ts_n = active_ts_n or state.time_sig_num
+    local cur_ts_d = active_ts_d or state.time_sig_denom
     if not cur_ts_n or not cur_ts_d or cur_ts_n <= 0 or cur_ts_d <= 0 then
         local rn, rd = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
         cur_ts_n = (rn and rn > 0) and rn or 4
         cur_ts_d = (rd and rd > 0) and rd or 4
     end
-    reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("Active: %d/%d (All Staves & REAPER Timeline)", cur_ts_n, cur_ts_d))
+    local target_src_lbl = is_from_note and "Selected Note" or "Edit Cursor"
+    reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("Target: Bar %d (%s)  |  Active: %d/%d", (target_m or 0) + 1, target_src_lbl, cur_ts_n, cur_ts_d))
 
     state.key_sig_ts_num = state.key_sig_ts_num or cur_ts_n
     state.key_sig_ts_den = state.key_sig_ts_den or cur_ts_d
@@ -75,11 +81,14 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     local function apply_time_sig(num, denom)
         state.key_sig_ts_num = num
         state.key_sig_ts_den = denom
-        state.time_sig_num = num
-        state.time_sig_denom = denom
-        if KeySignatureService and KeySignatureService.set_project_time_sig then
+        local applied_m = target_m or 0
+        if KeySignatureService and KeySignatureService.set_time_sig_at_target then
+            applied_m = KeySignatureService.set_time_sig_at_target(state, num, denom)
+        elseif KeySignatureService and KeySignatureService.set_project_time_sig then
             KeySignatureService.set_project_time_sig(state, num, denom)
         else
+            state.time_sig_num = num
+            state.time_sig_denom = denom
             local cur_bpm = reaper.Master_GetTempo() or 120
             local cnt = reaper.CountTempoTimeSigMarkers(0)
             if cnt > 0 then
@@ -97,7 +106,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
             reaper.UpdateTimeline()
             if reaper.UpdateArrange then reaper.UpdateArrange() end
         end
-        state.status_msg = string.format("Score & REAPER Time Signature set to %d/%d across all staves", num, denom)
+        state.status_msg = string.format("Bar %d: Time Signature set to %d/%d across all staves", (applied_m or 0) + 1, num, denom)
     end
 
     local function render_ts_preset_btn(label, num, denom, w)
@@ -165,7 +174,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     -- ==================================================================
     -- 3. KEY SIGNATURE SECTION & TARGET SCOPE (Item, Track, Project)
     -- ==================================================================
-    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "♯♭ KEY SIGNATURE (TONART)")
+    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "♯♭ KEY SIGNATURE")
     local sel_item = (state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*") and state.selected_item) or reaper.GetSelectedMediaItem(0, 0)
     local sel_take = sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") and reaper.GetActiveTake(sel_item)
     if not sel_item and state.selected_notes then
@@ -274,7 +283,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     reaper.ImGui_Spacing(ctx)
 
     -- ==================================================================
-    -- 3. MODE SWITCHER: MAJOR (DUR) vs MINOR (MOLL)
+    -- 3. MODE SWITCHER: MAJOR vs MINOR
     -- ==================================================================
     if not state.key_signature_mode then
         state.key_signature_mode = "major"
@@ -288,7 +297,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), is_major and 0x3498DBFF or 0x222630FF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), is_major and 0x2980B9FF or 0x303644FF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), is_major and 0xFFFFFFFF or 0xAAAAAAFF)
-    if reaper.ImGui_Button(ctx, "Major (Dur)##BtnMaj", half_w, 24) then
+    if reaper.ImGui_Button(ctx, "Major##BtnMaj", half_w, 24) then
         state.key_signature_mode = "major"
     end
     reaper.ImGui_PopStyleColor(ctx, 3)
@@ -299,7 +308,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), (not is_major) and 0x3498DBFF or 0x222630FF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), (not is_major) and 0x2980B9FF or 0x303644FF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), (not is_major) and 0xFFFFFFFF or 0xAAAAAAFF)
-    if reaper.ImGui_Button(ctx, "Minor (Moll)##BtnMin", half_w, 24) then
+    if reaper.ImGui_Button(ctx, "Minor##BtnMin", half_w, 24) then
         state.key_signature_mode = "minor"
     end
     reaper.ImGui_PopStyleColor(ctx, 3)
@@ -371,11 +380,10 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
 
             reaper.ImGui_PopStyleColor(ctx, 3)
 
-            -- Format names
+            -- Format names (English only)
             local name_main = is_major and sig.major_en or sig.minor_en
-            local name_de   = is_major and sig.major_de or sig.minor_de
             local disp_title = string.format("%s (%s)", name_main, sig.acc_str)
-            local full_title = string.format("%s  [%s]", disp_title, name_de)
+            local full_title = disp_title
 
             -- Click Handler: Apply Key Signature
             if clicked then

@@ -58,6 +58,7 @@ function State.new()
         key_signature = 0,             -- Key signature index (-7 to +7, 0 = C major / A minor)
         key_signature_mode = "major",  -- "major" | "minor"
         track_key_signatures = {},     -- Map: track_guid -> { idx = ..., key_idx = ..., mode = ... }
+        time_sig_changes = {},         -- Map: measure_idx -> { num = ..., denom = ... } (across all staves)
         active_dur = 1.0,         -- QN: 1.0 = 1/4, 0.5 = 1/8, 0.25 = 1/16, etc.
         dur_label = "1/4",
         is_dotted = false,

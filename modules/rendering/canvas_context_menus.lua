@@ -1345,7 +1345,7 @@ function CanvasContextMenus.render_item_header_popup(ctx, state)
                 state.status_msg = string.format("Item '%s': Key Signature drawer opened", it.name or "Item")
             end
 
-            -- 3. Time Signature... (Submenu with 4/4, 3/4, 2/4, 6/8 etc.)
+            -- 3. Time Signature... (Submenu with 4/4, 3/4, 2/4, 6/8 etc. - Global across all staves at barline)
             if reaper.ImGui_BeginMenu(ctx, "⏱ Time Signature") then
                 local common_ts = {
                     { num = 4, den = 4, lbl = "4/4 (Common Time)" },
@@ -1356,24 +1356,26 @@ function CanvasContextMenus.render_item_header_popup(ctx, state)
                     { num = 5, den = 4, lbl = "5/4 (Asymmetric)" },
                     { num = 7, den = 8, lbl = "7/8 (Asymmetric)" },
                 }
-                local cur_num, cur_den = resolve_effective_time_sig(state, tdata and tdata.track, it, it.start_qn or 0)
                 local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
                 if not has_kss or not KeySignatureService then
                     has_kss, KeySignatureService = pcall(require, "modules.services.key_signature_service")
+                end
+                local target_m, _, cur_num, cur_den = 0, 0.0, 4, 4
+                if KeySignatureService and KeySignatureService.qn_to_measure_info then
+                    target_m, _, _, cur_num, cur_den = KeySignatureService.qn_to_measure_info(state, it.start_qn or 0, 256)
+                else
+                    cur_num, cur_den = resolve_effective_time_sig(state, tdata and tdata.track, it, it.start_qn or 0)
                 end
                 for _, ts in ipairs(common_ts) do
                     local is_cur = (cur_num == ts.num and cur_den == ts.den)
                     local prefix = is_cur and "✓ " or "   "
                     if reaper.ImGui_MenuItem(ctx, prefix .. ts.lbl) then
-                        if KeySignatureService and KeySignatureService.set_item_time_sig then
-                            KeySignatureService.set_item_time_sig(state, it.item, it.take, ts.num, ts.den)
-                        else
-                            reaper.GetSetMediaItemInfo_String(it.item, "P_EXT:notator_time_sig", string.format("%d|%d", ts.num, ts.den), true)
-                            it.time_sig = { num = ts.num, denom = ts.den }
-                            reaper.MarkProjectDirty(0)
-                            reaper.UpdateArrange()
+                        if KeySignatureService and KeySignatureService.set_time_sig_at_target then
+                            KeySignatureService.set_time_sig_at_target(state, ts.num, ts.den, target_m)
+                        elseif KeySignatureService and KeySignatureService.set_project_time_sig then
+                            KeySignatureService.set_project_time_sig(state, ts.num, ts.den)
                         end
-                        state.status_msg = string.format("Set time signature to %d/%d for item '%s'", ts.num, ts.den, it.name or "Item")
+                        state.status_msg = string.format("Bar %d: Time Signature set to %d/%d across all staves", (target_m or 0) + 1, ts.num, ts.den)
                     end
                 end
                 reaper.ImGui_EndMenu(ctx)
@@ -1527,6 +1529,38 @@ function CanvasContextMenus.render_measure_header_popup(ctx, state, active_track
             end
 
             reaper.ImGui_Separator(ctx)
+            if reaper.ImGui_BeginMenu(ctx, string.format("⏱ Set Time Signature at Bar %d", cm + 1)) then
+                local common_ts = {
+                    { num = 4, den = 4, lbl = "4/4 (Common Time)" },
+                    { num = 3, den = 4, lbl = "3/4 (Waltz)" },
+                    { num = 2, den = 4, lbl = "2/4 (March)" },
+                    { num = 6, den = 8, lbl = "6/8 (Compound Duple)" },
+                    { num = 12, den = 8, lbl = "12/8 (Compound Quadruple)" },
+                    { num = 5, den = 4, lbl = "5/4 (Asymmetric)" },
+                    { num = 7, den = 8, lbl = "7/8 (Asymmetric)" },
+                }
+                local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
+                if not has_kss or not KeySignatureService then
+                    has_kss, KeySignatureService = pcall(require, "modules.services.key_signature_service")
+                end
+                local cur_num, cur_den = 4, 4
+                if KeySignatureService and KeySignatureService.get_measure_time_map then
+                    local tmap = KeySignatureService.get_measure_time_map(state, cm + 2)
+                    cur_num = (tmap.m_ts_num and tmap.m_ts_num[cm]) or 4
+                    cur_den = (tmap.m_ts_den and tmap.m_ts_den[cm]) or 4
+                end
+                for _, ts in ipairs(common_ts) do
+                    local is_cur = (cur_num == ts.num and cur_den == ts.den)
+                    local prefix = is_cur and "✓ " or "   "
+                    if reaper.ImGui_MenuItem(ctx, prefix .. ts.lbl) then
+                        if KeySignatureService and KeySignatureService.set_time_sig_at_target then
+                            KeySignatureService.set_time_sig_at_target(state, ts.num, ts.den, cm)
+                        end
+                        state.status_msg = string.format("Bar %d: Time Signature set to %d/%d across all staves", cm + 1, ts.num, ts.den)
+                    end
+                end
+                reaper.ImGui_EndMenu(ctx)
+            end
             if reaper.ImGui_MenuItem(ctx, "𝄐 Add Fermata to Bar (Downbeat)") then
                 local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
                 local tpos = reaper.TimeMap2_beatsToTime(0, 0, cm)
