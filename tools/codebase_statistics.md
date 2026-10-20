@@ -1,15 +1,15 @@
-# REAPER-Notator v2.50.3 — Codebase & Library Statistics
+# REAPER-Notator v2.50.4 — Codebase & Library Statistics
 
-**Generated:** 2026-10-20 18:19
+**Generated:** 2026-10-20 18:51
 
 ## Executive Summary
 
-- **Version:** v2.50.3
+- **Version:** v2.50.4
 - **Total Source Files:** 92 Lua files
-- **Total Line Count:** 79,113
-- **Executable Code Lines:** 67,470 (85.3%)
-- **Comments & Documentation:** 5,315 (6.7%)
-- **Blank / Formatting Lines:** 6,995 (8.8%)
+- **Total Line Count:** 79,305
+- **Executable Code Lines:** 67,633 (85.3%)
+- **Comments & Documentation:** 5,330 (6.7%)
+- **Blank / Formatting Lines:** 7,009 (8.8%)
 - **Orchestral Pattern Library:** 1,500 curated JSON patterns across 10 categories
 - **Automated Unit Test Suite:** 159 unit tests across 92 Lua modules and 644 exported functions (`tests/test_all_modules.lua`, 0 failures)
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
@@ -18,28 +18,28 @@
 
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `modules/services` | 37 | 41,187 | 35,377 | 2,482 | 3,524 | 85.9% |
-| `modules/rendering` | 7 | 14,289 | 12,292 | 846 | 1,198 | 86.0% |
-| `modules/ui` | 25 | 13,494 | 11,057 | 966 | 1,498 | 81.9% |
-| `tests` | 2 | 3,254 | 2,888 | 171 | 229 | 88.8% |
+| `modules/services` | 37 | 41,319 | 35,490 | 2,492 | 3,533 | 85.9% |
+| `modules/rendering` | 7 | 14,349 | 12,349 | 848 | 1,199 | 86.1% |
+| `modules/ui` | 25 | 13,441 | 11,005 | 965 | 1,498 | 81.9% |
+| `tests` | 2 | 3,307 | 2,933 | 175 | 233 | 88.7% |
 | `modules` | 3 | 2,638 | 2,323 | 481 | 162 | 88.1% |
 | `modules/input` | 2 | 2,123 | 1,853 | 92 | 180 | 87.3% |
 | `Root` | 1 | 1,338 | 1,067 | 167 | 108 | 79.7% |
 | `modules/classes` | 15 | 790 | 613 | 110 | 96 | 77.6% |
-| **TOTAL** | **92** | **79,113** | **67,470** | **5,315** | **6,995** | **85.3%** |
+| **TOTAL** | **92** | **79,305** | **67,633** | **5,330** | **7,009** | **85.3%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
 | File | Module | Lines | Code | Comments |
 | :--- | :--- | :---: | :---: | :---: |
 | `modules/services/midi_service.lua` | modules/services | 7,530 | 6,653 | 288 |
-| `modules/rendering/score_canvas.lua` | modules/rendering | 5,188 | 4,535 | 245 |
-| `modules/rendering/engraver.lua` | modules/rendering | 4,386 | 3,798 | 299 |
+| `modules/rendering/score_canvas.lua` | modules/rendering | 5,205 | 4,550 | 246 |
+| `modules/rendering/engraver.lua` | modules/rendering | 4,389 | 3,800 | 300 |
 | `modules/services/record_quantize_service.lua` | modules/services | 2,856 | 2,459 | 193 |
 | `modules/services/slur_service.lua` | modules/services | 2,656 | 2,316 | 125 |
 | `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,339 | 2,045 | 105 |
 | `modules/services/musicxml_import_service.lua` | modules/services | 2,193 | 1,911 | 125 |
-| `tests/test_all_modules.lua` | tests | 1,940 | 1,642 | 145 |
+| `tests/test_all_modules.lua` | tests | 1,989 | 1,683 | 149 |
 | `modules/services/musicxml_export_service.lua` | modules/services | 1,715 | 1,452 | 145 |
 | `modules/services/melody_pathfinder_service.lua` | modules/services | 1,643 | 1,375 | 117 |
 | `modules/services/portamento_service.lua` | modules/services | 1,561 | 1,322 | 90 |
@@ -63,7 +63,7 @@
 | `modules/services/frame_timer_service.lua` | Native High-Refresh Timer - 1ms kernel multimedia timer (60-144 FPS) | 147 |
 | `modules/services/glissando_service.lua` | Glissando Engine - Smooth chromatic / diatonic slide generation | 1,257 |
 | `modules/services/imgui_guard_service.lua` | ImGui Stack Guard Engine - Zero-leak Begin/End & BeginChild/EndChild auto-unwinder | 358 |
-| `modules/services/key_signature_service.lua` | Key Signature Service - Project/Take key signatures & diatonic pitch spelling | 906 |
+| `modules/services/key_signature_service.lua` | Key Signature Service - Project/Take key signatures & diatonic pitch spelling | 1,019 |
 | `modules/services/midi_service.lua` | Core MIDI Engine - Low-latency take I/O and event synchronization | 6,653 |
 | `modules/services/musicxml_export_service.lua` | MusicXML 4.0 Exporter - Standard score interchange file generation | 1,452 |
 | `modules/services/musicxml_import_service.lua` | MusicXML 4.0 Importer - Orchestral part loading and articulation mapping | 1,911 |

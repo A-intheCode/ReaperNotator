@@ -759,27 +759,137 @@ function KeySignatureService.resolve_effective_key(state, track, item, qn)
     return { idx = p_idx, key_idx = p_idx, mode = p_mode }
 end
 
+--- Sets the global Time Signature across the entire score (all staves/items) and REAPER's Project TimeMap.
+-- Time Signature is always uniform across all staves so measure barlines and REAPER's metronome match 100%.
+-- @param state Notator state object
+-- @param num Numerator (e.g. 3, 4, 5, 6, 7, 12)
+-- @param denom Denominator (e.g. 2, 4, 8, 16)
+function KeySignatureService.set_project_time_sig(state, num, denom)
+    local t_num = math.max(1, math.min(32, math.floor((tonumber(num) or 4) + 0.5)))
+    local t_den = tonumber(denom) or 4
+    if t_den ~= 2 and t_den ~= 4 and t_den ~= 8 and t_den ~= 16 then
+        t_den = 4
+    end
+
+    if state then
+        state.time_sig_num = t_num
+        state.time_sig_denom = t_den
+        state.key_sig_ts_num = t_num
+        state.key_sig_ts_den = t_den
+    end
+
+    -- 1. Update REAPER's initial Tempo/TimeSignature Marker at t = 0.0 (Bar 1)
+    local cur_bpm = (reaper.Master_GetTempo and reaper.Master_GetTempo()) or 120
+    local cnt = (reaper.CountTempoTimeSigMarkers and reaper.CountTempoTimeSigMarkers(0)) or 0
+    if cnt > 0 then
+        local ok, tpos, _, _, mbpm, _, _, lin = reaper.GetTempoTimeSigMarker(0, 0)
+        local use_bpm = (ok and mbpm and mbpm > 0) and mbpm or cur_bpm
+        reaper.SetTempoTimeSigMarker(0, 0, 0.0, -1, -1, use_bpm, t_num, t_den, lin or false)
+    else
+        reaper.SetTempoTimeSigMarker(0, -1, 0.0, -1, -1, cur_bpm, t_num, t_den, false)
+    end
+
+    -- 2. Update all MIDI items across all project tracks so every staff shares the exact same Time Signature
+    local num_trks = (reaper.CountTracks and reaper.CountTracks(0)) or 0
+    for ti = 0, num_trks - 1 do
+        local trk = reaper.GetTrack(0, ti)
+        if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
+            local it_cnt = reaper.CountTrackMediaItems(trk)
+            for ii = 0, it_cnt - 1 do
+                local it = reaper.GetTrackMediaItem(trk, ii)
+                local tk = it and reaper.GetActiveTake(it)
+                if tk and reaper.TakeIsMIDI(tk) then
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(tk)
+                    for tx = (text_cnt or 0) - 1, 0, -1 do
+                        local ok_e, _, _, ppq, etype, msg = reaper.MIDI_GetTextSysexEvt(tk, tx)
+                        if ok_e and etype == 15 and msg and (msg:match("^NOTATOR_TIME_SIG") or msg:match("^time%s+%d+/%d+")) then
+                            reaper.MIDI_DeleteTextSysexEvt(tk, tx)
+                        end
+                    end
+                    reaper.MIDI_InsertTextSysexEvt(tk, false, false, 0, 15, string.format("NOTATOR_TIME_SIG %d %d", t_num, t_den))
+                    reaper.MIDI_InsertTextSysexEvt(tk, false, false, 0, 15, string.format("time %d/%d", t_num, t_den))
+                    reaper.MIDI_Sort(tk)
+                    reaper.GetSetMediaItemInfo_String(it, "P_EXT:notator_time_sig", string.format("%d|%d", t_num, t_den), true)
+                end
+            end
+        end
+    end
+
+    -- 3. Re-sync TempoService if loaded so REAPER's Tempo/TimeMap stays 100% consistent
+    local TempoService = package.loaded["services.tempo_service"]
+    if TempoService and TempoService.sync_all_to_reaper and state and state.tempo_markers then
+        TempoService.sync_all_to_reaper(state)
+    end
+
+    -- 4. Update all in-memory track/item caches and invalidate layout/measure caches
+    if state then
+        local track_lists = { state.active_tracks_data, state.active_tracks_cache }
+        for _, tlist in ipairs(track_lists) do
+            if type(tlist) == "table" then
+                for _, tdata in ipairs(tlist) do
+                    if tdata.layout_cache then
+                        for k in pairs(tdata.layout_cache) do tdata.layout_cache[k] = nil end
+                    end
+                    if tdata.rests_cache then
+                        for k in pairs(tdata.rests_cache) do tdata.rests_cache[k] = nil end
+                    end
+                    if tdata.items then
+                        for _, it in ipairs(tdata.items) do
+                            it.time_sig = { num = t_num, denom = t_den }
+                        end
+                    end
+                end
+            end
+        end
+        state.cached_measure_map = nil
+        state.cached_measure_map_sig = nil
+        state._cached_hdr_metrics = nil
+        state.active_tracks_cache = nil
+        KeySignatureService.save(state)
+    end
+
+    KeySignatureService.invalidate_cache()
+    local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+    if MidiService and MidiService.invalidate_cache then
+        MidiService.invalidate_cache()
+    end
+    if reaper.UpdateTimeline then reaper.UpdateTimeline() end
+    if reaper.UpdateArrange then reaper.UpdateArrange() end
+    reaper.Undo_OnStateChange2(0, string.format("Notator: Set Time Signature %d/%d", t_num, t_den))
+    if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
+end
+
 --- Resolves the effective time signature for a given position.
--- Priority: Item time sig > Project time sig (reaper.TimeMap_GetTimeSigAtTime).
+-- Time Signature is global across all staves (state.time_sig_num / REAPER TimeMap), with fallback to item metadata.
 -- @param state Notator state object
 -- @param track MediaTrack* or track GUID string
 -- @param item MediaItem* or MidiItem wrapper
 -- @param qn Time position in quarter notes (optional)
--- @return table { num = number, denom = number }
+-- @return table { num = number, denom = number }, number, number
 function KeySignatureService.resolve_effective_time_sig(state, track, item, qn)
-    -- 1st Priority: Item time sig
+    -- 1st Priority: Explicit Notator global Time Signature when set in state
+    if state and state.time_sig_num and state.time_sig_denom and state.time_sig_num > 0 and state.time_sig_denom > 0 then
+        if qn == nil or qn <= 0.05 then
+            return make_timesig_table(state.time_sig_num, state.time_sig_denom), state.time_sig_num, state.time_sig_denom
+        end
+    end
+
+    -- 2nd Priority: Item time sig (when explicitly requested for an item or imported via MusicXML)
     if item then
-        local tsig = (type(item) == "table" and not qn and item.time_sig) or KeySignatureService.get_item_time_sig(item, nil, qn)
+        local is_start = (qn == nil or qn <= 0.05)
+        local tsig = (type(item) == "table" and is_start and item.time_sig) or KeySignatureService.get_item_time_sig(item, nil, qn)
         if not tsig and type(item) == "table" and item.time_sig then tsig = item.time_sig end
         if tsig and tsig.num and tsig.denom then
             return make_timesig_table(tsig.num, tsig.denom), tsig.num, tsig.denom
         end
     end
 
-    -- 2nd Priority: Project time sig
+    -- 3rd Priority: REAPER Project TimeMap at qn
     local q = qn or 0
     local t_pos = (reaper.TimeMap2_QNToTime and reaper.TimeMap2_QNToTime(0, q)) or 0
     local num, denom = reaper.TimeMap_GetTimeSigAtTime(0, t_pos)
+    if (not num or num <= 0) and state and state.time_sig_num then num = state.time_sig_num end
+    if (not denom or denom <= 0) and state and state.time_sig_denom then denom = state.time_sig_denom end
     num = (num and num > 0) and num or 4
     denom = (denom and denom > 0) and denom or 4
     return make_timesig_table(num, denom), num, denom
@@ -1085,6 +1195,9 @@ function KeySignatureService.save(state)
     if not state then return end
     local str = string.format("%d|%s", state.key_signature or 0, state.key_signature_mode or "major")
     reaper.SetProjExtState(0, "REAPER_Notator", "KEY_SIGNATURE", str)
+    if state.time_sig_num and state.time_sig_denom then
+        reaper.SetProjExtState(0, "REAPER_Notator", "TIME_SIGNATURE", string.format("%d|%d", state.time_sig_num, state.time_sig_denom))
+    end
 
     if state.track_key_signatures then
         local parts = {}
@@ -1111,6 +1224,25 @@ function KeySignatureService.load(state)
     -- Default key signature must ALWAYS be C Major on startup.
     state.key_signature = 0
     state.key_signature_mode = "major"
+
+    local ok_ts, raw_ts = reaper.GetProjExtState(0, "REAPER_Notator", "TIME_SIGNATURE")
+    if ok_ts == 1 and raw_ts and raw_ts ~= "" then
+        local tn, td = raw_ts:match("^(%d+)|(%d+)")
+        if tn and td then
+            state.time_sig_num = tonumber(tn) or 4
+            state.time_sig_denom = tonumber(td) or 4
+            state.key_sig_ts_num = state.time_sig_num
+            state.key_sig_ts_den = state.time_sig_denom
+        end
+    else
+        local r_num, r_den = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
+        if r_num and r_num > 0 and r_den and r_den > 0 then
+            state.time_sig_num = r_num
+            state.time_sig_denom = r_den
+            state.key_sig_ts_num = r_num
+            state.key_sig_ts_den = r_den
+        end
+    end
 
     local ok_t, raw_t = reaper.GetProjExtState(0, "REAPER_Notator", "track_key_signatures")
     if ok_t == 1 and raw_t and raw_t ~= "" then

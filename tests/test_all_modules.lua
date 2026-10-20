@@ -1907,6 +1907,55 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     local b_groups = Engraver.get_beam_groups(v_notes, 4.0, "beat")
     assert_eq(#b_groups, 1, "3 eighth-note triplets with internal tie still form 1 complete beam group")
     assert_eq(#b_groups[1], 3, "Beam group contains all 3 triplet eighth notes")
+
+    -- 8e. Hotfix v2.50.4: Global Time Signatures across all staves & REAPER + Compound Meter (6/8, 12/8) Beaming
+    local KeySignatureService = require("services.key_signature_service")
+    local KeySignatureDrawer = require("ui.key_signature_drawer")
+    KeySignatureService.set_project_time_sig(st, 6, 8)
+    assert_eq(st.time_sig_num, 6, "state.time_sig_num updated to 6")
+    assert_eq(st.time_sig_denom, 8, "state.time_sig_denom updated to 8")
+    local r_ts_n, r_ts_d = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
+    assert_eq(r_ts_n, 6, "REAPER TimeMap_GetTimeSigAtTime numerator updated to 6")
+    assert_eq(r_ts_d, 8, "REAPER TimeMap_GetTimeSigAtTime denominator updated to 8")
+    local eff_ts, eff_n, eff_d = KeySignatureService.resolve_effective_time_sig(st, trk1, item1, 0)
+    assert_eq(eff_n, 6, "resolve_effective_time_sig returns 6 for staff 1")
+    assert_eq(eff_d, 8, "resolve_effective_time_sig returns 8 for staff 1")
+
+    -- Test 6 eighth notes (0.0 to 3.0 QN): in 3/4 they form 3 beam groups of 2 eighth notes; in 6/8 they form 2 beam groups of 3 eighth notes
+    local six_eighths = {}
+    for i = 0, 5 do
+        local n = MidiNote.new({ idx = i, pitch = 64 + (i % 3), start_qn = i * 0.5, end_qn = (i + 1) * 0.5, dur_qn = 0.5, chan = 0 })
+        n.in_treble = true
+        n.in_staff = "treble"
+        n.vis_nx = 100 + i * 35
+        n.nominal_nx = n.vis_nx
+        n.vis_ny = 200
+        n.beam_stem_x = n.vis_nx
+        n.beam_stem_end_y = 170
+        table.insert(six_eighths, n)
+    end
+    local beams_3_4 = Engraver.get_beam_groups(six_eighths, 3.0, "beat", 3, 4)
+    assert_eq(#beams_3_4, 3, "In 3/4, 6 eighth notes form 3 beam groups of 2 eighth notes")
+    assert_eq(#beams_3_4[1], 2, "In 3/4, first beam group has 2 eighth notes")
+
+    local beams_6_8 = Engraver.get_beam_groups(six_eighths, 3.0, "beat", 6, 8)
+    assert_eq(#beams_6_8, 2, "In 6/8 (compound meter), 6 eighth notes form 2 beam groups of 3 eighth notes (dotted quarter beat = 1.5 QN)")
+    assert_eq(#beams_6_8[1], 3, "In 6/8, first beam group has 3 eighth notes")
+    assert_eq(#beams_6_8[2], 3, "In 6/8, second beam group has 3 eighth notes")
+
+    -- Test clicking 12/8 preset button in KeySignatureDrawer (even when key_sig_scope == "item")
+    st.show_key_signatures = true
+    st.key_sig_scope = "item"
+    env.imgui_style_color_depth = 0
+    env.force_button_click_pattern = "12/8##TS_12_8"
+    KeySignatureDrawer.render(ctx, st, KeySignatureService, MidiService, 260, 620, 1, 0, 1, 2)
+    env.force_button_click_pattern = nil
+    assert_eq(st.time_sig_num, 12, "Clicking 12/8 in KeySignatureDrawer updates global state.time_sig_num to 12 even in item scope")
+    assert_eq(st.time_sig_denom, 8, "Clicking 12/8 in KeySignatureDrawer updates global state.time_sig_denom to 8")
+    assert_eq(env.imgui_style_color_depth, 0, "KeySignatureDrawer keeps ImGui style color stack balanced")
+    -- Restore 4/4 for subsequent tests if any
+    KeySignatureService.set_project_time_sig(st, 4, 4)
+    st.show_key_signatures = false
 end)
 
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 81 Modules", function()

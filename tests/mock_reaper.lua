@@ -441,6 +441,10 @@ function Mock.create_environment(repo_root)
         else
             env.tempo_markers[ptidx + 1] = entry
         end
+        if (timepos or 0) <= 0.05 or ptidx == 0 or #env.tempo_markers == 1 then
+            if timesig_num and timesig_num > 0 then env.ts_num = timesig_num end
+            if timesig_denom and timesig_denom > 0 then env.ts_den = timesig_denom end
+        end
         env.proj_change_cnt = env.proj_change_cnt + 1
         return true
     end

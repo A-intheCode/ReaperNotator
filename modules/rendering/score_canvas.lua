@@ -97,6 +97,11 @@ local function resolve_effective_key(state, track, item, qn)
 end
 
 local function resolve_effective_time_sig(state, track, item, qn)
+    if state and state.time_sig_num and state.time_sig_denom and state.time_sig_num > 0 and state.time_sig_denom > 0 then
+        if qn == nil or qn <= 0.05 then
+            return state.time_sig_num, state.time_sig_denom
+        end
+    end
     if has_kss and KeySignatureService and KeySignatureService.resolve_effective_time_sig then
         local res = KeySignatureService.resolve_effective_time_sig(state, track, item, qn)
         if type(res) == "table" then
@@ -105,20 +110,11 @@ local function resolve_effective_time_sig(state, track, item, qn)
             return res, 4
         end
     end
-    if item then
-        local it_obj = (type(item) == "table" and (item.item_obj or item)) or nil
-        if it_obj and it_obj.time_sig and it_obj.time_sig.num and it_obj.time_sig.denom then
-            return it_obj.time_sig.num, it_obj.time_sig.denom
-        end
-        local real_it = (type(item) == "table" and item.item and reaper.ValidatePtr(item.item, "MediaItem*") and item.item)
-            or (type(item) == "userdata" and reaper.ValidatePtr(item, "MediaItem*") and item)
-        if real_it then
-            local ok, str = reaper.GetSetMediaItemInfo_String(real_it, "P_EXT:notator_time_sig", "", false)
-            if ok and str and str ~= "" then
-                local num, den = str:match("([^|]+)|([^|]+)")
-                if num and den then return tonumber(num) or 4, tonumber(den) or 4 end
-            end
-        end
+    local q = qn or 0
+    local t_pos = (reaper.TimeMap2_QNToTime and reaper.TimeMap2_QNToTime(0, q)) or 0
+    local r_num, r_den = reaper.TimeMap_GetTimeSigAtTime(0, t_pos)
+    if r_num and r_num > 0 and r_den and r_den > 0 then
+        return r_num, r_den
     end
     return 4, 4
 end
@@ -199,6 +195,16 @@ local function draw_treble_clef(draw_list, x, g4_y, s, col, font_music)
     reaper.ImGui_DrawList_AddLine(draw_list, x + 3*s, g4_y - 24*s, x + 3*s, g4_y + 16*s, col, 2.5*s)
 end
 
+local function build_smufl_timesig_glyphs(val_str)
+    local glyphs = {}
+    for ch in tostring(val_str or "4"):gmatch("%d") do
+        local g = SMUFL["timeSig" .. ch]
+        if not g then return nil end
+        table.insert(glyphs, g)
+    end
+    return (#glyphs > 0) and glyphs or nil
+end
+
 local function draw_time_signature(draw_list, x, bot_y, line_spacing, s, col, num, denom, font_music, font_main)
     local col_ts = col or Constants.COLORS.timesig_col or Constants.COLORS.notehead_black or 0x1A1A1AFF
     local font_sz = math.floor(40 * s + 0.5)
@@ -214,15 +220,23 @@ local function draw_time_signature(draw_list, x, bot_y, line_spacing, s, col, nu
     local num_str = tostring(num or 4)
     local denom_str = tostring(denom or 4)
     
-    local num_glyph = SMUFL["timeSig" .. num_str]
-    local denom_glyph = SMUFL["timeSig" .. denom_str]
+    local num_glyphs = build_smufl_timesig_glyphs(num_str)
+    local denom_glyphs = build_smufl_timesig_glyphs(denom_str)
     
-    if font_music and num_glyph and denom_glyph and reaper.APIExists("ImGui_DrawList_AddTextEx") then
+    if font_music and num_glyphs and denom_glyphs and reaper.APIExists("ImGui_DrawList_AddTextEx") then
         local y_num = (bot_y - 2 * line_spacing) - (font_sz * 2.012)
         local y_denom = bot_y - (font_sz * 2.012)
-        local pos_x = x - 5.0 * s
-        reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, font_sz, pos_x, y_num, col_ts, num_glyph)
-        reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, font_sz, pos_x, y_denom, col_ts, denom_glyph)
+        local digit_adv = 12.5 * s
+        local num_total_w = (#num_glyphs - 1) * digit_adv
+        local den_total_w = (#denom_glyphs - 1) * digit_adv
+        local num_start_x = (x - 5.0 * s) - (num_total_w * 0.5)
+        local den_start_x = (x - 5.0 * s) - (den_total_w * 0.5)
+        for idx, g in ipairs(num_glyphs) do
+            reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, font_sz, num_start_x + (idx - 1) * digit_adv, y_num, col_ts, g)
+        end
+        for idx, g in ipairs(denom_glyphs) do
+            reaper.ImGui_DrawList_AddTextEx(draw_list, font_music, font_sz, den_start_x + (idx - 1) * digit_adv, y_denom, col_ts, g)
+        end
     else
         local pos_x = x - 4.0 * s
         local y_num = bot_y - 3.4 * line_spacing
@@ -855,7 +869,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
             table.insert(display_notes, vn)
         end
     end
-    local beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping)
+    local beam_groups = Engraver.get_beam_groups(display_notes, qn_per_measure, state.beam_grouping, state.time_sig_num, state.time_sig_denom)
     
     -- ======================================================================
     -- PRECOMPUTED RESTS WITH O(1) COLLISION ELIMINATION (Cached per track)
@@ -1072,8 +1086,15 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local time_pos = (is_playing or is_recording) and reaper.GetPlayPosition() or cur_time
     
     local timesig_num, timesig_denom = reaper.TimeMap_GetTimeSigAtTime(0, time_pos)
-    timesig_num = (timesig_num and timesig_num > 0) and timesig_num or 4
-    timesig_denom = (timesig_denom and timesig_denom > 0) and timesig_denom or 4
+    if state.time_sig_num and state.time_sig_denom and state.time_sig_num > 0 and state.time_sig_denom > 0 then
+        timesig_num = state.time_sig_num
+        timesig_denom = state.time_sig_denom
+    else
+        timesig_num = (timesig_num and timesig_num > 0) and timesig_num or 4
+        timesig_denom = (timesig_denom and timesig_denom > 0) and timesig_denom or 4
+        state.time_sig_num = timesig_num
+        state.time_sig_denom = timesig_denom
+    end
     local qn_per_measure = timesig_num * (4 / timesig_denom)
     local bpi = qn_per_measure
     local proj_change_cnt = (reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0)) or 0
@@ -1175,8 +1196,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local measure_map = nil
     do
         local live_note_cnt = is_recording and #(RecordQuantizeService._live_notes or {}) or 0
-        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%s_%d",
-            s, total_measures, qn_per_measure, proj_change_cnt, #active_tracks_data,
+        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%d_%d_%s_%d",
+            s, total_measures, qn_per_measure, timesig_num, timesig_denom, proj_change_cnt, #active_tracks_data,
             (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid), live_note_cnt)
         if state.cached_measure_map and state.cached_measure_map_sig == mmap_sig then
             measure_map = state.cached_measure_map
@@ -1726,13 +1747,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             local trk_first_item = (tdata.items and tdata.items[1])
             local item_at_start = (trk_first_item and (trk_first_item.start_qn or 0) <= 0.1) and trk_first_item or nil
             local eff_key_idx, eff_key_mode = resolve_effective_key(state, tdata, item_at_start, 0)
-            local eff_ts_num, eff_ts_den = resolve_effective_time_sig(state, tdata, trk_first_item, 0)
-            if type(eff_ts_num) == "table" then
-                eff_ts_den = eff_ts_num.denom or eff_ts_den
-                eff_ts_num = eff_ts_num.num
-            end
-            local trk_ts_num = eff_ts_num or timesig_num or 4
-            local trk_ts_den = eff_ts_den or timesig_denom or 4
+            -- Time Signature is strictly unified across all staves in the score
+            local trk_ts_num = timesig_num or 4
+            local trk_ts_den = timesig_denom or 4
 
             local keysig_x = system_start_x + 48 * s
             local cdef = Constants.CLEF_DEFS[track_clef]
@@ -1780,9 +1797,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         elseif not is_dragging_notes and tdata.layout_cache then
             local dq_sig = string.format("%s_%.3f", tostring(state.display_quantize), tonumber(state.display_quantize_grid) or 0)
             local rep_cnt = state.repeat_marks and #state.repeat_marks or 0
-            layout_key = string.format("%.3f_%s_%s_%s_%.3f_%s_%s_%d_%d_%d",
+            layout_key = string.format("%.3f_%s_%s_%s_%.3f_%d_%d_%s_%s_%d_%d_%d",
                 s, tostring(track_clef), tostring(filter_chan),
-                tostring(state.hide_inactive_voices), qn_per_measure,
+                tostring(state.hide_inactive_voices), qn_per_measure, timesig_num, timesig_denom,
                 tostring(state.beam_grouping), dq_sig, rep_cnt, (state.accidental_change_cnt or 0), total_measures)
             cached_layout = tdata.layout_cache[layout_key]
             if not cached_layout then

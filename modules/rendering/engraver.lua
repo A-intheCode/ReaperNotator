@@ -2502,7 +2502,7 @@ end
 -- STANDARD-COMPLIANT BEAMING ENGINE
 -- ==============================================================================
 
-function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
+function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping, timesig_num, timesig_denom)
     local groups = {}
     if grouping == "none" then return groups end
     
@@ -2511,8 +2511,11 @@ function Engraver.get_beam_groups(visual_notes, qn_per_measure, grouping)
         group_size = qn_per_measure
     elseif grouping == "half_bar" then
         group_size = qn_per_measure / 2.0
+    elseif timesig_denom == 8 and timesig_num and timesig_num >= 6 and (timesig_num % 3 == 0) then
+        -- Compound meters (6/8, 9/8, 12/8): beat is a dotted quarter note (1.5 QN = 3 eighth notes per beam)
+        group_size = 1.5
     else
-        group_size = 1.0 -- Standard: per beat (quarter note in 4/4)
+        group_size = 1.0 -- Standard simple meter: per quarter-note beat
     end
     
     local function is_genuine_tuplet_step(step, tn)

@@ -50,7 +50,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     -- ==================================================================
     -- 1. HEADER & CLOSE BUTTON
     -- ==================================================================
-    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "♯♭ KEY & TIME SIGNATURES")
+    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "⏱ TIME & ♯♭ KEY SIGNATURES")
     reaper.ImGui_SameLine(ctx, width - 28)
     if reaper.ImGui_SmallButton(ctx, "✕##CloseKeySigDrawer") then
         state.show_key_signatures = false
@@ -58,8 +58,114 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     reaper.ImGui_Separator(ctx)
 
     -- ==================================================================
-    -- 2. TARGET SCOPE RESOLUTION (Item, Track, Project)
+    -- 2. TIME SIGNATURE SECTION (Always Global Across All Staves & REAPER)
     -- ==================================================================
+    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "⏱ TIME SIGNATURE (TAKTART)")
+    local cur_ts_n, cur_ts_d = state.time_sig_num, state.time_sig_denom
+    if not cur_ts_n or not cur_ts_d or cur_ts_n <= 0 or cur_ts_d <= 0 then
+        local rn, rd = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
+        cur_ts_n = (rn and rn > 0) and rn or 4
+        cur_ts_d = (rd and rd > 0) and rd or 4
+    end
+    reaper.ImGui_TextColored(ctx, 0x2ECC71FF, string.format("Active: %d/%d (All Staves & REAPER Timeline)", cur_ts_n, cur_ts_d))
+
+    state.key_sig_ts_num = state.key_sig_ts_num or cur_ts_n
+    state.key_sig_ts_den = state.key_sig_ts_den or cur_ts_d
+
+    local function apply_time_sig(num, denom)
+        state.key_sig_ts_num = num
+        state.key_sig_ts_den = denom
+        state.time_sig_num = num
+        state.time_sig_denom = denom
+        if KeySignatureService and KeySignatureService.set_project_time_sig then
+            KeySignatureService.set_project_time_sig(state, num, denom)
+        else
+            local cur_bpm = reaper.Master_GetTempo() or 120
+            local cnt = reaper.CountTempoTimeSigMarkers(0)
+            if cnt > 0 then
+                local ok, _, _, _, mbpm, _, _, lin = reaper.GetTempoTimeSigMarker(0, 0)
+                local use_bpm = (ok and mbpm and mbpm > 0) and mbpm or cur_bpm
+                reaper.SetTempoTimeSigMarker(0, 0, 0.0, -1, -1, use_bpm, num, denom, lin or false)
+            else
+                reaper.SetTempoTimeSigMarker(0, -1, 0.0, -1, -1, cur_bpm, num, denom, false)
+            end
+            state.cached_measure_map = nil
+            state.cached_measure_map_sig = nil
+            if MidiService and MidiService.invalidate_cache then
+                MidiService.invalidate_cache()
+            end
+            reaper.UpdateTimeline()
+            if reaper.UpdateArrange then reaper.UpdateArrange() end
+        end
+        state.status_msg = string.format("Score & REAPER Time Signature set to %d/%d across all staves", num, denom)
+    end
+
+    local function render_ts_preset_btn(label, num, denom, w)
+        local is_active = (cur_ts_n == num and cur_ts_d == denom)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), is_active and 0x2980B9FF or 0x222630FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), is_active and 0x3498DBFF or 0x303644FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(), 0x1B4F72FF)
+        reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), is_active and 0xFFFFFFFF or 0xDDDDDDFF)
+        local clicked = reaper.ImGui_Button(ctx, label, w, 23)
+        reaper.ImGui_PopStyleColor(ctx, 4)
+        if clicked then apply_time_sig(num, denom) end
+    end
+
+    -- Quick Presets Row 1: [4/4], [3/4], [2/4], [6/8]
+    local avail_ts_w = reaper.ImGui_GetContentRegionAvail(ctx)
+    local q_w4 = math.floor((avail_ts_w - 18) / 4)
+    local q_w3 = math.floor((avail_ts_w - 12) / 3)
+
+    render_ts_preset_btn("4/4##TS_4_4", 4, 4, q_w4)
+    reaper.ImGui_SameLine(ctx, 0, 6)
+    render_ts_preset_btn("3/4##TS_3_4", 3, 4, q_w4)
+    reaper.ImGui_SameLine(ctx, 0, 6)
+    render_ts_preset_btn("2/4##TS_2_4", 2, 4, q_w4)
+    reaper.ImGui_SameLine(ctx, 0, 6)
+    render_ts_preset_btn("6/8##TS_6_8", 6, 8, q_w4)
+
+    -- Quick Presets Row 2: [12/8], [5/4], [7/8]
+    render_ts_preset_btn("12/8##TS_12_8", 12, 8, q_w3)
+    reaper.ImGui_SameLine(ctx, 0, 6)
+    render_ts_preset_btn("5/4##TS_5_4", 5, 4, q_w3)
+    reaper.ImGui_SameLine(ctx, 0, 6)
+    render_ts_preset_btn("7/8##TS_7_8", 7, 8, q_w3)
+
+    reaper.ImGui_Spacing(ctx)
+
+    -- Custom Stepper: Numerator / Denominator
+    reaper.ImGui_Text(ctx, string.format("Custom: %d / %d", state.key_sig_ts_num, state.key_sig_ts_den))
+    reaper.ImGui_SameLine(ctx, 0, 8)
+    if reaper.ImGui_SmallButton(ctx, "-##DecNum") then
+        state.key_sig_ts_num = math.max(1, state.key_sig_ts_num - 1)
+    end
+    reaper.ImGui_SameLine(ctx, 0, 2)
+    if reaper.ImGui_SmallButton(ctx, "+##IncNum") then
+        state.key_sig_ts_num = math.min(32, state.key_sig_ts_num + 1)
+    end
+    reaper.ImGui_SameLine(ctx, 0, 8)
+    reaper.ImGui_Text(ctx, "Denom:")
+    reaper.ImGui_SameLine(ctx, 0, 4)
+    if reaper.ImGui_SmallButton(ctx, "/2##Den2") then state.key_sig_ts_den = 2 end
+    reaper.ImGui_SameLine(ctx, 0, 2)
+    if reaper.ImGui_SmallButton(ctx, "/4##Den4") then state.key_sig_ts_den = 4 end
+    reaper.ImGui_SameLine(ctx, 0, 2)
+    if reaper.ImGui_SmallButton(ctx, "/8##Den8") then state.key_sig_ts_den = 8 end
+    reaper.ImGui_SameLine(ctx, 0, 2)
+    if reaper.ImGui_SmallButton(ctx, "/16##Den16") then state.key_sig_ts_den = 16 end
+
+    if reaper.ImGui_Button(ctx, string.format("Apply %d/%d to Score & REAPER##ApplyCustomTS", state.key_sig_ts_num, state.key_sig_ts_den), -1, 23) then
+        apply_time_sig(state.key_sig_ts_num, state.key_sig_ts_den)
+    end
+
+    reaper.ImGui_Spacing(ctx)
+    reaper.ImGui_Separator(ctx)
+    reaper.ImGui_Spacing(ctx)
+
+    -- ==================================================================
+    -- 3. KEY SIGNATURE SECTION & TARGET SCOPE (Item, Track, Project)
+    -- ==================================================================
+    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "♯♭ KEY SIGNATURE (TONART)")
     local sel_item = (state.selected_item and reaper.ValidatePtr(state.selected_item, "MediaItem*") and state.selected_item) or reaper.GetSelectedMediaItem(0, 0)
     local sel_take = sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") and reaper.GetActiveTake(sel_item)
     if not sel_item and state.selected_notes then
@@ -243,9 +349,9 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     -- ==================================================================
     -- 5. SCROLLABLE GRID OF ALL 15 KEY SIGNATURES (7♭ to 7♯)
     -- ==================================================================
-    local avail_grid_w = reaper.ImGui_GetContentRegionAvail(ctx)
-    local footer_reserved_h = 240
-    local grid_h = math.max(140, height - footer_reserved_h - 130)
+    local avail_grid_w, avail_rem_h = reaper.ImGui_GetContentRegionAvail(ctx)
+    local footer_reserved_h = 68
+    local grid_h = math.max(120, (avail_rem_h or (height - 310)) - footer_reserved_h)
 
     if reaper.ImGui_BeginChild(ctx, "KeySigTilesGrid", avail_grid_w, grid_h, child_border, 0) then
         local card_w = math.max(160, reaper.ImGui_GetContentRegionAvail(ctx) - 2)
@@ -443,166 +549,7 @@ function KeySignatureDrawer.render(ctx, state, KeySignatureService, MidiService,
     reaper.ImGui_Spacing(ctx)
     reaper.ImGui_Separator(ctx)
 
-    -- ==================================================================
-    -- 6. TIME SIGNATURE SECTION
-    -- ==================================================================
-    reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, "⏱ TIME SIGNATURE")
-    local scope_desc = (state.key_sig_scope == "item") and "Scope: Selected Item" or ((state.key_sig_scope == "track") and "Scope: Track Items" or "Scope: Entire Project (Tempomap)")
-    local scope_col = (state.key_sig_scope == "project") and 0x2ECC71FF or 0x5DADE2FF
-    reaper.ImGui_TextColored(ctx, scope_col, scope_desc)
 
-    state.key_sig_ts_num = state.key_sig_ts_num or 4
-    state.key_sig_ts_den = state.key_sig_ts_den or 4
-
-    local function apply_time_sig(num, denom)
-        state.key_sig_ts_num = num
-        state.key_sig_ts_den = denom
-        local auto_respell = (state.key_sig_auto_respell ~= false)
-
-        if state.key_sig_scope == "item" then
-            if sel_item and reaper.ValidatePtr(sel_item, "MediaItem*") then
-                if KeySignatureService and KeySignatureService.set_item_time_sig then
-                    KeySignatureService.set_item_time_sig(state, sel_item, sel_take, num, denom)
-                else
-                    reaper.GetSetMediaItemInfo_String(sel_item, "P_EXT:notator_time_sig", string.format("%d|%d", num, denom), true)
-                    if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
-                end
-
-                -- Immediately update in-memory active_tracks_data objects
-                if state.active_tracks_data then
-                    for _, td in ipairs(state.active_tracks_data) do
-                        if td.items then
-                            for _, it_obj in ipairs(td.items) do
-                                if it_obj.item == sel_item or (sel_take and it_obj.take == sel_take) then
-                                    it_obj.time_sig = { num = num, denom = denom }
-                                end
-                            end
-                        end
-                    end
-                end
-                state.cached_measure_map = nil
-                state.cached_measure_map_sig = nil
-                local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
-                if MidiService and MidiService.invalidate_cache then
-                    MidiService.invalidate_cache()
-                end
-                reaper.Undo_OnStateChange2(0, "Notator: Set Item Time Signature")
-                if reaper.UpdateArrange then reaper.UpdateArrange() end
-                state.status_msg = string.format("Item '%s': Time signature set to %d/%d", item_name, num, denom)
-            else
-                state.status_msg = "Please select a MIDI Item to assign time signature!"
-            end
-        elseif state.key_sig_scope == "track" then
-            if cur_trk then
-                local it_cnt = reaper.CountTrackMediaItems(cur_trk)
-                for i = 0, it_cnt - 1 do
-                    local it = reaper.GetTrackMediaItem(cur_trk, i)
-                    local tk = it and reaper.GetActiveTake(it)
-                    if tk and reaper.TakeIsMIDI(tk) then
-                        if KeySignatureService and KeySignatureService.set_item_time_sig then
-                            KeySignatureService.set_item_time_sig(state, it, tk, num, denom)
-                        else
-                            reaper.GetSetMediaItemInfo_String(it, "P_EXT:notator_time_sig", string.format("%d|%d", num, denom), true)
-                        end
-                    end
-                end
-                if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
-                state.status_msg = string.format("Track '%s': Time signature set to %d/%d", trk_name, num, denom)
-            end
-        elseif state.key_sig_scope == "project" then
-            state.time_sig_num = num
-            state.time_sig_denom = denom
-            local cur_time = reaper.GetCursorPosition()
-            local cnt = reaper.CountTempoTimeSigMarkers(0)
-            local match_idx = nil
-            for i = 0, cnt - 1 do
-                local ok, tpos = reaper.GetTempoTimeSigMarker(0, i)
-                if ok and math.abs(tpos - cur_time) < 0.05 then
-                    match_idx = i
-                    break
-                end
-            end
-            local cur_bpm = reaper.Master_GetTempo() or 120
-            if match_idx ~= nil then
-                local ok, tpos, mpos, bpos, mbpm, _, _, lin = reaper.GetTempoTimeSigMarker(0, match_idx)
-                local use_bpm = (mbpm and mbpm > 0) and mbpm or cur_bpm
-                reaper.SetTempoTimeSigMarker(0, match_idx, tpos, mpos or -1, bpos or -1, use_bpm, num, denom, lin or false)
-            else
-                reaper.SetTempoTimeSigMarker(0, -1, cur_time, -1, -1, cur_bpm, num, denom, false)
-            end
-            reaper.UpdateTimeline()
-            if reaper.UpdateArrange then reaper.UpdateArrange() end
-
-            local num_trks = reaper.CountTracks(0)
-            for t = 0, num_trks - 1 do
-                local trk = reaper.GetTrack(0, t)
-                local it_cnt = reaper.CountTrackMediaItems(trk)
-                for i = 0, it_cnt - 1 do
-                    local it = reaper.GetTrackMediaItem(trk, i)
-                    local tk = it and reaper.GetActiveTake(it)
-                    if tk and reaper.TakeIsMIDI(tk) then
-                        if KeySignatureService and KeySignatureService.set_item_time_sig then
-                            KeySignatureService.set_item_time_sig(state, it, tk, num, denom)
-                        else
-                            reaper.GetSetMediaItemInfo_String(it, "P_EXT:notator_time_sig", string.format("%d|%d", num, denom), true)
-                        end
-                    end
-                end
-            end
-            if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
-            state.status_msg = string.format("Project: Time signature set to %d/%d & synced to tempomap", num, denom)
-        end
-    end
-
-    -- Quick Presets Row 1: [4/4], [3/4], [2/4], [6/8]
-    local avail_ts_w = reaper.ImGui_GetContentRegionAvail(ctx)
-    local q_w4 = math.floor((avail_ts_w - 18) / 4)
-    local q_w3 = math.floor((avail_ts_w - 12) / 3)
-
-    if reaper.ImGui_Button(ctx, "4/4##TS_4_4", q_w4, 23) then apply_time_sig(4, 4) end
-    reaper.ImGui_SameLine(ctx, 0, 6)
-    if reaper.ImGui_Button(ctx, "3/4##TS_3_4", q_w4, 23) then apply_time_sig(3, 4) end
-    reaper.ImGui_SameLine(ctx, 0, 6)
-    if reaper.ImGui_Button(ctx, "2/4##TS_2_4", q_w4, 23) then apply_time_sig(2, 4) end
-    reaper.ImGui_SameLine(ctx, 0, 6)
-    if reaper.ImGui_Button(ctx, "6/8##TS_6_8", q_w4, 23) then apply_time_sig(6, 8) end
-
-    -- Quick Presets Row 2: [12/8], [5/4], [7/8]
-    if reaper.ImGui_Button(ctx, "12/8##TS_12_8", q_w3, 23) then apply_time_sig(12, 8) end
-    reaper.ImGui_SameLine(ctx, 0, 6)
-    if reaper.ImGui_Button(ctx, "5/4##TS_5_4", q_w3, 23) then apply_time_sig(5, 4) end
-    reaper.ImGui_SameLine(ctx, 0, 6)
-    if reaper.ImGui_Button(ctx, "7/8##TS_7_8", q_w3, 23) then apply_time_sig(7, 8) end
-
-    reaper.ImGui_Spacing(ctx)
-
-    -- Custom Stepper: Numerator / Denominator
-    reaper.ImGui_Text(ctx, string.format("Custom: %d / %d", state.key_sig_ts_num, state.key_sig_ts_den))
-    reaper.ImGui_SameLine(ctx, 0, 8)
-    if reaper.ImGui_SmallButton(ctx, "-##DecNum") then
-        state.key_sig_ts_num = math.max(1, state.key_sig_ts_num - 1)
-    end
-    reaper.ImGui_SameLine(ctx, 0, 2)
-    if reaper.ImGui_SmallButton(ctx, "+##IncNum") then
-        state.key_sig_ts_num = math.min(32, state.key_sig_ts_num + 1)
-    end
-    reaper.ImGui_SameLine(ctx, 0, 8)
-    reaper.ImGui_Text(ctx, "Denom:")
-    reaper.ImGui_SameLine(ctx, 0, 4)
-    if reaper.ImGui_SmallButton(ctx, "/2##Den2") then state.key_sig_ts_den = 2 end
-    reaper.ImGui_SameLine(ctx, 0, 2)
-    if reaper.ImGui_SmallButton(ctx, "/4##Den4") then state.key_sig_ts_den = 4 end
-    reaper.ImGui_SameLine(ctx, 0, 2)
-    if reaper.ImGui_SmallButton(ctx, "/8##Den8") then state.key_sig_ts_den = 8 end
-    reaper.ImGui_SameLine(ctx, 0, 2)
-    if reaper.ImGui_SmallButton(ctx, "/16##Den16") then state.key_sig_ts_den = 16 end
-
-    if reaper.ImGui_Button(ctx, string.format("Apply %d/%d to Target##ApplyCustomTS", state.key_sig_ts_num, state.key_sig_ts_den), -1, 23) then
-        apply_time_sig(state.key_sig_ts_num, state.key_sig_ts_den)
-    end
-
-    reaper.ImGui_Spacing(ctx)
-    reaper.ImGui_Separator(ctx)
 
     -- ==================================================================
     -- 7. NOTE ACTIONS SECTION

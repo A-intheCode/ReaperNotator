@@ -28,7 +28,15 @@ local SystemEngraver = {}
 -- ------------------------------------------------------------------------------
 function SystemEngraver.build_page_measure_map(active_tracks, start_m, end_m, margin_l, score_w, s, state_or_key)
     local page_bars = math.max(1, end_m - start_m)
-    local bpi = 4.0
+    local ts_num, ts_den = 4, 4
+    if type(state_or_key) == "table" and state_or_key.time_sig_num and state_or_key.time_sig_denom then
+        ts_num = state_or_key.time_sig_num
+        ts_den = state_or_key.time_sig_denom
+    else
+        local rn, rd = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
+        if rn and rn > 0 and rd and rd > 0 then ts_num, ts_den = rn, rd end
+    end
+    local bpi = ts_num * (4.0 / ts_den)
     local eng_s = s or 1.0
     local raw_widths = {}
     local total_raw = 0
@@ -110,7 +118,9 @@ function SystemEngraver.build_page_measure_map(active_tracks, start_m, end_m, ma
         key_idx = key_idx,
         starts = starts,
         widths = widths,
-        bpi = bpi
+        bpi = bpi,
+        ts_num = ts_num,
+        ts_den = ts_den
     }
 end
 
@@ -285,10 +295,25 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
             -- Time Signature on Bar 1 (Measure 1 of piece only)
             if start_m == 0 and font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
                 local ts_x = bounds.margin_l + (((mmap.key_sig_w or 0) > 0 and 42.0 or 30.0) * eng_s) + (mmap.key_sig_w or 0)
-                reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, (tdata.upper_bot - 2 * staff_ls) - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
-                reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, tdata.upper_bot - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
-                reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, (tdata.lower_bot - 2 * staff_ls) - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
-                reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, tdata.lower_bot - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
+                local n_str = tostring(mmap.ts_num or 4)
+                local d_str = tostring(mmap.ts_den or 4)
+                local adv = 12.0 * eng_s
+                local nx0 = ts_x - ((#n_str - 1) * adv * 0.5)
+                local dx0 = ts_x - ((#d_str - 1) * adv * 0.5)
+                local idx_n = 0
+                for ch in n_str:gmatch("%d") do
+                    local g = SMUFL["timeSig" .. ch] or SMUFL.timeSig4
+                    reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, nx0 + idx_n * adv, (tdata.upper_bot - 2 * staff_ls) - (font_sz * 2.012), col_ink, g)
+                    reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, nx0 + idx_n * adv, (tdata.lower_bot - 2 * staff_ls) - (font_sz * 2.012), col_ink, g)
+                    idx_n = idx_n + 1
+                end
+                local idx_d = 0
+                for ch in d_str:gmatch("%d") do
+                    local g = SMUFL["timeSig" .. ch] or SMUFL.timeSig4
+                    reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, dx0 + idx_d * adv, tdata.upper_bot - (font_sz * 2.012), col_ink, g)
+                    reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, dx0 + idx_d * adv, tdata.lower_bot - (font_sz * 2.012), col_ink, g)
+                    idx_d = idx_d + 1
+                end
             end
 
             -- Split Notes into Upper and Lower
@@ -350,8 +375,23 @@ function SystemEngraver.render_system_imgui(dl, ctx, active_tracks, start_m, end
             -- Time Signature on Bar 1
             if start_m == 0 and font_music and reaper.APIExists("ImGui_DrawList_AddTextEx") then
                 local ts_x = bounds.margin_l + (((mmap.key_sig_w or 0) > 0 and 42.0 or 30.0) * eng_s) + (mmap.key_sig_w or 0)
-                reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, (tdata.bot_y - 2 * staff_ls) - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
-                reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, ts_x, tdata.bot_y - (font_sz * 2.012), col_ink, SMUFL.timeSig4)
+                local n_str = tostring(mmap.ts_num or 4)
+                local d_str = tostring(mmap.ts_den or 4)
+                local adv = 12.0 * eng_s
+                local nx0 = ts_x - ((#n_str - 1) * adv * 0.5)
+                local dx0 = ts_x - ((#d_str - 1) * adv * 0.5)
+                local idx_n = 0
+                for ch in n_str:gmatch("%d") do
+                    local g = SMUFL["timeSig" .. ch] or SMUFL.timeSig4
+                    reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, nx0 + idx_n * adv, (tdata.bot_y - 2 * staff_ls) - (font_sz * 2.012), col_ink, g)
+                    idx_n = idx_n + 1
+                end
+                local idx_d = 0
+                for ch in d_str:gmatch("%d") do
+                    local g = SMUFL["timeSig" .. ch] or SMUFL.timeSig4
+                    reaper.ImGui_DrawList_AddTextEx(dl, font_music, font_sz, dx0 + idx_d * adv, tdata.bot_y - (font_sz * 2.012), col_ink, g)
+                    idx_d = idx_d + 1
+                end
             end
 
             SystemEngraver.render_staff_notes_imgui(dl, tdata.notes, start_m, end_m, mmap, tdata.bot_y, staff_ls, eng_s, font_music, font_main, tdata.clef, state, tdata.guid, tdata.dynamics)
@@ -521,7 +561,7 @@ function SystemEngraver.render_staff_notes_imgui(dl, notes, start_m, end_m, mmap
     end
 
     -- 3. Beaming Engine (using core Engraver module)
-    local beam_groups = Engraver.get_beam_groups(display_notes, bpi, "beat")
+    local beam_groups = Engraver.get_beam_groups(display_notes, bpi, "beat", mmap.ts_num, mmap.ts_den)
     local beamed_notes_map = {}
     for _, bgroup in ipairs(beam_groups) do
         local bmap = Engraver.calculate_and_draw_beams(dl, bgroup, eng_s, 0x111111FF, nil)
