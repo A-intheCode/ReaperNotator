@@ -4176,7 +4176,7 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                                 local y2 = last_o.beam_stem_end_y
                                 local cy_beam = (y1 and y2) and ((y1 + y2) / 2.0) or first_o.notes[1].vis_ny
                                 local stem_down = first_o.beam_stem_down
-                                local cy = stem_down and (cy_beam + 11.5 * s) or (cy_beam - 11.5 * s)
+                                local cy = stem_down and (cy_beam + 14.5 * s) or (cy_beam - 14.5 * s)
 
                                 local digit_col = is_ghost_tuplet and (ghost_col or 0x88888835) or col
                                 draw_tuplet_digit(draw_list, cx, cy, n, s, digit_col, font_music, font_main)
@@ -4249,31 +4249,56 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                     do
                         local first_o = onset_list[i]
                         local last_o = onset_list[i + consumed - 1]
-                        local x1 = first_o.nominal_nx - 4 * s
-                        local x2 = last_o.nominal_nx + 4 * s
+                        local x1 = first_o.nominal_nx - 8.5 * s
+                        local qn_span_o = math.max(0.10, (last_o.start_qn or 0) - (first_o.start_qn or 0))
+                        local px_per_qn = math.max(36.0 * s, (last_o.nominal_nx - first_o.nominal_nx) / qn_span_o)
+                        local last_dur = last_o.dur_qn or step or 0.25
+                        local right_ext = math.min(28.0 * s, math.max(14.0 * s, last_dur * px_per_qn * 0.60))
+                        local next_o = onset_list[i + consumed]
+                        if next_o and next_o.nominal_nx and next_o.nominal_nx > last_o.nominal_nx then
+                            local m_last = math.floor(((last_o.start_qn or 0) + 0.001) / qn_per_measure)
+                            local m_next = math.floor(((next_o.start_qn or 0) + 0.001) / qn_per_measure)
+                            if m_last == m_next then
+                                right_ext = math.min(right_ext, math.max(9.0 * s, (next_o.nominal_nx - last_o.nominal_nx) - 8.0 * s))
+                            end
+                        end
+                        local x2 = last_o.nominal_nx + right_ext
                         local dx = math.max(1.0, x2 - x1)
                         local cx = (x1 + x2) / 2.0
 
                         if not (cull_max_x and x1 > cull_max_x) and not (cull_min_x and x2 < cull_min_x) then
                             -- Helper function: determines highest optical point of an onset,
                             -- ensuring the tuplet bracket NEVER sits inside the 5-line staff (Gould p. 198)
-                            -- and clears all up-stem tips and above-staff articulations.
+                            -- and clears all noteheads, rhythm dots, tie arcs, up-stem tips and above-staff articulations.
                             local function get_onset_top(o)
-                                local top_y = o.min_ny
+                                local top_y = (o.min_ny or 0) - 6.0 * s
                                 for _, vn in ipairs(o.notes) do
                                     local vny = vn.vis_ny or vn.ny
+                                    if vny then
+                                        local head_top = vny - 6.0 * s
+                                        if head_top < top_y then top_y = head_top end
+                                        if Engraver.is_dotted_duration(vn.dur_qn) then
+                                            local dot_top = vny - 9.0 * s
+                                            if dot_top < top_y then top_y = dot_top end
+                                        end
+                                        local has_tie = vn.is_segment or vn.is_tied_to_next or vn.is_tied_from_prev or (vn.orig and (vn.orig.is_tied_master or vn.orig.is_tied_slave))
+                                        if has_tie and (vn.stem_down or (vn.dstep and vn.dstep >= 4)) then
+                                            local tie_top = vny - 15.0 * s
+                                            if tie_top < top_y then top_y = tie_top end
+                                        end
+                                    end
                                     if vn.dstep and vny then
-                                        local staff_top_y = vny + (vn.dstep - 8) * (4.0 * s)
+                                        local staff_top_y = (vny + (vn.dstep - 8) * (4.0 * s)) - 6.0 * s
                                         if staff_top_y < top_y then top_y = staff_top_y end
                                     end
                                     if vn.stem_end_y and not vn.stem_down then
-                                        if vn.stem_end_y < top_y then top_y = vn.stem_end_y end
+                                        if (vn.stem_end_y - 4.0 * s) < top_y then top_y = vn.stem_end_y - 4.0 * s end
                                     elseif vn.stem_down == nil and not vn.stem_end_y and vny then
-                                        local est = vny - 32 * s
+                                        local est = vny - 34 * s
                                         if est < top_y then top_y = est end
                                     end
-                                    if vn.art_y and vn.art_is_above and (vn.art_y - 4.0 * s) < top_y then
-                                        top_y = vn.art_y - 4.0 * s
+                                    if vn.art_y and vn.art_is_above and (vn.art_y - 6.0 * s) < top_y then
+                                        top_y = vn.art_y - 6.0 * s
                                     end
                                 end
                                 return top_y
@@ -4296,8 +4321,8 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                             end
                             if has_higher and has_lower then slope = 0 end
 
-                            -- Calculate y1 ensuring at least clearance (11.5*s) distance at each onset
-                            local clearance = 11.5 * s
+                            -- Calculate y1 ensuring at least clearance (18.0*s) distance at each onset
+                            local clearance = 18.0 * s
                             local y1 = y_first_top - clearance
                             for idx = i, i + consumed - 1 do
                                 local o = onset_list[idx]

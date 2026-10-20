@@ -1,16 +1,16 @@
-# REAPER-Notator v2.50.2 — Codebase & Library Statistics
+# REAPER-Notator v2.50.3 — Codebase & Library Statistics
 
-**Generated:** 2026-10-20 17:42
+**Generated:** 2026-10-20 18:19
 
 ## Executive Summary
 
-- **Version:** v2.50.2
+- **Version:** v2.50.3
 - **Total Source Files:** 92 Lua files
-- **Total Line Count:** 79,088
-- **Executable Code Lines:** 67,445 (85.3%)
+- **Total Line Count:** 79,113
+- **Executable Code Lines:** 67,470 (85.3%)
 - **Comments & Documentation:** 5,315 (6.7%)
 - **Blank / Formatting Lines:** 6,995 (8.8%)
-- **Orchestral Pattern Library:** 1,499 curated JSON patterns across 10 categories
+- **Orchestral Pattern Library:** 1,500 curated JSON patterns across 10 categories
 - **Automated Unit Test Suite:** 159 unit tests across 92 Lua modules and 644 exported functions (`tests/test_all_modules.lua`, 0 failures)
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
@@ -19,14 +19,14 @@
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
 | `modules/services` | 37 | 41,187 | 35,377 | 2,482 | 3,524 | 85.9% |
-| `modules/rendering` | 7 | 14,264 | 12,267 | 846 | 1,198 | 86.0% |
+| `modules/rendering` | 7 | 14,289 | 12,292 | 846 | 1,198 | 86.0% |
 | `modules/ui` | 25 | 13,494 | 11,057 | 966 | 1,498 | 81.9% |
 | `tests` | 2 | 3,254 | 2,888 | 171 | 229 | 88.8% |
 | `modules` | 3 | 2,638 | 2,323 | 481 | 162 | 88.1% |
 | `modules/input` | 2 | 2,123 | 1,853 | 92 | 180 | 87.3% |
 | `Root` | 1 | 1,338 | 1,067 | 167 | 108 | 79.7% |
 | `modules/classes` | 15 | 790 | 613 | 110 | 96 | 77.6% |
-| **TOTAL** | **92** | **79,088** | **67,445** | **5,315** | **6,995** | **85.3%** |
+| **TOTAL** | **92** | **79,113** | **67,470** | **5,315** | **6,995** | **85.3%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
@@ -34,7 +34,7 @@
 | :--- | :--- | :---: | :---: | :---: |
 | `modules/services/midi_service.lua` | modules/services | 7,530 | 6,653 | 288 |
 | `modules/rendering/score_canvas.lua` | modules/rendering | 5,188 | 4,535 | 245 |
-| `modules/rendering/engraver.lua` | modules/rendering | 4,361 | 3,773 | 299 |
+| `modules/rendering/engraver.lua` | modules/rendering | 4,386 | 3,798 | 299 |
 | `modules/services/record_quantize_service.lua` | modules/services | 2,856 | 2,459 | 193 |
 | `modules/services/slur_service.lua` | modules/services | 2,656 | 2,316 | 125 |
 | `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,339 | 2,045 | 105 |
@@ -82,7 +82,7 @@
 
 | Category | Sub-Genre / Instrumentation | Pattern Count |
 | :--- | :--- | :---: |
-| `01_Strings_Staccato` | Cinematic Strings (Staccato / Spiccato Ostinatos) | 149 patterns |
+| `01_Strings_Staccato` | Cinematic Strings (Staccato / Spiccato Ostinatos) | 150 patterns |
 | `02_Strings_Pizzicato` | Orchestral Strings (Pizzicato / Bartók Snap) | 150 patterns |
 | `03_Brass_Blockbuster` | Epic Brass (Horns, Trumpets, Trombones, Tubas) | 150 patterns |
 | `04_Cinematic_Melodies` | Heroic Themes & Symphonic Lead Melodies | 150 patterns |
@@ -92,5 +92,5 @@
 | `08_Ancient_Harp_Greek_Roman` | Antiquity Concert Harp (Greek & Roman Hymns) | 150 patterns |
 | `09_Orchestral_Percussion` | Orchestral & Cinematic Percussion (Timpani, Taiko, Drums) | 150 patterns |
 | `10_Low_Strings_Celli_Basses` | Low Strings Tension & Rhythm (Staccato Celli & Double Basses) | 150 patterns |
-| **TOTAL PATTERNS** | **10 Categories** | **1,499 patterns** |
+| **TOTAL PATTERNS** | **10 Categories** | **1,500 patterns** |
 

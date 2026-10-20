@@ -1,6 +1,6 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.50.2
+-- @version 2.50.3
 -- @changelog
 --   + v2.50.2: Hotfix: Fix Track Selector Uncheck All permanence & add Follow REAPER Track Selection + Live Search Filter for 500+ track templates (TopBar & Record Modal) + preserve REAPER Input Monitoring (I_RECMON) when arming/disarming tracks in TCP + fix Annotation Layer hide crash (Push/PopStyleColor balance) + fix Tuplet engraving when notes inside or across a tuplet are tied
 --   + v2.50.1: Hotfix: Lock dragged sector in Circle of Fifths so dragging across adjacent sectors toward the Palette never overwrites the selected note/chord
