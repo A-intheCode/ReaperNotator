@@ -1141,8 +1141,14 @@ function Mock.create_environment(repo_root)
     function r.ImGui_BeginDisabled(ctx, disabled) end
     function r.ImGui_EndDisabled(ctx) end
 
-    function r.ImGui_Button(ctx, label, w, h) return check_widget_trigger() end
-    function r.ImGui_SmallButton(ctx, label) return check_widget_trigger() end
+    function r.ImGui_Button(ctx, label, w, h)
+        if env.force_button_click_pattern and type(label) == "string" and label:find(env.force_button_click_pattern, 1, true) then return true end
+        return check_widget_trigger()
+    end
+    function r.ImGui_SmallButton(ctx, label)
+        if env.force_button_click_pattern and type(label) == "string" and label:find(env.force_button_click_pattern, 1, true) then return true end
+        return check_widget_trigger()
+    end
     function r.ImGui_InvisibleButton(ctx, id, w, h, flags) return check_widget_trigger() end
     function r.ImGui_ArrowButton(ctx, id, dir) return check_widget_trigger() end
     function r.ImGui_RadioButton(ctx, label, active) return check_widget_trigger() end

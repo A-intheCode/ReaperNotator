@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.50.1
+-- @version 2.50.2
 -- @changelog
+--   + v2.50.2: Hotfix: Fix Track Selector Uncheck All permanence & add Follow REAPER Track Selection + Live Search Filter for 500+ track templates (TopBar & Record Modal) + preserve REAPER Input Monitoring (I_RECMON) when arming/disarming tracks in TCP + fix Annotation Layer hide crash (Push/PopStyleColor balance) + fix Tuplet engraving when notes inside or across a tuplet are tied
 --   + v2.50.1: Hotfix: Lock dragged sector in Circle of Fifths so dragging across adjacent sectors toward the Palette never overwrites the selected note/chord
 --   + v2.50: Major Release: Circle of Fifths & Global Harmonic Chord Palette Modal (`🎡 Circle of Fifths` with 24-sector Major/Minor wheel, Audition & Target Track Selector `🔊 Audition & Target Track:`, 8 drag-and-drop progression tiles, dynamic harmonic tension analysis, score insertion & global multi-tab REAPER persistence) + MIDI Keyboard Step Input in Record Modal (writes 1 Grid length per played note/chord with Auto-Divisi support) + Auto-Divisi Live Recording & Input FX Router (`Notator_Auto_Divisi_Router.jsfx`) + Automatic Percussion Clef detection (`percussion_1`), full C0–C9 drum staff mapping & 9 SMuFL Custom/Percussion Noteheads (`🥁 Notehead / Percussion Head`) + Elaine Gould ("Behind Bars") Optical Spacing (Δt^0.70), intra-bar accidental memory & multi-column chord stacking + Melodic Pathfinder & Counter-Melody Generator (with full Key Signature integration) + Per-Track Freehand Annotation Layer System + Global `ImGuiGuardService` zero-leak UI stack protection & 159-test automated verification suite
 --   + v2.50-beta.6: Hotfix & Improvements: Add Audition & Target Track Selector (`🔊 Audition & Target Track:`) + automatic track arming & forced audition in Circle of Fifths Modal + eliminate internal radial AA seam lines in Circle of Fifths sectors (`draw_annular_sector`) + full Key Signature (`KeySignatureService.resolve_effective_key` & `respell_item_notes`) integration in Melodic Pathfinder (Major & Minor keys)
@@ -791,12 +792,16 @@ local function loop()
             state.request_maximize_toggle = true
         end
 
-        -- Continuous synchronization & orphan cleanup upon REAPER project changes (e.g. deleted items/tracks or disarmed tracks)
+        local project_tracks = MidiService.get_project_midi_tracks()
+
+        -- Continuous synchronization & orphan cleanup upon REAPER project changes or TCP track arm/selection changes
         local cur_proj_change = reaper.GetProjectStateChangeCount(0)
         local cur_total_tracks = reaper.CountTracks(0)
-        if state._last_proj_change_cleanup ~= cur_proj_change or state._last_total_tracks_cleanup ~= cur_total_tracks then
+        local cur_sel_sig = MidiService._last_sel_sig
+        if state._last_proj_change_cleanup ~= cur_proj_change or state._last_total_tracks_cleanup ~= cur_total_tracks or state._last_arm_sel_sig ~= cur_sel_sig then
             state._last_proj_change_cleanup = cur_proj_change
             state._last_total_tracks_cleanup = cur_total_tracks
+            state._last_arm_sel_sig = cur_sel_sig
             MidiService.cleanup_orphaned_score_elements(state)
             if RecordQuantizeService and RecordQuantizeService.sync_all_tracks_monitoring then
                 RecordQuantizeService.sync_all_tracks_monitoring(state)
@@ -804,7 +809,6 @@ local function loop()
             state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
         end
 
-        local project_tracks = MidiService.get_project_midi_tracks()
         if State.sync_project_tracks then
             State.sync_project_tracks(state, project_tracks)
         end

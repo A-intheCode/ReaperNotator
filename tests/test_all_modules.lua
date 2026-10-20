@@ -1834,6 +1834,79 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     assert_eq(gm_pc_set[10], true, "G minor scale contains Bb (pc 10)")
     assert_eq(gm_pc_set[3], true, "G minor scale contains Eb (pc 3)")
     assert_eq(gm_pc_set[11], nil, "G minor natural scale excludes B natural (pc 11)")
+
+    -- 8. Verify v2.50.2 Community Bugfixes:
+    -- 8a. Bug 3: Disarming a track in REAPER TCP or Notator NEVER forces I_RECMON = 0, and arming in REAPER TCP enables I_RECMON = 1
+    reaper.SetMediaTrackInfo_Value(trk1, "I_RECARM", 1)
+    reaper.SetMediaTrackInfo_Value(trk1, "I_RECMON", 1)
+    RecordQuantizeService.sync_all_tracks_monitoring(st)
+    reaper.SetMediaTrackInfo_Value(trk1, "I_RECARM", 0) -- User disarms track in REAPER TCP
+    RecordQuantizeService.sync_all_tracks_monitoring(st)
+    assert_eq(reaper.GetMediaTrackInfo_Value(trk1, "I_RECMON"), 1, "Disarming in REAPER TCP preserves I_RECMON = 1 (never forces Off)")
+    RecordQuantizeService.set_track_armed(st, trk1, false)
+    assert_eq(reaper.GetMediaTrackInfo_Value(trk1, "I_RECMON"), 1, "set_track_armed(..., false) preserves I_RECMON = 1")
+    reaper.SetMediaTrackInfo_Value(trk1, "I_RECMON", 0)
+    reaper.SetMediaTrackInfo_Value(trk1, "I_RECARM", 1) -- User arms track in REAPER TCP while I_RECMON was 0
+    RecordQuantizeService._tracked_armed_guids[reaper.GetTrackGUID(trk1)] = nil
+    RecordQuantizeService.sync_all_tracks_monitoring(st)
+    assert_eq(reaper.GetMediaTrackInfo_Value(trk1, "I_RECMON"), 1, "Arming in REAPER TCP automatically enables I_RECMON = 1 when rec_auto_monitor is on")
+
+    -- 8b. Bug 1: Non-permanent Uncheck All & Follow REAPER Track Selection
+    local proj_trks = MidiService.get_project_midi_tracks()
+    st.disabled_tracks = {}
+    st.selected_tracks = {}
+    st._uncheck_all_active = true
+    require("state").sync_project_tracks(st, proj_trks)
+    assert_eq(next(st.selected_tracks), nil, "sync_project_tracks does not overwrite Uncheck All state with all tracks")
+    assert_eq(next(st.disabled_tracks), nil, "Uncheck All leaves disabled_tracks empty (non-permanent)")
+
+    -- 8c. Bug 2a: Hiding/Showing an Annotation Layer maintains exact PushStyleColor / PopStyleColor balance (0 underflow)
+    local AnnotationDrawer = require("ui.annotation_drawer")
+    local AnnotationService = require("services.annotation_service")
+    st.show_annotations_drawer = true
+    st.focused_track = trk1
+    local ann_layer = AnnotationService.get_active_layer(st, reaper.GetTrackGUID(trk1))
+    assert_true(ann_layer ~= nil, "Active annotation layer exists for trk1")
+    ann_layer.visible = true
+    env.imgui_style_color_depth = 0
+    env.force_button_click_pattern = "##vis"
+    AnnotationDrawer.render(ctx, st, st.active_tracks_cache, 240, 500, 1, 0)
+    assert_eq(ann_layer.visible, false, "Clicking ##vis hid the annotation layer")
+    assert_eq(env.imgui_style_color_depth, 0, "Hiding annotation layer keeps style_color_depth at 0 (no underflow crash)")
+    AnnotationDrawer.render(ctx, st, st.active_tracks_cache, 240, 500, 1, 0)
+    assert_eq(ann_layer.visible, true, "Clicking ##vis again showed the annotation layer")
+    assert_eq(env.imgui_style_color_depth, 0, "Showing annotation layer keeps style_color_depth at 0 (no leak)")
+    env.force_button_click_pattern = nil
+    st.show_annotations_drawer = false
+
+    -- 8d. Bug 2b: Tuplet Engraving with Tied Notes (both intra-tuplet ties and cross-beat ties)
+    local Engraver = require("rendering.engraver")
+    local MidiNote = require("classes.note")
+    local tup_notes = {
+        MidiNote.new({ idx = 0, pitch = 60, start_qn = 0.0,      end_qn = 1.0/3.0,  dur_qn = 1.0/3.0, chan = 0, is_tied_master = true,  is_tied_slave = false, tie_id = "tie_tup_1" }),
+        MidiNote.new({ idx = -1, pitch = 60, start_qn = 1.0/3.0, end_qn = 2.0/3.0,  dur_qn = 1.0/3.0, chan = 0, is_tied_master = false, is_tied_slave = true,  tie_id = "tie_tup_1" }),
+        MidiNote.new({ idx = 1, pitch = 60, start_qn = 2.0/3.0,  end_qn = 1.0,      dur_qn = 1.0/3.0, chan = 0, is_tied_master = true,  is_tied_slave = false, tie_id = "tie_tup_2" }),
+        MidiNote.new({ idx = -1, pitch = 60, start_qn = 1.0,     end_qn = 2.0,      dur_qn = 1.0,     chan = 0, is_tied_master = false, is_tied_slave = true,  tie_id = "tie_tup_2" }),
+    }
+    local v_notes, b_ties = Engraver.get_visual_notes(tup_notes, 4.0, nil, nil, nil)
+    assert_eq(#v_notes, 4, "Tied triplet notes + tied beat-2 note remain 4 distinct visual notes (not merged into binary duration)")
+    assert_true(math.abs(v_notes[1].dur_qn - (1.0/3.0)) < 0.01, "1st tied triplet note preserves 0.3333 QN duration")
+    assert_true(math.abs(v_notes[2].dur_qn - (1.0/3.0)) < 0.01, "2nd tied triplet note preserves 0.3333 QN duration")
+    assert_true(math.abs(v_notes[3].dur_qn - (1.0/3.0)) < 0.01, "3rd triplet note tied to beat 2 preserves 0.3333 QN duration")
+    assert_true(math.abs(v_notes[4].dur_qn - 1.0) < 0.01, "Beat 2 note tied from triplet preserves 1.0 QN duration")
+    assert_eq(#b_ties, 2, "Both intra-tuplet tie and cross-beat tuplet tie are generated in bar_ties")
+    for _, vn in ipairs(v_notes) do
+        vn.in_treble = true
+        vn.in_staff = "treble"
+        vn.vis_nx = 100 + vn.start_qn * 120
+        vn.nominal_nx = vn.vis_nx
+        vn.vis_ny = 200
+        vn.beam_stem_x = vn.vis_nx
+        vn.beam_stem_end_y = 170
+    end
+    local b_groups = Engraver.get_beam_groups(v_notes, 4.0, "beat")
+    assert_eq(#b_groups, 1, "3 eighth-note triplets with internal tie still form 1 complete beam group")
+    assert_eq(#b_groups[1], 3, "Beam group contains all 3 triplet eighth notes")
 end)
 
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 81 Modules", function()

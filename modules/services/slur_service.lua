@@ -771,14 +771,16 @@ function SlurService.toggle_tie(state, active_tracks_data)
             end
         end
         
-        -- 2. Extend Note 1 to cover Note 2's end so REAPER holds audio sustain continuously
+        -- 2. Extend Note 1 (or the head note of a multi-note tie chain) to cover Note 2's end so REAPER holds audio sustain continuously
         if eff_n1_idx then
             local ok, sel, muted, sppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, eff_n1_idx)
             if ok then
                 reaper.MIDI_SetNote(take, eff_n1_idx, sel, false, sppq, n2_eppq, chan, pitch, vel, false)
             end
         else
+            local head_sqn = (chain_notes[1] and chain_notes[1].start_qn) or n1.start_qn
             local cur_n1_idx = find_take_note_by_pos(take, n1.pitch, n1.chan or 0, n1.start_qn, 0.35)
+                or find_take_note_by_pos(take, n1.pitch, n1.chan or 0, head_sqn, 0.35)
             if cur_n1_idx then
                 local ok, sel, muted, sppq, _, chan, pitch, vel = reaper.MIDI_GetNote(take, cur_n1_idx)
                 if ok then

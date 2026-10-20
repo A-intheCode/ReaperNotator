@@ -159,8 +159,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/testing/Bravura.otf</source>
       </version>
-      <version name="2.50.1" author="A-intheCode" time="2026-10-20T03:59:22Z">
+      <version name="2.50.2" author="A-intheCode" time="2026-10-20T15:44:34Z">
         <changelog><![CDATA[
++ v2.50.2: Hotfix: Non-permanent Track Uncheck All, Follow REAPER Track Selection & Track Search filter (594+ track template workflow); Annotation Layer visibility PopStyleColor crash fix; Tuplet engraving with tied notes; and REAPER TCP Record Arm / Input Monitoring preservation
 + v2.50.1: Hotfix: Lock dragged sector in Circle of Fifths so dragging across adjacent sectors toward the Palette never overwrites the selected note/chord
 + v2.50: Major Release: Circle of Fifths & Global Harmonic Chord Palette Modal (`🎡 Circle of Fifths` with 24-sector Major/Minor wheel, Audition & Target Track Selector `🔊 Audition & Target Track:`, 8 drag-and-drop progression tiles, dynamic harmonic tension analysis, score insertion & global multi-tab REAPER persistence) + MIDI Keyboard Step Input in Record Modal (writes 1 Grid length per played note/chord with Auto-Divisi support) + Auto-Divisi Live Recording & Input FX Router (`Notator_Auto_Divisi_Router.jsfx`) + Automatic Percussion Clef detection (`percussion_1`), full C0–C9 drum staff mapping & 9 SMuFL Custom/Percussion Noteheads (`🥁 Notehead / Percussion Head`) + Elaine Gould ("Behind Bars") Optical Spacing (Δt^0.70), intra-bar accidental memory & multi-column chord stacking + Melodic Pathfinder & Counter-Melody Generator (with full Key Signature integration) + Per-Track Freehand Annotation Layer System + Global `ImGuiGuardService` zero-leak UI stack protection & 159-test automated verification suite
 + v2.17: New: 300 Percussion & Low Strings patterns (1,500 total) + Pattern Browser UI refinements

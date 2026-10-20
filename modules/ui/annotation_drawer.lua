@@ -315,15 +315,16 @@ function AnnotationDrawer.render(ctx, state, active_tracks_data, width, height, 
             reaper.ImGui_PushID(ctx, "layer_row_" .. tostring(layer.id))
 
             -- 1. Visibility toggle (👁)
-            local vis_lbl = layer.visible and "👁" or "·"
-            if not layer.visible then
+            local was_hidden = (layer.visible == false)
+            local vis_lbl = (not was_hidden) and "👁" or "·"
+            if was_hidden then
                 reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0x666666FF)
             end
             if reaper.ImGui_SmallButton(ctx, vis_lbl .. "##vis") then
                 layer.visible = not layer.visible
                 AnnotationService.save_metadata(state)
             end
-            if not layer.visible then
+            if was_hidden then
                 reaper.ImGui_PopStyleColor(ctx)
             end
             if reaper.ImGui_IsItemHovered(ctx) then

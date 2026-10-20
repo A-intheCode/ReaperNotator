@@ -81,7 +81,8 @@ local function unwind_scope_internals(r, ctx, scope, target_menus, target_combos
 end
 
 local function decrement_counter_in_stack(stack, field, amount)
-    local rem = amount or 1
+    local req = amount or 1
+    local rem = req
     for i = #stack, 1, -1 do
         local sc = stack[i]
         local avail = sc[field] or 0
@@ -92,6 +93,7 @@ local function decrement_counter_in_stack(stack, field, amount)
             if rem <= 0 then break end
         end
     end
+    return req - rem
 end
 
 function ImGuiGuardService.install(r)
@@ -298,8 +300,12 @@ function ImGuiGuardService.install(r)
     if orig.PopStyleColor then
         r.ImGui_PopStyleColor = function(ctx, count, ...)
             local stack = ImGuiGuardService.get_stack(ctx)
-            decrement_counter_in_stack(stack, "style_colors", count or 1)
-            return orig.PopStyleColor(ctx, count, ...)
+            local actual = decrement_counter_in_stack(stack, "style_colors", count or 1)
+            if actual <= 0 then return end
+            if count == nil and actual == 1 then
+                return orig.PopStyleColor(ctx, ...)
+            end
+            return orig.PopStyleColor(ctx, actual, ...)
         end
     end
 
@@ -315,8 +321,12 @@ function ImGuiGuardService.install(r)
     if orig.PopStyleVar then
         r.ImGui_PopStyleVar = function(ctx, count, ...)
             local stack = ImGuiGuardService.get_stack(ctx)
-            decrement_counter_in_stack(stack, "style_vars", count or 1)
-            return orig.PopStyleVar(ctx, count, ...)
+            local actual = decrement_counter_in_stack(stack, "style_vars", count or 1)
+            if actual <= 0 then return end
+            if count == nil and actual == 1 then
+                return orig.PopStyleVar(ctx, ...)
+            end
+            return orig.PopStyleVar(ctx, actual, ...)
         end
     end
 

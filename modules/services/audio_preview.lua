@@ -126,7 +126,11 @@ function AudioPreview.restore_track(track)
             end
         end
         if r.changed_mon and r.orig_mon ~= nil then
-            reaper.SetMediaTrackInfo_Value(track, "I_RECMON", r.orig_mon)
+            local st = AudioPreview._last_state
+            local keep_mon_on = (not st or st.rec_auto_monitor ~= false)
+            if r.orig_mon > 0 or not keep_mon_on then
+                reaper.SetMediaTrackInfo_Value(track, "I_RECMON", r.orig_mon)
+            end
         end
         if r.changed_inp and r.orig_inp ~= nil then
             reaper.SetMediaTrackInfo_Value(track, "I_RECINPUT", r.orig_inp)

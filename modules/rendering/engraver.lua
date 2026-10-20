@@ -2291,162 +2291,204 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
         end
     end
     
-    -- Step 3: Decompose each note or consolidated tied chain into measure-specific visual notes
+    local tuplet_dur_targets = {
+        1.3333, 0.8000, 0.6667, 0.5714, 0.4000, 0.3333, 0.2857, 0.2000, 0.1667, 0.1429, 0.1000, 0.0833, 0.0714
+    }
+    local function is_note_tuplet_metric(n)
+        if not n then return false end
+        local s = n.start_qn or n.sqn or 0
+        local e = n.end_qn or n.eqn or (s + (n.dur_qn or 1.0))
+        local d = math.max(0.01, e - s)
+        for _, td in ipairs(tuplet_dur_targets) do
+            if math.abs(d - td) <= 0.025 then return true end
+        end
+        local rem_s = math.abs(s - math.floor((s / 0.125) + 0.5) * 0.125)
+        local rem_e = math.abs(e - math.floor((e / 0.125) + 0.5) * 0.125)
+        if rem_s > 0.022 or rem_e > 0.022 then
+            return true
+        end
+        return false
+    end
+
+    -- Step 3: Decompose each note or consolidated tied chain into measure-specific visual notes.
+    -- CRITICAL (Tuplet + Tie Rule): If ANY note in a tied chain is a tuplet note, NEVER merge the chain
+    -- into a single combined duration (which would destroy tuplet onsets/durations and prevent tuplet engraving);
+    -- instead, emit each note of the chain with its exact individual rhythmic value while linking them via bar_ties!
     for _, chain in ipairs(chains) do
         local first_n = chain[1]
         local last_n = chain[#chain]
-        local n_sqn = first_n.start_qn or first_n.sqn or 0
-        if vis_max_qn and n_sqn > vis_max_qn + 1.0 then
+        local chain_sqn = first_n.start_qn or first_n.sqn or 0
+        if vis_max_qn and chain_sqn > vis_max_qn + 1.0 then
             break
         end
-        local n_eqn = last_n.end_qn or last_n.eqn or (n_sqn + (last_n.dur_qn or 1.0))
-        
-        if not vis_min_qn or n_eqn >= vis_min_qn - 2.0 then
-            -- Metric smoothing of unquantized REAPER MIDI notes (1/64 grid = 0.0625 QN)
-            local grid = 0.0625
-            local raw_dur = math.max(grid, n_eqn - n_sqn)
-            
-            -- Check first for common tuplet durations (triplets 3:2, quintuplets 5:4, septuplets 7:4),
-            -- so they are not erroneously snapped or distorted to binary note values:
-            local tuplet_dur_targets = {
-                1.3333, 0.8000, 0.6667, 0.5714, 0.4000, 0.3333, 0.2857, 0.2000, 0.1667, 0.1429, 0.1000, 0.0833, 0.0714
-            }
-            local matched_tuplet_dur = nil
-            for _, td in ipairs(tuplet_dur_targets) do
-                if math.abs(raw_dur - td) <= 0.025 then
-                    matched_tuplet_dur = td
-                    break
-                end
-            end
+        local chain_eqn = last_n.end_qn or last_n.eqn or (chain_sqn + (last_n.dur_qn or 1.0))
 
-            local clean_sqn
-            local snapped_dur
-            if matched_tuplet_dur then
-                snapped_dur = matched_tuplet_dur
-                -- For tuplets, also align start time to tuplet step grid (instead of 1/64 binary)
-                local t_step = matched_tuplet_dur
-                local step_idx = math.floor((n_sqn / t_step) + 0.5)
-                if math.abs(n_sqn - step_idx * t_step) <= 0.04 then
-                    clean_sqn = step_idx * t_step
-                else
-                    clean_sqn = math.floor((n_sqn / grid) + 0.5) * grid
-                end
-            else
-                clean_sqn = math.floor((n_sqn / grid) + 0.5) * grid
-                -- Legato snap: When raw duration is very close to full quarters/eighths (e.g. 0.88 -> 1.0, 1.88 -> 2.0, 2.88 -> 3.0, 3.85 -> 4.0)
-                snapped_dur = math.floor((raw_dur / grid) + 0.5) * grid
-                if snapped_dur < grid then snapped_dur = grid end
-                local close_targets = {
-                    16.0, 15.0, 14.0, 12.0, 10.0, 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5,
-                    4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625
-                }
-                for _, ct in ipairs(close_targets) do
-                    local tol = (ct >= 4.0) and 0.18 or math.min(0.14, math.max(0.025, ct * 0.25))
-                    if math.abs(raw_dur - ct) <= tol then
-                        snapped_dur = ct
+        if not vis_min_qn or chain_eqn >= vis_min_qn - 2.0 then
+            local chain_has_tuplet = false
+            if #chain > 1 then
+                for _, cn in ipairs(chain) do
+                    if is_note_tuplet_metric(cn) then
+                        chain_has_tuplet = true
                         break
                     end
                 end
             end
-            local clean_eqn = clean_sqn + snapped_dur
-            
-            if (not vis_min_qn or clean_eqn >= vis_min_qn) and (not vis_max_qn or clean_sqn <= vis_max_qn) then
-                local start_bar = math.floor((clean_sqn + 0.001) / bpi)
-                local end_bar = math.floor(math.max(clean_sqn, clean_eqn - 0.001) / bpi)
-                
-                local prev_seg = nil
-                local prev_seg_key = nil
-                local prev_seg_bar = nil
-                for bar = start_bar, end_bar do
-                    local bar_sqn = bar * bpi
-                    local seg_sqn = math.max(clean_sqn, bar_sqn)
-                    local seg_eqn = math.min(clean_eqn, (bar + 1) * bpi)
-                    local seg_dur = seg_eqn - seg_sqn
-                    
-                    if seg_dur > 0.01 then
-                        local start_in_bar = seg_sqn - bar_sqn
-                        local sub_segs = Engraver.decompose_bar_segment(start_in_bar, seg_dur, bpi)
-                        
-                        for sub_i, sub in ipairs(sub_segs) do
-                            local sub_sqn = bar_sqn + sub.start_in_bar
-                            local sub_eqn = sub_sqn + sub.dur_qn
-                            
-                            -- Find corresponding note in chain for this segment's onset
-                            local active_n = nil
-                            for _, cn in ipairs(chain) do
-                                local c_s = cn.start_qn or cn.sqn or 0
-                                local c_e = cn.end_qn or cn.eqn or (c_s + (cn.dur_qn or 1.0))
-                                if sub_sqn >= (c_s - 0.02) and sub_sqn < (c_e - 0.02) then
-                                    active_n = cn
-                                    break
-                                end
-                            end
-                            if not active_n then
-                                local min_dist = 999999
-                                for _, cn in ipairs(chain) do
-                                    local c_s = cn.start_qn or cn.sqn or 0
-                                    local dist = math.abs(sub_sqn - c_s)
-                                    if dist < min_dist then
-                                        min_dist = dist
-                                        active_n = cn
+
+            local units = {}
+            if chain_has_tuplet then
+                for _, cn in ipairs(chain) do
+                    local us = cn.start_qn or cn.sqn or 0
+                    local ue = cn.end_qn or cn.eqn or (us + (cn.dur_qn or 1.0))
+                    table.insert(units, { sqn = us, eqn = ue, ref_note = cn })
+                end
+            else
+                table.insert(units, { sqn = chain_sqn, eqn = chain_eqn, ref_note = nil })
+            end
+
+            local prev_seg = nil
+            local prev_seg_key = nil
+            local prev_seg_bar = nil
+            local unit_serial = 0
+
+            for _, unit in ipairs(units) do
+                local n_sqn = unit.sqn
+                local n_eqn = unit.eqn
+                local grid = 0.0625
+                local raw_dur = math.max(grid, n_eqn - n_sqn)
+
+                local matched_tuplet_dur = nil
+                for _, td in ipairs(tuplet_dur_targets) do
+                    if math.abs(raw_dur - td) <= 0.025 then
+                        matched_tuplet_dur = td
+                        break
+                    end
+                end
+
+                local clean_sqn
+                local snapped_dur
+                if matched_tuplet_dur then
+                    snapped_dur = matched_tuplet_dur
+                    local t_step = matched_tuplet_dur
+                    local step_idx = math.floor((n_sqn / t_step) + 0.5)
+                    if math.abs(n_sqn - step_idx * t_step) <= 0.04 then
+                        clean_sqn = step_idx * t_step
+                    else
+                        clean_sqn = n_sqn
+                    end
+                else
+                    clean_sqn = math.floor((n_sqn / grid) + 0.5) * grid
+                    snapped_dur = math.floor((raw_dur / grid) + 0.5) * grid
+                    if snapped_dur < grid then snapped_dur = grid end
+                    local close_targets = {
+                        16.0, 15.0, 14.0, 12.0, 10.0, 8.0, 7.5, 7.0, 6.5, 6.0, 5.5, 5.0, 4.5,
+                        4.0, 3.5, 3.0, 2.5, 2.0, 1.75, 1.5, 1.25, 1.0, 0.75, 0.5, 0.375, 0.25, 0.1875, 0.125, 0.0625
+                    }
+                    for _, ct in ipairs(close_targets) do
+                        local tol = (ct >= 4.0) and 0.18 or math.min(0.14, math.max(0.025, ct * 0.25))
+                        if math.abs(raw_dur - ct) <= tol then
+                            snapped_dur = ct
+                            break
+                        end
+                    end
+                end
+                local clean_eqn = clean_sqn + snapped_dur
+
+                if (not vis_min_qn or clean_eqn >= vis_min_qn) and (not vis_max_qn or clean_sqn <= vis_max_qn) then
+                    local start_bar = math.floor((clean_sqn + 0.001) / bpi)
+                    local end_bar = math.floor(math.max(clean_sqn, clean_eqn - 0.001) / bpi)
+
+                    for bar = start_bar, end_bar do
+                        local bar_sqn = bar * bpi
+                        local seg_sqn = math.max(clean_sqn, bar_sqn)
+                        local seg_eqn = math.min(clean_eqn, (bar + 1) * bpi)
+                        local seg_dur = seg_eqn - seg_sqn
+
+                        if seg_dur > 0.01 then
+                            local start_in_bar = seg_sqn - bar_sqn
+                            local sub_segs = Engraver.decompose_bar_segment(start_in_bar, seg_dur, bpi)
+
+                            for sub_i, sub in ipairs(sub_segs) do
+                                unit_serial = unit_serial + 1
+                                local sub_sqn = bar_sqn + sub.start_in_bar
+                                local sub_eqn = sub_sqn + sub.dur_qn
+
+                                local active_n = unit.ref_note
+                                if not active_n then
+                                    for _, cn in ipairs(chain) do
+                                        local c_s = cn.start_qn or cn.sqn or 0
+                                        local c_e = cn.end_qn or cn.eqn or (c_s + (cn.dur_qn or 1.0))
+                                        if sub_sqn >= (c_s - 0.02) and sub_sqn < (c_e - 0.02) then
+                                            active_n = cn
+                                            break
+                                        end
                                     end
                                 end
-                            end
-                            if not active_n then active_n = first_n end
-                            
-                            local target_orig = active_n
-                            if target_orig.idx and target_orig.idx < 0 then
-                                -- Synthetic slave note (not in REAPER take): route selection/audition to real take master note
-                                target_orig = first_n
-                            end
-                            
-                            local it_str = tostring(active_n.item or first_n.item or "0")
-                            local tk_str = tostring(active_n.take or first_n.take or "0")
-                            local seg_key = string.format("%s_%s_%.3f_%d_%d_b%d_s%d", it_str, tk_str, sub_sqn, first_n.pitch, first_n.chan or 0, bar, sub_i)
-                            
-                            local is_segmented = (start_bar ~= end_bar) or (#sub_segs > 1) or (#chain > 1)
-                            local seg = {
-                                orig = target_orig,
-                                pitch = first_n.pitch,
-                                start_qn = sub_sqn,
-                                end_qn = sub_eqn,
-                                dur_qn = sub.dur_qn,
-                                is_segment = is_segmented,
-                                seg_idx = sub_i,
-                                key = seg_key,
-                                bar = bar,
-                                item = active_n.item or first_n.item,
-                                item_obj = active_n.item_obj or first_n.item_obj,
-                                take = active_n.take or first_n.take,
-                                track = active_n.track or first_n.track,
-                                stem_dir = target_orig and target_orig.stem_dir or nil,
-                                custom_notehead_type = target_orig and target_orig.notehead_type or nil,
-                                is_tied_chain = (#chain > 1),
-                                chain_notes = (#chain > 1) and chain or nil,
-                                is_tied_from_prev = (prev_seg ~= nil),
-                                is_tied_to_next = false
-                            }
-                            if prev_seg then
-                                prev_seg.is_tied_to_next = true
-                            end
-                            table.insert(visual_notes, seg)
-                            
-                            if prev_seg_key then
-                                local is_cross = (prev_seg_bar ~= nil and prev_seg_bar ~= bar)
-                                table.insert(bar_ties, {
-                                    from_key = prev_seg_key,
-                                    to_key = seg_key,
-                                    pitch = first_n.pitch,
+                                if not active_n then
+                                    local min_dist = 999999
+                                    for _, cn in ipairs(chain) do
+                                        local c_s = cn.start_qn or cn.sqn or 0
+                                        local dist = math.abs(sub_sqn - c_s)
+                                        if dist < min_dist then
+                                            min_dist = dist
+                                            active_n = cn
+                                        end
+                                    end
+                                end
+                                if not active_n then active_n = first_n end
+
+                                local target_orig = active_n
+                                if target_orig.idx and target_orig.idx < 0 then
+                                    target_orig = first_n
+                                end
+
+                                local it_str = tostring(active_n.item or first_n.item or "0")
+                                local tk_str = tostring(active_n.take or first_n.take or "0")
+                                local seg_key = string.format("%s_%s_%.3f_%d_%d_b%d_s%d", it_str, tk_str, sub_sqn, first_n.pitch, first_n.chan or 0, bar, unit_serial)
+
+                                local is_segmented = (start_bar ~= end_bar) or (#sub_segs > 1) or (#chain > 1)
+                                local seg = {
                                     orig = target_orig,
-                                    is_cross_barline = is_cross,
-                                    from_bar = prev_seg_bar,
-                                    to_bar = bar,
-                                    is_tied_chain = (#chain > 1)
-                                })
+                                    pitch = first_n.pitch,
+                                    start_qn = sub_sqn,
+                                    end_qn = sub_eqn,
+                                    dur_qn = sub.dur_qn,
+                                    is_segment = is_segmented,
+                                    seg_idx = unit_serial,
+                                    key = seg_key,
+                                    bar = bar,
+                                    item = active_n.item or first_n.item,
+                                    item_obj = active_n.item_obj or first_n.item_obj,
+                                    take = active_n.take or first_n.take,
+                                    track = active_n.track or first_n.track,
+                                    stem_dir = target_orig and target_orig.stem_dir or nil,
+                                    custom_notehead_type = target_orig and target_orig.notehead_type or nil,
+                                    is_tied_chain = (#chain > 1),
+                                    chain_notes = (#chain > 1) and chain or nil,
+                                    is_tied_from_prev = (prev_seg ~= nil),
+                                    is_tied_to_next = false
+                                }
+                                if prev_seg then
+                                    prev_seg.is_tied_to_next = true
+                                end
+                                table.insert(visual_notes, seg)
+
+                                if prev_seg_key then
+                                    local is_cross = (prev_seg_bar ~= nil and prev_seg_bar ~= bar)
+                                    table.insert(bar_ties, {
+                                        from_key = prev_seg_key,
+                                        to_key = seg_key,
+                                        pitch = first_n.pitch,
+                                        orig = target_orig,
+                                        is_cross_barline = is_cross,
+                                        from_bar = prev_seg_bar,
+                                        to_bar = bar,
+                                        is_tied_chain = (#chain > 1)
+                                    })
+                                end
+                                prev_seg = seg
+                                prev_seg_key = seg_key
+                                prev_seg_bar = bar
                             end
-                            prev_seg = seg
-                            prev_seg_key = seg_key
-                            prev_seg_bar = bar
                         end
                     end
                 end
@@ -4001,8 +4043,75 @@ local function is_valid_tuplet(onsets, i, n, qn_per_measure)
     return true, step
 end
 
+local function match_tuplet_span(onsets, i, n, qn_per_measure)
+    if i + n - 1 <= #onsets then
+        local ok, step = is_valid_tuplet(onsets, i, n, qn_per_measure)
+        if ok then return true, step, n end
+    end
+    -- Also support composite tuplet groups where some notes span k * step (e.g. quarter-triplet + eighth-triplet = 2 + 1 = 3 units)
+    local step_candidates = {
+        [3] = { 1/3, 2/3, 1/6, 4/3 },
+        [5] = { 1/5, 2/5, 4/5 },
+        [6] = { 1/6, 1/3 },
+        [7] = { 1/7, 2/7, 4/7 },
+        [8] = { 0.1875, 0.3750 }
+    }
+    local cands = step_candidates[n]
+    if not cands or i + 1 > #onsets then return false end
+    local first_o = onsets[i]
+    local m_first = math.floor((first_o.start_qn + 0.001) / qn_per_measure)
+    for _, step in ipairs(cands) do
+        local total_dur = n * step
+        local beat_in_bar = (first_o.start_qn % qn_per_measure)
+        local align_ok = true
+        if math.abs(total_dur - 4.0) < 0.20 then
+            if beat_in_bar > 0.10 and beat_in_bar < (qn_per_measure - 0.10) then align_ok = false end
+        elseif math.abs(total_dur - 1.0) < 0.12 or math.abs(total_dur - 2.0) < 0.15 then
+            local sub = beat_in_bar % 1.0
+            if sub > 0.08 and sub < (1.0 - 0.08) then align_ok = false end
+        elseif math.abs(total_dur - 0.5) < 0.08 then
+            local sub = beat_in_bar % 0.5
+            if sub > 0.06 and sub < (0.5 - 0.06) then align_ok = false end
+        end
+        if align_ok then
+            local units_sum = 0
+            local consumed = 0
+            local cur_expected_qn = first_o.start_qn
+            local valid_seq = true
+            local has_unit_step = false
+            for idx = i, math.min(#onsets, i + n - 1) do
+                local o = onsets[idx]
+                if math.floor((o.start_qn + 0.001) / qn_per_measure) ~= m_first then
+                    valid_seq = false
+                    break
+                end
+                if math.abs(o.start_qn - cur_expected_qn) > 0.045 then
+                    valid_seq = false
+                    break
+                end
+                local d = o.dur_qn or step
+                local k = math.floor((d / step) + 0.5)
+                if k < 1 or k >= n or math.abs(d - k * step) > math.max(0.035, step * 0.35) then
+                    valid_seq = false
+                    break
+                end
+                if k == 1 then has_unit_step = true end
+                units_sum = units_sum + k
+                consumed = consumed + 1
+                cur_expected_qn = cur_expected_qn + k * step
+                if units_sum == n then break end
+                if units_sum > n then valid_seq = false break end
+            end
+            if valid_seq and units_sum == n and consumed >= 2 and has_unit_step then
+                return true, step, consumed
+            end
+        end
+    end
+    return false
+end
+
 function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_music, font_main, qn_per_measure, beam_groups, cull_min_x, cull_max_x, ghost_col)
-    if not visual_notes or #visual_notes < 3 then return end
+    if not visual_notes or #visual_notes < 2 then return end
 
     local handled_note_keys = {}
     local beamed_note_keys = {}
@@ -4135,11 +4244,11 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
         while i <= num_o do
             local matched = false
             for _, n in ipairs({ 8, 7, 6, 5, 3 }) do
-                if i + n - 1 <= num_o then
-                    local ok, step = is_valid_tuplet(onset_list, i, n, qn_per_measure)
-                    if ok then
+                local ok, step, consumed = match_tuplet_span(onset_list, i, n, qn_per_measure)
+                if ok and consumed then
+                    do
                         local first_o = onset_list[i]
-                        local last_o = onset_list[i + n - 1]
+                        local last_o = onset_list[i + consumed - 1]
                         local x1 = first_o.nominal_nx - 4 * s
                         local x2 = last_o.nominal_nx + 4 * s
                         local dx = math.max(1.0, x2 - x1)
@@ -4180,7 +4289,7 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
 
                             -- If direction changes (convex/concave) -> horizontal
                             local has_higher, has_lower = false, false
-                            for idx = i + 1, i + n - 2 do
+                            for idx = i + 1, i + consumed - 2 do
                                 local mid_top = get_onset_top(onset_list[idx])
                                 if mid_top < math.min(y_first_top, y_last_top) - 2 * s then has_higher = true end
                                 if mid_top > math.max(y_first_top, y_last_top) + 2 * s then has_lower = true end
@@ -4190,7 +4299,7 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                             -- Calculate y1 ensuring at least clearance (11.5*s) distance at each onset
                             local clearance = 11.5 * s
                             local y1 = y_first_top - clearance
-                            for idx = i, i + n - 1 do
+                            for idx = i, i + consumed - 1 do
                                 local o = onset_list[idx]
                                 local top_k = get_onset_top(o)
                                 local ox = o.nominal_nx
@@ -4204,7 +4313,7 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                             local cy = (y1 + y2) / 2.0
 
                             local is_ghost_tuplet = true
-                            for k = 0, n - 1 do
+                            for k = 0, consumed - 1 do
                                 for _, vn in ipairs(onset_list[i + k].notes) do
                                     if not vn.is_ghost_voice then is_ghost_tuplet = false break end
                                 end
@@ -4232,7 +4341,7 @@ function Engraver.detect_and_draw_tuplets(draw_list, visual_notes, s, col, font_
                             draw_tuplet_digit(draw_list, cx, cy, n, s, bracket_col, font_music, font_main)
                         end
 
-                        i = i + n
+                        i = i + consumed
                         matched = true
                         break
                     end

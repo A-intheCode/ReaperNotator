@@ -157,6 +157,11 @@ function State.new()
         selected_tracks = {},     -- Map: track_guid -> boolean
         disabled_tracks = {},     -- Map: track_guid -> boolean (Project-only deactivated tracks)
         track_auto_detect = true, -- Automatically include existing & newly added project tracks unless in disabled_tracks
+        track_follow_reaper_selection = false, -- Dynamically mirror REAPER TCP/Arrange track selection (ideal for 500+ track templates)
+        track_filter_search = "", -- Search query in TopBar Tracks dropdown
+        rec_track_search = "",    -- Search query in RecordModal track list
+        rec_track_only_armed_or_sel = false, -- Filter RecordModal track list to Armed/Selected tracks only
+        _uncheck_all_active = false, -- True after Uncheck All until a track is selected in REAPER or checked
         _known_track_guids = {},  -- Map: track_guid -> boolean (Tracks seen in current project session)
         track_clefs = {},         -- Map: track_guid -> "treble"|"bass"|"grand"|"auto"
         item_clefs = {},          -- Map: item_guid -> "treble"|"bass"|"grand"|"alto" etc.
@@ -1073,6 +1078,13 @@ function State.load_project_track_filter(self, force)
     else
         self.track_auto_detect = true
     end
+
+    local rv_fr, raw_fr = reaper.GetProjExtState(0, "REAPER_Notator", "track_follow_reaper_selection")
+    if rv_fr == 1 and raw_fr == "true" then
+        self.track_follow_reaper_selection = true
+    elseif rv_fr == 1 and raw_fr == "false" then
+        self.track_follow_reaper_selection = false
+    end
 end
 
 function State.save_project_track_filter(self)
@@ -1088,6 +1100,7 @@ function State.save_project_track_filter(self)
     table.sort(parts)
     reaper.SetProjExtState(0, "REAPER_Notator", "disabled_tracks", table.concat(parts, ";"))
     reaper.SetProjExtState(0, "REAPER_Notator", "track_auto_detect", (self.track_auto_detect ~= false) and "true" or "false")
+    reaper.SetProjExtState(0, "REAPER_Notator", "track_follow_reaper_selection", (self.track_follow_reaper_selection == true) and "true" or "false")
     if reaper.MarkProjectDirty then
         reaper.MarkProjectDirty(0)
     end
@@ -1112,17 +1125,13 @@ function State.sync_project_tracks(self, project_tracks)
                 if self.track_auto_detect ~= false then
                     if self.disabled_tracks[t.guid] then
                         self.selected_tracks[t.guid] = nil
-                    else
+                    elseif not is_known and not self._uncheck_all_active then
+                        -- Automatically add newly discovered tracks unless user is in Uncheck All state
                         self.selected_tracks[t.guid] = true
                     end
                 else
-                    if not is_known and not self.selected_tracks[t.guid] then
-                        self.disabled_tracks[t.guid] = true
+                    if self.disabled_tracks[t.guid] then
                         self.selected_tracks[t.guid] = nil
-                    elseif self.disabled_tracks[t.guid] then
-                        self.selected_tracks[t.guid] = nil
-                    else
-                        self.selected_tracks[t.guid] = true
                     end
                 end
             end

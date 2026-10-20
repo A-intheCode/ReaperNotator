@@ -771,6 +771,28 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
             _, armed_by_guid = RecordQuantizeService.get_armed_tracks_divisi_profile(state)
         end
 
+        -- Search Filter & Armed/Selected Toggle for large templates (e.g. 594 tracks)
+        local rec_search_q = state.rec_track_search or ""
+        reaper.ImGui_SetNextItemWidth(ctx, 240)
+        local chg_rs, new_rs = reaper.ImGui_InputTextWithHint(ctx, "##RecTrackSearchInput", "🔍 Search tracks by name or #...", rec_search_q)
+        if chg_rs then
+            state.rec_track_search = new_rs or ""
+            rec_search_q = state.rec_track_search
+        end
+        if rec_search_q ~= "" then
+            reaper.ImGui_SameLine(ctx, 0, 4)
+            if reaper.ImGui_Button(ctx, "✕##ClrRecTrkSearch", 22, 20) then
+                state.rec_track_search = ""
+                rec_search_q = ""
+            end
+        end
+        reaper.ImGui_SameLine(ctx, 0, 12)
+        local chg_oas, new_oas = reaper.ImGui_Checkbox(ctx, "Only Armed / REAPER Selected##RecOnlyArmedSel", state.rec_track_only_armed_or_sel == true)
+        if chg_oas then
+            state.rec_track_only_armed_or_sel = new_oas
+        end
+        local rec_search_lower = rec_search_q:lower()
+
         -- Track Selection List Child Window (Dynamically expands with window height; Footer stays pinned at bottom with gap!)
         local avail_w, avail_h = reaper.ImGui_GetContentRegionAvail(ctx)
         local footer_reserve_h = 62
@@ -797,12 +819,28 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                     if not (AudioPreview.track_restore and AudioPreview.track_restore[trk]) then
                         if is_armed then
                             if tguid then RecordQuantizeService._tracked_armed_guids[tguid] = true end
+                            if state.rec_auto_monitor ~= false then
+                                local cur_mon = math.floor(reaper.GetMediaTrackInfo_Value(trk, "I_RECMON") or 0)
+                                if cur_mon == 0 then
+                                    reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 1)
+                                end
+                            end
                         elseif tguid and RecordQuantizeService._tracked_armed_guids[tguid] then
-                            -- Track was disarmed externally in REAPER TCP/MCP -> turn off monitoring
                             RecordQuantizeService._tracked_armed_guids[tguid] = nil
-                            reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 0)
                         end
                     end
+                    local is_reaper_sel = (reaper.IsTrackSelected and reaper.IsTrackSelected(trk)) or false
+                    local show_row = true
+                    if state.rec_track_only_armed_or_sel and not (is_armed or is_reaper_sel) then
+                        show_row = false
+                    end
+                    if show_row and rec_search_lower ~= "" then
+                        local idx_str = tostring(ti + 1)
+                        if not tname:lower():find(rec_search_lower, 1, true) and not idx_str:find(rec_search_lower, 1, true) then
+                            show_row = false
+                        end
+                    end
+                    if show_row then
                     local in_label, is_midi_in = RecordQuantizeService.format_track_midi_input(trk)
 
                     if is_armed then
@@ -863,6 +901,7 @@ function RecordModal.render(ctx, state, midi_service, project_tracks, active_tra
                             end
                         end
                         reaper.ImGui_EndPopup(ctx)
+                    end
                     end
                 end
             end

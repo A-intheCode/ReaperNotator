@@ -311,12 +311,90 @@ local function sync_arrange_selection(state, project_tracks)
             end
         end
 
-        if clicked_trk and reaper.ValidatePtr(clicked_trk, "MediaTrack*") then
+        local sel_trk_count = 0
+        for _ in pairs(state.selected_tracks) do sel_trk_count = sel_trk_count + 1 end
+
+        local reaper_sel_trk_cnt = reaper.CountSelectedTracks and reaper.CountSelectedTracks(0) or 0
+        local reaper_sel_item_cnt = reaper.CountSelectedMediaItems and reaper.CountSelectedMediaItems(0) or 0
+        local switch_mode = (state.track_follow_reaper_selection == true) or (sel_trk_count <= 1) or (state._uncheck_all_active == true)
+
+        if reaper_sel_trk_cnt > 1 and trk_changed then
+            if switch_mode then
+                state.selected_tracks = {}
+            end
+            for i = 0, reaper_sel_trk_cnt - 1 do
+                local st = reaper.GetSelectedTrack(0, i)
+                if st and reaper.ValidatePtr(st, "MediaTrack*") then
+                    local sguid = reaper.GetTrackGUID(st)
+                    if state.disabled_tracks then state.disabled_tracks[sguid] = nil end
+                    state.selected_tracks[sguid] = true
+                end
+            end
+            state._uncheck_all_active = false
+            if clicked_trk then state.focused_track = clicked_trk end
+        elseif reaper_sel_item_cnt > 1 and item_changed then
+            if switch_mode then
+                state.selected_tracks = {}
+            end
+            for i = 0, reaper_sel_item_cnt - 1 do
+                local mi = reaper.GetSelectedMediaItem(0, i)
+                if mi and reaper.ValidatePtr(mi, "MediaItem*") then
+                    local mt = reaper.GetMediaItem_Track(mi)
+                    if mt and reaper.ValidatePtr(mt, "MediaTrack*") then
+                        local mguid = reaper.GetTrackGUID(mt)
+                        if state.disabled_tracks then state.disabled_tracks[mguid] = nil end
+                        state.selected_tracks[mguid] = true
+                    end
+                end
+            end
+            state._uncheck_all_active = false
+            if clicked_trk then state.focused_track = clicked_trk end
+        elseif clicked_trk and reaper.ValidatePtr(clicked_trk, "MediaTrack*") then
             local cguid = reaper.GetTrackGUID(clicked_trk)
-            if not (state.disabled_tracks and state.disabled_tracks[cguid]) then
+            if switch_mode then
+                if state.disabled_tracks then state.disabled_tracks[cguid] = nil end
+                state.selected_tracks = { [cguid] = true }
+                state.focused_track = clicked_trk
+                state._uncheck_all_active = false
+            elseif not (state.disabled_tracks and state.disabled_tracks[cguid]) then
                 state.selected_tracks[cguid] = true
                 state.focused_track = clicked_trk
+                state._uncheck_all_active = false
             end
+        end
+    end
+
+    -- If Follow REAPER Selection mode is active, keep selected_tracks synced to REAPER TCP/Arrange selection
+    if state.track_follow_reaper_selection and project_tracks then
+        local reaper_sel_trk_cnt = reaper.CountSelectedTracks and reaper.CountSelectedTracks(0) or 0
+        local reaper_sel_item_cnt = reaper.CountSelectedMediaItems and reaper.CountSelectedMediaItems(0) or 0
+        local follow_set = {}
+        local any_follow = false
+        for i = 0, reaper_sel_trk_cnt - 1 do
+            local st = reaper.GetSelectedTrack(0, i)
+            if st and reaper.ValidatePtr(st, "MediaTrack*") then
+                follow_set[reaper.GetTrackGUID(st)] = true
+                any_follow = true
+            end
+        end
+        for i = 0, reaper_sel_item_cnt - 1 do
+            local mi = reaper.GetSelectedMediaItem(0, i)
+            if mi and reaper.ValidatePtr(mi, "MediaItem*") then
+                local mt = reaper.GetMediaItem_Track(mi)
+                if mt and reaper.ValidatePtr(mt, "MediaTrack*") then
+                    follow_set[reaper.GetTrackGUID(mt)] = true
+                    any_follow = true
+                end
+            end
+        end
+        for _, t in ipairs(project_tracks) do
+            if AudioPreview.is_track_user_armed(t.track) then
+                follow_set[t.guid] = true
+                any_follow = true
+            end
+        end
+        if any_follow then
+            state.selected_tracks = follow_set
         end
     end
     
@@ -332,7 +410,7 @@ local function sync_arrange_selection(state, project_tracks)
                 if not first_sel_trk then first_sel_trk = t.track end
             end
         end
-        if not has_any_sel and #project_tracks > 0 then
+        if not has_any_sel and not state._uncheck_all_active and #project_tracks > 0 then
             local t1 = project_tracks[1]
             if not (state.disabled_tracks and state.disabled_tracks[t1.guid]) then
                 state.selected_tracks[t1.guid] = true

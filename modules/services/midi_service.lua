@@ -1109,6 +1109,13 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                             break
                         end
                     end
+                    local also_master = false
+                    for _, tm2 in ipairs(tie_masters) do
+                        if tm2.pitch == tm.pitch and (tm2.chan == nil or tm2.chan == tm.chan) and math.abs((tm2.s_qn or 0) - s2_qn) <= 0.05 then
+                            also_master = true
+                            break
+                        end
+                    end
                     local note2_obj = MidiNote.new({
                         idx = -1,
                         pitch = tm.pitch,
@@ -1123,7 +1130,7 @@ local function parse_single_take_midi(take, item, track, i, pos, len, start_qn, 
                         track = track,
                         staff = master_staff,
                         notehead_type = master_head,
-                        is_tied_master = false,
+                        is_tied_master = also_master,
                         is_tied_slave = true,
                         tie_id = tm.id
                     })

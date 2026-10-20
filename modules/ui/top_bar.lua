@@ -325,7 +325,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
 
     reaper.ImGui_SetNextItemWidth(ctx, 150)
     if reaper.APIExists("ImGui_SetNextWindowSizeConstraints") then
-        reaper.ImGui_SetNextWindowSizeConstraints(ctx, 300, 0, 460, 520)
+        reaper.ImGui_SetNextWindowSizeConstraints(ctx, 350, 0, 520, 560)
     end
     if reaper.ImGui_BeginCombo(ctx, "##TrackFilterSelect", tracks_combo_lbl) then
         local sel_flags = reaper.APIExists("ImGui_SelectableFlags_DontClosePopups") and reaper.ImGui_SelectableFlags_DontClosePopups() or 0
@@ -336,6 +336,7 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
         if reaper.ImGui_Selectable(ctx, ad_icon .. "Auto-Detect Tracks (Add New Automatically)", auto_det, sel_flags) then
             state.track_auto_detect = not auto_det
             if state.track_auto_detect then
+                state._uncheck_all_active = false
                 for _, t in ipairs(proj_tracks) do
                     if not (state.disabled_tracks and state.disabled_tracks[t.guid]) then
                         state.selected_tracks[t.guid] = true
@@ -350,12 +351,31 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                 or "Auto-Detect Tracks OFF (Saved in project)"
         end
 
-        -- 2. Check All / Uncheck All buttons right at the top
+        -- 1b. Follow REAPER Selection toggle (ideal for 500+ track orchestral templates)
+        local follow_reaper = (state.track_follow_reaper_selection == true)
+        local fr_icon = follow_reaper and "✓ " or "   "
+        if reaper.ImGui_Selectable(ctx, fr_icon .. "🎯 Follow REAPER Track Selection (Auto-Switch)", follow_reaper, sel_flags) then
+            state.track_follow_reaper_selection = not follow_reaper
+            if state.track_follow_reaper_selection then
+                state._uncheck_all_active = false
+                state.disabled_tracks = {}
+            end
+            if State and State.save_project_track_filter then
+                State.save_project_track_filter(state)
+            end
+            state.status_msg = state.track_follow_reaper_selection
+                and "Follow REAPER Track Selection ON (Score automatically mirrors selected REAPER track/item)"
+                or "Follow REAPER Track Selection OFF"
+        end
+
+        -- 2. Check All / Uncheck All / Only REAPER Selected buttons
         local avail_popup_w = reaper.ImGui_GetContentRegionAvail(ctx)
-        local btn_w = math.max(120, math.floor((avail_popup_w - 6) * 0.5))
+        local btn_w = math.max(95, math.floor((avail_popup_w - 12) / 3.0))
         if reaper.ImGui_Button(ctx, "✓ Check All##trk_chk_all", btn_w, 24) then
             state.disabled_tracks = {}
             state.selected_tracks = {}
+            state._uncheck_all_active = false
+            state.track_follow_reaper_selection = false
             for _, t in ipairs(proj_tracks) do
                 state.selected_tracks[t.guid] = true
             end
@@ -371,16 +391,67 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
         end
         reaper.ImGui_SameLine(ctx, 0, 6)
         if reaper.ImGui_Button(ctx, "✕ Uncheck All##trk_unchk_all", btn_w, 24) then
-            state.disabled_tracks = state.disabled_tracks or {}
-            for _, t in ipairs(proj_tracks) do
-                state.disabled_tracks[t.guid] = true
-                state.selected_tracks[t.guid] = nil
+            -- Non-permanent deselect all: clears view without permanently blacklisting tracks from REAPER selection!
+            state.disabled_tracks = {}
+            state.selected_tracks = {}
+            state._uncheck_all_active = true
+            if State and State.save_project_track_filter then
+                State.save_project_track_filter(state)
+            end
+            state.status_msg = "Deselected all tracks (Select any track/item in REAPER to view it immediately)"
+        end
+        reaper.ImGui_SameLine(ctx, 0, 6)
+        if reaper.ImGui_Button(ctx, "🎯 REAPER Sel##trk_only_reaper_sel", btn_w, 24) then
+            state.disabled_tracks = {}
+            state.selected_tracks = {}
+            state._uncheck_all_active = false
+            local sel_t_cnt = reaper.CountSelectedTracks and reaper.CountSelectedTracks(0) or 0
+            local first_t = nil
+            for i = 0, sel_t_cnt - 1 do
+                local st = reaper.GetSelectedTrack(0, i)
+                if st and reaper.ValidatePtr(st, "MediaTrack*") then
+                    state.selected_tracks[reaper.GetTrackGUID(st)] = true
+                    if not first_t then first_t = st end
+                end
+            end
+            local sel_i_cnt = reaper.CountSelectedMediaItems and reaper.CountSelectedMediaItems(0) or 0
+            for i = 0, sel_i_cnt - 1 do
+                local mi = reaper.GetSelectedMediaItem(0, i)
+                if mi and reaper.ValidatePtr(mi, "MediaItem*") then
+                    local mt = reaper.GetMediaItem_Track(mi)
+                    if mt and reaper.ValidatePtr(mt, "MediaTrack*") then
+                        state.selected_tracks[reaper.GetTrackGUID(mt)] = true
+                        if not first_t then first_t = mt end
+                    end
+                end
+            end
+            if first_t then
+                state.focused_track = first_t
             end
             if State and State.save_project_track_filter then
                 State.save_project_track_filter(state)
             end
-            state.status_msg = "Deactivated all current tracks (saved in project)"
+            state.status_msg = "Showing only tracks currently selected in REAPER"
         end
+
+        -- 3. Live Search Filter for large templates (e.g. 594 tracks)
+        reaper.ImGui_Spacing(ctx)
+        local search_q = state.track_filter_search or ""
+        local has_search = (search_q ~= "")
+        reaper.ImGui_SetNextItemWidth(ctx, has_search and (avail_popup_w - 30) or avail_popup_w)
+        local chg_s, new_s = reaper.ImGui_InputTextWithHint(ctx, "##TrackFilterSearchBox", "🔍 Search tracks by name or #...", search_q)
+        if chg_s then
+            state.track_filter_search = new_s or ""
+            search_q = state.track_filter_search
+        end
+        if has_search then
+            reaper.ImGui_SameLine(ctx, 0, 4)
+            if reaper.ImGui_Button(ctx, "✕##ClrTrkSearch", 24, 20) then
+                state.track_filter_search = ""
+                search_q = ""
+            end
+        end
+        local search_lower = search_q:lower()
 
         reaper.ImGui_Separator(ctx)
         reaper.ImGui_TextColored(ctx, 0xFF9F1CFF, string.format("Project Tracks (%d active / %d total):", act_cnt, tot_cnt))
@@ -389,39 +460,51 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
         if #proj_tracks == 0 then
             reaper.ImGui_TextDisabled(ctx, "No tracks in project")
         else
-            for _, t in ipairs(proj_tracks) do
-                if t and t.guid and (not t.track or reaper.ValidatePtr(t.track, "MediaTrack*")) then
-                    local is_active = (state.selected_tracks and state.selected_tracks[t.guid] == true) or false
-                    local icon = is_active and "✓ " or "   "
-                    local item_cnt = t.midi_items or 0
-                    local item_suffix = (item_cnt > 0) and string.format(" (%d MIDI)", item_cnt) or ""
-                    local t_lbl = string.format("%s[%d] %s%s##trk_dd_%s", icon, t.idx or 1, t.name or "Track", item_suffix, t.guid)
-                    if reaper.ImGui_Selectable(ctx, t_lbl, is_active, sel_flags) then
-                        state.disabled_tracks = state.disabled_tracks or {}
-                        if is_active then
-                            state.disabled_tracks[t.guid] = true
-                            state.selected_tracks[t.guid] = nil
-                            state.status_msg = string.format("Track [%d] %s deactivated (saved in project)", t.idx or 1, t.name or "Track")
-                        else
-                            state.disabled_tracks[t.guid] = nil
-                            state.selected_tracks[t.guid] = true
-                            if t.track and reaper.ValidatePtr(t.track, "MediaTrack*") then
-                                state.focused_track = t.track
+            local list_h = math.min(340, math.max(120, #proj_tracks * 22 + 12))
+            if reaper.ImGui_BeginChild(ctx, "##TrackDropdownScrollList", 0, list_h) then
+                for _, t in ipairs(proj_tracks) do
+                    if t and t.guid and (not t.track or reaper.ValidatePtr(t.track, "MediaTrack*")) then
+                        local t_name_str = t.name or "Track"
+                        local t_idx_str = tostring(t.idx or 1)
+                        local matches_search = (search_lower == "")
+                            or (t_name_str:lower():find(search_lower, 1, true) ~= nil)
+                            or (t_idx_str:find(search_lower, 1, true) ~= nil)
+                        if matches_search then
+                            local is_active = (state.selected_tracks and state.selected_tracks[t.guid] == true) or false
+                            local icon = is_active and "✓ " or "   "
+                            local item_cnt = t.midi_items or 0
+                            local item_suffix = (item_cnt > 0) and string.format(" (%d MIDI)", item_cnt) or ""
+                            local t_lbl = string.format("%s[%d] %s%s##trk_dd_%s", icon, t.idx or 1, t_name_str, item_suffix, t.guid)
+                            if reaper.ImGui_Selectable(ctx, t_lbl, is_active, sel_flags) then
+                                state.disabled_tracks = state.disabled_tracks or {}
+                                state._uncheck_all_active = false
+                                if is_active then
+                                    state.disabled_tracks[t.guid] = true
+                                    state.selected_tracks[t.guid] = nil
+                                    state.status_msg = string.format("Track [%d] %s deactivated (saved in project)", t.idx or 1, t_name_str)
+                                else
+                                    state.disabled_tracks[t.guid] = nil
+                                    state.selected_tracks[t.guid] = true
+                                    if t.track and reaper.ValidatePtr(t.track, "MediaTrack*") then
+                                        state.focused_track = t.track
+                                    end
+                                    state.status_msg = string.format("Track [%d] %s activated (saved in project)", t.idx or 1, t_name_str)
+                                end
+                                if State and State.save_project_track_filter then
+                                    State.save_project_track_filter(state)
+                                end
                             end
-                            state.status_msg = string.format("Track [%d] %s activated (saved in project)", t.idx or 1, t.name or "Track")
-                        end
-                        if State and State.save_project_track_filter then
-                            State.save_project_track_filter(state)
                         end
                     end
                 end
+                reaper.ImGui_EndChild(ctx)
             end
         end
 
         reaper.ImGui_EndCombo(ctx)
     end
     if reaper.ImGui_IsItemHovered(ctx) then
-        reaper.ImGui_SetTooltip(ctx, "Active Score Tracks (Project-Scoped)\n• ✓ Auto-Detect Tracks: Automatically adds new REAPER tracks to the score\n• ✓ Check All / ✕ Uncheck All: Activate or deactivate all tracks at once\n• Unchecked tracks are remembered per REAPER project (.rpp)")
+        reaper.ImGui_SetTooltip(ctx, "Active Score Tracks (Project-Scoped)\n• 🎯 Follow REAPER Track Selection: Automatically switch score to selected REAPER track(s)\n• ✓ Check All / ✕ Uncheck All: Activate all or clear view (selecting a track in REAPER shows it again)\n• 🔍 Search: Filter large orchestral templates (500+ tracks) by name or track number")
     end
     
     -- Horizontal scroll zone for all additional tools & buttons behind the layout dropdown

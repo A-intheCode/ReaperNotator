@@ -1,16 +1,16 @@
-# REAPER-Notator v2.50 — Codebase & Library Statistics
+# REAPER-Notator v2.50.2 — Codebase & Library Statistics
 
-**Generated:** 2026-10-19 22:56
+**Generated:** 2026-10-20 17:42
 
 ## Executive Summary
 
-- **Version:** v2.50
+- **Version:** v2.50.2
 - **Total Source Files:** 92 Lua files
-- **Total Line Count:** 78,620
-- **Executable Code Lines:** 67,010 (85.2%)
-- **Comments & Documentation:** 5,292 (6.7%)
-- **Blank / Formatting Lines:** 6,977 (8.9%)
-- **Orchestral Pattern Library:** 1,500 curated JSON patterns across 10 categories
+- **Total Line Count:** 79,088
+- **Executable Code Lines:** 67,445 (85.3%)
+- **Comments & Documentation:** 5,315 (6.7%)
+- **Blank / Formatting Lines:** 6,995 (8.8%)
+- **Orchestral Pattern Library:** 1,499 curated JSON patterns across 10 categories
 - **Automated Unit Test Suite:** 159 unit tests across 92 Lua modules and 644 exported functions (`tests/test_all_modules.lua`, 0 failures)
 - **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)
 
@@ -18,34 +18,34 @@
 
 | Module Directory | Files | Total Lines | Code Lines | Comments | Blank | Code % |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: |
-| `modules/services` | 37 | 41,142 | 35,334 | 2,480 | 3,524 | 85.9% |
-| `modules/rendering` | 7 | 14,077 | 12,086 | 848 | 1,190 | 85.9% |
-| `modules/ui` | 25 | 13,368 | 10,938 | 962 | 1,495 | 81.8% |
-| `tests` | 2 | 3,159 | 2,805 | 161 | 224 | 88.8% |
-| `modules` | 3 | 2,629 | 2,316 | 475 | 161 | 88.1% |
+| `modules/services` | 37 | 41,187 | 35,377 | 2,482 | 3,524 | 85.9% |
+| `modules/rendering` | 7 | 14,264 | 12,267 | 846 | 1,198 | 86.0% |
+| `modules/ui` | 25 | 13,494 | 11,057 | 966 | 1,498 | 81.9% |
+| `tests` | 2 | 3,254 | 2,888 | 171 | 229 | 88.8% |
+| `modules` | 3 | 2,638 | 2,323 | 481 | 162 | 88.1% |
 | `modules/input` | 2 | 2,123 | 1,853 | 92 | 180 | 87.3% |
-| `Root` | 1 | 1,332 | 1,065 | 164 | 107 | 80.0% |
+| `Root` | 1 | 1,338 | 1,067 | 167 | 108 | 79.7% |
 | `modules/classes` | 15 | 790 | 613 | 110 | 96 | 77.6% |
-| **TOTAL** | **92** | **78,620** | **67,010** | **5,292** | **6,977** | **85.2%** |
+| **TOTAL** | **92** | **79,088** | **67,445** | **5,315** | **6,995** | **85.3%** |
 
 ## 2. Key Core System Files by Volume (Top 15)
 
 | File | Module | Lines | Code | Comments |
 | :--- | :--- | :---: | :---: | :---: |
-| `modules/services/midi_service.lua` | modules/services | 7,523 | 6,646 | 288 |
-| `modules/rendering/score_canvas.lua` | modules/rendering | 5,110 | 4,461 | 244 |
-| `modules/rendering/engraver.lua` | modules/rendering | 4,252 | 3,666 | 302 |
-| `modules/services/record_quantize_service.lua` | modules/services | 2,834 | 2,439 | 191 |
-| `modules/services/slur_service.lua` | modules/services | 2,654 | 2,314 | 125 |
+| `modules/services/midi_service.lua` | modules/services | 7,530 | 6,653 | 288 |
+| `modules/rendering/score_canvas.lua` | modules/rendering | 5,188 | 4,535 | 245 |
+| `modules/rendering/engraver.lua` | modules/rendering | 4,361 | 3,773 | 299 |
+| `modules/services/record_quantize_service.lua` | modules/services | 2,856 | 2,459 | 193 |
+| `modules/services/slur_service.lua` | modules/services | 2,656 | 2,316 | 125 |
 | `modules/rendering/canvas_context_menus.lua` | modules/rendering | 2,339 | 2,045 | 105 |
 | `modules/services/musicxml_import_service.lua` | modules/services | 2,193 | 1,911 | 125 |
-| `tests/test_all_modules.lua` | tests | 1,851 | 1,565 | 135 |
+| `tests/test_all_modules.lua` | tests | 1,940 | 1,642 | 145 |
 | `modules/services/musicxml_export_service.lua` | modules/services | 1,715 | 1,452 | 145 |
 | `modules/services/melody_pathfinder_service.lua` | modules/services | 1,643 | 1,375 | 117 |
 | `modules/services/portamento_service.lua` | modules/services | 1,561 | 1,322 | 90 |
 | `modules/services/glissando_service.lua` | modules/services | 1,489 | 1,257 | 82 |
 | `modules/ui/midi_editor_drawer.lua` | modules/ui | 1,449 | 1,206 | 118 |
-| `modules/state.lua` | modules | 1,423 | 1,245 | 239 |
+| `modules/state.lua` | modules | 1,432 | 1,252 | 245 |
 | `modules/ui/settings_modal.lua` | modules/ui | 1,420 | 1,154 | 96 |
 
 ## 3. Specialized Orchestral & Engraving Services (`modules/services`)
@@ -62,16 +62,16 @@
 | `modules/services/filter_notes_service.lua` | Filter Irregular Notes - Metric onset analysis and voice routing | 308 |
 | `modules/services/frame_timer_service.lua` | Native High-Refresh Timer - 1ms kernel multimedia timer (60-144 FPS) | 147 |
 | `modules/services/glissando_service.lua` | Glissando Engine - Smooth chromatic / diatonic slide generation | 1,257 |
-| `modules/services/imgui_guard_service.lua` | ImGui Stack Guard Engine - Zero-leak Begin/End & BeginChild/EndChild auto-unwinder | 348 |
+| `modules/services/imgui_guard_service.lua` | ImGui Stack Guard Engine - Zero-leak Begin/End & BeginChild/EndChild auto-unwinder | 358 |
 | `modules/services/key_signature_service.lua` | Key Signature Service - Project/Take key signatures & diatonic pitch spelling | 906 |
-| `modules/services/midi_service.lua` | Core MIDI Engine - Low-latency take I/O and event synchronization | 6,646 |
+| `modules/services/midi_service.lua` | Core MIDI Engine - Low-latency take I/O and event synchronization | 6,653 |
 | `modules/services/musicxml_export_service.lua` | MusicXML 4.0 Exporter - Standard score interchange file generation | 1,452 |
 | `modules/services/musicxml_import_service.lua` | MusicXML 4.0 Importer - Orchestral part loading and articulation mapping | 1,911 |
-| `modules/services/audio_preview.lua` | Audition Preview Engine - Non-destructive note click playback chasing | 1,058 |
+| `modules/services/audio_preview.lua` | Audition Preview Engine - Non-destructive note click playback chasing | 1,062 |
 | `modules/services/reaticulate_parser.lua` | Reaticulate Bridge - FX Slot 1 setup, bank sync & keyswitch routing | 876 |
-| `modules/services/record_quantize_service.lua` | Record & Auto-Quantize Engine - Live MIDI capture, Step Input & grid quantization | 2,439 |
+| `modules/services/record_quantize_service.lua` | Record & Auto-Quantize Engine - Live MIDI capture, Step Input & grid quantization | 2,459 |
 | `modules/services/scale_service.lua` | Scale & Harmony Service - Chord Track harmonic transformations | 925 |
-| `modules/services/slur_service.lua` | Slur Engine - Ergonomic Bezier phrasing curves and keyswitch binding | 2,314 |
+| `modules/services/slur_service.lua` | Slur Engine - Ergonomic Bezier phrasing curves and keyswitch binding | 2,316 |
 | `modules/services/portamento_service.lua` | Portamento Service - High-resolution micro-tonal pitch-bend transitions | 1,322 |
 | `modules/services/pattern_service.lua` | Pattern Engine - Orchestral motif browser and timeline stamping | 582 |
 | `modules/services/rehearsal_mark_service.lua` | Rehearsal Marks - Custom/auto structural navigation & live markers | 368 |
@@ -82,7 +82,7 @@
 
 | Category | Sub-Genre / Instrumentation | Pattern Count |
 | :--- | :--- | :---: |
-| `01_Strings_Staccato` | Cinematic Strings (Staccato / Spiccato Ostinatos) | 150 patterns |
+| `01_Strings_Staccato` | Cinematic Strings (Staccato / Spiccato Ostinatos) | 149 patterns |
 | `02_Strings_Pizzicato` | Orchestral Strings (Pizzicato / Bartók Snap) | 150 patterns |
 | `03_Brass_Blockbuster` | Epic Brass (Horns, Trumpets, Trombones, Tubas) | 150 patterns |
 | `04_Cinematic_Melodies` | Heroic Themes & Symphonic Lead Melodies | 150 patterns |
@@ -92,5 +92,5 @@
 | `08_Ancient_Harp_Greek_Roman` | Antiquity Concert Harp (Greek & Roman Hymns) | 150 patterns |
 | `09_Orchestral_Percussion` | Orchestral & Cinematic Percussion (Timpani, Taiko, Drums) | 150 patterns |
 | `10_Low_Strings_Celli_Basses` | Low Strings Tension & Rhythm (Staccato Celli & Double Basses) | 150 patterns |
-| **TOTAL PATTERNS** | **10 Categories** | **1,500 patterns** |
+| **TOTAL PATTERNS** | **10 Categories** | **1,499 patterns** |
 
