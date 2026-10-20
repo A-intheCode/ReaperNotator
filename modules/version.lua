@@ -6,7 +6,7 @@
 local Version = {
     major = 2,
     minor = 50,
-    patch = 0,
+    patch = 1,
     suffix = "",
 }
 
