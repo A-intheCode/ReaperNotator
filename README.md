@@ -24,6 +24,13 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
+- **Mid-Piece Time Signatures, Multi-Staff Meter Engraving & Scroll-Independent Barlines (v2.51)**:
+  - **Bar-Targeted Time Signature Placement (`TempoService` & `KeySignatureDrawer` / `TopBar`)**: Place the Edit Cursor at any measure (e.g., Bar 5) and click any Time Signature (`3/4`, `4/4`, `2/4`, `6/8`, `12/8`, `5/4`, `7/8`, `9/8`, or Custom). REAPER-Notator automatically:
+    1. **Engraves the new Time Signature on all staves** (including both staves of Grand Staff instruments) at that bar with automatic horizontal measure-header padding so Beat 1 notes never collide with the meter digits.
+    2. **Writes a native REAPER Measure/Time-Signature marker** (`SetTempoTimeSigMarker`) at that exact bar while anchoring Bar 1 so all preceding measures (e.g., Bars 1–4 in `4/4`) remain unchanged.
+    3. **Propagates the new meter forward** across all subsequent measures (`Bar 5+`) with scroll-independent barline rendering across the entire composition.
+  - **Elaine Gould Tuplet Bracket Clearance (v2.50.3–v2.51)**: Computes true visual top/bottom bounds across stems, beams, noteheads, and articulations so tuplet brackets and numbers never collide with noteheads.
+
 - **Circle of Fifths & Global Harmonic Chord Palette (v2.50)**:
   - **Interactive 24-Sector Harmonic Wheel (`CircleOfFifthsModal` & `CircleOfFifthsService`)**: Located directly below `Step Input` in the Left Sidebar (`🎡 Circle of Fifths`). Features an outer ring of 12 Major keys (`C, G, D, A, E, B, F#, Db, Ab, Eb, Bb, F`) and an inner ring of 12 Relative Minor keys (`Am, Em, Bm, F#m, C#m, G#m, Ebm, Bbm, Fm, Cm, Gm, Dm`) rendered with seamless concentric annular geometry.
   - **Audition & Target Track Selector (`🔊 Audition & Target Track:`)**: Choose `Auto (Active / Armed / First MIDI Track)` or any specific REAPER project track (`1..N`) with a 1-click `🔊 Test` button. Clicking or dragging any sector or harmonic tile automatically record-arms and enables input monitoring on the target track for instant zero-latency chord auditioning.
@@ -51,9 +58,9 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 - **Per-Track Freehand Annotation Layer System (v2.28–v2.34)**:
   - **Multi-Layer Freehand Pen & Eraser (`AnnotationService` & `AnnotationDrawer`)**: Draw directly on the score across per-bar transparent PNG tiles with 12 color presets, Analytical Capsule SDF anti-aliasing, quadratic Bézier curve smoothing, and 4 resolution steps (`1x`–`3x`) per instrument track.
 
-- **Global `ImGuiGuardService` & 159-Test Automated Verification Suite (v2.45–v2.50)**:
+- **Global `ImGuiGuardService` & 159-Test Automated Verification Suite (v2.45–v2.51)**:
   - **Zero-Leak ImGui Stack Protection**: Wraps `ImGui_Begin`/`End` and `ImGui_BeginChild`/`EndChild` across all UI modals, drawers, and panels to guarantee zero `Missing EndChild()` errors even on runtime exceptions.
-  - **159 Automated Unit Tests (`tests/test_all_modules.lua`)**: Verifies all 89 Lua modules and 644 exported functions with strict `_G` global-leak protection and 0 failures.
+  - **159 Automated Unit Tests (`tests/test_all_modules.lua`)**: Verifies all 89 Lua modules and 654 exported functions with strict `_G` global-leak protection and 0 failures.
 
 - **1,500 Curated Orchestral Patterns Across 10 Categories (v2.17)**:
   - Added **150 Orchestral & Cinematic Percussion** (`09_Orchestral_Percussion`) and **150 Low Strings — Celli & Double Basses** (`10_Low_Strings_Celli_Basses`) patterns to the 1-click Pattern Browser library.

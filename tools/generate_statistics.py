@@ -146,7 +146,7 @@ with open(MD_PATH, 'w', encoding='utf-8') as md:
     md.write(f"- **Comments & Documentation:** {total_comments:,} ({total_comments/total_lines*100:.1f}%)\n")
     md.write(f"- **Blank / Formatting Lines:** {total_blank:,} ({total_blank/total_lines*100:.1f}%)\n")
     md.write(f"- **Orchestral Pattern Library:** {total_patterns:,} curated JSON patterns across {len(pattern_stats)} categories\n")
-    md.write(f"- **Automated Unit Test Suite:** 159 unit tests across {total_files} Lua modules and 644 exported functions (`tests/test_all_modules.lua`, 0 failures)\n")
+    md.write(f"- **Automated Unit Test Suite:** 159 unit tests across {total_files} Lua modules and 654 exported functions (`tests/test_all_modules.lua`, 0 failures)\n")
     md.write(f"- **Vector Music Typography:** SMuFL Bravura font (Bravura.otf)\n\n")
     
     md.write("## 1. Architecture & Module Volume Breakdown\n\n")

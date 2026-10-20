@@ -1,6 +1,6 @@
 # REAPER-Notator - Official User Manual & Function Reference
 
-**Version:** 2.50.4  
+**Version:** 2.51  
 **Date:** 2026-10-20  
 **License:** GNU General Public License v3.0  
 
@@ -66,7 +66,7 @@ REAPER-Notator can run as a floating window or docked directly into any REAPER d
 
 ### 2.1 Title & Version Indicator
 
-Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.50.4), synchronized directly with modules/version.lua and the main @version header. When running in a Git repository environment, Notator automatically detects and displays the active commit hash via pure-Lua .git/HEAD inspection.
+Located in the upper left corner, displaying 'REAPER Notator' alongside the active build and semantic version number (v2.51), synchronized directly with modules/version.lua and the main @version header. When running in a Git repository environment, Notator automatically detects and displays the active commit hash via pure-Lua .git/HEAD inspection.
 
 ### 2.2 Transport & Playhead Controls
 
@@ -534,6 +534,15 @@ Functions:
 - Standard Unicode Note Symbol: Renders the classical quarter-note symbol (♩, U+2669) in non-bold regular weight according to professional music engraving standards.
 DAW Effect: Updates REAPER tempo markers in real time with immediate timeline synchronization.
 
+### 8.4 Mid-Piece Time Signatures, REAPER TimeMap Synchronization & Multi-Staff Engraving (v2.51)
+
+Functions:
+- Bar-Targeted Meter Changes (Key & Time Signatures Drawer / Top Bar Time Signature Popup): Place the REAPER Edit Cursor at any measure (e.g. Bar 5) or select notes/items in that bar, and click any preset or custom Time Signature (4/4, 3/4, 2/4, 6/8, 12/8, 5/4, 7/8, 9/8, or Custom N/D).
+- A) Score Engraving Across All Staves: The new time signature is engraved directly at the start of the target measure across every visible instrument staff (including both Treble and Bass staves of Grand Staff instruments), with automatic horizontal measure-header expansion (+28px scaled) so Beat 1 noteheads and accidentals never collide with the meter digits.
+- B) Native REAPER Measure Marker & Bar 1 Preservation: Automatically inserts or updates an authentic REAPER Tempo/Time-Signature marker via SetTempoTimeSigMarker at the exact target bar (measurepos = target_bar - 1). When inserting the first mid-piece meter change at Bar > 1, Notator explicitly anchors Measure 1 (measurepos = 0) with the preceding time signature so all earlier bars (e.g. Bars 1..4 in 4/4) remain untouched.
+- C) Forward Meter Propagation & Scroll-Independent Barlines: All subsequent measures (Bar 5, 6, 7...) automatically inherit the new meter (e.g. 3/4 = 3.0 QN per bar) until any later time signature change, and barlines render deterministically across the entire timeline regardless of horizontal viewport scrolling.
+DAW Effect: Synchronizes REAPER's master TimeMap, MIDI take NOTATOR_TIME_SIG events, and project ExtState in one atomic Undo block.
+
 ---
 
 ## Chapter 9: Octave Shift Lines (8va, 8vb, 15ma, 15mb)
@@ -997,15 +1006,15 @@ Quick reference table for high-speed score entry, MIDI editing, and viewport nav
 
 - Whole-Measure Rests & Metric Consolidation: Empty measures display a centered whole-bar rest hanging from the fourth line regardless of time signature. Tied chains within a bar consolidate into single dotted or standard note values where metrically valid.
 - Polyphonic Voice Rest Merging: Identical rests occurring at the same time in Voice 1 and Voice 2 merge at the middle line, while different rest values shift vertically to their respective voice registers.
-- Tuplet Brackets: Unbeamed tuplet brackets clear the top staff line, all up-stem tips, and any above-note articulations, with a centered gap for the tuplet number.
+- Tuplet Brackets & True Visual Bounds (v2.50.3+): Both beamed and unbeamed tuplet groups render brackets with centered tuplet ratio/number gaps, dynamically clearing the highest and lowest visual extents of all constituent notes (stems, beams, noteheads, and articulations) so brackets never intersect noteheads.
 - Glissando & Portamento Endpoint Gaps: Wavy glissando and straight portamento lines automatically start to the right of any augmentation dot on the starting note and stop to the left of any accidental on the target note.
 - System Braces vs. Brackets: Orchestral family groups use a straight system bracket with winged tips, while Grand Staff (Piano) and Harp tracks use a curved S-Bezier accolade brace tapering to a central point.
 
-### 18.9 Tremolo Slash Stem Centering, ImGuiGuardService & 159-Test Automated Verification Suite (Behind Bars pp. 220-224, v2.46 - v2.50)
+### 18.9 Tremolo Slash Stem Centering, ImGuiGuardService & 159-Test Automated Verification Suite (Behind Bars pp. 220-224, v2.46 - v2.51)
 
 - Unmeasured & Measured Tremolo Slash Centering (v2.49): Tremolo slashes (1 to 3 diagonal slashes) are horizontally centered directly on the exact stem X-coordinate (stem_x) for both unbeamed notes and beamed groups across all zoom levels (0.6x to 2.0x), maintaining clearance from noteheads and positioning inside beam groups.
 - Global ImGui Stack Guard Engine (modules/services/imgui_guard_service.lua, v2.50): Wraps ImGui_Begin/ImGui_End and ImGui_BeginChild/ImGui_EndChild across all UI modals, drawers, and panels, automatically unwinding any open scopes on error so 'Missing EndChild()' or 'Missing End()' exceptions can never occur.
-- Comprehensive Automated Unit Test Suite (tests/test_all_modules.lua & tests/mock_reaper.lua): Verifies all 89 Lua modules and 644 exported functions via 159 headless automated unit tests—covering Constants, GM Drum Maps (C0-C9), Automatic Clef & Percussion Detection, Custom Notehead Persistence, Note Deletion Cleanup, Tremolo Stem Placement, Engraver Rules, Dynamics, Slurs/Ties, MusicXML Import/Export, Divisi/Divisio Vocum, Melodic Pathfinder, Circle of Fifths, MIDI Keyboard Step Input, ImGuiGuardService, Annotation Layers, and Record/Auto-Quantize.
+- Comprehensive Automated Unit Test Suite (tests/test_all_modules.lua & tests/mock_reaper.lua): Verifies all 89 Lua modules and 654 exported functions via 159 headless automated unit tests—covering Constants, GM Drum Maps (C0-C9), Automatic Clef & Percussion Detection, Custom Notehead Persistence, Note Deletion Cleanup, Tremolo Stem Placement, Engraver Rules, Dynamics, Slurs/Ties, MusicXML Import/Export, Divisi/Divisio Vocum, Melodic Pathfinder, Circle of Fifths, MIDI Keyboard Step Input, ImGuiGuardService, Annotation Layers, and Record/Auto-Quantize.
 
 ---
 
