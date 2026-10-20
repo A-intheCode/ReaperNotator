@@ -1165,8 +1165,11 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     end
     state.active_tracks_cache = active_tracks_data
     
-    local last_m_idx = (KeySignatureService and KeySignatureService.qn_to_measure_info) and KeySignatureService.qn_to_measure_info(state, max_proj_qn, 512) or math.ceil(max_proj_qn / qn_per_measure)
-    local total_measures = math.max(16, (last_m_idx or 16) + 3)
+    local total_measures
+    do
+        local last_m_idx = (KeySignatureService and KeySignatureService.qn_to_measure_info) and KeySignatureService.qn_to_measure_info(state, max_proj_qn, 512) or math.ceil(max_proj_qn / qn_per_measure)
+        total_measures = math.max(16, (last_m_idx or 16) + 3)
+    end
     local measure_w = Engraver.get_measure_layout(s, qn_per_measure)
     
     -- Dynamically calculate optimal track header width and key signature width based on track names (cached)
@@ -1225,40 +1228,39 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         end
     end
     state.measure_map = measure_map
-    local min_scroll_reach_x = canvas_p0_x + (reaper.ImGui_GetScrollX(ctx) or 0) + avail_w + 200 * s
-    local _, total_end_qn = Engraver.measure_to_qn_info(total_measures, qn_per_measure, measure_map)
-    local staff_end_x = math.max(min_scroll_reach_x, ((measure_map and measure_map.starts and measure_map.starts[total_measures]) or Engraver.cursor_qn_to_canvas_x(total_end_qn, margin_left, s, qn_per_measure, measure_map)) + 40 * s)
-    
-    local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
-    local rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
-    local total_score_h = 50 * s + chord_lane_h + rehearsal_lane_h
-    for _, tdata in ipairs(active_tracks_data) do
-        local trk_clef = get_track_clef(tdata.guid, tdata.notes, tdata.name, state)
-        tdata.clef = trk_clef
-        tdata.is_grand = (trk_clef == "grand")
-        tdata.is_harp  = (trk_clef == "harp_3staff")
-        local user_spacing = state.track_spacing or 195.0
-        
-        -- Base staff height depending on clef type down to the bottom staff line
-        local staff_h = tdata.is_harp and 224 or (tdata.is_grand and 148 or 80)
-        
-        -- Total height of the track lane: staff + track spacing (completely independent of item offsets)
-        tdata.band_h = (staff_h + user_spacing) * s
-        total_score_h = total_score_h + tdata.band_h
+    local staff_end_x
+    do
+        local min_scroll_reach_x = canvas_p0_x + (reaper.ImGui_GetScrollX(ctx) or 0) + avail_w + 200 * s
+        local _, total_end_qn = Engraver.measure_to_qn_info(total_measures, qn_per_measure, measure_map)
+        staff_end_x = math.max(min_scroll_reach_x, ((measure_map and measure_map.starts and measure_map.starts[total_measures]) or Engraver.cursor_qn_to_canvas_x(total_end_qn, margin_left, s, qn_per_measure, measure_map)) + 40 * s)
     end
     
-    local canvas_total_w = math.max(avail_w, staff_end_x - canvas_p0_x + 60 * s)
-    local canvas_total_h = math.max(avail_h, total_score_h)
-    
-    local btn_flags = 0
-    if reaper.APIExists("ImGui_ButtonFlags_MouseButtonLeft") then
-        btn_flags = reaper.ImGui_ButtonFlags_MouseButtonLeft()
+    local canvas_total_w, canvas_total_h
+    do
+        local chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
+        local rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
+        local total_score_h = 50 * s + chord_lane_h + rehearsal_lane_h
+        for _, tdata in ipairs(active_tracks_data) do
+            local trk_clef = get_track_clef(tdata.guid, tdata.notes, tdata.name, state)
+            tdata.clef = trk_clef
+            tdata.is_grand = (trk_clef == "grand")
+            tdata.is_harp  = (trk_clef == "harp_3staff")
+            local user_spacing = state.track_spacing or 195.0
+            local staff_h = tdata.is_harp and 224 or (tdata.is_grand and 148 or 80)
+            tdata.band_h = (staff_h + user_spacing) * s
+            total_score_h = total_score_h + tdata.band_h
+        end
+        canvas_total_w = math.max(avail_w, staff_end_x - canvas_p0_x + 60 * s)
+        canvas_total_h = math.max(avail_h, total_score_h)
+        local btn_flags = 0
+        if reaper.APIExists("ImGui_ButtonFlags_MouseButtonLeft") then
+            btn_flags = reaper.ImGui_ButtonFlags_MouseButtonLeft()
+        end
+        if reaper.APIExists("ImGui_ButtonFlags_MouseButtonRight") then
+            btn_flags = btn_flags | reaper.ImGui_ButtonFlags_MouseButtonRight()
+        end
+        reaper.ImGui_InvisibleButton(ctx, "ScoreCanvasHitbox", canvas_total_w, canvas_total_h, btn_flags)
     end
-    if reaper.APIExists("ImGui_ButtonFlags_MouseButtonRight") then
-        btn_flags = btn_flags | reaper.ImGui_ButtonFlags_MouseButtonRight()
-    end
-    
-    reaper.ImGui_InvisibleButton(ctx, "ScoreCanvasHitbox", canvas_total_w, canvas_total_h, btn_flags)
     
     local function apply_scroll_x_offset(new_scroll_x)
         local cur_scroll_x = reaper.ImGui_GetScrollX(ctx)
@@ -1275,60 +1277,62 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         end
     end
 
-    local suppress_autoscroll = false
-    if state._suppress_autoscroll_frames and state._suppress_autoscroll_frames > 0 then
-        suppress_autoscroll = true
-        state._suppress_autoscroll_frames = state._suppress_autoscroll_frames - 1
-        state._last_autoscroll_cur_time = reaper.GetCursorPosition()
-    end
+    do
+        local suppress_autoscroll = false
+        if state._suppress_autoscroll_frames and state._suppress_autoscroll_frames > 0 then
+            suppress_autoscroll = true
+            state._suppress_autoscroll_frames = state._suppress_autoscroll_frames - 1
+            state._last_autoscroll_cur_time = reaper.GetCursorPosition()
+        end
 
-    -- Auto-scroll and item/note jump logic (strictly respects state.auto_scroll!)
-    if not state.auto_scroll then
-        state.jump_to_item = nil
-        state.jump_to_note_qn = nil
-        state._last_autoscroll_cur_time = reaper.GetCursorPosition()
-    else
-        if state.jump_to_note_qn ~= nil then
-            local target_x = Engraver.cursor_qn_to_canvas_x(state.jump_to_note_qn, margin_left, s, qn_per_measure, measure_map)
-            apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+        -- Auto-scroll and item/note jump logic (strictly respects state.auto_scroll!)
+        if not state.auto_scroll then
+            state.jump_to_item = nil
             state.jump_to_note_qn = nil
-            state.jump_to_item = nil
             state._last_autoscroll_cur_time = reaper.GetCursorPosition()
-        elseif state.jump_to_item then
-            -- 1. Jump to a newly selected media item in REAPER arrange (only when Auto-Scroll is enabled)
-            if reaper.ValidatePtr(state.jump_to_item, "MediaItem*") then
-                local item_pos = reaper.GetMediaItemInfo_Value(state.jump_to_item, "D_POSITION")
-                local item_qn = reaper.TimeMap2_timeToQN(0, item_pos)
-                local target_x = Engraver.cursor_qn_to_canvas_x(item_qn, margin_left, s, qn_per_measure, measure_map)
-                apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.25)))
-            end
-            state.jump_to_item = nil
-            state._last_autoscroll_cur_time = reaper.GetCursorPosition()
-        elseif is_playing then
-            -- 2. Automatic scrolling during playback
-            local play_time = reaper.GetPlayPosition()
-            local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, play_time), margin_left, s, qn_per_measure, measure_map)
-            apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
-        elseif not suppress_autoscroll then
-            -- 3. Automatic scrolling in stopped state (ONLY when edit cursor position actually changed in REAPER!)
-            local cur_edit_time = reaper.GetCursorPosition()
-            if state._last_autoscroll_cur_time == nil then
+        else
+            if state.jump_to_note_qn ~= nil then
+                local target_x = Engraver.cursor_qn_to_canvas_x(state.jump_to_note_qn, margin_left, s, qn_per_measure, measure_map)
+                apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+                state.jump_to_note_qn = nil
+                state.jump_to_item = nil
+                state._last_autoscroll_cur_time = reaper.GetCursorPosition()
+            elseif state.jump_to_item then
+                -- 1. Jump to a newly selected media item in REAPER arrange (only when Auto-Scroll is enabled)
+                if reaper.ValidatePtr(state.jump_to_item, "MediaItem*") then
+                    local item_pos = reaper.GetMediaItemInfo_Value(state.jump_to_item, "D_POSITION")
+                    local item_qn = reaper.TimeMap2_timeToQN(0, item_pos)
+                    local target_x = Engraver.cursor_qn_to_canvas_x(item_qn, margin_left, s, qn_per_measure, measure_map)
+                    apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.25)))
+                end
+                state.jump_to_item = nil
+                state._last_autoscroll_cur_time = reaper.GetCursorPosition()
+            elseif is_playing then
+                -- 2. Automatic scrolling during playback
+                local play_time = reaper.GetPlayPosition()
+                local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, play_time), margin_left, s, qn_per_measure, measure_map)
+                apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+            elseif not suppress_autoscroll then
+                -- 3. Automatic scrolling in stopped state (ONLY when edit cursor position actually changed in REAPER!)
+                local cur_edit_time = reaper.GetCursorPosition()
+                if state._last_autoscroll_cur_time == nil then
+                    state._last_autoscroll_cur_time = cur_edit_time
+                end
+                local cursor_moved = (math.abs(cur_edit_time - state._last_autoscroll_cur_time) > 0.001)
                 state._last_autoscroll_cur_time = cur_edit_time
-            end
-            local cursor_moved = (math.abs(cur_edit_time - state._last_autoscroll_cur_time) > 0.001)
-            state._last_autoscroll_cur_time = cur_edit_time
 
-            if cursor_moved then
-                local empty_click = reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
-                                    and not state.hovered_note and not state.hovered_dynamic 
-                                    and not state.hovered_articulation and not state.hovered_item_edge
-                                    and not state.hovered_tempo_marker and not state.hovered_octave_line
-                                    and not state.hovered_chord_item
-                                    and not state.hovered_slur and not state.hovered_tie
+                if cursor_moved then
+                    local empty_click = reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseClicked(ctx, 0)
+                                        and not state.hovered_note and not state.hovered_dynamic 
+                                        and not state.hovered_articulation and not state.hovered_item_edge
+                                        and not state.hovered_tempo_marker and not state.hovered_octave_line
+                                        and not state.hovered_chord_item
+                                        and not state.hovered_slur and not state.hovered_tie
 
-                if not empty_click and not reaper.ImGui_IsMouseClicked(ctx, 0) then
-                    local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, cur_edit_time), margin_left, s, qn_per_measure, measure_map)
-                    apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+                    if not empty_click and not reaper.ImGui_IsMouseClicked(ctx, 0) then
+                        local target_x = Engraver.cursor_qn_to_canvas_x(reaper.TimeMap2_timeToQN(0, cur_edit_time), margin_left, s, qn_per_measure, measure_map)
+                        apply_scroll_x_offset(math.max(0, target_x - canvas_p0_x - (avail_w * 0.5)))
+                    end
                 end
             end
         end
@@ -1347,18 +1351,15 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     local vis_min_qn = math.max(0, Engraver.canvas_x_to_qn(cull_min_x, margin_left, s, qn_per_measure, 0.001, measure_map) - 2.0)
     local vis_max_qn = Engraver.canvas_x_to_qn(cull_max_x, margin_left, s, qn_per_measure, 0.001, measure_map) + 2.0
-    local vis_min_m_raw = Engraver.qn_to_measure_info(vis_min_qn, qn_per_measure, measure_map)
-    local vis_max_m_raw = Engraver.qn_to_measure_info(vis_max_qn, qn_per_measure, measure_map)
-    local vis_min_measure = math.max(0, vis_min_m_raw or 0)
-    local vis_max_measure = (vis_max_m_raw or 0) + 1
+    local vis_min_measure = math.max(0, (Engraver.qn_to_measure_info(vis_min_qn, qn_per_measure, measure_map)) or 0)
+    local vis_max_measure = ((Engraver.qn_to_measure_info(vis_max_qn, qn_per_measure, measure_map)) or 0) + 1
 
     local is_annotation_paint_mode = (state.show_annotations_drawer == true) and (state.annotation_tool == "pen" or state.annotation_tool == "eraser")
     local is_hovered_raw = reaper.ImGui_IsItemHovered(ctx) and not is_playing
     local is_active_raw  = reaper.ImGui_IsItemActive(ctx) and not is_playing
     local mouse_x, mouse_y = reaper.ImGui_GetMousePos(ctx)
-    local is_painting_score_area = is_annotation_paint_mode and (mouse_x >= margin_left or state._annot_stroke_active == true)
-    local is_hovered = is_hovered_raw and not is_painting_score_area
-    local is_active  = is_active_raw and not is_painting_score_area
+    local is_hovered = is_hovered_raw and not (is_annotation_paint_mode and (mouse_x >= margin_left or state._annot_stroke_active == true))
+    local is_active  = is_active_raw and not (is_annotation_paint_mode and (mouse_x >= margin_left or state._annot_stroke_active == true))
     
     -- Immediately update live drag targets for dynamics and articulations (only when not playing)
     if not is_playing then
@@ -1421,9 +1422,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     state.hovered_tie = nil
     state.hovered_portamento = nil
     
-    chord_lane_h = (state.show_chord_lane ~= false) and (42 * s) or 0
-    rehearsal_lane_h = (state.show_rehearsal_lane ~= false) and (28 * s) or 0
-    local cur_band_top = canvas_p0_y + 40 * s + chord_lane_h + rehearsal_lane_h
+    local cur_band_top = canvas_p0_y + 40 * s + ((state.show_chord_lane ~= false) and (42 * s) or 0) + ((state.show_rehearsal_lane ~= false) and (28 * s) or 0)
     local score_top_y = cur_band_top
     local score_bottom_y = cur_band_top
     local staff_line_col = Constants.COLORS.staff_line
@@ -1435,8 +1434,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local first_staff_top_y = nil
     local last_staff_bottom_y = nil
     
-    local ghost_opacity = math.max(0.05, math.min(1.0, state.ghost_voice_opacity or 0.25))
-    local ghost_alpha_byte = math.floor(ghost_opacity * 255 + 0.5)
+    local ghost_alpha_byte = math.floor(math.max(0.05, math.min(1.0, state.ghost_voice_opacity or 0.25)) * 255 + 0.5)
     local global_ghost_col = 0x88888800 | ghost_alpha_byte
     local dim_regular_active = (state.filter_irregular_preview and state.filter_irregular_preview_map and state.filter_irregular_dim_regular)
     local hide_regular_active = (dim_regular_active and state.filter_irregular_hide_regular)
@@ -1455,7 +1453,6 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         local is_harp = (track_clef == "harp_3staff") or (tdata.is_harp == true)
         tdata.is_grand = is_grand
         tdata.is_harp = is_harp
-        local staff_line_col = Constants.COLORS.staff_line
         local line_spacing = 8.0 * s
         local step_y = line_spacing / 2.0
         
@@ -1484,12 +1481,13 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         
         if is_track_vis_y then
             -- Track background and focus indicator
-            local is_focused_track = (state.focused_track and state.focused_track == tdata.track)
-            local track_bg_col = (t_idx % 2 == 1) and 0x00000000 or 0x00000006
-            local tbg_x0 = math.max(canvas_p0_x, cull_min_x)
-            local tbg_x1 = math.min(canvas_p0_x + canvas_total_w, cull_max_x)
-            if tbg_x0 < tbg_x1 then
-                reaper.ImGui_DrawList_AddRectFilled(draw_list, tbg_x0, band_y0, tbg_x1, band_y1, track_bg_col)
+            do
+                local track_bg_col = (t_idx % 2 == 1) and 0x00000000 or 0x00000006
+                local tbg_x0 = math.max(canvas_p0_x, cull_min_x)
+                local tbg_x1 = math.min(canvas_p0_x + canvas_total_w, cull_max_x)
+                if tbg_x0 < tbg_x1 then
+                    reaper.ImGui_DrawList_AddRectFilled(draw_list, tbg_x0, band_y0, tbg_x1, band_y1, track_bg_col)
+                end
             end
             
             -- Draw MIDI items (culled to visible horizontal window)
@@ -1611,49 +1609,49 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
             
             -- Staff lines (culled to visible horizontal segment)
-            local function draw_5lines(bot_y)
-                local lx0 = math.max(system_start_x, cull_min_x)
-                local lx1 = math.min(staff_end_x, cull_max_x)
-                if lx0 < lx1 then
-                    for l = 0, 4 do
-                        local ly = bot_y - (l * line_spacing)
-                        reaper.ImGui_DrawList_AddLine(draw_list, lx0, ly, lx1, ly, staff_line_col, 1.0 * s)
+            do
+                local function draw_5lines(bot_y)
+                    local lx0 = math.max(system_start_x, cull_min_x)
+                    local lx1 = math.min(staff_end_x, cull_max_x)
+                    if lx0 < lx1 then
+                        for l = 0, 4 do
+                            local ly = bot_y - (l * line_spacing)
+                            reaper.ImGui_DrawList_AddLine(draw_list, lx0, ly, lx1, ly, staff_line_col, 1.0 * s)
+                        end
                     end
                 end
-            end
-            
-            local top_system_y = staff_top_y
-            local btm_system_y = staff_bottom_y
-            local draw_sys_bracket = (system_start_x >= cull_min_x - 10 * s and system_start_x <= cull_max_x + 10 * s)
-            
-            if is_harp then
-                draw_5lines(treble_bottom_y)
-                draw_5lines(mid_bottom_y)
-                draw_5lines(bass_bottom_y)
-                -- Vertical system line & curved harp accolade brace (3 staves connected)
-                if draw_sys_bracket then
-                    Engraver.draw_piano_brace(draw_list, system_start_x, top_system_y, btm_system_y, s, staff_line_col)
-                end
-            elseif is_grand then
-                draw_5lines(treble_bottom_y)
-                draw_5lines(bass_bottom_y)
-                -- Vertical system line & curved piano accolade brace (Elaine Gould "Behind Bars", pp. 13, 502)
-                if draw_sys_bracket then
-                    Engraver.draw_piano_brace(draw_list, system_start_x, top_system_y, btm_system_y, s, staff_line_col)
-                end
-            else
-                local cdef = Constants.CLEF_DEFS[track_clef]
-                local lines_cnt = (cdef and cdef.staff_lines) or 5
-                local lx0 = math.max(system_start_x, cull_min_x)
-                local lx1 = math.min(staff_end_x, cull_max_x)
-                if lx0 < lx1 then
-                    for l = 0, lines_cnt - 1 do
-                        local ly = staff_bottom_y - (l * line_spacing)
-                        reaper.ImGui_DrawList_AddLine(draw_list, lx0, ly, lx1, ly, staff_line_col, 1.0 * s)
+                
+                local top_system_y = staff_top_y
+                local btm_system_y = staff_bottom_y
+                local draw_sys_bracket = (system_start_x >= cull_min_x - 10 * s and system_start_x <= cull_max_x + 10 * s)
+                
+                if is_harp then
+                    draw_5lines(treble_bottom_y)
+                    draw_5lines(mid_bottom_y)
+                    draw_5lines(bass_bottom_y)
+                    if draw_sys_bracket then
+                        Engraver.draw_piano_brace(draw_list, system_start_x, top_system_y, btm_system_y, s, staff_line_col)
                     end
-                end
-                if draw_sys_bracket then
-                    reaper.ImGui_DrawList_AddLine(draw_list, system_start_x, top_system_y, system_start_x, btm_system_y, staff_line_col, 2.0 * s)
+                elseif is_grand then
+                    draw_5lines(treble_bottom_y)
+                    draw_5lines(bass_bottom_y)
+                    if draw_sys_bracket then
+                        Engraver.draw_piano_brace(draw_list, system_start_x, top_system_y, btm_system_y, s, staff_line_col)
+                    end
+                else
+                    local cdef = Constants.CLEF_DEFS[track_clef]
+                    local lines_cnt = (cdef and cdef.staff_lines) or 5
+                    local lx0 = math.max(system_start_x, cull_min_x)
+                    local lx1 = math.min(staff_end_x, cull_max_x)
+                    if lx0 < lx1 then
+                        for l = 0, lines_cnt - 1 do
+                            local ly = staff_bottom_y - (l * line_spacing)
+                            reaper.ImGui_DrawList_AddLine(draw_list, lx0, ly, lx1, ly, staff_line_col, 1.0 * s)
+                        end
+                    end
+                    if draw_sys_bracket then
+                        reaper.ImGui_DrawList_AddLine(draw_list, system_start_x, top_system_y, system_start_x, btm_system_y, staff_line_col, 2.0 * s)
+                    end
                 end
             end
         
@@ -1802,14 +1800,14 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
             end
         end
         
+        -- Visual notes, chord clusters, beams, ties & rests (retrieved from layout_cache or built once)
+        local visual_notes, layout_key
+        do
         local trk_v = (state.track_voices and tdata.guid and state.track_voices[tdata.guid]) or 0
         local filter_chan = (trk_v > 0) and (trk_v - 1) or nil
         local is_dragging_notes = state.is_dragging and state.drag_note and state.drag_selected_snapshot and (#state.drag_selected_snapshot > 0)
-        
-        -- Visual notes, chord clusters, beams, ties & rests (retrieved from layout_cache or built once)
-        local visual_notes, chord_clusters, beam_groups, is_polyphonic_track
+        local chord_clusters, beam_groups, is_polyphonic_track
         local cached_layout = nil
-        local layout_key = nil
         local is_trk_rec_live = is_recording and AudioPreview.is_track_user_armed(tdata.track)
         if is_trk_rec_live then
             cached_layout = build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
@@ -2547,9 +2545,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         
         -- Pre-pass: Find the single closest note to mouse for hover and click arbitration
         local closest_hovered_vn = nil
-        local max_hover_dist = 12.5 * s
-        local closest_hovered_dist_sq = max_hover_dist * max_hover_dist
         if is_hovered then
+            local max_hover_dist = 12.5 * s
+            local closest_hovered_dist_sq = max_hover_dist * max_hover_dist
             for _, vn in ipairs(display_notes) do
                 local is_ghost = vn.is_ghost_voice or (dim_regular_active and not is_note_irregular_preview(vn.orig, vn, state))
                 if not is_ghost then
@@ -3018,8 +3016,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         if (state.show_tuplets_layer ~= false) then
             Engraver.detect_and_draw_tuplets(draw_list, display_notes, s, Constants.COLORS.notehead_black or 0x111111FF, font_music, font_main, qn_per_measure, beam_groups, cull_min_x, cull_max_x, global_ghost_col)
         end
+        end -- do (Notes, rests, beams, stems & tuplets scope)
         
         -- Dynamics for this track
+        do
         local dyn_offset = (state.dynamics_offset_y or 79.0) * s
         local dyn_base_y = staff_bottom_y + dyn_offset
         local dyn_font_sz = math.floor(34 * s + 0.5)
@@ -3530,6 +3530,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 end
             end
         end -- if show_dynamic_texts_layer
+        end -- do (Dynamics, Hairpins & Dynamic Texts scope)
         
         -- ----------------------------------------------------------------------
         -- HOLDING / SUSTAIN PEDAL LINES (CC64 - Delegated to CanvasPedalRenderer)
