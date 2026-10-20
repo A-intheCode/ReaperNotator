@@ -2069,6 +2069,12 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     assert_true(math.abs(mmap_b5.m_start_qn[4] - 16.0) < 0.001 and math.abs(mmap_b5.m_end_qn[4] - 19.0) < 0.001, "(C) Bar 5 spans 16.0 .. 19.0 QN")
     assert_true(math.abs(mmap_b5.m_start_qn[5] - 19.0) < 0.001 and math.abs(mmap_b5.m_end_qn[5] - 22.0) < 0.001, "(C) Bar 6 spans 19.0 .. 22.0 QN")
 
+    -- 7. Regression test for v2.50.7: Barlines 1..N must never be skipped at scroll=0 or when scrolling
+    local m0_raw = Engraver.qn_to_measure_info(0.0, 4.0, mmap_b5)
+    assert_eq(math.max(0, m0_raw or 0), 0, "vis_min_measure at QN=0.0 is 0 (Bar 1), never polluted by multi-return bpi/num/den")
+    local m3_raw = Engraver.qn_to_measure_info(12.0, 4.0, mmap_b5)
+    assert_eq(math.max(0, m3_raw or 0), 3, "vis_min_measure at QN=12.0 is 3 (Bar 4), never polluted by m_start_qn=12.0")
+
     -- Restore 4/4 for subsequent tests if any
     reaper.SetEditCurPos(0.0, false, false)
     KeySignatureService.set_project_time_sig(st, 4, 4)

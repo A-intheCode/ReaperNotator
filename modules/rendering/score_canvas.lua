@@ -1347,8 +1347,10 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     
     local vis_min_qn = math.max(0, Engraver.canvas_x_to_qn(cull_min_x, margin_left, s, qn_per_measure, 0.001, measure_map) - 2.0)
     local vis_max_qn = Engraver.canvas_x_to_qn(cull_max_x, margin_left, s, qn_per_measure, 0.001, measure_map) + 2.0
-    local vis_min_measure = math.max(0, Engraver.qn_to_measure_info(vis_min_qn, qn_per_measure, measure_map))
-    local vis_max_measure = Engraver.qn_to_measure_info(vis_max_qn, qn_per_measure, measure_map) + 1
+    local vis_min_m_raw = Engraver.qn_to_measure_info(vis_min_qn, qn_per_measure, measure_map)
+    local vis_max_m_raw = Engraver.qn_to_measure_info(vis_max_qn, qn_per_measure, measure_map)
+    local vis_min_measure = math.max(0, vis_min_m_raw or 0)
+    local vis_max_measure = (vis_max_m_raw or 0) + 1
 
     local is_annotation_paint_mode = (state.show_annotations_drawer == true) and (state.annotation_tool == "pen" or state.annotation_tool == "eraser")
     local is_hovered_raw = reaper.ImGui_IsItemHovered(ctx) and not is_playing
