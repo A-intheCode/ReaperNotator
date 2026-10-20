@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.50.7
+-- @version 2.51
 -- @changelog
+--   + v2.51: Stable Release: Mid-piece Time Signatures across all staves & REAPER TimeMap (independent of MIDI items), Target Bar Stepper ([ - ] / [ + ]) & Smart Edit Cursor vs. Note detection in Time Signature Drawer, Compound Meter (6/8, 9/8, 12/8) dotted-quarter beam grouping, full English UI labels, barline culling fix when scrolling, and Lua 5.4 local-variable scope optimization in ScoreCanvas.render
 --   + v2.50.7: Hotfix: Fix missing barlines when scrolling (wrap Engraver.qn_to_measure_info single-value return before math.max so multi-return values never inflate vis_min_measure)
 --   + v2.50.6: Hotfix: Fix ReaPack index.xml source URLs (/main/ instead of /testing/), prevent legacy MIDI-item NOTATOR_TIME_SIG events from overwriting mid-piece Time Signatures, prioritize Edit Cursor bar when moving cursor to a new measure, add [ - ] / [ + ] target bar stepper in Time Signature Drawer, and commit REAPER TimeMap after each measure marker
 --   + v2.50.5: Hotfix: Mid-piece Time Signature changes at the barline before the selected note or Edit Cursor across all staves (independent of MIDI items), preserving all preceding measures' time signatures and barline positions + double barline & SMuFL Time Signature engraving at mid-piece meter changes across all staves + remove remaining German words ("Taktart", "Tonart", "Dur", "Moll") from Key & Time Signature Drawer
