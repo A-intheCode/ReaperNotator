@@ -356,7 +356,11 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
             local hovered_ring = nil
             local hovered_idx = nil
 
-            if is_wheel_hovered and dist >= r_inner_min and dist <= r_outer_max then
+            if state._cof_drag_payload and reaper.ImGui_IsMouseDown(ctx, 0) then
+                -- Lock highlight to the originally grabbed sector while dragging to the Palette
+                hovered_ring = state._cof_drag_payload.ring
+                hovered_idx = state._cof_drag_payload.sector_idx
+            elseif is_wheel_hovered and dist >= r_inner_min and dist <= r_outer_max then
                 -- Angle with 12 o'clock (-pi/2) as center of sector 1
                 local angle = math.atan(dy, dx) -- [-pi, pi]
                 local rel_a = angle - (-math.pi * 0.5) + (math.pi / 12.0)
@@ -486,14 +490,10 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                         get_track_display_label(resolved_trk)
                     ))
 
-                    local sector_changed_while_dragging = state._cof_drag_payload
-                        and reaper.ImGui_IsMouseDown(ctx, 0)
-                        and (state._cof_drag_payload.sector_idx ~= hovered_idx or state._cof_drag_payload.ring ~= hovered_ring)
-
-                    if reaper.ImGui_IsMouseClicked(ctx, 0) or sector_changed_while_dragging then
-                        -- 1. Play tone immediately when clicked or swept in the Circle!
+                    if reaper.ImGui_IsMouseClicked(ctx, 0) then
+                        -- 1. Play tone immediately when clicked in the Circle!
                         CircleOfFifthsService.audition_tile(state, preview_tile, resolved_trk)
-                        -- 2. Start / update Drag & Drop payload
+                        -- 2. Lock Drag & Drop payload to the exact clicked sector (never overwrite while dragging across other sectors!)
                         state._cof_drag_payload = preview_tile
                         state.status_msg = string.format("🎵 Auditioning %s (%s) on %s – Drag onto a Tile (Slot 1..8) to add to palette",
                             preview_tile.label, format_tile_pitches(preview_tile), get_track_display_label(resolved_trk))
@@ -614,8 +614,11 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                 local is_tile_clicked = reaper.ImGui_IsItemClicked(ctx, 0)
                 local is_tile_rclicked = reaper.ImGui_IsItemClicked(ctx, 1)
 
+                local mx_p, my_p = reaper.ImGui_GetMousePos(ctx)
+                local is_mouse_in_tile_rect = (mx_p >= sx and mx_p <= sx + card_w and my_p >= sy and my_p <= sy + card_h)
+
                 -- Check if a dragged sector from the Circle of Fifths is hovering or dropped on this tile!
-                local is_drag_target = (state._cof_drag_payload ~= nil) and is_tile_hovered
+                local is_drag_target = (state._cof_drag_payload ~= nil) and (is_tile_hovered or is_mouse_in_tile_rect)
                 if is_drag_target and not reaper.ImGui_IsMouseDown(ctx, 0) then
                     -- DROP COMPLETE onto Slot `slot`!
                     local dropped = state._cof_drag_payload
@@ -627,7 +630,7 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                     )
                     page.active_slot = slot
                     CircleOfFifthsService.save_palettes(state.cof_pages)
-                    CircleOfFifthsService.audition_tile(state, page.tiles[slot])
+                    CircleOfFifthsService.audition_tile(state, page.tiles[slot], resolved_trk)
                     tension_map = CircleOfFifthsService.compute_tension_map(page.tiles, page.active_slot)
                     tile = page.tiles[slot]
                     is_active_slot = true
@@ -640,7 +643,7 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                 if is_tile_clicked and tile and not state._cof_drag_payload then
                     page.active_slot = slot
                     CircleOfFifthsService.save_palettes(state.cof_pages)
-                    CircleOfFifthsService.audition_tile(state, tile)
+                    CircleOfFifthsService.audition_tile(state, tile, resolved_trk)
                     tension_map = CircleOfFifthsService.compute_tension_map(page.tiles, page.active_slot)
                     is_active_slot = true
                     state.status_msg = string.format("🎵 Slot #%d (%s) active – Circle of Fifths re-colored for following harmony",
@@ -743,7 +746,7 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                         if reaper.ImGui_MenuItem(ctx, "🔊 Audition & Set as Tension Reference") then
                             page.active_slot = slot
                             CircleOfFifthsService.save_palettes(state.cof_pages)
-                            CircleOfFifthsService.audition_tile(state, tile)
+                            CircleOfFifthsService.audition_tile(state, tile, resolved_trk)
                         end
 
                         if reaper.ImGui_MenuItem(ctx, "➕ Insert Tile at Edit Cursor (1 Grid)") then
@@ -772,7 +775,7 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                                         )
                                         page.active_slot = slot
                                         CircleOfFifthsService.save_palettes(state.cof_pages)
-                                        CircleOfFifthsService.audition_tile(state, page.tiles[slot])
+                                        CircleOfFifthsService.audition_tile(state, page.tiles[slot], resolved_trk)
                                     end
                                 end
                             end
@@ -789,7 +792,7 @@ function CircleOfFifthsModal.render(ctx, state, midi_service)
                                         oct
                                     )
                                     CircleOfFifthsService.save_palettes(state.cof_pages)
-                                    CircleOfFifthsService.audition_tile(state, page.tiles[slot])
+                                    CircleOfFifthsService.audition_tile(state, page.tiles[slot], resolved_trk)
                                 end
                             end
                             reaper.ImGui_EndMenu(ctx)

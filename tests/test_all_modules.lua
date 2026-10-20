@@ -1806,6 +1806,22 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     st.audition_notes = true
     st.cof_preview_track = nil
 
+    -- 6b. Verify dragging C across G towards the Palette keeps C locked in _cof_drag_payload (never overwritten by G)
+    st._cof_drag_payload = CircleOfFifthsService.create_tile(1, "major", "major", 4) -- Grabbed C
+    env.mouse_down[0] = true
+    env.mouse_clicked[0] = false
+    -- Move mouse over G sector (1 o'clock) while dragging
+    env.mouse_x = 100 + 210 + 135 * math.cos(-math.pi * 0.5 + math.pi / 6.0)
+    env.mouse_y = 100 + 250 + 135 * math.sin(-math.pi * 0.5 + math.pi / 6.0)
+    st.show_circle_of_fifths_modal = true
+    CircleOfFifthsModal.render(ctx, st, MidiService)
+    assert_true(st._cof_drag_payload ~= nil, "Drag payload remains active while mouse is held down")
+    assert_eq(st._cof_drag_payload.label, "C", "Dragging C across G sector preserves C in _cof_drag_payload (never overwritten by G)")
+    assert_eq(st._cof_drag_payload.sector_idx, 1, "Dragged sector_idx stays locked at 1 (C)")
+    env.mouse_down[0] = false
+    st._cof_drag_payload = nil
+    st.show_circle_of_fifths_modal = false
+
     -- 7. Verify Melodic Pathfinder Key Signature integration (Major & Minor keys via KeySignatureService)
     local MelodyPathfinderService = require("services.melody_pathfinder_service")
     local KeySignatureService = require("services.key_signature_service")
