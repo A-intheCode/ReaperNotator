@@ -181,7 +181,7 @@ local all_modules = {
     "services.quantize_service", "services.reaticulate_parser", "services.record_quantize_service",
     "services.rehearsal_mark_service", "services.repeat_service", "services.scale_service",
     "services.selection_service", "services.shortcut_manager", "services.slur_service",
-    "services.tempo_service", "services.text_item_service",
+    "services.tempo_service", "services.text_item_service", "services.undo_state_service",
     -- Rendering (7)
     "rendering.canvas_context_menus", "rendering.canvas_decorations",
     "rendering.canvas_pedal_renderer", "rendering.engraver", "rendering.font_manager",
@@ -2079,6 +2079,393 @@ run_test("Circle of Fifths Modal & Global Palette + MIDI Keyboard Step Input wit
     reaper.SetEditCurPos(0.0, false, false)
     KeySignatureService.set_project_time_sig(st, 4, 4)
     st.show_key_signatures = false
+end)
+
+run_test("Regression v2.51.1: Consistent Undo/Redo for Slurs, Repeat Bar Marks, Hairpins & Reset of Consecutive Undo Counter", function()
+    local st, env, trk1, item1, take1, project_tracks, fonts = setup_rich_mock_project()
+    local MidiService = require("services.midi_service")
+    local SlurService = require("services.slur_service")
+    local RepeatService = require("services.repeat_service")
+    local HairpinService = require("services.hairpin_service")
+    local KeyboardHandler = require("input.keyboard_handler")
+    local ShortcutManager = require("services.shortcut_manager")
+    ShortcutManager.init()
+    local ctx = reaper.ImGui_CreateContext("undo_redo_test")
+    local track1_guid = reaper.GetTrackGUID(trk1)
+
+    local function clone_list(t)
+        local c = {}
+        for i, v in ipairs(t or {}) do
+            local row = {}
+            for k, val in pairs(v) do row[k] = val end
+            c[i] = row
+        end
+        return c
+    end
+
+    st:clear_selection()
+    st.user_slurs = {}
+    st.user_ties = {}
+    st.repeat_marks = {}
+    st.hairpins = {}
+    take1.text_evts = {}
+    SlurService.save_slurs(st)
+    RepeatService.save_repeat_marks(st)
+    HairpinService.save_hairpins(st)
+
+    -- 1. Verify Slur creation records ProjExtState + take Type-15 events inside a single Undo block so Undo/Redo restores state.user_slurs
+    local _, slurs_before = reaper.GetProjExtState(0, "REAPER_Notator", "user_slurs")
+    local text_evts_before_slur = clone_list(take1.text_evts)
+    local Note = require("classes.note")
+    local n1 = Note.new({ idx = 0, start_qn = 0.0, end_qn = 1.0, dur_qn = 1.0, pitch = 60, vel = 90, chan = 0, take = take1, item = item1, track = trk1 })
+    local n2 = Note.new({ idx = 1, start_qn = 1.0, end_qn = 2.0, dur_qn = 1.0, pitch = 64, vel = 90, chan = 0, take = take1, item = item1, track = trk1 })
+    st:select_note(n1)
+    st:toggle_note_selection(n2)
+    local cnt_before_slur = reaper.GetProjectStateChangeCount(0)
+    SlurService.toggle_slur(st)
+    local cnt_after_slur = reaper.GetProjectStateChangeCount(0)
+    assert_eq(#st.user_slurs, 1, "Slur created in state.user_slurs")
+    assert_true(cnt_after_slur > cnt_before_slur, "toggle_slur committed an Undo block")
+    local _, slurs_after = reaper.GetProjExtState(0, "REAPER_Notator", "user_slurs")
+    local text_evts_after_slur = clone_list(take1.text_evts)
+    assert_true(slurs_after ~= slurs_before and slurs_after ~= "", "user_slurs saved in ProjExtState inside Undo block")
+
+    -- Simulate REAPER Undo restoring ProjExtState + take1.text_evts to before-slur state and calling reload_score_from_project()
+    reaper.SetProjExtState(0, "REAPER_Notator", "user_slurs", slurs_before or "")
+    take1.text_evts = clone_list(text_evts_before_slur)
+    local cnt_before_reload = reaper.GetProjectStateChangeCount(0)
+    st:reload_score_from_project()
+    local cnt_after_reload = reaper.GetProjectStateChangeCount(0)
+    assert_eq(#st.user_slurs, 0, "state:reload_score_from_project() removes undone slur from state.user_slurs")
+    assert_eq(cnt_after_reload, cnt_before_reload, "reload_score_from_project() is strictly read-only (never dirties Redo stack)")
+
+    -- Simulate REAPER Redo restoring ProjExtState + take1.text_evts to after-slur state
+    reaper.SetProjExtState(0, "REAPER_Notator", "user_slurs", slurs_after)
+    take1.text_evts = clone_list(text_evts_after_slur)
+    st:reload_score_from_project()
+    assert_eq(#st.user_slurs, 1, "state:reload_score_from_project() restores redone slur in state.user_slurs")
+
+    -- 2. Verify Repeat Bar Mark creation & cache invalidation across Undo/Redo
+    local _, rep_before = reaper.GetProjExtState(0, "REAPER_Notator", "repeat_marks")
+    local text_evts_before_rep = clone_list(take1.text_evts)
+    local cnt_before_rep = reaper.GetProjectStateChangeCount(0)
+    RepeatService.toggle_repeat_mark(st, trk1, 1)
+    local cnt_after_rep = reaper.GetProjectStateChangeCount(0)
+    assert_true(RepeatService.has_repeat_mark(st, track1_guid, 1), "Repeat Bar Mark exists at measure 1")
+    assert_true(cnt_after_rep > cnt_before_rep, "toggle_repeat_mark always commits an Undo block")
+    local _, rep_after = reaper.GetProjExtState(0, "REAPER_Notator", "repeat_marks")
+    assert_true(rep_after ~= rep_before and rep_after ~= "", "repeat_marks saved in ProjExtState inside Undo block")
+
+    -- Simulate REAPER Undo of Repeat Bar Mark
+    reaper.SetProjExtState(0, "REAPER_Notator", "repeat_marks", rep_before or "")
+    take1.text_evts = clone_list(text_evts_before_rep)
+    st:reload_score_from_project()
+    assert_true(not RepeatService.has_repeat_mark(st, track1_guid, 1), "Undone Repeat Bar Mark immediately disappears (O(1) _repeat_marks_map cache invalidated)")
+
+    -- 3. Verify _consecutive_undo_steps resets when Undo_CanRedo2(0) is empty (after any new action)
+    st.max_undo_steps = 50
+    st._consecutive_undo_steps = 50 -- Pretend user previously hit the 50-step consecutive undo limit
+    -- Now user performs a new action -> REAPER's Redo history is empty (Undo_CanRedo2(0) returns nil/"")
+    env.active_keys_pressed[reaper.ImGui_Key_Z()] = true
+    env.key_mods = reaper.ImGui_Mod_Ctrl()
+    KeyboardHandler.handle(ctx, st, MidiService)
+    env.active_keys_pressed[reaper.ImGui_Key_Z()] = false
+    env.key_mods = 0
+    assert_true(not (st.status_msg or ""):find("Maximum undo limit"), "Undo after a new action never triggers 'Maximum undo limit reached'")
+    assert_eq(st._consecutive_undo_steps, 1, "_consecutive_undo_steps reset to 0 and incremented to 1 for the fresh undo")
+
+    -- 4. Verify Hairpin creation, resize, and Undo never duplicates hairpins even if stale NOTATOR_HAIRPIN events exist in take
+    st.hairpins = {}
+    st.selected_hairpin = nil
+    st.selected_hairpins = {}
+    take1.text_evts = {}
+    HairpinService.save_hairpins(st)
+    local _, hp_proj_0 = reaper.GetProjExtState(0, "REAPER_Notator", "hairpins")
+
+    local hp1 = HairpinService.create_hairpin(st, track1_guid, "crescendo", 7.0, 12.0, nil, nil, MidiService, st.active_tracks_cache)
+    assert_true(hp1 ~= nil, "Hairpin created")
+    assert_eq(#st.hairpins, 1, "1 hairpin in state.hairpins")
+    assert_eq(st.selected_hairpin.id, hp1.id, "Created hairpin is selected")
+    local _, hp_proj_1 = reaper.GetProjExtState(0, "REAPER_Notator", "hairpins")
+
+    -- Inject a stale/conflicting NOTATOR_HAIRPIN event into take1 at the same start_qn (7.0) with a different id & end_qn (9.0)
+    -- to simulate an out-of-sync take event after Undo, and verify neither load_hairpins nor parse_notation_event duplicates it!
+    table.insert(take1.text_evts, {
+        selected = false, muted = false,
+        ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take1, 7.0) + 0.5),
+        type = 15,
+        msg = "NOTATOR_HAIRPIN|hp_stale_dup|crescendo|7.0000|9.0000|auto"
+    })
+    local ScoreCanvas = require("rendering.score_canvas")
+    reaper.SetProjExtState(0, "REAPER_Notator", "hairpins", hp_proj_1)
+    st:reload_score_from_project()
+    MidiService.invalidate_cache()
+    ScoreCanvas.render(ctx, st, fonts, project_tracks, MidiService)
+    assert_eq(#st.hairpins, 1, "Hairpin never duplicated during Undo/Redo reload or MidiService take scan")
+    assert_eq(st.hairpins[1].id, hp1.id, "Authoritative hairpin preserved")
+    assert_true(st.selected_hairpin == st.hairpins[1], "selected_hairpin reconciled to reloaded hairpin instance")
+
+    -- Simulate full Undo of hairpin creation back to empty state
+    reaper.SetProjExtState(0, "REAPER_Notator", "hairpins", hp_proj_0 or "")
+    st:reload_score_from_project()
+    MidiService.invalidate_cache()
+    ScoreCanvas.render(ctx, st, fonts, project_tracks, MidiService)
+    assert_eq(#st.hairpins, 0, "Undone hairpin completely removed and not resurrected from take")
+    assert_eq(st.selected_hairpin, nil, "selected_hairpin cleared when undone hairpin no longer exists")
+end)
+
+run_test("UndoStateService: Real Ctrl+Z / Ctrl+Y Canvas Sync for Hairpins, Pedals, Dynamic Texts, Tempo Markers & Octave Lines", function()
+    local st, env, trk1, item1, take1, project_tracks, fonts = setup_rich_mock_project()
+    local UndoStateService = require("services.undo_state_service")
+    local MidiService = require("services.midi_service")
+    local HairpinService = require("services.hairpin_service")
+    local PedalService = require("services.pedal_service")
+    local DynamicTextService = require("services.dynamic_text_service")
+    local TempoService = require("services.tempo_service")
+    local OctaveService = require("services.octave_service")
+    local KeyboardHandler = require("input.keyboard_handler")
+    local ShortcutManager = require("services.shortcut_manager")
+    ShortcutManager.init()
+
+    -- Install UndoStateService hooks on the current reaper mock table
+    UndoStateService.install()
+    local ctx = reaper.ImGui_CreateContext("undo_state_service_test")
+    local track1_guid = reaper.GetTrackGUID(trk1)
+
+    -- Reset all score lists & persist initial baseline
+    st.hairpins = {}
+    st.pedal_marks = {}
+    st.dynamic_texts = {}
+    st.tempo_markers = {}
+    st.octave_lines = {}
+    HairpinService.save_hairpins(st)
+    PedalService.save_pedals(st)
+    DynamicTextService.save_dynamic_texts(st)
+    TempoService.save_markers(st)
+    OctaveService.save_lines(st)
+    UndoStateService.init_from_project()
+
+    local function press_undo()
+        env.active_keys_pressed[reaper.ImGui_Key_Z()] = true
+        env.key_mods = reaper.ImGui_Mod_Ctrl()
+        KeyboardHandler.handle(ctx, st, MidiService)
+        env.active_keys_pressed[reaper.ImGui_Key_Z()] = false
+        env.key_mods = 0
+    end
+
+    local function press_redo()
+        env.active_keys_pressed[reaper.ImGui_Key_Y()] = true
+        env.key_mods = reaper.ImGui_Mod_Ctrl()
+        KeyboardHandler.handle(ctx, st, MidiService)
+        env.active_keys_pressed[reaper.ImGui_Key_Y()] = false
+        env.key_mods = 0
+    end
+
+    -- Step 1: Create Hairpin (7.0 .. 11.0 QN)
+    local hp = HairpinService.create_hairpin(st, track1_guid, "crescendo", 7.0, 11.0, nil, nil, MidiService, st.active_tracks_cache)
+    assert_eq(#st.hairpins, 1, "Step 1: 1 Hairpin created")
+    assert_eq(st.hairpins[1].end_qn, 11.0, "Step 1: Hairpin end_qn is 11.0")
+
+    -- Step 2: Resize Hairpin (7.0 .. 14.0 QN) as mouse_handler does inside Undo block
+    reaper.Undo_BeginBlock2(0)
+    hp.end_qn = 14.0
+    HairpinService.save_hairpins(st)
+    reaper.Undo_EndBlock2(0, "Move/Resize Hairpin", -1)
+    assert_eq(st.hairpins[1].end_qn, 14.0, "Step 2: Hairpin resized to 14.0")
+
+    -- Step 3: Create Sustain Pedal (0.0 .. 4.0 QN)
+    local ped = PedalService.create_pedal(st, track1_guid, 0.0, 4.0, "line", MidiService, st.active_tracks_cache)
+    assert_eq(#st.pedal_marks, 1, "Step 3: 1 Pedal created")
+
+    -- Step 4: Create Dynamic Text 'cresc.' (2.0 .. 5.0 QN)
+    local dt = DynamicTextService.create_dynamic_text(st, track1_guid, "crescendo", "cresc.", 2.0, 5.0, "dashed", "linear", nil, nil, MidiService, st.active_tracks_cache)
+    assert_eq(#st.dynamic_texts, 1, "Step 4: 1 Dynamic Text (cresc.) created")
+
+    -- Step 5: Create Tempo Marker (Allegro 132 BPM at 4.0 QN)
+    local tm = TempoService.add_tempo_marker(st, { start_qn = 4.0, label = "Allegro", bpm = 132, force_new = true })
+    assert_eq(#st.tempo_markers, 1, "Step 5: 1 Tempo Marker created")
+
+    -- Step 6: Create Octave Line 8va (0.0 .. 4.0 QN)
+    local ol = OctaveService.add_octave_line(st, track1_guid, "8va", MidiService, st.active_tracks_cache, 0.0, 4.0)
+    assert_eq(#st.octave_lines, 1, "Step 6: 1 Octave Line created")
+
+    -- Now press Ctrl+Z 6 times and verify EVERY single canvas element reverts step by step!
+    press_undo() -- Undo Step 6 (Octave Line)
+    assert_eq(#st.octave_lines, 0, "Undo #1 removes Octave Line from Canvas")
+    assert_eq(#st.tempo_markers, 1, "Undo #1 keeps Tempo Marker")
+
+    press_undo() -- Undo Step 5 (Tempo Marker)
+    assert_eq(#st.tempo_markers, 0, "Undo #2 removes Tempo Marker from Canvas")
+    assert_eq(#st.dynamic_texts, 1, "Undo #2 keeps Dynamic Text")
+
+    press_undo() -- Undo Step 4 (Dynamic Text cresc.)
+    assert_eq(#st.dynamic_texts, 0, "Undo #3 removes Dynamic Text (cresc.) from Canvas")
+    assert_eq(#st.pedal_marks, 1, "Undo #3 keeps Pedal")
+
+    press_undo() -- Undo Step 3 (Sustain Pedal)
+    assert_eq(#st.pedal_marks, 0, "Undo #4 removes Sustain Pedal from Canvas")
+    assert_eq(#st.hairpins, 1, "Undo #4 keeps Hairpin")
+    assert_eq(st.hairpins[1].end_qn, 14.0, "Undo #4 Hairpin still at resized 14.0 QN")
+
+    press_undo() -- Undo Step 2 (Hairpin resize 14.0 -> 11.0)
+    assert_eq(#st.hairpins, 1, "Undo #5 keeps Hairpin instance")
+    assert_eq(st.hairpins[1].end_qn, 11.0, "Undo #5 reverts Hairpin end_qn on Canvas back to 11.0")
+    assert_true(st.selected_hairpin == st.hairpins[1], "Undo #5 keeps selected_hairpin pointing to live Canvas hairpin")
+
+    press_undo() -- Undo Step 1 (Hairpin creation)
+    assert_eq(#st.hairpins, 0, "Undo #6 removes Hairpin from Canvas")
+    assert_eq(st.selected_hairpin, nil, "Undo #6 clears selected_hairpin")
+
+    -- Now press Ctrl+Y 6 times and verify Redo restores every element on the Canvas!
+    press_redo() -- Redo Step 1
+    assert_eq(#st.hairpins, 1, "Redo #1 restores Hairpin on Canvas")
+    assert_eq(st.hairpins[1].end_qn, 11.0, "Redo #1 restores Hairpin at 11.0 QN")
+
+    press_redo() -- Redo Step 2
+    assert_eq(st.hairpins[1].end_qn, 14.0, "Redo #2 restores Hairpin resize to 14.0 QN on Canvas")
+
+    press_redo() -- Redo Step 3
+    assert_eq(#st.pedal_marks, 1, "Redo #3 restores Sustain Pedal on Canvas")
+
+    press_redo() -- Redo Step 4
+    assert_eq(#st.dynamic_texts, 1, "Redo #4 restores Dynamic Text (cresc.) on Canvas")
+
+    press_redo() -- Redo Step 5
+    assert_eq(#st.tempo_markers, 1, "Redo #5 restores Tempo Marker on Canvas")
+
+    press_redo() -- Redo Step 6
+    assert_eq(#st.octave_lines, 1, "Redo #6 restores Octave Line on Canvas")
+end)
+
+run_test("UndoStateService & SlurService: Slur Undo removes slur from Canvas and restores take note duration even after non-undo project change", function()
+    local UndoStateService = require("services.undo_state_service")
+    local SlurService = require("services.slur_service")
+    local Note = require("classes.note")
+    local st, env, trk1, item1, take1 = setup_rich_mock_project()
+    UndoStateService.install(reaper)
+
+    st.user_slurs = {}
+    SlurService.save_slurs(st)
+    UndoStateService.init_from_project()
+
+    local tguid = reaper.GetTrackGUID(trk1)
+    local active_td = { { track = trk1, guid = tguid, name = "Violin I" } }
+
+    -- Select first two notes on take1 and create a Slur
+    local _, note_cnt = reaper.MIDI_CountEvts(take1)
+    assert_true(note_cnt >= 2, "take1 has at least 2 notes")
+    local _, _, _, sp1, ep1, ch1, pt1, vel1 = reaper.MIDI_GetNote(take1, 0)
+    local _, _, _, sp2, ep2, ch2, pt2, vel2 = reaper.MIDI_GetNote(take1, 1)
+    local qn1 = reaper.MIDI_GetProjQNFromPPQPos(take1, sp1)
+    local eqn1 = reaper.MIDI_GetProjQNFromPPQPos(take1, ep1)
+    local qn2 = reaper.MIDI_GetProjQNFromPPQPos(take1, sp2)
+    local eqn2 = reaper.MIDI_GetProjQNFromPPQPos(take1, ep2)
+    local orig_dur1 = eqn1 - qn1
+
+    local n1 = Note.new({ take = take1, idx = 0, pitch = pt1, start_qn = qn1, dur_qn = orig_dur1, end_qn = eqn1, chan = ch1, vel = vel1, track = trk1 })
+    local n2 = Note.new({ take = take1, idx = 1, pitch = pt2, start_qn = qn2, dur_qn = eqn2 - qn2, end_qn = eqn2, chan = ch2, vel = vel2, track = trk1 })
+    st:clear_selection()
+    st:select_note(n1)
+    st:select_note(n2)
+
+    SlurService.toggle_slur(st, nil, active_td)
+    assert_eq(#st.user_slurs, 1, "Slur created in st.user_slurs")
+
+    -- Simulate AudioPreview stopping a note (project state change with same Undo_CanUndo2 string)
+    UndoStateService.on_external_new_action("Notator: Add Slur")
+    assert_eq(#UndoStateService.undo_stack, 1, "No duplicate no-op step pushed for same Undo description")
+
+    -- Now perform Undo (even if take still had NOTATOR_SLUR before reload_score_from_project)
+    UndoStateService.on_undo("Notator: Add Slur")
+    st:reload_score_from_project()
+    MidiService.cleanup_orphaned_score_elements(st)
+
+    assert_eq(#st.user_slurs, 0, "Slur removed from st.user_slurs after Undo and cleanup_orphaned_score_elements")
+    local _, _, _, _, ep1_after = reaper.MIDI_GetNote(take1, 0)
+    assert_eq(ep1_after, ep1, "Note 1 original end PPQ restored in take after Slur Undo")
+end)
+
+run_test("PedalService: First pedal at Bar 3.5 and second pedal at Bar 6.5 produce clean CC64 events", function()
+    local PedalService = require("services.pedal_service")
+    local st, env, trk1, item1, take1 = setup_rich_mock_project()
+    local tguid = reaper.GetTrackGUID(trk1)
+    local active_td = { { track = trk1, guid = tguid, name = "Piano" } }
+
+    st.pedal_marks = {}
+    PedalService.create_pedal(st, tguid, 10.0, 19.0, "classic", MidiService, active_td, "bass")
+    PedalService.create_pedal(st, tguid, 22.0, 26.0, "classic", MidiService, active_td, "bass")
+
+    local cc64_evts = {}
+    local _, _, cc_cnt = reaper.MIDI_CountEvts(take1)
+    for j = 0, (cc_cnt or 0) - 1 do
+        local ok, _, _, ppq, _, _, msg2, msg3 = reaper.MIDI_GetCC(take1, j)
+        if ok and msg2 == 64 then
+            table.insert(cc64_evts, { qn = reaper.MIDI_GetProjQNFromPPQPos(take1, ppq), val = msg3 })
+        end
+    end
+    assert_eq(#cc64_evts, 4, "Exactly 4 CC64 events for 2 pedals")
+    assert_true(math.abs(cc64_evts[1].qn - 10.0) <= 0.05, "First pedal CC64=127 starts at QN 10.0 (Bar 3.5)")
+    assert_eq(cc64_evts[1].val, 127, "First pedal starts with CC64=127")
+    assert_true(math.abs(cc64_evts[2].qn - 19.0) <= 0.05, "First pedal CC64=0 ends at QN 19.0")
+    assert_eq(cc64_evts[2].val, 0, "First pedal ends with CC64=0")
+    assert_true(math.abs(cc64_evts[3].qn - 22.0) <= 0.05, "Second pedal CC64=127 starts at QN 22.0")
+    assert_eq(cc64_evts[3].val, 127, "Second pedal starts with CC64=127")
+    assert_true(math.abs(cc64_evts[4].qn - 26.0) <= 0.05, "Second pedal CC64=0 ends at QN 26.0")
+    assert_eq(cc64_evts[4].val, 0, "Second pedal ends with CC64=0")
+end)
+
+run_test("PortamentoService: Single Undo step removes both CC64 Hold Pedal and Canvas Portamento Marker at once", function()
+    local UndoStateService = require("services.undo_state_service")
+    local PortamentoService = require("services.portamento_service")
+    local MidiService = require("services.midi_service")
+    local st, env, trk1, item1, take1 = setup_rich_mock_project()
+    UndoStateService.install(reaper)
+    UndoStateService.init_from_project()
+
+    local tguid = reaper.GetTrackGUID(trk1)
+    local _, _, _, sp1, ep1, ch1, p1 = reaper.MIDI_GetNote(take1, 0)
+    local _, _, _, sp2, ep2, ch2, p2 = reaper.MIDI_GetNote(take1, 1)
+    local sqn1 = reaper.MIDI_GetProjQNFromPPQPos(take1, sp1)
+    local eqn1 = reaper.MIDI_GetProjQNFromPPQPos(take1, ep1)
+    local sqn2 = reaper.MIDI_GetProjQNFromPPQPos(take1, sp2)
+    local eqn2 = reaper.MIDI_GetProjQNFromPPQPos(take1, ep2)
+
+    local n1 = { pitch = p1, start_qn = sqn1, end_qn = eqn1, dur_qn = eqn1 - sqn1, chan = ch1, idx = 0, take = take1, item = item1, track = trk1, track_guid = tguid, key = "n1" }
+    local n2 = { pitch = p2, start_qn = sqn2, end_qn = eqn2, dur_qn = eqn2 - sqn2, chan = ch2, idx = 1, take = take1, item = item1, track = trk1, track_guid = tguid, key = "n2" }
+    st.selected_notes = { n1 = n1, n2 = n2 }
+    st.selected_note = n1
+    local active_td = { { track = trk1, guid = tguid, notes = { n1, n2 } } }
+
+    -- 1. Toggle Portamento ON
+    PortamentoService.toggle_portamento(st, active_td)
+    assert_eq(#st.portamento_marks, 1, "Portamento added to st.portamento_marks")
+
+    local function count_cc64(tk)
+        local cnt = 0
+        local _, _, cc_cnt = reaper.MIDI_CountEvts(tk)
+        for j = 0, (cc_cnt or 0) - 1 do
+            local ok, _, _, _, _, _, msg2, _ = reaper.MIDI_GetCC(tk, j)
+            if ok and msg2 == 64 then cnt = cnt + 1 end
+        end
+        return cnt
+    end
+    assert_eq(count_cc64(take1), 2, "Portamento inserted 2 CC64 events (Hold On + Hold Off) in take")
+
+    -- 2. Single Undo step (Ctrl+Z) + next-frame orphan cleanup / reconciliation
+    UndoStateService.on_undo("Notator: Add Portamento")
+    st:reload_score_from_project()
+    MidiService.cleanup_orphaned_score_elements(st)
+    local committed_extra = UndoStateService.commit_uncommitted_if_idle(nil, st)
+
+    assert_eq(#st.portamento_marks, 0, "Portamento marker removed from canvas on the FIRST Undo step")
+    assert_eq(count_cc64(take1), 0, "CC64 Hold Pedal events removed from take on the FIRST Undo step")
+    assert_true(not committed_extra, "No extra Undo step created after Portamento Undo")
+
+    -- 3. Single Redo step (Ctrl+Y) restores both Portamento marker and CC64 Hold Pedal
+    UndoStateService.on_redo()
+    st:reload_score_from_project()
+    assert_eq(#st.portamento_marks, 1, "Portamento marker restored on Redo")
+    assert_eq(count_cc64(take1), 2, "CC64 Hold Pedal events restored on Redo")
 end)
 
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 81 Modules", function()

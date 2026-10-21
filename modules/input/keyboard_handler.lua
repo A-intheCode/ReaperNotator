@@ -8,6 +8,7 @@ local ShortcutManager = require("services.shortcut_manager")
 local AudioPreview = require("services.audio_preview")
 local Engraver = require("rendering.engraver")
 local has_kss, KeySignatureService = pcall(require, "services.key_signature_service")
+local has_uss, UndoStateService = pcall(require, "services.undo_state_service")
 
 function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dynamics_engine, active_tracks_data)
     -- When a shortcut is being captured in settings, or a text/chord/rehearsal/annotation layer item is being edited, do not execute ANY shortcuts!
@@ -21,7 +22,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     then
         return
     end
-    
+
     -- Modifier key detection (Ctrl, Shift, Alt)
     local is_ctrl = false
     if reaper.APIExists("ImGui_Mod_Ctrl") and reaper.APIExists("ImGui_GetKeyMods") then
@@ -30,7 +31,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     if not is_ctrl and reaper.APIExists("ImGui_Key_LeftCtrl") and reaper.APIExists("ImGui_Key_RightCtrl") then
         is_ctrl = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftCtrl()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightCtrl())
     end
-    
+
     local is_shift = false
     if reaper.APIExists("ImGui_Mod_Shift") and reaper.APIExists("ImGui_GetKeyMods") then
         is_shift = (reaper.ImGui_GetKeyMods(ctx) & reaper.ImGui_Mod_Shift()) ~= 0
@@ -38,7 +39,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     if not is_shift and reaper.APIExists("ImGui_Key_LeftShift") and reaper.APIExists("ImGui_Key_RightShift") then
         is_shift = reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_LeftShift()) or reaper.ImGui_IsKeyDown(ctx, reaper.ImGui_Key_RightShift())
     end
-    
+
     local is_alt = false
     if reaper.APIExists("ImGui_Mod_Alt") and reaper.APIExists("ImGui_GetKeyMods") then
         is_alt = (reaper.ImGui_GetKeyMods(ctx) & reaper.ImGui_Mod_Alt()) ~= 0
@@ -114,20 +115,70 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
 
     -- Undo/Redo
     if is_action_pressed("undo") then
+        local can_undo = reaper.Undo_CanUndo2 and reaper.Undo_CanUndo2(0)
+        local uss_can_undo = has_uss and UndoStateService and UndoStateService.can_undo and UndoStateService.can_undo()
+        if can_undo ~= nil and can_undo == "" and not uss_can_undo then
+            state.status_msg = "Nothing to undo"
+            return
+        end
+        local can_redo_now = reaper.Undo_CanRedo2 and reaper.Undo_CanRedo2(0) or ""
+        local uss_can_redo_now = has_uss and UndoStateService and UndoStateService.can_redo and UndoStateService.can_redo()
+        if can_redo_now == "" and not uss_can_redo_now then
+            state._consecutive_undo_steps = 0
+        end
         local max_steps = state.max_undo_steps or 50
         if max_steps > 0 and (state._consecutive_undo_steps or 0) >= max_steps then
             state.status_msg = string.format("Maximum undo limit (%d steps) reached", max_steps)
             return
         end
         state._consecutive_undo_steps = (state._consecutive_undo_steps or 0) + 1
+        state._in_undo_redo_action = true
         reaper.Main_OnCommand(40029, 0) -- Undo
+        if has_uss and UndoStateService and UndoStateService.on_undo then
+            UndoStateService.on_undo(can_undo)
+        end
+        if state.reload_score_from_project then
+            state:reload_score_from_project()
+        end
+        state._last_can_undo_str = (reaper.Undo_CanUndo2 and reaper.Undo_CanUndo2(0)) or ""
+        state._last_can_redo_str = (reaper.Undo_CanRedo2 and reaper.Undo_CanRedo2(0)) or ""
+        state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0) or state._last_proj_change_cleanup
+        state._last_total_tracks_cleanup = reaper.CountTracks and reaper.CountTracks(0) or state._last_total_tracks_cleanup
+        state._last_arm_sel_sig = midi_service and midi_service._last_sel_sig or state._last_arm_sel_sig
+        state._in_undo_redo_action = false
+        if can_undo and can_undo ~= "" then
+            state.status_msg = "Undo: " .. tostring(can_undo)
+        end
         return
     end
-    if is_action_pressed("redo") then
+    local is_ctrl_y = is_ctrl and not is_shift and not is_alt and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Y())
+    if is_action_pressed("redo") or is_ctrl_y then
+        local can_redo = reaper.Undo_CanRedo2 and reaper.Undo_CanRedo2(0)
+        local uss_can_redo = has_uss and UndoStateService and UndoStateService.can_redo and UndoStateService.can_redo()
+        if can_redo ~= nil and can_redo == "" and not uss_can_redo then
+            state.status_msg = "Nothing to redo"
+            return
+        end
         if state._consecutive_undo_steps and state._consecutive_undo_steps > 0 then
             state._consecutive_undo_steps = state._consecutive_undo_steps - 1
         end
+        state._in_undo_redo_action = true
         reaper.Main_OnCommand(40030, 0) -- Redo
+        if has_uss and UndoStateService and UndoStateService.on_redo then
+            UndoStateService.on_redo()
+        end
+        if state.reload_score_from_project then
+            state:reload_score_from_project()
+        end
+        state._last_can_undo_str = (reaper.Undo_CanUndo2 and reaper.Undo_CanUndo2(0)) or ""
+        state._last_can_redo_str = (reaper.Undo_CanRedo2 and reaper.Undo_CanRedo2(0)) or ""
+        state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount and reaper.GetProjectStateChangeCount(0) or state._last_proj_change_cleanup
+        state._last_total_tracks_cleanup = reaper.CountTracks and reaper.CountTracks(0) or state._last_total_tracks_cleanup
+        state._last_arm_sel_sig = midi_service and midi_service._last_sel_sig or state._last_arm_sel_sig
+        state._in_undo_redo_action = false
+        if can_redo and can_redo ~= "" then
+            state.status_msg = "Redo: " .. tostring(can_redo)
+        end
         return
     end
 
@@ -321,15 +372,15 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     if is_action_pressed("copy") then
         clipboard_service.copy(state, active_tracks_data)
     end
-    
+
     if is_action_pressed("paste") then
         clipboard_service.paste(state, midi_service, active_tracks_data)
     end
-    
+
     if is_action_pressed("cut") then
         clipboard_service.cut(state, midi_service, active_tracks_data)
     end
-    
+
     if is_action_pressed("select_all") then
         state.selected_notes = {}
         state.selected_note = nil
@@ -359,7 +410,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         local SelectionService = package.loaded["services.selection_service"] or require("services.selection_service")
         SelectionService.set_filter_dynamics_only(state, active_tracks_data, midi_service)
     end
-    
+
     -- Delete via Delete / Backspace
     local del_pressed = is_action_pressed("delete")
     if not del_pressed and not is_ctrl and not is_shift and not is_alt then
@@ -466,7 +517,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             return
         end
     end
-    
+
     -- Escape: Clear selection
     if reaper.APIExists("ImGui_Key_Escape") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Escape()) then
         state:clear_selection()
@@ -493,7 +544,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         midi_service.sync_selection_to_reaper(state, active_tracks_data)
         state.status_msg = "Selection cleared"
     end
-    
+
     -- Note selection navigation across timeline & chords (Alt + Arrow keys, Shift + Alt for range extension)
     local nav_right = is_action_pressed("select_next_note") or is_action_pressed("extend_next_note")
         or (is_alt and not is_ctrl and reaper.APIExists("ImGui_Key_RightArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_RightArrow(), false))
@@ -528,7 +579,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
     -- Note duration, moving & pitch via arrow keys
     if state:count_selected_notes() > 0 or state.selected_note then
         local step = state.grid_qn or 0.25
-        
+
         -- Change grid note duration (Shift + arrow keys default)
         if is_action_pressed("lengthen_note") then
             midi_service.delta_selected_duration(state, step)
@@ -549,19 +600,19 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         elseif is_action_pressed("pitch_down") then
             midi_service.transpose_selected(state, -1)
         end
-        
+
         -- Invert / Flip Stem Direction (X)
         if is_action_pressed("invert_stem") or (not is_ctrl and not is_alt and not is_shift and reaper.APIExists("ImGui_Key_X") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_X())) then
             if midi_service and midi_service.invert_selected_notes_stem_direction then
                 midi_service.invert_selected_notes_stem_direction(state, "invert")
             end
         end
-        
+
         -- Cross-Staff Move / Toggle (M or Ctrl+Shift+Up/Down)
         local cross_toggle = is_action_pressed("cross_staff_toggle") or (not is_ctrl and not is_alt and not is_shift and reaper.APIExists("ImGui_Key_M") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_M()))
         local cross_up = is_action_pressed("cross_staff_up") or (is_ctrl and is_shift and not is_alt and reaper.APIExists("ImGui_Key_UpArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_UpArrow()))
         local cross_down = is_action_pressed("cross_staff_down") or (is_ctrl and is_shift and not is_alt and reaper.APIExists("ImGui_Key_DownArrow") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_DownArrow()))
-        
+
         if cross_up then
             if midi_service and midi_service.set_selected_notes_staff then
                 midi_service.set_selected_notes_staff(state, "treble")
@@ -576,7 +627,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             end
         end
     end
-    
+
     -- Number keys for note values (2..7)
     local function set_dur(dval, dlbl)
         if state.set_active_duration then
@@ -594,7 +645,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         end
         state.status_msg = "Note value: " .. dlbl .. (state.sync_grid_to_note and " (🔗 Grid synced)" or "")
     end
-    
+
     if is_action_pressed("dur_32") then set_dur(0.125, "1/32") end
     if is_action_pressed("dur_16") then set_dur(0.25,  "1/16") end
     if is_action_pressed("dur_8")  then set_dur(0.5,   "1/8")  end
@@ -638,7 +689,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
         state.status_msg = "Grid & Note Duration Linked: " .. (state.sync_grid_to_note and "🔗 ON" or "OFF")
         require("state").save_settings(state)
     end
-    
+
     -- Dotting
     if is_action_pressed("toggle_dot") then
         state.is_dotted = not state.is_dotted
@@ -651,7 +702,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             end
         end
     end
-    
+
     -- Accidentals (♭ Flat, ♮ Natural, ♯ Sharp)
     local is_flat = is_action_pressed("acc_flat")
     if not is_flat and not is_ctrl and not is_alt and not is_shift then
@@ -667,7 +718,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             state.status_msg = "Accidental: " .. (state.accidental == -1 and "♭ Flat" or "♮ Natural")
         end
     end
-    
+
     local is_natural = is_action_pressed("acc_natural")
     if not is_natural and not is_ctrl and not is_alt and not is_shift then
         if reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_0()) or (reaper.APIExists("ImGui_Key_Keypad0") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Keypad0())) then
@@ -687,7 +738,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             end
         end
     end
-    
+
     local is_sharp = is_action_pressed("acc_sharp")
     if not is_sharp and not is_ctrl and not is_alt and not is_shift then
         if reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_Equal()) or (reaper.APIExists("ImGui_Key_KeypadAdd") and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_KeypadAdd())) then
@@ -702,7 +753,7 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             state.status_msg = "Accidental: " .. (state.accidental == 1 and "♯ Sharp" or "♮ Natural")
         end
     end
-    
+
     -- Text Items (Ctrl + T: New Text Item at cursor position)
     if is_action_pressed("new_text_item") or (is_ctrl and not is_shift and not is_alt and reaper.ImGui_IsKeyPressed(ctx, reaper.ImGui_Key_T())) then
         local cur_time = reaper.GetCursorPosition()

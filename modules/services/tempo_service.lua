@@ -8,10 +8,12 @@ local TempoMarker = require("classes.tempo_marker")
 
 local TempoService = {}
 
-function TempoService.load_markers(state)
+function TempoService.load_markers(state, read_only)
+    local prev_sel_id = state.selected_tempo_marker and state.selected_tempo_marker.id or nil
     state.tempo_markers = {}
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "tempo_markers")
-    if raw and raw ~= "" then
+    local has_proj_ext = (raw and raw ~= "")
+    if has_proj_ext then
         local seen_tm = {}
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
@@ -41,10 +43,10 @@ function TempoService.load_markers(state)
             end
         end
     end
-    
+
     -- If no markers were stored in Notator yet:
-    -- Initialize from existing REAPER tempo markers or project tempo
-    if #state.tempo_markers == 0 then
+    -- Initialize from existing REAPER tempo markers or project tempo (only on initial load, not read-only Undo/Redo reload)
+    if #state.tempo_markers == 0 and not read_only then
         local cnt = reaper.CountTempoTimeSigMarkers(0)
         if cnt > 0 then
             for i = 0, cnt - 1 do
@@ -75,7 +77,7 @@ function TempoService.load_markers(state)
             table.insert(state.tempo_markers, tm)
         end
     end
-    
+
     -- Only if an absolute starting marker is very close to beginning (<= 0.5 QN),
     -- snap it exactly to the beginning at measure 1.1 (0.0):
     for _, tm in ipairs(state.tempo_markers or {}) do
@@ -85,9 +87,27 @@ function TempoService.load_markers(state)
             break
         end
     end
-    
-    -- Synchronize all markers with REAPER on load
-    TempoService.sync_all_to_reaper(state)
+
+    -- Synchronize all markers with REAPER on load (skip during read-only Undo/Redo reload)
+    if not read_only then
+        if not has_proj_ext and #state.tempo_markers > 0 then
+            TempoService.save_markers(state)
+        end
+        TempoService.sync_all_to_reaper(state)
+    end
+
+    if prev_sel_id then
+        local found = nil
+        for _, tm in ipairs(state.tempo_markers) do
+            if tm.id == prev_sel_id then
+                found = tm
+                break
+            end
+        end
+        state.selected_tempo_marker = found
+    else
+        state.selected_tempo_marker = nil
+    end
 end
 
 function TempoService.save_markers(state)
@@ -129,7 +149,7 @@ function TempoService.get_tempo_at_qn(state, target_qn, exclude_tm)
         local _, _, bpm = reaper.TimeMap_GetTimeSigAtTime(0, t_pos)
         return (bpm and bpm > 0) and bpm or (reaper.Master_GetTempo() or 120)
     end
-    
+
     local markers = {}
     for _, tm in ipairs(state.tempo_markers) do
         if tm ~= exclude_tm then
@@ -145,7 +165,7 @@ function TempoService.get_tempo_at_qn(state, target_qn, exclude_tm)
         end
         return false
     end)
-    
+
     local effective_bpm = 120
     for _, tm in ipairs(markers) do
         if tm.type == "absolute" and tm.bpm and tm.bpm > 0 then
@@ -153,7 +173,7 @@ function TempoService.get_tempo_at_qn(state, target_qn, exclude_tm)
             break
         end
     end
-    
+
     for _, tm in ipairs(markers) do
         if tm.type == "absolute" then
             if tm.start_qn <= target_qn + 0.01 then
@@ -173,7 +193,7 @@ function TempoService.get_tempo_at_qn(state, target_qn, exclude_tm)
             end
         end
     end
-    
+
     return math.max(20, math.min(360, math.floor(effective_bpm + 0.5)))
 end
 
@@ -207,7 +227,7 @@ function TempoService.calc_gradual_target_bpm(term, modifier, start_bpm)
     elseif modifier == "molto" then
         factor = 0.35
     end
-    
+
     local target = is_accel and (start_bpm * (1.0 + factor)) or (start_bpm * (1.0 - factor))
     return math.max(30, math.min(360, math.floor(target + 0.5)))
 end
@@ -272,10 +292,11 @@ end
 function TempoService.add_tempo_marker(state, data)
     state.tempo_markers = state.tempo_markers or {}
     local bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or 4.0
-    
+
     -- If a tempo marker is currently focused/selected and no note is selected, update it directly (unless force_new is true)
     local m_type = data.type or "absolute"
     if not data.force_new and state.selected_tempo_marker and not state.selected_note and (data.type == nil or data.type == state.selected_tempo_marker.type) then
+        reaper.Undo_BeginBlock2(0)
         local tm = state.selected_tempo_marker
         tm.bpm = data.bpm or tm.bpm
         tm.label = (data.label ~= nil) and data.label or tm.label
@@ -284,7 +305,7 @@ function TempoService.add_tempo_marker(state, data)
         tm.custom_bpm_only = (data.custom_bpm_only == true) or (tm.label == "")
         TempoService.save_markers(state)
         TempoService.sync_all_to_reaper(state)
-        reaper.Undo_OnStateChange2(0, "Notator: Update Tempo Marker")
+        reaper.Undo_EndBlock2(0, "Notator: Update Tempo Marker", -1)
         state.status_msg = string.format("Tempo '%s' updated & synced to REAPER tempo map", tm:get_display_text())
         return tm
     end
@@ -298,12 +319,12 @@ function TempoService.add_tempo_marker(state, data)
         local cursor_pos = reaper.GetCursorPosition()
         start_qn = reaper.TimeMap2_timeToQN(0, cursor_pos)
     end
-    
+
     if data.snap ~= false and state.grid_qn and state.grid_qn > 0.001 then
         start_qn = math.floor((start_qn / state.grid_qn) + 0.5) * state.grid_qn
     end
     if start_qn < 0 then start_qn = 0 end
-    
+
     local has_initial_marker = false
     for _, em in ipairs(state.tempo_markers) do
         if em.start_qn <= 0.05 then
@@ -311,13 +332,13 @@ function TempoService.add_tempo_marker(state, data)
             break
         end
     end
-    
+
     if not data.start_qn and not state.selected_note and not has_initial_marker and start_qn <= 0.5 then
         start_qn = 0.0
     end
-    
+
     local end_qn = start_qn + (data.dur_qn or bpi)
-    
+
     -- Determine effective tempo at start point from Notator state:
     local context_bpm = TempoService.get_tempo_at_qn(state, start_qn)
     local bpm = (m_type == "absolute") and (data.bpm or context_bpm) or context_bpm
@@ -325,7 +346,7 @@ function TempoService.add_tempo_marker(state, data)
     if m_type == "gradual" then
         target_bpm = data.target_bpm or TempoService.calc_gradual_target_bpm(data.label or "accel.", data.modifier or "", bpm)
     end
-    
+
     -- If a marker of the same type exists at this position: overwrite it directly
     local existing_tm = nil
     for _, em in ipairs(state.tempo_markers) do
@@ -334,7 +355,8 @@ function TempoService.add_tempo_marker(state, data)
             break
         end
     end
-    
+
+    reaper.Undo_BeginBlock2(0)
     local tm = existing_tm
     if tm then
         tm.bpm = bpm
@@ -355,21 +377,22 @@ function TempoService.add_tempo_marker(state, data)
         })
         table.insert(state.tempo_markers, tm)
     end
-    
+
     state.selected_tempo_marker = tm
     TempoService.save_markers(state)
-    
+
     -- Synchronize completely and consistently with REAPER
     TempoService.sync_all_to_reaper(state)
-    reaper.Undo_OnStateChange2(0, "Notator: Add Tempo Marker")
-    
+    reaper.Undo_EndBlock2(0, "Notator: Add Tempo Marker", -1)
+
     state.status_msg = string.format("Tempo '%s' set & synced to REAPER tempo map", tm:get_display_text())
     return tm
 end
 
 function TempoService.set_custom_bpm(state, tm, new_bpm)
     if not tm then return end
-    
+
+    reaper.Undo_BeginBlock2(0)
     if tm.type == "gradual" then
         tm.target_bpm = tonumber(new_bpm) or tm.target_bpm
         tm.custom_target_bpm = true
@@ -380,10 +403,10 @@ function TempoService.set_custom_bpm(state, tm, new_bpm)
         tm.custom_bpm_only = true
         state.status_msg = string.format("Tempo overwritten to ♩ = %d", math.floor(tm.bpm))
     end
-    
+
     TempoService.save_markers(state)
     TempoService.sync_all_to_reaper(state)
-    reaper.Undo_OnStateChange2(0, "Notator: Adjust Tempo")
+    reaper.Undo_EndBlock2(0, "Notator: Adjust Tempo", -1)
 end
 
 function TempoService.delete_tempo_marker(state, target_tm)
@@ -391,6 +414,7 @@ function TempoService.delete_tempo_marker(state, target_tm)
     local sel_id = target_tm.id
     for idx, tm in ipairs(state.tempo_markers) do
         if tm.id == sel_id then
+            reaper.Undo_BeginBlock2(0)
             table.remove(state.tempo_markers, idx)
             if state.selected_tempo_marker and state.selected_tempo_marker.id == sel_id then
                 state.selected_tempo_marker = nil
@@ -403,7 +427,7 @@ function TempoService.delete_tempo_marker(state, target_tm)
             end
             TempoService.save_markers(state)
             TempoService.sync_all_to_reaper(state)
-            reaper.Undo_OnStateChange2(0, "Notator: Delete Tempo Marker")
+            reaper.Undo_EndBlock2(0, "Notator: Delete Tempo Marker", -1)
             state.status_msg = "Tempo marker and REAPER marker deleted"
             return true
         end
@@ -419,7 +443,7 @@ end
 -- Links consecutive tempi seamlessly and guarantees clean interpolation without ghost points
 function TempoService.sync_all_to_reaper(state)
     if not state or not state.tempo_markers then return end
-    
+
     -- 1. Sort Notator markers chronologically by start_qn
     table.sort(state.tempo_markers, function(a, b)
         if math.abs(a.start_qn - b.start_qn) > 0.001 then
@@ -430,10 +454,10 @@ function TempoService.sync_all_to_reaper(state)
         end
         return false
     end)
-    
+
     -- 2. Determine target musical tempo points for REAPER
     local target_points = {}
-    
+
     -- Ensure a starting point exists at 0.0
     local has_start_0 = false
     for _, tm in ipairs(state.tempo_markers) do
@@ -455,7 +479,7 @@ function TempoService.sync_all_to_reaper(state)
             linear = false
         })
     end
-    
+
     -- Add all absolute markers
     for _, tm in ipairs(state.tempo_markers) do
         if tm.type == "absolute" and tm.bpm and tm.bpm > 0 then
@@ -467,13 +491,13 @@ function TempoService.sync_all_to_reaper(state)
             })
         end
     end
-    
+
     -- Add / link all gradual markers
     for _, tm in ipairs(state.tempo_markers) do
         if tm.type == "gradual" then
             tm.bpm = TempoService.get_tempo_at_qn(state, tm.start_qn, tm)
             local s_bpm = tm.bpm or 120
-            
+
             -- IMPORTANT: If an absolute marker follows this gradual marker (e.g. Andante = 80),
             -- the ramp should interpolate seamlessly to that target tempo!
             if not tm.custom_target_bpm then
@@ -491,7 +515,7 @@ function TempoService.sync_all_to_reaper(state)
                 end
             end
             local t_bpm = tm.target_bpm or (s_bpm * 0.8)
-            
+
             -- Ramp start point
             local found_start = false
             for _, pt in ipairs(target_points) do
@@ -508,7 +532,7 @@ function TempoService.sync_all_to_reaper(state)
                     linear = true
                 })
             end
-            
+
             -- Ramp end point
             local found_end = false
             for _, pt in ipairs(target_points) do
@@ -526,7 +550,7 @@ function TempoService.sync_all_to_reaper(state)
             end
         end
     end
-    
+
     -- Incorporate score-wide fermata tempo dips (Playback hold & curve)
     if state.fermatas and #state.fermatas > 0 then
         table.sort(target_points, function(a, b) return a.qn < b.qn end)
@@ -566,7 +590,7 @@ function TempoService.sync_all_to_reaper(state)
     table.sort(target_points, function(a, b)
         return a.qn < b.qn
     end)
-    
+
     -- Merge points at practically identical positions
     local merged_points = {}
     for _, pt in ipairs(target_points) do
@@ -583,18 +607,18 @@ function TempoService.sync_all_to_reaper(state)
             table.insert(merged_points, pt)
         end
     end
-    
+
     -- 3. Synchronize into REAPER timeline (deterministic without ghost points)
     local cur_ts_num, cur_ts_den = reaper.TimeMap_GetTimeSigAtTime(0, 0.0)
     local bpi = (state.time_sig_num and state.time_sig_num > 0) and state.time_sig_num or (cur_ts_num or 4)
     local bpi_d = (state.time_sig_denom and state.time_sig_denom > 0) and state.time_sig_denom or (cur_ts_den or 4)
-    
+
     local pt0 = merged_points[1]
     local bpm0 = pt0 and pt0.bpm or 120
     local lin0 = pt0 and (pt0.linear == true) or false
 
     local cnt_before = reaper.CountTempoTimeSigMarkers(0)
-    
+
     -- Preserve any existing REAPER time signatures at markers > 0 (stored by QN so tempo changes never shift bar positions)
     local existing_time_sigs = {}
     local function add_time_sig_at_qn(qn_val, num_val, den_val)
@@ -689,7 +713,7 @@ function TempoService.sync_all_to_reaper(state)
     else
         reaper.SetTempoTimeSigMarker(0, -1, 0.0, -1, -1, bpm0, bpi, bpi_d, lin0)
     end
-    
+
     -- Notify REAPER transport and control surfaces immediately
     if reaper.CSurf_OnTempoChange then
         reaper.CSurf_OnTempoChange(bpm0)
@@ -697,14 +721,14 @@ function TempoService.sync_all_to_reaper(state)
     if reaper.Master_SetTempo then
         reaper.Master_SetTempo(bpm0, true)
     end
-    
+
     -- Remove all old markers above index 0 completely to eliminate ghost points during dragging:
     local cnt_after_pt0 = reaper.CountTempoTimeSigMarkers(0)
     for i = cnt_after_pt0 - 1, 1, -1 do
         reaper.DeleteTempoTimeSigMarker(0, i)
     end
     if reaper.UpdateTimeline then reaper.UpdateTimeline() end
-    
+
     -- Merge any standalone time signature changes into merged_points so all markers are created in strict QN order
     for _, ts in ipairs(existing_time_sigs) do
         local matched = false
@@ -741,7 +765,7 @@ function TempoService.sync_all_to_reaper(state)
             if reaper.UpdateTimeline then reaper.UpdateTimeline() end
         end
     end
-    
+
     reaper.UpdateTimeline()
     reaper.UpdateArrange()
     reaper.TrackList_AdjustWindows(false)

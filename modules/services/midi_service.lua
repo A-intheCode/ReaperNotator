@@ -3176,6 +3176,7 @@ function MidiService.delta_selected_duration(state, delta_qn)
     reaper.Undo_BeginBlock2(0)
     local affected_takes = {}
     local changed_cnt = 0
+    local take_expanded_notes = nil
     
     for _, sn in ipairs(targets) do
         local take = sn.take or MidiService.get_active_midi_take()
@@ -6776,10 +6777,10 @@ function MidiService.cleanup_orphaned_score_elements(state)
     end
     
     -- 3. Clean pedal marks (CC64)
-    if state.pedals and #state.pedals > 0 then
+    if state.pedal_marks and #state.pedal_marks > 0 then
         local kept_pedals = {}
         local ped_changed = false
-        for _, pm in ipairs(state.pedals) do
+        for _, pm in ipairs(state.pedal_marks) do
             if interval_overlaps_midi(pm.track_guid, pm.start_qn, pm.end_qn or (pm.start_qn + 1.0)) then
                 table.insert(kept_pedals, pm)
             else
@@ -6790,7 +6791,7 @@ function MidiService.cleanup_orphaned_score_elements(state)
             end
         end
         if ped_changed then
-            state.pedals = kept_pedals
+            state.pedal_marks = kept_pedals
             any_changed = true
             local PedalService = package.loaded["services.pedal_service"] or require("services.pedal_service")
             if PedalService and PedalService.save_pedals then

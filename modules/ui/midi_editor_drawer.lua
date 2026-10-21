@@ -1027,15 +1027,20 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                     end
                 else
                     -- Build continuous curve polyline
+                    local is_switch_cc = (cur_cc_num >= 64 and cur_cc_num <= 69)
                     local curve_pts = {}
                     if cc_evts[1].qn > it_start_qn then
-                        table.insert(curve_pts, { x = qn_to_x(it_start_qn), y = val_to_y(cc_evts[1].val), qn = it_start_qn, val = cc_evts[1].val, shape = cc_evts[1].shape, is_edge = true })
+                        local init_val = is_switch_cc and 0 or cc_evts[1].val
+                        local init_shape = is_switch_cc and 0 or cc_evts[1].shape
+                        table.insert(curve_pts, { x = qn_to_x(it_start_qn), y = val_to_y(init_val), qn = it_start_qn, val = init_val, shape = init_shape, is_edge = true })
                     end
                     for _, ev in ipairs(cc_evts) do
-                        table.insert(curve_pts, { x = qn_to_x(ev.qn), y = val_to_y(ev.val), qn = ev.qn, val = ev.val, shape = ev.shape, ev = ev })
+                        local ev_shape = is_switch_cc and 0 or ev.shape
+                        table.insert(curve_pts, { x = qn_to_x(ev.qn), y = val_to_y(ev.val), qn = ev.qn, val = ev.val, shape = ev_shape, ev = ev })
                     end
                     if cc_evts[#cc_evts].qn < it_end_qn then
-                        table.insert(curve_pts, { x = qn_to_x(it_end_qn), y = val_to_y(cc_evts[#cc_evts].val), qn = it_end_qn, val = cc_evts[#cc_evts].val, shape = cc_evts[#cc_evts].shape, is_edge = true })
+                        local end_shape = is_switch_cc and 0 or cc_evts[#cc_evts].shape
+                        table.insert(curve_pts, { x = qn_to_x(it_end_qn), y = val_to_y(cc_evts[#cc_evts].val), qn = it_end_qn, val = cc_evts[#cc_evts].val, shape = end_shape, is_edge = true })
                     end
 
                     -- 1. Fill Area & Outline Curve based on REAPER Event Shapes (Linear vs Square)
@@ -1045,7 +1050,10 @@ function MidiEditorDrawer.render(ctx, state, midi_service, audio_preview, arg5, 
                         local p1 = curve_pts[i]
                         local p2 = curve_pts[i + 1]
                         if not (p1.x < cull_left and p2.x < cull_left) and not (p1.x > cull_right and p2.x > cull_right) then
-                            local p_shape = p1.shape or 1
+                            local p_shape = p1.shape
+                            if p_shape == nil then
+                                p_shape = is_switch_cc and 0 or 1
+                            end
 
                             if p_shape == 0 then
                                 -- Square (Step / Stufe)

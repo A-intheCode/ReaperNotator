@@ -288,6 +288,7 @@ function CanvasContextMenus.render_dynamic_text_popup(ctx, state, midi_service, 
                     local choice_txt = (dt.type == "crescendo") and tmpl.cresc or tmpl.dim
                     local is_sel = (dt.text == choice_txt)
                     if reaper.ImGui_MenuItem(ctx, choice_txt .. " (" .. tmpl.label .. ")", nil, is_sel) then
+                        reaper.Undo_BeginBlock2(0)
                         dt.text = choice_txt
                         if choice_txt:lower():match("dim") or choice_txt:lower():match("decresc") then
                             dt.type = "diminuendo"
@@ -296,6 +297,7 @@ function CanvasContextMenus.render_dynamic_text_popup(ctx, state, midi_service, 
                         end
                         DynamicTextService.save_dynamic_texts(state)
                         DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data)
+                        reaper.Undo_EndBlock2(0, "Notator: Change Dynamic Text Pattern", -1)
                         state.status_msg = string.format("Text pattern changed: '%s'", dt.text)
                     end
                 end
@@ -303,18 +305,22 @@ function CanvasContextMenus.render_dynamic_text_popup(ctx, state, midi_service, 
                 reaper.ImGui_Separator(ctx)
                 if dt.type == "crescendo" then
                     if reaper.ImGui_MenuItem(ctx, "⇄ Switch to 'dim.' (Diminuendo)") then
+                        reaper.Undo_BeginBlock2(0)
                         dt.type = "diminuendo"
                         dt.text = "dim."
                         DynamicTextService.save_dynamic_texts(state)
                         DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data)
+                        reaper.Undo_EndBlock2(0, "Notator: Switch Dynamic Text Direction", -1)
                         state.status_msg = "Direction changed to Diminuendo"
                     end
                 else
                     if reaper.ImGui_MenuItem(ctx, "⇄ Switch to 'cresc.' (Crescendo)") then
+                        reaper.Undo_BeginBlock2(0)
                         dt.type = "crescendo"
                         dt.text = "cresc."
                         DynamicTextService.save_dynamic_texts(state)
                         DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data)
+                        reaper.Undo_EndBlock2(0, "Notator: Switch Dynamic Text Direction", -1)
                         state.status_msg = "Direction changed to Crescendo"
                     end
                 end
@@ -341,8 +347,10 @@ function CanvasContextMenus.render_dynamic_text_popup(ctx, state, midi_service, 
                 for _, lo in ipairs(line_options) do
                     local is_sel = ((dt.line_pattern or "none") == lo.id)
                     if reaper.ImGui_MenuItem(ctx, lo.label, nil, is_sel) then
+                        reaper.Undo_BeginBlock2(0)
                         dt.line_pattern = lo.id
                         DynamicTextService.save_dynamic_texts(state)
+                        reaper.Undo_EndBlock2(0, "Notator: Change Dynamic Text Line Pattern", -1)
                         state.status_msg = string.format("Line pattern changed: %s", lo.label)
                     end
                 end
@@ -368,9 +376,11 @@ function CanvasContextMenus.render_dynamic_text_popup(ctx, state, midi_service, 
                 for _, co in ipairs(curve_options) do
                     local is_sel = ((dt.curve_pattern or "linear") == co.id)
                     if reaper.ImGui_MenuItem(ctx, co.label, nil, is_sel) then
+                        reaper.Undo_BeginBlock2(0)
                         dt.curve_pattern = co.id
                         DynamicTextService.save_dynamic_texts(state)
                         DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data)
+                        reaper.Undo_EndBlock2(0, "Notator: Change Dynamic Text CC Curve", -1)
                         state.status_msg = string.format("CC curve changed: %s", co.label)
                     end
                 end
@@ -448,10 +458,12 @@ function CanvasContextMenus.render_pedal_popup(ctx, state, midi_service, active_
                 }
                 for _, pt in ipairs(pause_types) do
                     if reaper.ImGui_MenuItem(ctx, pt.label) then
+                        reaper.Undo_BeginBlock2(0)
                         for _, p in ipairs(pm.pauses or {}) do
                             p.type = pt.id
                         end
                         PedalService.save_pedals(state)
+                        reaper.Undo_EndBlock2(0, "Notator: Change Pedal Break Style", -1)
                         state.status_msg = string.format("Pedal break symbol changed: %s", pt.label)
                     end
                 end
@@ -476,8 +488,10 @@ function CanvasContextMenus.render_pedal_popup(ctx, state, midi_service, active_
                 for _, st in ipairs(styles) do
                     local is_sel = (pm.style == st.id)
                     if reaper.ImGui_MenuItem(ctx, st.label, nil, is_sel) then
+                        reaper.Undo_BeginBlock2(0)
                         pm.style = st.id
                         PedalService.save_pedals(state)
+                        reaper.Undo_EndBlock2(0, "Notator: Change Pedal Line Style", -1)
                         state.status_msg = string.format("Pedal style changed: %s", st.label)
                     end
                 end
@@ -487,11 +501,13 @@ function CanvasContextMenus.render_pedal_popup(ctx, state, midi_service, active_
             -- 4. CC64 AUTOMATION
             reaper.ImGui_Separator(ctx)
             if reaper.ImGui_MenuItem(ctx, "🎹 Write CC64 to REAPER", nil, pm.apply_cc) then
+                reaper.Undo_BeginBlock2(0)
                 pm.apply_cc = not pm.apply_cc
                 PedalService.save_pedals(state)
                 if pm.apply_cc then
                     PedalService.apply_cc(state, pm, midi_service, active_tracks_data)
                 end
+                reaper.Undo_EndBlock2(0, "Notator: Toggle Pedal CC64", -1)
             end
             if reaper.ImGui_MenuItem(ctx, "🧹 Clean & Resync Pedal CC64") then
                 PedalService.resync_track_cc(state, pm.track_guid, midi_service, active_tracks_data)
@@ -1625,20 +1641,26 @@ function CanvasContextMenus.render_fermata_popup(ctx, state, active_tracks_data)
                 local is_vis = (ferm.playback_mode == "visual_only")
 
                 if reaper.ImGui_MenuItem(ctx, (is_curve and "✓ " or "   ") .. "∿ Smooth Curve (Linear Ramp)") then
+                    reaper.Undo_BeginBlock2(0)
                     ferm.playback_mode = "tempo_curve"
                     FermataService.save_fermatas(state)
                     if TempoService then (TempoService.sync_all_to_reaper or TempoService.sync_to_reaper)(state) end
+                    reaper.Undo_EndBlock2(0, "Notator: Set Fermata Mode (Smooth Curve)", -1)
                 end
                 if reaper.ImGui_MenuItem(ctx, (is_dip and "✓ " or "   ") .. "⎍ Step Hold (Direct Dip)") then
+                    reaper.Undo_BeginBlock2(0)
                     ferm.playback_mode = "tempo_dip"
                     FermataService.save_fermatas(state)
                     if TempoService then (TempoService.sync_all_to_reaper or TempoService.sync_to_reaper)(state) end
+                    reaper.Undo_EndBlock2(0, "Notator: Set Fermata Mode (Step Hold)", -1)
                 end
                 reaper.ImGui_Separator(ctx)
                 if reaper.ImGui_MenuItem(ctx, (is_vis and "✓ " or "   ") .. "👁 Visual Only (No Tempomap slowdown)") then
+                    reaper.Undo_BeginBlock2(0)
                     ferm.playback_mode = "visual_only"
                     FermataService.save_fermatas(state)
                     if TempoService then (TempoService.sync_all_to_reaper or TempoService.sync_to_reaper)(state) end
+                    reaper.Undo_EndBlock2(0, "Notator: Set Fermata Mode (Visual Only)", -1)
                 end
                 reaper.ImGui_EndMenu(ctx)
             end
@@ -1654,10 +1676,12 @@ function CanvasContextMenus.render_fermata_popup(ctx, state, active_tracks_data)
                     local is_cur = (ferm.playback_mode ~= "visual_only") and math.abs(ferm.hold_factor - f.factor) < 0.05
                     local pfx = is_cur and "✓ " or "   "
                     if reaper.ImGui_MenuItem(ctx, pfx .. f.label) then
+                        reaper.Undo_BeginBlock2(0)
                         if ferm.playback_mode == "visual_only" then ferm.playback_mode = "tempo_curve" end
                         ferm.hold_factor = f.factor
                         FermataService.save_fermatas(state)
                         if TempoService then (TempoService.sync_all_to_reaper or TempoService.sync_to_reaper)(state) end
+                        reaper.Undo_EndBlock2(0, "Notator: Change Fermata Hold Factor", -1)
                     end
                 end
                 reaper.ImGui_EndMenu(ctx)
@@ -1706,6 +1730,7 @@ function CanvasContextMenus.render_rehearsal_mark_popup(ctx, state)
                     local is_cur = (rm.type == t.id)
                     local pfx = is_cur and "✓ " or "   "
                     if reaper.ImGui_MenuItem(ctx, pfx .. t.label) then
+                        reaper.Undo_BeginBlock2(0)
                         rm.type = t.id
                         if t.id == "custom" then
                             if not rm.custom_text or rm.custom_text == "" then
@@ -1717,6 +1742,7 @@ function CanvasContextMenus.render_rehearsal_mark_popup(ctx, state)
                         RehearsalMarkService.recompute_labels(state)
                         RehearsalMarkService.save_marks(state)
                         RehearsalMarkService.sync_takes(state)
+                        reaper.Undo_EndBlock2(0, "Notator: Change Rehearsal Mark Type", -1)
                     end
                 end
                 reaper.ImGui_EndMenu(ctx)
@@ -2032,9 +2058,10 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                     tm.custom_bpm_only = (final_lbl == "")
                     state._edit_tempo_is_new = nil
                     
+                    reaper.Undo_BeginBlock2(0)
                     TempoService.save_markers(state)
                     TempoService.sync_all_to_reaper(state)
-                    reaper.Undo_OnStateChange2(0, string.format("Notator: Edit Tempo to %d BPM", math.floor(final_bpm)))
+                    reaper.Undo_EndBlock2(0, string.format("Notator: Edit Tempo to %d BPM", math.floor(final_bpm)), -1)
                     
                     state.status_msg = string.format("Tempo set to: %s", tm:get_display_text())
                     state.editing_tempo_marker = nil
@@ -2114,9 +2141,10 @@ function CanvasContextMenus.render_edit_tempo_popup(ctx, state)
                     tm.custom_target_bpm = true
                     state._edit_tempo_is_new = nil
                     
+                    reaper.Undo_BeginBlock2(0)
                     TempoService.save_markers(state)
                     TempoService.sync_all_to_reaper(state)
-                    reaper.Undo_OnStateChange2(0, "Notator: Edit Gradual Tempo")
+                    reaper.Undo_EndBlock2(0, "Notator: Edit Gradual Tempo", -1)
                     
                     state.status_msg = string.format("Gradual tempo set: %s (%d -> %d BPM)", tm:get_display_text(), math.floor(tm.bpm), math.floor(tm.target_bpm))
                     state.editing_tempo_marker = nil

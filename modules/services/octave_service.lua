@@ -19,7 +19,7 @@ local function sync_lines_to_takes(state)
             table.insert(by_guid[line.track_guid], line)
         end
     end
-    
+
     local trk_count = reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
         local trk = reaper.GetTrack(0, ti)
@@ -27,7 +27,7 @@ local function sync_lines_to_takes(state)
             local trk_guid = reaper.GetTrackGUID(trk)
             local item_count = reaper.CountTrackMediaItems(trk)
             local track_line_list = by_guid[trk_guid] or {}
-            
+
             for ii = 0, item_count - 1 do
                 local item = reaper.GetTrackMediaItem(trk, ii)
                 local take = item and reaper.GetActiveTake(item)
@@ -36,7 +36,7 @@ local function sync_lines_to_takes(state)
                     local item_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
                     local i_start_qn = reaper.TimeMap2_timeToQN(0, item_pos)
                     local i_end_qn = reaper.TimeMap2_timeToQN(0, item_pos + item_len)
-                    
+
                     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
                     local to_del = {}
                     for t_idx = text_cnt - 1, 0, -1 do
@@ -48,7 +48,7 @@ local function sync_lines_to_takes(state)
                     for _, d_idx in ipairs(to_del) do
                         reaper.MIDI_DeleteTextSysexEvt(take, d_idx)
                     end
-                    
+
                     local inserted = false
                     for _, line in ipairs(track_line_list) do
                         if line.start_qn >= (i_start_qn - 0.05) and line.start_qn < (i_end_qn + 0.05) then
@@ -68,11 +68,12 @@ local function sync_lines_to_takes(state)
     end
 end
 
-function OctaveService.load_lines(state)
+function OctaveService.load_lines(state, read_only)
     state.octave_lines = {}
     local known = {}
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "octave_lines")
-    if raw and raw ~= "" then
+    local has_proj_ext = (raw and raw ~= "")
+    if has_proj_ext then
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
             for p in (entry .. "|"):gmatch("([^|]*)|") do
@@ -97,64 +98,81 @@ function OctaveService.load_lines(state)
         end
     end
 
-    -- DUAL PERSISTENCE: Read from MIDI takes (Type 15 notation events in .RPP)
-    local trk_count = reaper.CountTracks(0)
-    for ti = 0, trk_count - 1 do
-        local trk = reaper.GetTrack(0, ti)
-        if trk then
-            local trk_guid = reaper.GetTrackGUID(trk)
-            local item_count = reaper.CountTrackMediaItems(trk)
-            for ii = 0, item_count - 1 do
-                local item = reaper.GetTrackMediaItem(trk, ii)
-                local take = item and reaper.GetActiveTake(item)
-                if take and reaper.TakeIsMIDI(take) then
-                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
-                    for text_i = 0, text_cnt - 1 do
-                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
-                        if ok and ev_type == 15 and msg:match("^NOTATOR_OCTAVE") then
-                            local parts = {}
-                            for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
-                            local id = parts[2]
-                            local otype = parts[3]
-                            local start_qn = tonumber(parts[4]) or reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
-                            local end_qn = tonumber(parts[5]) or (start_qn + 4.0)
-                            if id and id ~= "" and otype and not known[id] then
-                                known[id] = true
-                                table.insert(state.octave_lines, OctaveLine.new({
-                                    id         = id,
-                                    track_guid = trk_guid,
-                                    type       = otype,
-                                    start_qn   = start_qn,
-                                    end_qn     = end_qn
-                                }))
+    -- DUAL PERSISTENCE: Read from MIDI takes only on initial load when ProjExtState is empty
+    if not read_only and not has_proj_ext then
+        local trk_count = reaper.CountTracks(0)
+        for ti = 0, trk_count - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local trk_guid = reaper.GetTrackGUID(trk)
+                local item_count = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_count - 1 do
+                    local item = reaper.GetTrackMediaItem(trk, ii)
+                    local take = item and reaper.GetActiveTake(item)
+                    if take and reaper.TakeIsMIDI(take) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        for text_i = 0, text_cnt - 1 do
+                            local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                            if ok and ev_type == 15 and msg:match("^NOTATOR_OCTAVE") then
+                                local parts = {}
+                                for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
+                                local id = parts[2]
+                                local otype = parts[3]
+                                local start_qn = tonumber(parts[4]) or reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                                local end_qn = tonumber(parts[5]) or (start_qn + 4.0)
+                                if id and id ~= "" and otype and not known[id] then
+                                    known[id] = true
+                                    table.insert(state.octave_lines, OctaveLine.new({
+                                        id         = id,
+                                        track_guid = trk_guid,
+                                        type       = otype,
+                                        start_qn   = start_qn,
+                                        end_qn     = end_qn
+                                    }))
+                                end
                             end
                         end
                     end
                 end
             end
         end
+        if #state.octave_lines > 0 then
+            OctaveService.save_lines(state)
+        end
+    elseif not read_only and has_proj_ext then
+        sync_lines_to_takes(state)
+    end
+
+    state._octave_lines_loaded = true
+    if state.selected_octave_line then
+        local found = nil
+        for _, ol in ipairs(state.octave_lines) do
+            if ol.id == state.selected_octave_line.id then found = ol; break end
+        end
+        state.selected_octave_line = found
     end
 end
 
 function OctaveService.parse_notation_event(state, track, take, ppq, msg)
     if not state or not msg then return end
+    if state._octave_lines_loaded then return end
     if not state.octave_lines then state.octave_lines = {} end
     local trk_guid = track and reaper.ValidatePtr(track, "MediaTrack*") and reaper.GetTrackGUID(track)
     if not trk_guid then return end
-    
+
     local parts = {}
     for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
     local id = parts[2]
     if not id or id == "" then return end
-    
+
     for _, ol in ipairs(state.octave_lines) do
         if ol.id == id then return end
     end
-    
+
     local otype = parts[3] or "8va"
     local start_qn = tonumber(parts[4]) or (take and reaper.MIDI_GetProjQNFromPPQPos(take, ppq)) or 0.0
     local end_qn = tonumber(parts[5]) or (start_qn + 4.0)
-    
+
     table.insert(state.octave_lines, OctaveLine.new({
         id         = id,
         track_guid = trk_guid,
@@ -218,9 +236,11 @@ function OctaveService.resize_octave_line(state, oline, orig_s, orig_e, new_s, n
     local def = Constants.OCTAVE_LINE_DEFS[oline.type]
     local shift = def and def.shift_semitones or 0
     if shift == 0 then
+        reaper.Undo_BeginBlock2(0)
         oline.start_qn = new_s
         oline.end_qn = new_e
         OctaveService.save_lines(state)
+        reaper.Undo_EndBlock2(0, string.format("Notator: Resize %s (%.1f to %.1f QN)", def and def.name or "Octave Line", new_s, new_e), -1)
         return
     end
 
@@ -244,9 +264,11 @@ function OctaveService.resize_octave_line(state, oline, orig_s, orig_e, new_s, n
     end
     if not trk and state and state.focused_track then trk = state.focused_track end
     if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then
+        reaper.Undo_BeginBlock2(0)
         oline.start_qn = new_s
         oline.end_qn = new_e
         OctaveService.save_lines(state)
+        reaper.Undo_EndBlock2(0, string.format("Notator: Resize %s (%.1f to %.1f QN)", def and def.name or "Octave Line", new_s, new_e), -1)
         return
     end
 
@@ -266,7 +288,7 @@ function OctaveService.resize_octave_line(state, oline, orig_s, orig_e, new_s, n
                     local n_sqn = reaper.MIDI_GetProjQNFromPPQPos(take, sppq)
                     local was_in = (n_sqn >= (orig_s - 0.01) and n_sqn < (orig_e - 0.01))
                     local is_in  = (n_sqn >= (new_s - 0.01)  and n_sqn < (new_e - 0.01))
-                    
+
                     local delta = 0
                     if was_in and not is_in then
                         -- Note has left the octave line -> restore MIDI pitch
@@ -275,7 +297,7 @@ function OctaveService.resize_octave_line(state, oline, orig_s, orig_e, new_s, n
                         -- Note has newly entered the octave line -> transpose MIDI pitch
                         delta = shift
                     end
-                    
+
                     if delta ~= 0 then
                         local new_pitch = math.max(0, math.min(127, pitch + delta))
                         if new_pitch ~= pitch then
@@ -292,7 +314,7 @@ function OctaveService.resize_octave_line(state, oline, orig_s, orig_e, new_s, n
             end
         end
     end
-    
+
     -- Keep selection in state synchronized if selected notes crossed the boundary
     if any_modified and state and state.selected_notes then
         local updated_sel = {}
@@ -317,14 +339,14 @@ function OctaveService.resize_octave_line(state, oline, orig_s, orig_e, new_s, n
         state.selected_notes = updated_sel
     end
 
+    oline.start_qn = new_s
+    oline.end_qn = new_e
+    OctaveService.save_lines(state)
+
     reaper.Undo_EndBlock2(0, string.format("Notator: Resize %s (%.1f to %.1f QN)", def.name, new_s, new_e), -1)
     reaper.UpdateArrange()
     local MidiService = package.loaded["services.midi_service"]
     if MidiService and MidiService.invalidate_cache then MidiService.invalidate_cache() end
-
-    oline.start_qn = new_s
-    oline.end_qn = new_e
-    OctaveService.save_lines(state)
 end
 
 function OctaveService.apply_shift_to_track_midi(state, track_guid, start_qn, end_qn, semitones)
@@ -354,7 +376,7 @@ function OctaveService.apply_shift_to_track_midi(state, track_guid, start_qn, en
     end
     if not trk and state and state.focused_track then trk = state.focused_track end
     if not trk or not reaper.ValidatePtr(trk, "MediaTrack*") then return end
-    
+
     local item_cnt = reaper.CountTrackMediaItems(trk)
     reaper.Undo_BeginBlock2(0)
     local any_modified = false
@@ -389,7 +411,7 @@ function OctaveService.apply_shift_to_track_midi(state, track_guid, start_qn, en
     reaper.UpdateArrange()
     local MidiService = package.loaded["services.midi_service"]
     if MidiService and MidiService.invalidate_cache then MidiService.invalidate_cache() end
-    
+
     -- Keep selection in state synchronized so keys and pitches remain consistent
     if any_modified and state and state.selected_notes then
         local updated_sel = {}
@@ -430,13 +452,13 @@ function OctaveService.add_octave_line(state, track_guid, otype, midi_service, a
         state.status_msg = "Please focus a track or select notes first to add an octave line"
         return nil
     end
-    
+
     local def = Constants.OCTAVE_LINE_DEFS[otype] or Constants.OCTAVE_LINE_DEFS["8va"]
-    
+
     -- Determine start and end QN: either passed QNs, range of selected notes, or edit cursor
     local start_qn = opt_start_qn or 0.0
     local end_qn = opt_end_qn or (start_qn + 4.0)
-    
+
     if not opt_start_qn then
         local sel_cnt = state:count_selected_notes()
         if sel_cnt > 0 then
@@ -456,7 +478,9 @@ function OctaveService.add_octave_line(state, track_guid, otype, midi_service, a
             end_qn = start_qn + 4.0
         end
     end
-    
+
+    reaper.Undo_BeginBlock2(0)
+
     -- If an octave line already exists at this location, remove old shift first (prevents stacking shifts)
     state.octave_lines = state.octave_lines or {}
     for i = #state.octave_lines, 1, -1 do
@@ -466,31 +490,32 @@ function OctaveService.add_octave_line(state, track_guid, otype, midi_service, a
             break
         end
     end
-    
+
     local new_line = OctaveLine.new({
         track_guid = track_guid,
         type       = otype,
         start_qn   = start_qn,
         end_qn     = end_qn
     })
-    
+
     table.insert(state.octave_lines, new_line)
     state.selected_octave_line = new_line
     OctaveService.save_lines(state)
-    
+
     -- Transpose the underlying MIDI data in the REAPER track
     local shift = def.shift_semitones or 0
     if shift ~= 0 then
         OctaveService.apply_shift_to_track_midi(state, track_guid, start_qn, end_qn, shift)
     end
-    
+
     state.status_msg = string.format("Added %s line (%.1f to %.1f QN, MIDI %+d)", def.name, start_qn, end_qn, shift)
-    reaper.Undo_OnStateChange2(0, string.format("Notator: Add %s", def.name))
+    reaper.Undo_EndBlock2(0, string.format("Notator: Add %s", def.name), -1)
     return new_line
 end
 
 function OctaveService.delete_octave_line(state, line_or_id)
     if not line_or_id or not state.octave_lines then return end
+    reaper.Undo_BeginBlock2(0)
     local id = (type(line_or_id) == "table") and line_or_id.id or line_or_id
     for i = #state.octave_lines, 1, -1 do
         local l = state.octave_lines[i]
@@ -508,7 +533,7 @@ function OctaveService.delete_octave_line(state, line_or_id)
         state.selected_octave_line = nil
     end
     OctaveService.save_lines(state)
-    reaper.Undo_OnStateChange2(0, "Notator: Delete Octave Line")
+    reaper.Undo_EndBlock2(0, "Notator: Delete Octave Line", -1)
     state.status_msg = "Octave line deleted (MIDI restored)"
 end
 OctaveService.delete_line = OctaveService.delete_octave_line

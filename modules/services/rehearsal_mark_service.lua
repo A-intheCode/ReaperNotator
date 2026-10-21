@@ -114,13 +114,14 @@ function RehearsalMarkService.recompute_labels(state)
     end
 end
 
-function RehearsalMarkService.load_marks(state)
+function RehearsalMarkService.load_marks(state, read_only)
     state.rehearsal_marks = {}
     local known_qn = {}
 
     -- 1. Load from Project Ext State
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "rehearsal_marks")
-    if raw and raw ~= "" then
+    local has_proj_ext = (raw and raw ~= "")
+    if has_proj_ext then
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
             for p in (entry .. "|"):gmatch("([^|]*)|") do
@@ -152,8 +153,8 @@ function RehearsalMarkService.load_marks(state)
         end
     end
 
-    -- 2. DUAL PERSISTENCE: Fallback scan of active MIDI takes for Type-15 Notation Events only when ProjExtState had no marks
-    if #state.rehearsal_marks == 0 then
+    -- 2. DUAL PERSISTENCE: Fallback scan of active MIDI takes for Type-15 Notation Events only on initial load when ProjExtState had no marks
+    if not read_only and not has_proj_ext and #state.rehearsal_marks == 0 then
         local trk_count = reaper.CountTracks(0)
         for ti = 0, trk_count - 1 do
             local trk = reaper.GetTrack(0, ti)
@@ -194,6 +195,14 @@ function RehearsalMarkService.load_marks(state)
 
     -- Re-compute automatic sequence (A -> B -> C...) while preserving custom & navigation marks
     RehearsalMarkService.recompute_labels(state)
+    state._rehearsal_marks_loaded = true
+    if state.selected_rehearsal_mark then
+        local found = nil
+        for _, rm in ipairs(state.rehearsal_marks) do
+            if rm.id == state.selected_rehearsal_mark.id then found = rm; break end
+        end
+        state.selected_rehearsal_mark = found
+    end
 end
 
 function RehearsalMarkService.save_marks(state)
@@ -264,10 +273,12 @@ function RehearsalMarkService.add_mark(state, measure, mark_type, custom_text, e
         target_rm = rm
     end
 
+    reaper.Undo_BeginBlock2(0)
     -- Automatically re-sequence letters & numbers
     RehearsalMarkService.recompute_labels(state)
     RehearsalMarkService.sync_takes(state)
     RehearsalMarkService.save_marks(state)
+    reaper.Undo_EndBlock2(0, "Notator: Add Rehearsal Mark", -1)
 
     local tpos = reaper.TimeMap2_QNToTime(0, qn)
     local beats_in_m, m_idx = reaper.TimeMap2_timeToBeats(0, tpos)
@@ -293,7 +304,6 @@ function RehearsalMarkService.add_custom_marker_at_current_pos(state, custom_tex
     if state then
         state.selected_rehearsal_mark = rm
     end
-    reaper.Undo_OnStateChange2(0, "Notator: Add Custom Marker (" .. tostring(custom_text) .. ")")
     return rm
 end
 
@@ -326,6 +336,7 @@ end
 
 function RehearsalMarkService.remove_mark(state, mark_id)
     if not state.rehearsal_marks then return end
+    reaper.Undo_BeginBlock2(0)
     for idx, rm in ipairs(state.rehearsal_marks) do
         if rm.id == mark_id then
             table.remove(state.rehearsal_marks, idx)
@@ -337,6 +348,7 @@ function RehearsalMarkService.remove_mark(state, mark_id)
     RehearsalMarkService.recompute_labels(state)
     RehearsalMarkService.sync_takes(state)
     RehearsalMarkService.save_marks(state)
+    reaper.Undo_EndBlock2(0, "Notator: Remove Rehearsal Mark", -1)
 
     state.status_msg = "Removed Rehearsal Mark"
 end
@@ -373,10 +385,12 @@ function RehearsalMarkService.move_mark(state, mark_id, target_measure, target_q
         end
     end
 
+    reaper.Undo_BeginBlock2(0)
     -- Re-order and recompute auto-sequenced labels (while keeping custom & navigation marks untouched)
     RehearsalMarkService.recompute_labels(state)
     RehearsalMarkService.sync_takes(state)
     RehearsalMarkService.save_marks(state)
+    reaper.Undo_EndBlock2(0, "Notator: Move Rehearsal Mark", -1)
 end
 
 function RehearsalMarkService.sync_takes(state)

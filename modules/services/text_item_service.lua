@@ -32,7 +32,7 @@ local function sync_text_items_to_takes(state)
             table.insert(by_guid[ti.track_guid], ti)
         end
     end
-    
+
     local trk_count = reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
         local trk = reaper.GetTrack(0, ti)
@@ -40,7 +40,7 @@ local function sync_text_items_to_takes(state)
             local trk_guid = reaper.GetTrackGUID(trk)
             local item_count = reaper.CountTrackMediaItems(trk)
             local track_ti_list = by_guid[trk_guid] or {}
-            
+
             for ii = 0, item_count - 1 do
                 local item = reaper.GetTrackMediaItem(trk, ii)
                 local take = item and reaper.GetActiveTake(item)
@@ -49,7 +49,7 @@ local function sync_text_items_to_takes(state)
                     local item_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
                     local i_start_qn = reaper.TimeMap2_timeToQN(0, item_pos)
                     local i_end_qn = reaper.TimeMap2_timeToQN(0, item_pos + item_len)
-                    
+
                     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
                     local to_del = {}
                     for t_idx = text_cnt - 1, 0, -1 do
@@ -61,7 +61,7 @@ local function sync_text_items_to_takes(state)
                     for _, d_idx in ipairs(to_del) do
                         reaper.MIDI_DeleteTextSysexEvt(take, d_idx)
                     end
-                    
+
                     local inserted = false
                     for _, txt_item in ipairs(track_ti_list) do
                         if txt_item.qn >= (i_start_qn - 0.05) and txt_item.qn < (i_end_qn + 0.05) then
@@ -87,11 +87,14 @@ local function sync_text_items_to_takes(state)
     end
 end
 
-function TextItemService.load_text_items(state)
+function TextItemService.load_text_items(state, read_only)
     state.text_items = {}
+    state._text_items_version = (state._text_items_version or 0) + 1
+    state._text_items_by_track_cache = nil
     local known = {}
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "text_items")
-    if raw and raw ~= "" then
+    local has_proj_ext = (raw and raw ~= "")
+    if has_proj_ext then
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
             for p in (entry .. "|"):gmatch("([^|]*)|") do
@@ -126,64 +129,81 @@ function TextItemService.load_text_items(state)
         end
     end
 
-    -- DUAL PERSISTENCE: Read from MIDI takes (Type 15 notation events in .RPP)
-    local trk_count = reaper.CountTracks(0)
-    for ti = 0, trk_count - 1 do
-        local trk = reaper.GetTrack(0, ti)
-        if trk then
-            local trk_guid = reaper.GetTrackGUID(trk)
-            local item_count = reaper.CountTrackMediaItems(trk)
-            for ii = 0, item_count - 1 do
-                local item = reaper.GetTrackMediaItem(trk, ii)
-                local take = item and reaper.GetActiveTake(item)
-                if take and reaper.TakeIsMIDI(take) then
-                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
-                    for text_i = 0, text_cnt - 1 do
-                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
-                        if ok and ev_type == 15 and msg:match("^NOTATOR_TEXT") then
-                            local parts = {}
-                            for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
-                            local id = parts[2]
-                            local offset_y = tonumber(parts[3]) or 32.0
-                            local style = (parts[4] and parts[4] ~= "") and parts[4] or "italic"
-                            local font_size = tonumber(parts[5]) or 16.0
-                            local text = from_hex(parts[6] or "")
-                            local qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
-                            if id and id ~= "" and text ~= "" and not known[id] then
-                                known[id] = true
-                                table.insert(state.text_items, TextItem.new({
-                                    id = id,
-                                    track_guid = trk_guid,
-                                    qn = qn,
-                                    offset_y = offset_y,
-                                    style = style,
-                                    font_size = font_size,
-                                    text = text
-                                }))
+    -- DUAL PERSISTENCE: Read from MIDI takes only on initial load when ProjExtState is empty
+    if not read_only and not has_proj_ext then
+        local trk_count = reaper.CountTracks(0)
+        for ti = 0, trk_count - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local trk_guid = reaper.GetTrackGUID(trk)
+                local item_count = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_count - 1 do
+                    local item = reaper.GetTrackMediaItem(trk, ii)
+                    local take = item and reaper.GetActiveTake(item)
+                    if take and reaper.TakeIsMIDI(take) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        for text_i = 0, text_cnt - 1 do
+                            local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                            if ok and ev_type == 15 and msg:match("^NOTATOR_TEXT") then
+                                local parts = {}
+                                for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
+                                local id = parts[2]
+                                local offset_y = tonumber(parts[3]) or 32.0
+                                local style = (parts[4] and parts[4] ~= "") and parts[4] or "italic"
+                                local font_size = tonumber(parts[5]) or 16.0
+                                local text = from_hex(parts[6] or "")
+                                local qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                                if id and id ~= "" and text ~= "" and not known[id] then
+                                    known[id] = true
+                                    table.insert(state.text_items, TextItem.new({
+                                        id = id,
+                                        track_guid = trk_guid,
+                                        qn = qn,
+                                        offset_y = offset_y,
+                                        style = style,
+                                        font_size = font_size,
+                                        text = text
+                                    }))
+                                end
                             end
                         end
                     end
                 end
             end
         end
+        if #state.text_items > 0 then
+            TextItemService.save_text_items(state)
+        end
+    elseif not read_only and has_proj_ext then
+        sync_text_items_to_takes(state)
+    end
+
+    state._text_items_loaded = true
+    if state.selected_text_item then
+        local found = nil
+        for _, ti in ipairs(state.text_items) do
+            if ti.id == state.selected_text_item.id then found = ti; break end
+        end
+        state.selected_text_item = found
     end
 end
 
 function TextItemService.parse_notation_event(state, track, take, ppq, msg)
     if not state or not msg then return end
+    if state._text_items_loaded then return end
     if not state.text_items then state.text_items = {} end
     local trk_guid = track and reaper.ValidatePtr(track, "MediaTrack*") and reaper.GetTrackGUID(track)
     if not trk_guid then return end
-    
+
     local parts = {}
     for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
     local id = parts[2]
     if not id or id == "" then return end
-    
+
     for _, ti in ipairs(state.text_items) do
         if ti.id == id then return end
     end
-    
+
     local offset_y = tonumber(parts[3]) or 32.0
     local style = (parts[4] and parts[4] ~= "") and parts[4] or "italic"
     local font_size = tonumber(parts[5]) or 16.0
@@ -194,7 +214,7 @@ function TextItemService.parse_notation_event(state, track, take, ppq, msg)
     local placement = (parts[7] and parts[7] ~= "") and parts[7] or "below"
     if text == "" then return end
     local qn = (take and reaper.MIDI_GetProjQNFromPPQPos(take, ppq)) or 0.0
-    
+
     table.insert(state.text_items, TextItem.new({
         id = id,
         track_guid = trk_guid,
@@ -209,6 +229,8 @@ end
 
 function TextItemService.save_text_items(state)
     if not state.text_items then return end
+    state._text_items_version = (state._text_items_version or 0) + 1
+    state._text_items_by_track_cache = nil
     local list = {}
     for _, ti in ipairs(state.text_items) do
         if type(ti) == "table" and ti.text then
@@ -297,14 +319,16 @@ function TextItemService.create_text_item(state, track_guid, qn, arg4, arg5, sty
         style      = tostring(st or "italic"),
         font_size  = tonumber(fs) or 16.0
     })
+    reaper.Undo_BeginBlock2(0)
     table.insert(state.text_items, ti)
     TextItemService.save_text_items(state)
-    reaper.Undo_OnStateChange2(0, "Notator: Add Text Item")
+    reaper.Undo_EndBlock2(0, "Notator: Add Text Item", -1)
     return ti
 end
 
 function TextItemService.delete_text_item(state, id)
     if not state.text_items then return end
+    reaper.Undo_BeginBlock2(0)
     for i = #state.text_items, 1, -1 do
         local ti = state.text_items[i]
         if type(ti) == "table" and ti.id == id then
@@ -320,7 +344,7 @@ function TextItemService.delete_text_item(state, id)
         state.editing_text_str = nil
     end
     TextItemService.save_text_items(state)
-    reaper.Undo_OnStateChange2(0, "Notator: Delete Text Item")
+    reaper.Undo_EndBlock2(0, "Notator: Delete Text Item", -1)
 end
 
 function TextItemService.update_text(state, id, new_text)
@@ -331,7 +355,8 @@ function TextItemService.update_text(state, id, new_text)
         TextItemService.delete_text_item(state, id)
         return
     end
-    
+
+    reaper.Undo_BeginBlock2(0)
     for _, ti in ipairs(state.text_items) do
         if type(ti) == "table" and ti.id == id then
             ti.text = text_str
@@ -339,7 +364,7 @@ function TextItemService.update_text(state, id, new_text)
         end
     end
     TextItemService.save_text_items(state)
-    reaper.Undo_OnStateChange2(0, "Notator: Edit Text Item")
+    reaper.Undo_EndBlock2(0, "Notator: Edit Text Item", -1)
 end
 
 function TextItemService.move_text_item(state, id, new_qn, new_offset_y)

@@ -7,13 +7,14 @@ local Fermata = require("classes.fermata")
 
 local FermataService = {}
 
-function FermataService.load_fermatas(state)
+function FermataService.load_fermatas(state, read_only)
     state.fermatas = {}
     local known = {}
 
     -- 1. Load from Project Ext State
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "fermatas")
-    if raw and raw ~= "" then
+    local has_proj_ext = (raw and raw ~= "")
+    if has_proj_ext then
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
             for p in (entry .. "|"):gmatch("([^|]*)|") do
@@ -39,42 +40,44 @@ function FermataService.load_fermatas(state)
         end
     end
 
-    -- 2. DUAL PERSISTENCE: Scan active MIDI takes for Type-15 Notation Events
-    local trk_count = reaper.CountTracks(0)
-    for ti = 0, trk_count - 1 do
-        local trk = reaper.GetTrack(0, ti)
-        if trk then
-            local item_count = reaper.CountTrackMediaItems(trk)
-            for ii = 0, item_count - 1 do
-                local item = reaper.GetTrackMediaItem(trk, ii)
-                local take = item and reaper.GetActiveTake(item)
-                if take and reaper.TakeIsMIDI(take) then
-                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
-                    for text_i = 0, text_cnt - 1 do
-                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
-                        if ok and ev_type == 15 and msg:match("^NOTATOR_FERMATA") then
-                            local qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
-                            local k = string.format("%.2f", qn)
-                            if not known[k] then
-                                known[k] = true
-                                local f_type, h_fac = msg:match("^NOTATOR_FERMATA%s+([%w_]+)%s*([%d%.]*)")
-                                local bpi = 4.0
-                                local ts_num, ts_den = reaper.TimeMap_GetTimeSigAtTime(0, reaper.TimeMap2_QNToTime(0, qn))
-                                if ts_num and ts_den and ts_den > 0 then bpi = ts_num * (4.0 / ts_den) end
-                                local m = math.floor((qn + 0.01) / bpi)
-                                local beat = qn - (m * bpi)
+    -- 2. DUAL PERSISTENCE: Scan active MIDI takes only on initial load when ProjExtState is empty
+    if not read_only and not has_proj_ext then
+        local trk_count = reaper.CountTracks(0)
+        for ti = 0, trk_count - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local item_count = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_count - 1 do
+                    local item = reaper.GetTrackMediaItem(trk, ii)
+                    local take = item and reaper.GetActiveTake(item)
+                    if take and reaper.TakeIsMIDI(take) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        for text_i = 0, text_cnt - 1 do
+                            local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                            if ok and ev_type == 15 and msg:match("^NOTATOR_FERMATA") then
+                                local qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                                local k = string.format("%.2f", qn)
+                                if not known[k] then
+                                    known[k] = true
+                                    local f_type, h_fac = msg:match("^NOTATOR_FERMATA%s+([%w_]+)%s*([%d%.]*)")
+                                    local bpi = 4.0
+                                    local ts_num, ts_den = reaper.TimeMap_GetTimeSigAtTime(0, reaper.TimeMap2_QNToTime(0, qn))
+                                    if ts_num and ts_den and ts_den > 0 then bpi = ts_num * (4.0 / ts_den) end
+                                    local m = math.floor((qn + 0.01) / bpi)
+                                    local beat = qn - (m * bpi)
 
-                                local ferm = Fermata.new({
-                                    id            = string.format("ferm_%d", math.floor(qn * 100)),
-                                    qn            = qn,
-                                    measure       = m,
-                                    beat_rel      = beat,
-                                    type          = f_type or "standard",
-                                    hold_factor   = tonumber(h_fac) or 1.5,
-                                    playback_mode = "tempo_curve",
-                                    duration_qn   = 1.0
-                                })
-                                table.insert(state.fermatas, ferm)
+                                    local ferm = Fermata.new({
+                                        id            = string.format("ferm_%d", math.floor(qn * 100)),
+                                        qn            = qn,
+                                        measure       = m,
+                                        beat_rel      = beat,
+                                        type          = f_type or "standard",
+                                        hold_factor   = tonumber(h_fac) or 1.5,
+                                        playback_mode = "tempo_curve",
+                                        duration_qn   = 1.0
+                                    })
+                                    table.insert(state.fermatas, ferm)
+                                end
                             end
                         end
                     end
@@ -85,6 +88,17 @@ function FermataService.load_fermatas(state)
 
     -- Sort chronologically
     table.sort(state.fermatas, function(a, b) return a.qn < b.qn end)
+    if not read_only and not has_proj_ext and #state.fermatas > 0 then
+        FermataService.save_fermatas(state)
+    end
+    state._fermatas_loaded = true
+    if state.selected_fermata then
+        local found = nil
+        for _, f in ipairs(state.fermatas) do
+            if f.id == state.selected_fermata.id then found = f; break end
+        end
+        state.selected_fermata = found
+    end
 end
 
 function FermataService.save_fermatas(state)
@@ -128,8 +142,9 @@ function FermataService.add_fermata(state, qn, f_type, hold_factor, active_track
         end
     end
 
+    reaper.Undo_BeginBlock2(0)
     -- Remove any existing fermata at virtually the same QN
-    FermataService.remove_fermata_at_qn(state, qn, active_tracks_data)
+    FermataService.remove_fermata_at_qn(state, qn, active_tracks_data, true)
 
     local bpi = 4.0
     local ts_num, ts_den = reaper.TimeMap_GetTimeSigAtTime(0, reaper.TimeMap2_QNToTime(0, qn))
@@ -165,11 +180,12 @@ function FermataService.add_fermata(state, qn, f_type, hold_factor, active_track
         end
     end
 
+    reaper.Undo_EndBlock2(0, "Notator: Add Fermata", -1)
     state.status_msg = string.format("Added %s Fermata at Bar %d (Beat %.1f, Hold %.1fx)", f_type, m + 1, beat + 1, hold_factor)
     return ferm
 end
 
-function FermataService.remove_fermata(state, ferm_id, active_tracks_data)
+function FermataService.remove_fermata(state, ferm_id, active_tracks_data, no_undo_block)
     if not state.fermatas then return end
     local target_ferm = nil
     local rem_idx = nil
@@ -182,6 +198,9 @@ function FermataService.remove_fermata(state, ferm_id, active_tracks_data)
     end
 
     if target_ferm and rem_idx then
+        if not no_undo_block then
+            reaper.Undo_BeginBlock2(0)
+        end
         -- Clean up Type-15 events across takes
         FermataService.sync_takes_for_fermata(target_ferm, active_tracks_data, true)
         table.remove(state.fermatas, rem_idx)
@@ -196,16 +215,19 @@ function FermataService.remove_fermata(state, ferm_id, active_tracks_data)
                 TempoService.sync_to_reaper(state)
             end
         end
+        if not no_undo_block then
+            reaper.Undo_EndBlock2(0, "Notator: Remove Fermata", -1)
+        end
         state.status_msg = "Removed Fermata"
     end
 end
 
-function FermataService.remove_fermata_at_qn(state, qn, active_tracks_data)
+function FermataService.remove_fermata_at_qn(state, qn, active_tracks_data, no_undo_block)
     if not state.fermatas then return end
     for idx = #state.fermatas, 1, -1 do
         local f = state.fermatas[idx]
         if math.abs(f.qn - qn) < 0.25 then
-            FermataService.remove_fermata(state, f.id, active_tracks_data)
+            FermataService.remove_fermata(state, f.id, active_tracks_data, no_undo_block)
         end
     end
 end

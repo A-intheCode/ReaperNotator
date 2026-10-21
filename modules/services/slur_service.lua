@@ -536,16 +536,8 @@ function SlurService.toggle_slur(state, active_tracks_data)
     
     -- 7. Auto-Chase Return at end of phrase (automatically restores pre_slur_pc, e.g. Tremolo!)
     MidiService.auto_chase_momentary_articulations(take, bank)
-    
-    reaper.MIDI_Sort(take)
-    reaper.Undo_EndBlock2(0, "Notator: Add Slur", -1)
-    reaper.UpdateArrange()
-    
-    SlurService.save_slurs(state)
-    MidiService.invalidate_cache()
-    state.active_tracks_cache = nil
 
-    -- Auto-advance selection focus to the arrival note (n_last)
+    -- Auto-advance selection focus to the arrival note (n_last) inside the Undo block
     if n_last then
         state:clear_selection()
         state:select_note(n_last)
@@ -553,6 +545,21 @@ function SlurService.toggle_slur(state, active_tracks_data)
             MidiService.sync_selection_to_reaper(state, eff_tracks_data)
         end
     end
+    
+    reaper.MIDI_Sort(take)
+    local it = reaper.GetMediaItemTake_Item(take)
+    if it then
+        local it_trk = reaper.GetMediaItem_Track(it)
+        if it_trk and reaper.MarkTrackItemsDirty then
+            reaper.MarkTrackItemsDirty(it_trk, it)
+        end
+    end
+    SlurService.save_slurs(state)
+    reaper.Undo_EndBlock2(0, "Notator: Add Slur", -1)
+    reaper.UpdateArrange()
+    
+    MidiService.invalidate_cache()
+    state.active_tracks_cache = nil
 
     local art_label = (art_match and art_match.name) or "Legato"
     state.status_msg = string.format("Slur created [S] (%s %s -> %s, %d notes)", art_label, pitch_to_name(n1.pitch), pitch_to_name(n_last.pitch), #phrase_notes)
@@ -833,6 +840,16 @@ function SlurService.toggle_tie(state, active_tracks_data)
         end
     end
     
+    -- Auto-advance selection focus to the arrival note of the chain inside the Undo block
+    local last_n = chain_notes[#chain_notes]
+    if last_n then
+        state:clear_selection()
+        state:select_note(last_n)
+        if MidiService and MidiService.sync_selection_to_reaper then
+            MidiService.sync_selection_to_reaper(state, eff_tracks_data)
+        end
+    end
+
     reaper.MIDI_Sort(take)
     
     -- Refresh REAPER audio engine and open MIDI editor window
@@ -846,22 +863,12 @@ function SlurService.toggle_tie(state, active_tracks_data)
         reaper.MIDIEditor_OnCommand(cur_editor, 40435) -- Reload MIDI in editor
     end
     
+    SlurService.save_slurs(state)
     reaper.Undo_EndBlock2(0, "Notator: Tie Notes", -1)
     reaper.UpdateArrange()
     
-    SlurService.save_slurs(state)
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
-
-    -- Auto-advance selection focus to the arrival note of the chain
-    local last_n = chain_notes[#chain_notes]
-    if last_n then
-        state:clear_selection()
-        state:select_note(last_n)
-        if MidiService and MidiService.sync_selection_to_reaper then
-            MidiService.sync_selection_to_reaper(state, eff_tracks_data)
-        end
-    end
 
     state.status_msg = string.format("Tied notes [T] (%s, %d notes chained, visual separate notes preserved, held audio)", pitch_to_name(chain_notes[1].pitch), #chain_notes)
 end
@@ -1025,16 +1032,19 @@ function SlurService.delete_slur(state, slur_or_id, midi_service, active_tracks_
             reaper.MIDIEditor_OnCommand(cur_editor, 40435) -- Reload MIDI in editor
         end
         
+        SlurService.save_slurs(state)
         reaper.Undo_EndBlock2(0, "Notator: Delete Slur", -1)
         reaper.UpdateArrange()
     else
+        reaper.Undo_BeginBlock2(0)
         table.remove(state.user_slurs, sl_idx)
         if state.selected_slur and state.selected_slur.id == sl.id then
             state.selected_slur = nil
         end
+        SlurService.save_slurs(state)
+        reaper.Undo_EndBlock2(0, "Notator: Delete Slur", -1)
     end
     
-    SlurService.save_slurs(state)
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
     state.status_msg = "Slur deleted."
@@ -1143,15 +1153,23 @@ function SlurService.delete_tie(state, tie_or_id, midi_service, active_tracks_da
             reaper.MIDIEditor_OnCommand(cur_editor, 40435) -- Reload MIDI in editor
         end
         
+        table.remove(state.user_ties, tie_idx)
+        if state.selected_tie and state.selected_tie.id == tie.id then
+            state.selected_tie = nil
+        end
+        SlurService.save_slurs(state)
         reaper.Undo_EndBlock2(0, "Notator: Untie Notes", -1)
         reaper.UpdateArrange()
+    else
+        reaper.Undo_BeginBlock2(0)
+        table.remove(state.user_ties, tie_idx)
+        if state.selected_tie and state.selected_tie.id == tie.id then
+            state.selected_tie = nil
+        end
+        SlurService.save_slurs(state)
+        reaper.Undo_EndBlock2(0, "Notator: Untie Notes", -1)
     end
     
-    table.remove(state.user_ties, tie_idx)
-    if state.selected_tie and state.selected_tie.id == tie.id then
-        state.selected_tie = nil
-    end
-    SlurService.save_slurs(state)
     MidiService.invalidate_cache()
     state.active_tracks_cache = nil
     state.status_msg = "Tie removed [T]."
@@ -2066,11 +2084,14 @@ end
 -- Persistence (ProjExtState + Type 15 Events)
 -- ------------------------------------------------------------------------------
 
-function SlurService.load_slurs(state)
+function SlurService.load_slurs(state, read_only)
     state.user_slurs = {}
     state.user_ties = {}
     state._slurs_version = (state._slurs_version or 0) + 1
     state._is_note_slurred_cache = nil
+    state._slur_fast_index = nil
+    _last_render_map = nil
+    _last_render_index = nil
     local known_slurs = {}
     local known_slur_pairs = {}
     local known_ties = {}
@@ -2164,10 +2185,10 @@ function SlurService.load_slurs(state)
         end
     end
     
-    -- 2. Dual persistence: scan takes for Type 15 NOTATOR_SLUR / NOTATOR_TIE
+    -- 2. Dual persistence: scan takes for Type 15 NOTATOR_SLUR / NOTATOR_TIE (skipped during read_only Undo/Redo reload)
     local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
     local takes_to_heal_slurs = {}
-    local trk_count = reaper.CountTracks(0)
+    local trk_count = read_only and 0 or reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
         local trk = reaper.GetTrack(0, ti)
         if trk then
@@ -2290,7 +2311,7 @@ function SlurService.load_slurs(state)
         end
     end
 
-    if MidiService and MidiService.auto_chase_momentary_articulations then
+    if not read_only and MidiService and MidiService.auto_chase_momentary_articulations then
         for _, tk in ipairs(takes_to_heal_slurs) do
             reaper.MIDI_DisableSort(tk)
             MidiService.auto_chase_momentary_articulations(tk)
@@ -2298,13 +2319,144 @@ function SlurService.load_slurs(state)
         end
     end
 
-    if duplicates_pruned then
+    if read_only then
+        -- During Undo/Redo reload, ProjExtState is authoritative.
+        -- Clean any NOTATOR_SLUR / NOTATOR_TIE events in MIDI takes that were undone so they cannot resurrect or leave stretched notes.
+        local any_take_cleaned = false
+        local total_trks = reaper.CountTracks(0)
+        for ti = 0, total_trks - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local trk_guid = reaper.GetTrackGUID(trk)
+                local norm_trk_guid = normalize_guid(trk_guid)
+                local item_count = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_count - 1 do
+                    local item = reaper.GetTrackMediaItem(trk, ii)
+                    local take = item and reaper.GetActiveTake(item)
+                    if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
+                        local undone_slurs = {}
+                        local undone_ties = {}
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        for text_i = 0, (text_cnt or 0) - 1 do
+                            local ok, _, _, _, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                            if ok and ev_type == 15 and msg then
+                                local s_id, s_chan, p1, p2, sqn, n2sqn, odur = msg:match("^NOTATOR_SLUR%s+([%w_]+)%s+(%d+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)")
+                                if s_id then
+                                    local ch = tonumber(s_chan) or 0
+                                    local p1_n = tonumber(p1) or 60
+                                    local p2_n = tonumber(p2) or 62
+                                    local sqn_n = tonumber(sqn) or 0.0
+                                    local n2sqn_n = tonumber(n2sqn) or 1.0
+                                    local n1_k = string.format("%d_%.4f_%d", p1_n, sqn_n, ch)
+                                    local n2_k = string.format("%d_%.4f_%d", p2_n, n2sqn_n, ch)
+                                    local pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
+                                    if not known_slurs[s_id] and not known_slurs[s_id .. "_" .. norm_trk_guid] and not known_slur_pairs[pair_key] then
+                                        table.insert(undone_slurs, {
+                                            id = s_id, chan = ch, pitch1 = p1_n, pitch2 = p2_n,
+                                            start_qn = sqn_n, n2_start_qn = n2sqn_n, orig_dur1 = tonumber(odur) or 1.0
+                                        })
+                                    end
+                                end
+                                local t_id, t_chan, tp, t_s1, t_d1, t_s2, t_d2, t_vel = msg:match("^NOTATOR_TIE%s+([%w_]+)%s+(%d+)%s+(%d+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s+([%d%.]+)%s*(%d*)")
+                                if t_id then
+                                    local ch = tonumber(t_chan) or 0
+                                    local tp_n = tonumber(tp) or 60
+                                    local s1_n = tonumber(t_s1) or 0.0
+                                    local s2_n = tonumber(t_s2) or 1.0
+                                    local n1_k = string.format("%d_%.4f_%d", tp_n, s1_n, ch)
+                                    local n2_k = string.format("%d_%.4f_%d", tp_n, s2_n, ch)
+                                    local pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
+                                    if not known_ties[t_id] and not known_ties[t_id .. "_" .. norm_trk_guid] and not known_tie_pairs[pair_key] then
+                                        table.insert(undone_ties, {
+                                            id = t_id, chan = ch, pitch = tp_n,
+                                            n1_start_qn = s1_n, n1_dur = tonumber(t_d1) or 1.0,
+                                            n2_start_qn = s2_n, n2_dur = tonumber(t_d2) or 1.0,
+                                            n2_vel = (t_vel and t_vel ~= "") and tonumber(t_vel) or 96
+                                        })
+                                    end
+                                end
+                            end
+                        end
+
+                        if #undone_slurs > 0 or #undone_ties > 0 then
+                            reaper.MIDI_DisableSort(take)
+                            for _, sl in ipairs(undone_slurs) do
+                                local n1_sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sl.start_qn) + 0.5)
+                                local n2_eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sl.n2_start_qn + 1.0) + 0.5)
+                                local n1_idx, n1_data = find_take_note_by_pos(take, sl.pitch1, sl.chan, sl.start_qn)
+                                if n1_idx and n1_data and sl.orig_dur1 then
+                                    local orig_eppq1 = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, sl.start_qn + sl.orig_dur1) + 0.5)
+                                    reaper.MIDI_SetNote(take, n1_idx, n1_data.sel, n1_data.muted, n1_data.sppq, orig_eppq1, n1_data.chan, n1_data.pitch, n1_data.vel, false)
+                                end
+                                local _, slur_notecnt = reaper.MIDI_CountEvts(take)
+                                for i = 0, (slur_notecnt or 0) - 1 do
+                                    local ok_s, sel_s, mut_s, sp_s, ep_s, ch_s, pt_s, vel_s = reaper.MIDI_GetNote(take, i)
+                                    if ok_s and not mut_s and ch_s == sl.chan and sp_s >= n1_sppq - 10 and sp_s <= n2_eppq + 10 then
+                                        for j = 0, (slur_notecnt or 0) - 1 do
+                                            if j ~= i then
+                                                local ok_j, _, mut_j, sp_j, _, ch_j = reaper.MIDI_GetNote(take, j)
+                                                if ok_j and not mut_j and ch_j == ch_s and sp_j > sp_s and sp_j < ep_s and (ep_s - sp_j) <= 10 then
+                                                    reaper.MIDI_SetNote(take, i, sel_s, mut_s, sp_s, sp_j, ch_s, pt_s, vel_s, false)
+                                                    ep_s = sp_j
+                                                    break
+                                                end
+                                            end
+                                        end
+                                    end
+                                end
+                                local _, _, _, cur_tcnt = reaper.MIDI_CountEvts(take)
+                                for idx_t = (cur_tcnt or 0) - 1, 0, -1 do
+                                    local ok_t, _, _, ppq_t, et_t, msg_t = reaper.MIDI_GetTextSysexEvt(take, idx_t)
+                                    if ok_t and et_t == 15 and msg_t then
+                                        if msg_t:match("^NOTATOR_SLUR%s+" .. sl.id) then
+                                            reaper.MIDI_DeleteTextSysexEvt(take, idx_t)
+                                        elseif msg_t:match("%s+a%s+legato") and ppq_t >= n1_sppq - 80 and ppq_t <= n2_eppq + 80 then
+                                            reaper.MIDI_DeleteTextSysexEvt(take, idx_t)
+                                        end
+                                    end
+                                end
+                            end
+
+                            for _, tie in ipairs(undone_ties) do
+                                local orig_eppq1 = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, tie.n1_start_qn + tie.n1_dur) + 0.5)
+                                local orig_eppq2 = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, tie.n2_start_qn + tie.n2_dur) + 0.5)
+                                local n1_idx, n1_data = find_take_note_by_pos(take, tie.pitch, tie.chan, tie.n1_start_qn)
+                                local n2_idx, n2_data = find_take_note_by_pos(take, tie.pitch, tie.chan, tie.n2_start_qn)
+                                if n1_idx and n1_data then
+                                    reaper.MIDI_SetNote(take, n1_idx, n1_data.sel, false, n1_data.sppq, orig_eppq1, n1_data.chan, n1_data.pitch, n1_data.vel, false)
+                                end
+                                if n2_idx and n2_data then
+                                    reaper.MIDI_SetNote(take, n2_idx, n2_data.sel, false, n2_data.sppq, orig_eppq2, n2_data.chan, n2_data.pitch, n2_data.vel, false)
+                                end
+                                local _, _, _, cur_tcnt = reaper.MIDI_CountEvts(take)
+                                for idx_t = (cur_tcnt or 0) - 1, 0, -1 do
+                                    local ok_t, _, _, _, et_t, msg_t = reaper.MIDI_GetTextSysexEvt(take, idx_t)
+                                    if ok_t and et_t == 15 and msg_t and (msg_t:match("^NOTATOR_TIE%s+" .. tie.id) or msg_t:match("^NOTATOR_TIE_SLAVE%s+" .. tie.id)) then
+                                        reaper.MIDI_DeleteTextSysexEvt(take, idx_t)
+                                    end
+                                end
+                            end
+
+                            reaper.MIDI_Sort(take)
+                            any_take_cleaned = true
+                        end
+                    end
+                end
+            end
+        end
+        if any_take_cleaned and MidiService and MidiService.invalidate_cache then
+            MidiService.invalidate_cache()
+            state.active_tracks_cache = nil
+        end
+    end
+
+    if not read_only and duplicates_pruned then
         SlurService.save_slurs(state)
     end
-    SlurService.heal_slurs_and_ties(state)
+    SlurService.heal_slurs_and_ties(state, read_only)
 end
 
-function SlurService.heal_slurs_and_ties(state)
+function SlurService.heal_slurs_and_ties(state, read_only)
     if not state then return end
     state.user_slurs = state.user_slurs or {}
     state.user_ties = state.user_ties or {}
@@ -2445,8 +2597,23 @@ function SlurService.heal_slurs_and_ties(state)
         end
     end
     state.user_ties = non_leaping_ties
-    
-    SlurService.save_slurs(state)
+    if state.selected_slur then
+        local found = nil
+        for _, sl in ipairs(state.user_slurs) do
+            if sl.id == state.selected_slur.id then found = sl; break end
+        end
+        state.selected_slur = found
+    end
+    if state.selected_tie then
+        local found = nil
+        for _, t in ipairs(state.user_ties) do
+            if t.id == state.selected_tie.id then found = t; break end
+        end
+        state.selected_tie = found
+    end
+    if not read_only then
+        SlurService.save_slurs(state)
+    end
 end
 
 function SlurService.reconcile_from_takes(state)
@@ -2617,6 +2784,9 @@ function SlurService.save_slurs(state)
     if not state then return end
     state._slurs_version = (state._slurs_version or 0) + 1
     state._is_note_slurred_cache = nil
+    state._slur_fast_index = nil
+    _last_render_map = nil
+    _last_render_index = nil
     
     local slur_entries = {}
     for _, sl in ipairs(state.user_slurs or {}) do

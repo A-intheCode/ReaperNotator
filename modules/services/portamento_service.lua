@@ -332,7 +332,7 @@ end
 
 function PortamentoService.sync_track_cc(state, track_guid, active_tracks_data, extra_clear_ranges)
     if not track_guid or track_guid == "" then return end
-    local takes_list, _ = get_all_takes_for_track(track_guid, active_tracks_data)
+    local takes_list, trk = get_all_takes_for_track(track_guid, active_tracks_data)
     if #takes_list == 0 then return end
 
     -- 1. Gather all portamento marks for this track
@@ -380,7 +380,6 @@ function PortamentoService.sync_track_cc(state, track_guid, active_tracks_data, 
         end
     end
 
-    reaper.Undo_BeginBlock2(0)
     local touched_takes = {}
 
     -- 3. Clear portamento CCs (64, 34, 5, 65) strictly within the consolidated intervals on this track
@@ -445,8 +444,15 @@ function PortamentoService.sync_track_cc(state, track_guid, active_tracks_data, 
 
     for tk, _ in pairs(touched_takes) do
         reaper.MIDI_Sort(tk)
+        local it = reaper.GetMediaItemTake_Item and reaper.GetMediaItemTake_Item(tk)
+        if trk and it and reaper.MarkTrackItemsDirty then
+            reaper.MarkTrackItemsDirty(trk, it)
+        end
     end
-    reaper.Undo_EndBlock2(0, "Update Portamento CC", -1)
+    local MidiService = package.loaded["services.midi_service"]
+    if MidiService and MidiService.invalidate_editor_cache then
+        MidiService.invalidate_editor_cache()
+    end
     reaper.UpdateArrange()
 end
 
@@ -520,6 +526,9 @@ local function sync_portamentos_to_takes(state)
                     end
                     if inserted or #to_del > 0 then
                         reaper.MIDI_Sort(take)
+                        if reaper.MarkTrackItemsDirty then
+                            reaper.MarkTrackItemsDirty(trk, item)
+                        end
                     end
                 end
             end
@@ -529,8 +538,12 @@ end
 
 function PortamentoService.save_portamentos(state)
     state.portamento_marks = state.portamento_marks or {}
+    state._known_session_portamento_ids = state._known_session_portamento_ids or {}
     local parts = {}
     for _, pm in ipairs(state.portamento_marks) do
+        if pm.id then
+            state._known_session_portamento_ids[pm.id] = true
+        end
         local entry = string.format("%s|%s|%d|%s|%d|%.4f|%.4f|%s|%d|%.4f|%.4f|%.4f|%.4f|%s|%s|%d|%d",
             pm.id, pm.track_guid, pm.chan or 0,
             pm.n1_key or "", pm.pitch1 or 60, pm.start_qn1 or 0, pm.dur_qn1 or 1,
@@ -546,8 +559,9 @@ function PortamentoService.save_portamentos(state)
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end
 
-function PortamentoService.load_portamentos(state)
+function PortamentoService.load_portamentos(state, read_only)
     state.portamento_marks = {}
+    state._known_session_portamento_ids = state._known_session_portamento_ids or {}
     local known_ids = {}
     local known_note_pairs = {}
     local had_duplicates = false
@@ -580,6 +594,7 @@ function PortamentoService.load_portamentos(state)
                     known_ids[id] = true
                     known_ids[id .. "_" .. norm_tg] = true
                     known_note_pairs[note_pair_key] = true
+                    state._known_session_portamento_ids[id] = true
 
                     local pm = PortamentoMark.new({
                         id            = id,
@@ -621,8 +636,74 @@ function PortamentoService.load_portamentos(state)
         end
     end
 
-    -- 2. Dual persistence: scan takes for Type 15 NOTATOR_PORTAMENTO (recovery / track duplication)
-    local trk_count = reaper.CountTracks(0)
+    if read_only then
+        -- During Undo/Redo reload: clean any undone NOTATOR_PORTAMENTO text events & their CCs from takes
+        -- and re-sync CCs for any portamentos restored via Redo so takes and canvas match in a single Undo step!
+        local extra_clear_by_guid = {}
+        local tracks_to_sync = {}
+        for _, pm in ipairs(state.portamento_marks) do
+            if pm.track_guid and pm.track_guid ~= "" then
+                tracks_to_sync[pm.track_guid] = true
+            end
+        end
+        local trk_count_ro = reaper.CountTracks(0)
+        for ti = 0, trk_count_ro - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local trk_guid = reaper.GetTrackGUID(trk)
+                local norm_trk_guid = normalize_guid(trk_guid)
+                local item_count = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_count - 1 do
+                    local item = reaper.GetTrackMediaItem(trk, ii)
+                    local take = item and reaper.GetActiveTake(item)
+                    if take and reaper.TakeIsMIDI(take) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        local to_del = {}
+                        for text_i = text_cnt - 1, 0, -1 do
+                            local ok, _, _, _, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                            if ok and ev_type == 15 and msg:match("^NOTATOR_PORTAMENTO|") then
+                                local parts = {}
+                                for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
+                                local id = parts[2]
+                                local ch = tonumber(parts[4]) or 0
+                                local p1 = tonumber(parts[6]) or 60
+                                local sqn1 = tonumber(parts[7]) or 0.0
+                                local p2 = tonumber(parts[10]) or 62
+                                local sqn2 = tonumber(parts[11]) or 1.0
+                                local n1_k = (parts[5] and parts[5] ~= "") and parts[5] or string.format("%d_%.4f_%d", p1, sqn1, ch)
+                                local n2_k = (parts[9] and parts[9] ~= "") and parts[9] or string.format("%d_%.4f_%d", p2, sqn2, ch)
+                                local note_pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
+                                if not (id and (known_ids[id .. "_" .. norm_trk_guid] or known_note_pairs[note_pair_key])) then
+                                    table.insert(to_del, text_i)
+                                    local hs = tonumber(parts[13]) or sqn1
+                                    local he = tonumber(parts[14]) or sqn2
+                                    extra_clear_by_guid[trk_guid] = extra_clear_by_guid[trk_guid] or {}
+                                    table.insert(extra_clear_by_guid[trk_guid], { hs, he, ch & 0x0F })
+                                    tracks_to_sync[trk_guid] = true
+                                end
+                            end
+                        end
+                        if #to_del > 0 then
+                            for _, d_idx in ipairs(to_del) do
+                                reaper.MIDI_DeleteTextSysexEvt(take, d_idx)
+                            end
+                            reaper.MIDI_Sort(take)
+                            if reaper.MarkTrackItemsDirty then
+                                reaper.MarkTrackItemsDirty(trk, item)
+                            end
+                        end
+                    end
+                end
+            end
+        end
+        sync_portamentos_to_takes(state)
+        for trk_guid, _ in pairs(tracks_to_sync) do
+            PortamentoService.sync_track_cc(state, trk_guid, nil, extra_clear_by_guid[trk_guid])
+        end
+    end
+
+    -- 2. Dual persistence: scan takes for Type 15 NOTATOR_PORTAMENTO (recovery / track duplication, skipped during read_only Undo/Redo reload)
+    local trk_count = read_only and 0 or reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
         local trk = reaper.GetTrack(0, ti)
         if trk then
@@ -660,6 +741,7 @@ function PortamentoService.load_portamentos(state)
                                         known_ids[eff_id] = true
                                         known_ids[eff_id .. "_" .. norm_trk_guid] = true
                                         known_note_pairs[note_pair_key] = true
+                                        state._known_session_portamento_ids[eff_id] = true
                                         local pm = PortamentoMark.new({
                                             id            = eff_id,
                                             track_guid    = trk_guid,
@@ -688,6 +770,7 @@ function PortamentoService.load_portamentos(state)
                                     known_ids[id] = true
                                     known_ids[id .. "_" .. norm_trk_guid] = true
                                     known_note_pairs[note_pair_key] = true
+                                    state._known_session_portamento_ids[id] = true
                                     local pm = PortamentoMark.new({
                                         id            = id,
                                         track_guid    = trk_guid,
@@ -720,8 +803,15 @@ function PortamentoService.load_portamentos(state)
     end
 
     -- Auto-heal: If duplicates were pruned or new marks recovered, synchronize storage to keep takes clean
-    if had_duplicates or had_recovered then
+    if not read_only and (had_duplicates or had_recovered) then
         PortamentoService.save_portamentos(state)
+    end
+    if state.selected_portamento then
+        local found = nil
+        for _, pm in ipairs(state.portamento_marks) do
+            if pm.id == state.selected_portamento.id then found = pm; break end
+        end
+        state.selected_portamento = found
     end
 end
 
@@ -907,6 +997,7 @@ function PortamentoService.toggle_portamento(state, active_tracks_data)
         show_text  = (state and state.portamento_default_show_text == true)
     })
 
+    reaper.Undo_BeginBlock2(0)
     table.insert(state.portamento_marks, pm)
     state.selected_portamento = pm
     local hs, he = PortamentoService.get_effective_timing(state, pm, active_tracks_data)
@@ -914,6 +1005,7 @@ function PortamentoService.toggle_portamento(state, active_tracks_data)
     pm.hold_end_qn   = he
     PortamentoService.sync_track_cc(state, pm.track_guid, active_tracks_data)
     PortamentoService.save_portamentos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Add Portamento", -1)
 
     state.status_msg = string.format("Portamento added [P] (%s -> %s, %s, %d%% -> %d%%)",
         pitch_to_name(n1.pitch), pitch_to_name(n2.pitch),
@@ -935,12 +1027,14 @@ function PortamentoService.delete_portamento(state, port_id, active_tracks_data)
             if state.hovered_portamento and state.hovered_portamento.id == port_id then
                 state.hovered_portamento = nil
             end
+            reaper.Undo_BeginBlock2(0)
             local extra = {}
             if old_s and old_e then
                 table.insert(extra, { old_s, old_e, chan })
             end
             PortamentoService.sync_track_cc(state, trk_guid, active_tracks_data, extra)
             PortamentoService.save_portamentos(state)
+            reaper.Undo_EndBlock2(0, "Notator: Delete Portamento", -1)
             state.status_msg = "Portamento deleted [P]."
             return
         end
@@ -959,6 +1053,7 @@ function PortamentoService.set_mode(state, pm_or_id, new_mode, active_tracks_dat
     end
     if not pm then return end
 
+    reaper.Undo_BeginBlock2(0)
     local old_s = pm.hold_start_qn
     local old_e = pm.hold_end_qn
     pm.mode = new_mode or "cc64"
@@ -973,6 +1068,7 @@ function PortamentoService.set_mode(state, pm_or_id, new_mode, active_tracks_dat
     end
     PortamentoService.sync_track_cc(state, pm.track_guid, active_tracks_data, extra)
     PortamentoService.save_portamentos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Set Portamento Mode", -1)
     state.status_msg = string.format("Portamento mode set to: %s", PortamentoService.get_mode_label(pm.mode))
 end
 
@@ -988,8 +1084,10 @@ function PortamentoService.set_show_text(state, pm_or_id, show_text)
     end
     if not pm then return end
 
+    reaper.Undo_BeginBlock2(0)
     pm.show_text = (show_text == true)
     PortamentoService.save_portamentos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Toggle Portamento Text", -1)
     state.status_msg = pm.show_text and "Portamento: 'port.' text shown" or "Portamento: 'port.' text hidden"
 end
 
@@ -1005,6 +1103,7 @@ function PortamentoService.set_timing_pct(state, pm_or_id, start_pct1, end_pct2,
     end
     if not pm then return end
 
+    reaper.Undo_BeginBlock2(0)
     local old_s = pm.hold_start_qn
     local old_e = pm.hold_end_qn
 
@@ -1022,6 +1121,7 @@ function PortamentoService.set_timing_pct(state, pm_or_id, start_pct1, end_pct2,
 
     PortamentoService.sync_track_cc(state, pm.track_guid, active_tracks_data, extra)
     PortamentoService.save_portamentos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Set Portamento Timing", -1)
     state.status_msg = string.format("Portamento timing: Note 1 @ %d%% -> Note 2 @ %d%%", pm.start_pct1 or 50, pm.end_pct2 or 50)
 end
 
@@ -1062,6 +1162,7 @@ end
 
 function PortamentoService.apply_defaults_to_all(state, active_tracks_data)
     if not state or not state.portamento_marks or #state.portamento_marks == 0 then return 0 end
+    reaper.Undo_BeginBlock2(0)
     local count = #state.portamento_marks
     local def_mode = state.portamento_default_mode or "cc64"
     local def_s    = state.portamento_default_start_pct or 50
@@ -1081,6 +1182,7 @@ function PortamentoService.apply_defaults_to_all(state, active_tracks_data)
         PortamentoService.sync_track_cc(state, trk_guid, active_tracks_data)
     end
     PortamentoService.save_portamentos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Apply Portamento Defaults", -1)
     return count
 end
 
@@ -1467,12 +1569,16 @@ end
 function PortamentoService.reconcile_from_takes(state)
     if not state then return false end
     state.portamento_marks = state.portamento_marks or {}
+    state._known_session_portamento_ids = state._known_session_portamento_ids or {}
     local any_changed = false
 
     local port_by_id = {}
     local seen_note_pairs = {}
     for _, pm in ipairs(state.portamento_marks) do
-        if pm.id then port_by_id[pm.id] = pm end
+        if pm.id then
+            port_by_id[pm.id] = pm
+            state._known_session_portamento_ids[pm.id] = true
+        end
         local p_key = string.format("%s_%s_%s", normalize_guid(pm.track_guid), pm.n1_key or "", pm.n2_key or "")
         seen_note_pairs[p_key] = pm
     end
@@ -1490,12 +1596,14 @@ function PortamentoService.reconcile_from_takes(state)
                 local take = item and reaper.GetActiveTake(item)
                 if take and reaper.ValidatePtr(take, "MediaItem_Take*") and reaper.TakeIsMIDI(take) then
                     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                    local stale_del = {}
                     for text_i = 0, text_cnt - 1 do
                         local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
                         if ok and ev_type == 15 and msg:match("^NOTATOR_PORTAMENTO|") then
                             local parts = {}
                             for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
                             local id = parts[2]
+                            local orig_trk_guid = parts[3] or ""
                             local n1_k = parts[5] or ""
                             local n2_k = parts[9] or ""
                             local pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
@@ -1509,14 +1617,19 @@ function PortamentoService.reconcile_from_takes(state)
                                         any_changed = true
                                     end
                                 else
-                                    seen_port_ids[id .. "_" .. norm_trk_guid] = true
                                     local ep = port_by_id[id]
                                     if ep then
+                                        seen_port_ids[id .. "_" .. norm_trk_guid] = true
                                         if ep.track_guid ~= trk_guid then
                                             ep.track_guid = trk_guid
                                             any_changed = true
                                         end
+                                    elseif state._known_session_portamento_ids[id] and normalize_guid(orig_trk_guid) == norm_trk_guid then
+                                        -- Stale NOTATOR_PORTAMENTO event on the same track after Undo/delete: remove from take instead of resurrecting!
+                                        table.insert(stale_del, text_i)
                                     else
+                                        seen_port_ids[id .. "_" .. norm_trk_guid] = true
+                                        state._known_session_portamento_ids[id] = true
                                         local pm = PortamentoMark.new({
                                             id            = id,
                                             track_guid    = trk_guid,
@@ -1544,6 +1657,15 @@ function PortamentoService.reconcile_from_takes(state)
                                     end
                                 end
                             end
+                        end
+                    end
+                    if #stale_del > 0 then
+                        for idx = #stale_del, 1, -1 do
+                            reaper.MIDI_DeleteTextSysexEvt(take, stale_del[idx])
+                        end
+                        reaper.MIDI_Sort(take)
+                        if reaper.MarkTrackItemsDirty then
+                            reaper.MarkTrackItemsDirty(trk, item)
                         end
                     end
                 end

@@ -1642,8 +1642,9 @@ end
 
 --- Loads key signature settings from the current REAPER project via ProjExtState.
 -- @param state Notator state object
-function KeySignatureService.load(state)
+function KeySignatureService.load(state, read_only)
     if not state then return end
+    KeySignatureService.invalidate_cache()
     -- The user explicitly requested:
     -- Default key signature must ALWAYS be C Major on startup.
     state.key_signature = 0
@@ -1689,7 +1690,9 @@ function KeySignatureService.load(state)
             state._ts0_from_changes_num = state.time_sig_num
             state._ts0_from_changes_den = state.time_sig_denom
         end
-        KeySignatureService.sync_time_sigs_to_reaper(state)
+        if not read_only then
+            KeySignatureService.sync_time_sigs_to_reaper(state)
+        end
     else
         state.time_sig_changes = {
             [0] = { num = state.time_sig_num or 4, denom = state.time_sig_denom or 4 }

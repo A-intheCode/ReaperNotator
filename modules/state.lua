@@ -1430,4 +1430,47 @@ function State:set_grid(qn, label, midi_service)
     end
 end
 
+--- Reloads all project-level score elements in read-only mode (for Undo/Redo synchronization without dirtying Redo stack)
+function State:reload_score_from_project()
+    local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
+    local KeySignatureService = package.loaded["services.key_signature_service"] or require("services.key_signature_service")
+    local FermataService = package.loaded["services.fermata_service"] or require("services.fermata_service")
+    local TempoService = package.loaded["services.tempo_service"] or require("services.tempo_service")
+    local OctaveService = package.loaded["services.octave_service"] or require("services.octave_service")
+    local HairpinService = package.loaded["services.hairpin_service"] or require("services.hairpin_service")
+    local DynamicTextService = package.loaded["services.dynamic_text_service"] or require("services.dynamic_text_service")
+    local PedalService = package.loaded["services.pedal_service"] or require("services.pedal_service")
+    local TextItemService = package.loaded["services.text_item_service"] or require("services.text_item_service")
+    local RepeatService = package.loaded["services.repeat_service"] or require("services.repeat_service")
+    local RehearsalMarkService = package.loaded["services.rehearsal_mark_service"] or require("services.rehearsal_mark_service")
+    local ScaleService = package.loaded["services.scale_service"] or require("services.scale_service")
+    local SlurService = package.loaded["services.slur_service"] or require("services.slur_service")
+    local PortamentoService = package.loaded["services.portamento_service"] or require("services.portamento_service")
+    local GlissandoService = package.loaded["services.glissando_service"] or require("services.glissando_service")
+    local AnnotationService = package.loaded["services.annotation_service"] or require("services.annotation_service")
+
+    if MidiService and MidiService.invalidate_cache then MidiService.invalidate_cache() end
+    self.active_tracks_cache = nil
+    self.cached_measure_map = nil
+    self.cached_measure_map_sig = nil
+    if KeySignatureService and KeySignatureService.load then KeySignatureService.load(self, true) end
+    if FermataService and FermataService.load_fermatas then FermataService.load_fermatas(self, true) end
+    if TempoService and TempoService.load_markers then TempoService.load_markers(self, true) end
+    if OctaveService and OctaveService.load_lines then OctaveService.load_lines(self, true) end
+    if HairpinService and HairpinService.load_hairpins then HairpinService.load_hairpins(self, true) end
+    if DynamicTextService and DynamicTextService.load_dynamic_texts then DynamicTextService.load_dynamic_texts(self, true) end
+    if PortamentoService and PortamentoService.load_portamentos then PortamentoService.load_portamentos(self, true) end
+    if PedalService and PedalService.load_pedals then PedalService.load_pedals(self, true) end
+    if TextItemService and TextItemService.load_text_items then TextItemService.load_text_items(self, true) end
+    if RepeatService and RepeatService.load_repeat_marks then RepeatService.load_repeat_marks(self, true) end
+    if RehearsalMarkService and RehearsalMarkService.load_marks then RehearsalMarkService.load_marks(self, true) end
+    if ScaleService and ScaleService.load_chord_items then ScaleService.load_chord_items(self) end
+    if SlurService and SlurService.load_slurs then SlurService.load_slurs(self, true) end
+    if GlissandoService and GlissandoService.load_glissandos then GlissandoService.load_glissandos(self, true) end
+    if AnnotationService and AnnotationService.load_metadata then AnnotationService.load_metadata(self) end
+    if MidiService and MidiService.load_stem_directions then MidiService.load_stem_directions(self) end
+    if MidiService and MidiService.load_notehead_types then MidiService.load_notehead_types(self) end
+    if MidiService and MidiService.invalidate_editor_cache then MidiService.invalidate_editor_cache() end
+end
+
 return State

@@ -925,6 +925,14 @@ function ScaleService.load_chord_items(state)
             end
         end
     end
+
+    if state.selected_chord_item then
+        local found = nil
+        for _, ci in ipairs(state.chord_items) do
+            if ci.id == state.selected_chord_item.id then found = ci; break end
+        end
+        state.selected_chord_item = found
+    end
 end
 
 -- ------------------------------------------------------------------------------

@@ -383,9 +383,10 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             local orig_qn = state.drag_dyn_start_qn or d.qn
             local target_qn = state.drag_dyn_target_qn or Engraver.canvas_x_to_qn(mouse_x, margin_left, s, qn_per_measure, state.grid_qn, measure_map)
             if d and d.take and reaper.ValidatePtr(d.take, "MediaItem_Take*") then
+                reaper.Undo_BeginBlock2(0)
                 local orig_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(d.take, orig_qn) + 0.5)
                 local target_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(d.take, target_qn) + 0.5)
-                dynamics_engine.move_dynamic_marker(d, d.take, target_ppq, d.track)
+                dynamics_engine.move_dynamic_marker(d, d.take, target_ppq, d.track, true)
                 
                 -- Move docked hairpins (start or end) along to the new position
                 if state.hairpins then
@@ -436,7 +437,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                 end
                 
                 local active_td = canvas_info and canvas_info.active_tracks_data
-                dynamics_engine.smart_reblend_all(state, midi_service, active_td, d.take)
+                dynamics_engine.smart_reblend_all(state, midi_service, active_td, d.take, nil, nil, true)
+                reaper.Undo_EndBlock2(0, "Notator: Move Dynamic Marker", -1)
                 if MidiService and MidiService.invalidate_cache then
                     MidiService.invalidate_cache()
                 end
@@ -517,31 +519,6 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             end
             reaper.ImGui_SetMouseCursor(ctx, reaper.ImGui_MouseCursor_Hand())
         end
-        
-        -- Live synchronization of REAPER tempo map on every change during drag
-        local orig_s = state.drag_tempo_orig_start
-        local orig_e = state.drag_tempo_orig_end
-        local current_drag_val = (state.drag_tempo_handle == "body") and state.drag_tempo_delta_qn or state.drag_tempo_target_qn
-        if current_drag_val and current_drag_val ~= state.last_drag_tempo_val then
-            state.last_drag_tempo_val = current_drag_val
-            local TempoService = require("services.tempo_service")
-            local tm = state.drag_tempo_marker
-            if tm.type == "absolute" then
-                local prev_qn = state.drag_tempo_last_qn or orig_s
-                state.drag_tempo_last_qn = state.drag_tempo_target_qn
-                TempoService.move_absolute_tempo_marker(state, tm, state.drag_tempo_target_qn, prev_qn)
-            else
-                if state.drag_tempo_handle == "start" and state.drag_tempo_target_qn then
-                    TempoService.update_marker_bounds(state, tm, state.drag_tempo_target_qn, nil, orig_s, orig_e)
-                elseif state.drag_tempo_handle == "end" and state.drag_tempo_target_qn then
-                    TempoService.update_marker_bounds(state, tm, nil, state.drag_tempo_target_qn, orig_s, orig_e)
-                elseif state.drag_tempo_handle == "body" and state.drag_tempo_delta_qn then
-                    local span = (orig_e or (orig_s + 4.0)) - orig_s
-                    local new_s = math.max(0.0, orig_s + state.drag_tempo_delta_qn)
-                    TempoService.update_marker_bounds(state, tm, new_s, new_s + span, orig_s, orig_e)
-                end
-            end
-        end
     end
     
     if reaper.ImGui_IsMouseReleased(ctx, 0) then
@@ -550,6 +527,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             local TempoService = require("services.tempo_service")
             local orig_s = state.drag_tempo_orig_start
             local orig_e = state.drag_tempo_orig_end
+            reaper.Undo_BeginBlock2(0)
             if tm.type == "absolute" then
                 local prev_qn = state.drag_tempo_last_qn or orig_s
                 local final_qn = state.drag_tempo_target_qn or orig_s
@@ -567,7 +545,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             end
             TempoService.clean_all_duplicate_tempo_markers(state)
             TempoService.save_markers(state)
-            reaper.Undo_OnStateChange2(0, "Notator: Adjust Tempo Marker")
+            reaper.Undo_EndBlock2(0, "Notator: Adjust Tempo Marker", -1)
             state.status_msg = string.format("Adjusted tempo '%s' (measure %.2f - %.2f)", tm:get_display_text(), (tm.start_qn / qn_per_measure) + 1, ((tm.end_qn or tm.start_qn) / qn_per_measure) + 1)
         end
         state.is_dragging_tempo = false
@@ -632,10 +610,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             
             if (math.abs(new_s - orig_s) > 0.01 or math.abs(new_e - orig_e) > 0.01) then
                 OctaveService.resize_octave_line(state, oline, orig_s, orig_e, new_s, new_e)
-            else
-                OctaveService.save_lines(state)
             end
-            reaper.Undo_OnStateChange2(0, "Notator: Adjust Octave Line")
             state.is_dragging_octave = false
             state.drag_octave_line = nil
             state.drag_octave_handle = nil
@@ -725,11 +700,6 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
         end
         state.drag_hairpin_min_start = math.min(state.drag_hairpin_min_start or orig_s or hp.start_qn, hp.start_qn)
         state.drag_hairpin_max_end = math.max(state.drag_hairpin_max_end or orig_e or hp.end_qn, hp.end_qn)
-        local take = HairpinService.find_take_for_track(hp.track_guid, canvas_info.active_tracks_data)
-        local clear_s_ppq = (take and state.drag_hairpin_min_start) and math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, state.drag_hairpin_min_start) + 0.5)
-        local clear_e_ppq = (take and state.drag_hairpin_max_end) and math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, state.drag_hairpin_max_end) + 0.5)
-        HairpinService.save_hairpins(state)
-        HairpinService.apply_hairpin_cc(state, hp, midi_service, canvas_info.active_tracks_data, clear_s_ppq, clear_e_ppq)
     end
     
     if reaper.ImGui_IsMouseReleased(ctx, 0) then
@@ -740,6 +710,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             local take = HairpinService.find_take_for_track(hp.track_guid, canvas_info.active_tracks_data)
             local clear_s_ppq = (take and min_s) and math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, min_s) + 0.5)
             local clear_e_ppq = (take and max_e) and math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, max_e) + 0.5)
+            reaper.Undo_BeginBlock2(0)
             HairpinService.save_hairpins(state)
             HairpinService.resolve_all_track_hairpins(state, hp.track_guid, canvas_info.active_tracks_data)
             
@@ -772,9 +743,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                     DynamicTextService.apply_cc(state, tdt, midi_service, canvas_info.active_tracks_data)
                 end
             end
-            
+            reaper.Undo_EndBlock2(0, "Notator: Adjust Hairpin", -1)
             local bpi = qn_per_measure or 4.0
-            reaper.Undo_OnStateChange2(0, "Notator: Adjust Hairpin")
             state.status_msg = string.format("Adjusted %s (measure %.2f - %.2f)", hp:get_display_name(), (hp.start_qn / bpi) + 1, (hp.end_qn / bpi) + 1)
         end
         state.is_dragging_hairpin = false
@@ -866,13 +836,6 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
         
         state.drag_dynamic_text_min_start = math.min(state.drag_dynamic_text_min_start or orig_s or dt.start_qn, dt.start_qn)
         state.drag_dynamic_text_max_end = math.max(state.drag_dynamic_text_max_end or orig_e or dt.end_qn, dt.end_qn)
-        
-        local take = DynamicTextService.find_take_for_track(dt.track_guid, canvas_info.active_tracks_data)
-        local clear_s_ppq = (take and state.drag_dynamic_text_min_start) and math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, state.drag_dynamic_text_min_start) + 0.5)
-        local clear_e_ppq = (take and state.drag_dynamic_text_max_end) and math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, state.drag_dynamic_text_max_end) + 0.5)
-        
-        DynamicTextService.save_dynamic_texts(state)
-        DynamicTextService.apply_cc(state, dt, midi_service, canvas_info.active_tracks_data, clear_s_ppq, clear_e_ppq)
     end
     
     if reaper.ImGui_IsMouseReleased(ctx, 0) then
@@ -883,6 +846,7 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             local take = DynamicTextService.find_take_for_track(dt.track_guid, canvas_info.active_tracks_data)
             local clear_s_ppq = (take and min_s) and math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, min_s) + 0.5)
             local clear_e_ppq = (take and max_e) and math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, max_e) + 0.5)
+            reaper.Undo_BeginBlock2(0)
             DynamicTextService.save_dynamic_texts(state)
             DynamicTextService.apply_cc(state, dt, midi_service, canvas_info.active_tracks_data, clear_s_ppq, clear_e_ppq)
             
@@ -899,9 +863,8 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                     HairpinService.apply_hairpin_cc(state, thp, midi_service, canvas_info.active_tracks_data)
                 end
             end
-            
+            reaper.Undo_EndBlock2(0, "Notator: Adjust Dynamic Text", -1)
             local bpi = qn_per_measure or 4.0
-            reaper.Undo_OnStateChange2(0, "Notator: Adjust Dynamic Text")
             state.status_msg = string.format("Adjusted text dynamic '%s' (measure %.2f - %.2f)", dt.text, (dt.start_qn / bpi) + 1, (dt.end_qn / bpi) + 1)
         end
         state.is_dragging_dynamic_text = false
@@ -1020,12 +983,13 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             end
             pm.pauses = kept_pauses
             
+            reaper.Undo_BeginBlock2(0)
             PedalService.save_pedals(state)
             if pm.apply_cc then
                 PedalService.apply_cc(state, pm, midi_service, canvas_info.active_tracks_data, clear_s, clear_e)
             end
+            reaper.Undo_EndBlock2(0, "Notator: Adjust Sustain Pedal", -1)
             local bpi = qn_per_measure or 4.0
-            reaper.Undo_OnStateChange2(0, "Notator: Adjust Sustain Pedal")
             state.status_msg = string.format("Adjusted pedal marking (measure %.2f - %.2f)", (pm.start_qn / bpi) + 1, (pm.end_qn / bpi) + 1)
         end
         state.is_dragging_pedal = false
@@ -1077,9 +1041,10 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
     if reaper.ImGui_IsMouseReleased(ctx, 0) then
         if state.is_dragging_text_item and state.drag_text_item then
             local TextItemService = require("services.text_item_service")
+            reaper.Undo_BeginBlock2(0)
             TextItemService.save_text_items(state)
+            reaper.Undo_EndBlock2(0, "Notator: Move Text Item", -1)
             local bpi = qn_per_measure or 4.0
-            reaper.Undo_OnStateChange2(0, "Notator: Move Text Item")
             state.status_msg = string.format("Moved Text Item: measure %.2f (Y offset: %.0f px)", (state.drag_text_item.qn / bpi) + 1, state.drag_text_item.offset_y or 32.0)
         end
         state.is_dragging_text_item = false

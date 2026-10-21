@@ -34,7 +34,7 @@ local function sync_hairpins_to_takes(state)
             table.insert(by_guid[hp.track_guid], hp)
         end
     end
-    
+
     local trk_count = reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
         local trk = reaper.GetTrack(0, ti)
@@ -42,7 +42,7 @@ local function sync_hairpins_to_takes(state)
             local trk_guid = reaper.GetTrackGUID(trk)
             local item_count = reaper.CountTrackMediaItems(trk)
             local track_hp_list = by_guid[trk_guid] or {}
-            
+
             for ii = 0, item_count - 1 do
                 local item = reaper.GetTrackMediaItem(trk, ii)
                 local take = item and reaper.GetActiveTake(item)
@@ -51,7 +51,7 @@ local function sync_hairpins_to_takes(state)
                     local item_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
                     local i_start_qn = reaper.TimeMap2_timeToQN(0, item_pos)
                     local i_end_qn = reaper.TimeMap2_timeToQN(0, item_pos + item_len)
-                    
+
                     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
                     local to_del = {}
                     for t_idx = text_cnt - 1, 0, -1 do
@@ -63,7 +63,7 @@ local function sync_hairpins_to_takes(state)
                     for _, d_idx in ipairs(to_del) do
                         reaper.MIDI_DeleteTextSysexEvt(take, d_idx)
                     end
-                    
+
                     local inserted = false
                     for _, hp in ipairs(track_hp_list) do
                         if hp.start_qn >= (i_start_qn - 0.05) and hp.start_qn < (i_end_qn + 0.05) then
@@ -84,11 +84,34 @@ local function sync_hairpins_to_takes(state)
     end
 end
 
-function HairpinService.load_hairpins(state)
+local function overlaps_existing_hairpin(list, track_guid, start_qn, end_qn, staff)
+    if not list or not track_guid then return false end
+    local s = tonumber(start_qn) or 0.0
+    local e = tonumber(end_qn) or (s + 4.0)
+    local st = staff or ""
+    for _, existing in ipairs(list) do
+        if existing.track_guid == track_guid and (existing.staff or "") == st then
+            local es = tonumber(existing.start_qn) or 0.0
+            local ee = tonumber(existing.end_qn) or (es + 4.0)
+            if s < (ee - 0.05) and e > (es + 0.05) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function HairpinService.load_hairpins(state, read_only)
+    local prev_sel_id = state.selected_hairpin and state.selected_hairpin.id or nil
     state.hairpins = {}
+    state._hairpins_version = (state._hairpins_version or 0) + 1
+    state._hairpins_by_track_cache = nil
+    state._hairpins_loaded = true
     local known = {}
+    local had_duplicates = false
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "hairpins")
-    if raw and raw ~= "" then
+    local has_proj_ext = (raw ~= nil and raw ~= "")
+    if has_proj_ext then
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
             for p in (entry .. "|"):gmatch("([^|]*)|") do
@@ -103,89 +126,132 @@ function HairpinService.load_hairpins(state)
             local end_dyn = (parts[7] and parts[7] ~= "") and parts[7] or nil
             local staff = (parts[8] and parts[8] ~= "") and parts[8] or nil
             if id and id ~= "" and track_guid and htype then
-                known[id] = true
-                local hp = Hairpin.new({
-                    id         = id,
-                    track_guid = track_guid,
-                    type       = htype,
-                    start_qn   = start_qn,
-                    end_qn     = end_qn,
-                    start_dyn  = start_dyn,
-                    end_dyn    = end_dyn,
-                    staff      = staff
-                })
-                table.insert(state.hairpins, hp)
+                if not known[id] and not overlaps_existing_hairpin(state.hairpins, track_guid, start_qn, end_qn, staff) then
+                    known[id] = true
+                    local hp = Hairpin.new({
+                        id         = id,
+                        track_guid = track_guid,
+                        type       = htype,
+                        start_qn   = start_qn,
+                        end_qn     = end_qn,
+                        start_dyn  = start_dyn,
+                        end_dyn    = end_dyn,
+                        staff      = staff
+                    })
+                    table.insert(state.hairpins, hp)
+                else
+                    had_duplicates = true
+                end
             end
         end
     end
 
-    -- DUAL PERSISTENCE: Read from MIDI takes (Type 15 notation events in .RPP)
-    local trk_count = reaper.CountTracks(0)
-    for ti = 0, trk_count - 1 do
-        local trk = reaper.GetTrack(0, ti)
-        if trk then
-            local trk_guid = reaper.GetTrackGUID(trk)
-            local item_count = reaper.CountTrackMediaItems(trk)
-            for ii = 0, item_count - 1 do
-                local item = reaper.GetTrackMediaItem(trk, ii)
-                local take = item and reaper.GetActiveTake(item)
-                if take and reaper.TakeIsMIDI(take) then
-                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
-                    for text_i = 0, text_cnt - 1 do
-                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
-                        if ok and ev_type == 15 and msg:match("^NOTATOR_HAIRPIN") then
-                            local parts = {}
-                            for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
-                            local id = parts[2]
-                            local htype = parts[3]
-                            local start_qn = tonumber(parts[4]) or reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
-                            local end_qn = tonumber(parts[5]) or (start_qn + 4.0)
-                            local start_dyn = (parts[6] and parts[6] ~= "") and parts[6] or nil
-                            local end_dyn = (parts[7] and parts[7] ~= "") and parts[7] or nil
-                            local staff = (parts[8] and parts[8] ~= "") and parts[8] or nil
-                            if id and id ~= "" and htype and not known[id] then
-                                known[id] = true
-                                table.insert(state.hairpins, Hairpin.new({
-                                    id         = id,
-                                    track_guid = trk_guid,
-                                    type       = htype,
-                                    start_qn   = start_qn,
-                                    end_qn     = end_qn,
-                                    start_dyn  = start_dyn,
-                                    end_dyn    = end_dyn,
-                                    staff      = staff
-                                }))
+    -- DUAL PERSISTENCE: Read from MIDI takes (Type 15 notation events in .RPP) ONLY on initial load when ProjExtState is empty
+    if not read_only and not has_proj_ext then
+        local trk_count = reaper.CountTracks(0)
+        for ti = 0, trk_count - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local trk_guid = reaper.GetTrackGUID(trk)
+                local item_count = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_count - 1 do
+                    local item = reaper.GetTrackMediaItem(trk, ii)
+                    local take = item and reaper.GetActiveTake(item)
+                    if take and reaper.TakeIsMIDI(take) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        for text_i = 0, text_cnt - 1 do
+                            local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                            if ok and ev_type == 15 and msg:match("^NOTATOR_HAIRPIN") then
+                                local parts = {}
+                                for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
+                                local id = parts[2]
+                                local htype = parts[3]
+                                local start_qn = tonumber(parts[4]) or reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                                local end_qn = tonumber(parts[5]) or (start_qn + 4.0)
+                                local start_dyn = (parts[6] and parts[6] ~= "") and parts[6] or nil
+                                local end_dyn = (parts[7] and parts[7] ~= "") and parts[7] or nil
+                                local staff = (parts[8] and parts[8] ~= "") and parts[8] or nil
+                                if id and id ~= "" and htype and not known[id] and not overlaps_existing_hairpin(state.hairpins, trk_guid, start_qn, end_qn, staff) then
+                                    known[id] = true
+                                    table.insert(state.hairpins, Hairpin.new({
+                                        id         = id,
+                                        track_guid = trk_guid,
+                                        type       = htype,
+                                        start_qn   = start_qn,
+                                        end_qn     = end_qn,
+                                        start_dyn  = start_dyn,
+                                        end_dyn    = end_dyn,
+                                        staff      = staff
+                                    }))
+                                end
                             end
                         end
                     end
                 end
             end
         end
+        if #state.hairpins > 0 then
+            HairpinService.save_hairpins(state)
+        end
+    elseif not read_only and (has_proj_ext or had_duplicates) then
+        if had_duplicates then
+            HairpinService.save_hairpins(state)
+        else
+            sync_hairpins_to_takes(state)
+        end
+    end
+
+    -- Reconcile selection against loaded hairpins
+    if prev_sel_id then
+        local found_sel = nil
+        for _, hp in ipairs(state.hairpins) do
+            if hp.id == prev_sel_id then
+                found_sel = hp
+                break
+            end
+        end
+        state.selected_hairpin = found_sel
+    else
+        state.selected_hairpin = nil
+    end
+    if state.selected_hairpins then
+        local valid_map = {}
+        for _, hp in ipairs(state.hairpins) do
+            if state.selected_hairpins[hp.id] then
+                valid_map[hp.id] = hp
+            end
+        end
+        state.selected_hairpins = valid_map
     end
 end
 
 function HairpinService.parse_notation_event(state, track, take, ppq, msg)
     if not state or not msg then return end
+    if state._hairpins_loaded then return end
     if not state.hairpins then state.hairpins = {} end
     local trk_guid = track and reaper.ValidatePtr(track, "MediaTrack*") and reaper.GetTrackGUID(track)
     if not trk_guid then return end
-    
+
     local parts = {}
     for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
     local id = parts[2]
     if not id or id == "" then return end
-    
+
     for _, hp in ipairs(state.hairpins) do
         if hp.id == id then return end
     end
-    
+
     local htype = parts[3] or "crescendo"
     local start_qn = tonumber(parts[4]) or (take and reaper.MIDI_GetProjQNFromPPQPos(take, ppq)) or 0.0
     local end_qn = tonumber(parts[5]) or (start_qn + 4.0)
     local start_dyn = (parts[6] and parts[6] ~= "") and parts[6] or nil
     local end_dyn = (parts[7] and parts[7] ~= "") and parts[7] or nil
     local staff = (parts[8] and parts[8] ~= "") and parts[8] or nil
-    
+
+    if overlaps_existing_hairpin(state.hairpins, trk_guid, start_qn, end_qn, staff) then
+        return
+    end
+
     table.insert(state.hairpins, Hairpin.new({
         id         = id,
         track_guid = trk_guid,
@@ -199,6 +265,8 @@ function HairpinService.parse_notation_event(state, track, take, ppq, msg)
 end
 
 function HairpinService.save_hairpins(state)
+    state._hairpins_version = (state._hairpins_version or 0) + 1
+    state._hairpins_by_track_cache = nil
     local parts = {}
     for _, hp in ipairs(state.hairpins or {}) do
         local entry = string.format("%s|%s|%s|%.4f|%.4f|%s|%s|%s",
@@ -342,12 +410,12 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
     if not hp then return 0.0, 999999.0, nil, nil, nil, nil end
     local s_qn = hp.start_qn or 0.0
     local e_qn = hp.end_qn or (s_qn + 4.0)
-    
+
     -- 1. Find neighbor hairpins on the same track
     local prev_hp, next_hp = nil, nil
     local max_prev_start = -1
     local min_next_start = 99999999
-    
+
     if state.hairpins then
         for _, other in ipairs(state.hairpins) do
             if other.id ~= hp.id and other.track_guid == hp.track_guid then
@@ -368,13 +436,13 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
             end
         end
     end
-    
+
     -- 2. Find dynamic markers on the same track
     local prev_dyn, next_dyn = nil, nil
     local max_prev_dyn_qn = -1
     local min_next_dyn_qn = 99999999
     local track_dyns = collect_track_dynamics(hp.track_guid, active_tracks_data)
-    
+
     for _, d in ipairs(track_dyns) do
         -- Marker lies before or directly at the start
         if d.qn <= s_qn + 0.05 then
@@ -390,7 +458,7 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
             end
         end
     end
-    
+
     -- 2b. Find dynamic texts (cresc., dim.) on the same track
     local prev_dt, next_dt = nil, nil
     local max_prev_dt_start = -1
@@ -413,7 +481,7 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
             end
         end
     end
-    
+
     -- 3. Calculate strict physical bounds (hairpins, dynamics, and dynamic texts only - NOT articulations)
     local l_bound = 0.0
     if prev_hp then
@@ -427,7 +495,7 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
         local pde = prev_dt.end_qn or (prev_dt.start_qn + 4.0)
         l_bound = math.max(l_bound, pde)
     end
-    
+
     local r_bound = 999999.0
     if next_hp then
         local ns = next_hp.start_qn or 0.0
@@ -440,13 +508,13 @@ function HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
         local nds = next_dt.start_qn or 0.0
         r_bound = math.min(r_bound, nds)
     end
-    
+
     return l_bound, r_bound, prev_hp, next_hp, prev_dyn, next_dyn, prev_dt, next_dt
 end
 
 function HairpinService.resolve_all_track_hairpins(state, track_guid, active_tracks_data)
     if not state.hairpins or not track_guid then return {} end
-    
+
     local track_hps = {}
     for _, hp in ipairs(state.hairpins) do
         if hp.track_guid == track_guid then
@@ -454,9 +522,9 @@ function HairpinService.resolve_all_track_hairpins(state, track_guid, active_tra
         end
     end
     table.sort(track_hps, function(a, b) return (a.start_qn or 0) < (b.start_qn or 0) end)
-    
+
     local track_dyns = collect_track_dynamics(track_guid, active_tracks_data)
-    
+
     local running_c1 = 50
     local running_c11 = 55
     if #track_dyns > 0 and track_dyns[1].qn <= 0.5 and track_dyns[1].label then
@@ -466,11 +534,11 @@ function HairpinService.resolve_all_track_hairpins(state, track_guid, active_tra
             running_c11 = lk.c2
         end
     end
-    
+
     for idx, hp in ipairs(track_hps) do
         local s_qn = hp.start_qn or 0.0
         local e_qn = hp.end_qn or (s_qn + 4.0)
-        
+
         local prev_dyn, next_dyn = nil, nil
         for _, d in ipairs(track_dyns) do
             if d.qn <= s_qn + 0.15 then
@@ -480,17 +548,17 @@ function HairpinService.resolve_all_track_hairpins(state, track_guid, active_tra
                 next_dyn = d
             end
         end
-        
+
         local prev_hp = (idx > 1) and track_hps[idx - 1] or nil
         local next_hp = (idx < #track_hps) and track_hps[idx + 1] or nil
-        
+
         local bp_lk = (prev_dyn and prev_dyn.label) and DYN_LOOKUP[prev_dyn.label:lower()] or nil
         local bn_lk = (next_dyn and next_dyn.label) and DYN_LOOKUP[next_dyn.label:lower()] or nil
-        
+
         local is_dyn_at_start = (prev_dyn and math.abs(prev_dyn.qn - s_qn) <= 0.45)
         local is_dyn_at_end   = (next_dyn and math.abs(next_dyn.qn - e_qn) <= 0.45)
         local is_hp_at_end    = (next_hp and math.abs((next_hp.start_qn or 0.0) - e_qn) <= 0.35)
-        
+
         -- 1. Determine start dynamic level
         local c1_s, c11_s = nil, nil
         if hp.start_dyn and DYN_LOOKUP[hp.start_dyn:lower()] then
@@ -516,7 +584,7 @@ function HairpinService.resolve_all_track_hairpins(state, track_guid, active_tra
             c1_s = 95
             c11_s = 100
         end
-        
+
         -- 2. Determine target dynamic level
         local c1_e, c11_e = nil, nil
         if hp.end_dyn and DYN_LOOKUP[hp.end_dyn:lower()] then
@@ -563,7 +631,7 @@ function HairpinService.resolve_all_track_hairpins(state, track_guid, active_tra
                 c11_e = math.max(25, c11_s - 20)
             end
         end
-        
+
         hp.c1_start = math.max(0, math.min(127, c1_s))
         hp.c11_start = math.max(0, math.min(127, c11_s))
         hp.c1_end = math.max(0, math.min(127, c1_e))
@@ -571,7 +639,7 @@ function HairpinService.resolve_all_track_hairpins(state, track_guid, active_tra
         running_c1 = hp.c1_end
         running_c11 = hp.c11_end
     end
-    
+
     return track_hps
 end
 
@@ -586,33 +654,31 @@ end
 
 function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_data, opt_clear_start_ppq, opt_clear_end_ppq)
     if not hp or hp.start_qn >= hp.end_qn then return end
-    
+
     local take, item = HairpinService.find_take_for_track(hp.track_guid, active_tracks_data, hp.start_qn)
     if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then return end
-    
+
     if item and reaper.ValidatePtr(item, "MediaItem*") then
         DynamicsEngine.load_item_modulators(item, state)
     end
-    
+
     -- WHEN BYPASS DYNAMIC CC SHAPING IS ACTIVE:
     -- Do not delete or rewrite any CCs!
     if state.dyn_bypass_cc then
         return
     end
-    
+
     local start_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, hp.start_qn) + 0.5)
     local end_ppq   = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, hp.end_qn) + 0.5)
     if end_ppq <= start_ppq then return end
-    
+
     local l_bound_qn, r_bound_qn, prev_hp, next_hp, prev_dyn, next_dyn = HairpinService.get_hairpin_bounds(state, hp, active_tracks_data)
     local c1_s, c11_s, c1_e, c11_e = HairpinService.resolve_dynamic_levels(state, hp, active_tracks_data, prev_hp, next_hp, prev_dyn, next_dyn)
-    
-    reaper.Undo_BeginBlock2(0)
-    
+
     -- Isolated cleanup strictly within hairpin range (including previous drag position)
     local clear_s_ppq = math.min(start_ppq, opt_clear_start_ppq or start_ppq)
     local clear_e_ppq = math.max(end_ppq, opt_clear_end_ppq or end_ppq)
-    
+
     -- Delete existing CC events isolated within allowed interval
     local _, _, cc_count = reaper.MIDI_CountEvts(take)
     for j = (cc_count or 0) - 1, 0, -1 do
@@ -623,11 +689,11 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
             end
         end
     end
-    
+
     local opt = Constants.DYN_GRID_OPTIONS[state.dyn_grid_idx] or Constants.DYN_GRID_OPTIONS[4]
     local grid_ppq = (opt and opt.val) and math.floor(opt.val * 960 + 0.5) or 240
     if grid_ppq < 10 then grid_ppq = 60 end
-    
+
     -- Prepare take notes for bow swelling
     local take_notes = {}
     local has_bow = (state.dyn_bow_intensity or 0) > 0
@@ -647,15 +713,15 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
             end
         end
     end
-    
+
     -- Hairpin ramp itself [start_ppq .. end_ppq]
     local dur = end_ppq - start_ppq
     local steps = math.max(4, math.floor(dur / grid_ppq))
-    
+
     local p_start = DynamicsEngine.get_pitch_at_ppq(take, start_ppq)
     local p_end = DynamicsEngine.get_pitch_at_ppq(take, end_ppq)
     local delta = (p_start and p_end) and (p_end - p_start) or 0
-    
+
     for s = 0, steps do
         local cur = start_ppq + math.floor(s * (dur / steps) + 0.5)
         if cur <= end_ppq then
@@ -668,7 +734,7 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
                 val1 = math.floor(c1_s + (c1_e - c1_s) * ratio + 0.5)
                 val2 = math.floor(c11_s + (c11_e - c11_s) * ratio + 0.5)
             end
-            
+
             -- Note-level breathing phrasing
             if state.dyn_phrasing_active then
                 local p_int = state.dyn_phrasing_intensity or 0.5
@@ -684,7 +750,7 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
                     end
                 end
             end
-            
+
             -- Bow swelling on notes >= quarter note
             if has_bow then
                 for _, n in ipairs(take_notes) do
@@ -699,7 +765,7 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
                     end
                 end
             end
-            
+
             if s == 0 then
                 val1 = c1_s
                 val2 = c11_s
@@ -716,9 +782,9 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
             reaper.MIDI_InsertCC(take, false, false, cur_ppq, 176, 0, cc_b, f2)
         end
     end
-    
+
     reaper.MIDI_Sort(take)
-    
+
     -- Apply linear curve flags (1 << 4 = 16) (only within cleared range)
     local _, final_str = reaper.MIDI_GetAllEvts(take, "")
     if final_str and #final_str > 0 then
@@ -741,7 +807,7 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
         reaper.MIDI_SetAllEvts(take, table.concat(final_midi_table))
         reaper.MIDI_Sort(take)
     end
-    
+
     if reaper.APIExists("MIDI_SetCCShape") then
         local _, _, total_ccs = reaper.MIDI_CountEvts(take)
         for j = 0, (total_ccs or 0) - 1 do
@@ -753,13 +819,11 @@ function HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_
             end
         end
     end
-    
+
     if item and reaper.ValidatePtr(item, "MediaItem*") then
         reaper.UpdateItemInProject(item)
     end
-    
-    local name = (hp.type == "crescendo") and "Crescendo (<)" or "Decrescendo (>)"
-    reaper.Undo_EndBlock2(0, "Notator: Adjust " .. name .. " Ramp", -1)
+
     reaper.UpdateArrange()
 end
 
@@ -767,7 +831,7 @@ function HairpinService.create_hairpin(state, track_guid, hairpin_type, start_qn
     if not track_guid or track_guid == "" then return nil end
     local s_qn = math.max(0.0, start_qn or 0.0)
     local e_qn = math.max(s_qn + 0.25, end_qn or (s_qn + 1.0))
-    
+
     -- If hairpins already exist on track, check bounds to prevent overlapping
     if state.hairpins then
         for _, other in ipairs(state.hairpins) do
@@ -803,7 +867,7 @@ function HairpinService.create_hairpin(state, track_guid, hairpin_type, start_qn
     if e_qn <= s_qn + 0.15 then
         e_qn = s_qn + 0.5
     end
-    
+
     local staff = opt_staff
     if not staff and active_tracks_data then
         for _, tdata in ipairs(active_tracks_data) do
@@ -834,17 +898,18 @@ function HairpinService.create_hairpin(state, track_guid, hairpin_type, start_qn
         end_dyn    = opt_end_dyn,
         staff      = staff
     })
-    
+
+    reaper.Undo_BeginBlock2(0)
     state.hairpins = state.hairpins or {}
     table.insert(state.hairpins, hp)
     HairpinService.save_hairpins(state)
-    
+
     state.selected_hairpin = hp
     HairpinService.apply_hairpin_cc(state, hp, midi_service, active_tracks_data)
-    
+
     local name = (hp.type == "crescendo") and "Crescendo (<)" or "Decrescendo (>)"
     state.status_msg = string.format("%s inserted (%.2f - %.2f QN)", name, s_qn, e_qn)
-    reaper.Undo_OnStateChange2(0, "Notator: Insert Hairpin")
+    reaper.Undo_EndBlock2(0, "Notator: Insert Hairpin", -1)
     return hp
 end
 
@@ -860,13 +925,14 @@ function HairpinService.delete_hairpin(state, hp_id, midi_service, active_tracks
         end
     end
     if target_idx and target_hp then
+        reaper.Undo_BeginBlock2(0)
         local track_guid = target_hp.track_guid
         table.remove(state.hairpins, target_idx)
         if state.selected_hairpin and state.selected_hairpin.id == hp_id then
             state.selected_hairpin = nil
         end
         HairpinService.save_hairpins(state)
-        
+
         -- Clean up associated CCs in take or perform smart re-blend between surrounding dynamics
         local take = HairpinService.find_take_for_track(track_guid, active_tracks_data)
         if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
@@ -875,8 +941,8 @@ function HairpinService.delete_hairpin(state, hp_id, midi_service, active_tracks
             local anchors = DynamicsEngine.collect_anchors_from_take and DynamicsEngine.collect_anchors_from_take(take) or {}
             if #anchors >= 2 and midi_service then
                 -- Selective re-blend only over range of deleted hairpin
-                DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, take, start_ppq, end_ppq)
-                
+                DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, take, start_ppq, end_ppq, true)
+
                 -- Restore remaining hairpins on same track chronologically
                 if state.hairpins then
                     local track_hps = {}
@@ -910,7 +976,6 @@ function HairpinService.delete_hairpin(state, hp_id, midi_service, active_tracks
                 local start_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, target_hp.start_qn) + 0.5)
                 local end_ppq   = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, target_hp.end_qn) + 0.5)
                 local _, _, cc_count = reaper.MIDI_CountEvts(take)
-                reaper.Undo_BeginBlock2(0)
                 for j = (cc_count or 0) - 1, 0, -1 do
                     local ok, _, _, ppq, _, _, m, _ = reaper.MIDI_GetCC(take, j)
                     if ok and (m == state.dyn_cc_a or m == state.dyn_cc_b) then
@@ -924,13 +989,13 @@ function HairpinService.delete_hairpin(state, hp_id, midi_service, active_tracks
                 if item and reaper.ValidatePtr(item, "MediaItem*") then
                     reaper.UpdateItemInProject(item)
                 end
-                reaper.Undo_EndBlock2(0, "Notator: Delete hairpin", -1)
                 reaper.UpdateArrange()
                 state.status_msg = "Hairpin ramp deleted"
             end
         else
             state.status_msg = "Hairpin ramp deleted"
         end
+        reaper.Undo_EndBlock2(0, "Notator: Delete Hairpin", -1)
     end
 end
 

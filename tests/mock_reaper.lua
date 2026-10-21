@@ -1269,6 +1269,10 @@ function Mock.create_environment(repo_root)
     function r.ImGui_IsKeyDown(ctx, key) return env.active_keys_down[key] == true end
     function r.ImGui_IsKeyReleased(ctx, key) return false end
     function r.ImGui_GetKeyMods(ctx) return env.key_mods or 0 end
+    function r.ImGui_Mod_Ctrl() return 1 << 12 end
+    function r.ImGui_Mod_Shift() return 1 << 13 end
+    function r.ImGui_Mod_Alt() return 1 << 14 end
+    function r.ImGui_Mod_Super() return 1 << 15 end
     function r.ImGui_Viewport_GetWorkPos(vp) return 0, 0 end
     function r.ImGui_Viewport_GetWorkSize(vp) return 1920, 1080 end
     function r.ImGui_GetMainViewport(ctx) return {} end

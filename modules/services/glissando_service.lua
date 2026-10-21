@@ -231,6 +231,9 @@ local function sync_glissandos_to_takes(state)
                     end
                     if inserted or #to_del > 0 then
                         reaper.MIDI_Sort(take)
+                        if reaper.MarkTrackItemsDirty then
+                            reaper.MarkTrackItemsDirty(trk, item)
+                        end
                     end
                 end
             end
@@ -238,10 +241,16 @@ local function sync_glissandos_to_takes(state)
     end
 end
 
+local clean_glissando_from_take
+
 function GlissandoService.save_glissandos(state)
     state.glissando_marks = state.glissando_marks or {}
+    state._known_session_glissando_ids = state._known_session_glissando_ids or {}
     local parts = {}
     for _, gm in ipairs(state.glissando_marks) do
+        if gm.id then
+            state._known_session_glissando_ids[gm.id] = true
+        end
         local entry = string.format("%s|%s|%d|%d|%.4f|%.4f|%d|%.4f|%.4f|%d|%s|%s|%s|%s",
             gm.id, gm.track_guid, gm.chan or 0,
             gm.pitch1 or 60, gm.start_qn1 or 0, gm.orig_dur1 or 1,
@@ -257,8 +266,9 @@ function GlissandoService.save_glissandos(state)
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
 end
 
-function GlissandoService.load_glissandos(state)
+function GlissandoService.load_glissandos(state, read_only)
     state.glissando_marks = {}
+    state._known_session_glissando_ids = state._known_session_glissando_ids or {}
     local known = {}
     local known_note_pairs = {}
     local duplicates_pruned = false
@@ -289,6 +299,7 @@ function GlissandoService.load_glissandos(state)
                     known[id] = true
                     known[id .. "_" .. norm_tg] = true
                     known_note_pairs[pair_key] = true
+                    state._known_session_glissando_ids[id] = true
 
                     local is_cross = (parts[12] == "1" or parts[12] == "true")
                     if not is_cross and p1 and p2 then
@@ -327,8 +338,64 @@ function GlissandoService.load_glissandos(state)
         end
     end
 
-    -- Dual persistence fallback: scan active MIDI takes if ProjExtState was empty/missed marks
-    local trk_cnt = reaper.CountTracks(0)
+    if read_only then
+        local any_cleaned = false
+        local trk_cnt_ro = reaper.CountTracks(0)
+        for ti = 0, trk_cnt_ro - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local trk_guid = reaper.GetTrackGUID(trk)
+                local norm_trk_guid = normalize_guid(trk_guid)
+                local item_cnt = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_cnt - 1 do
+                    local it = reaper.GetTrackMediaItem(trk, ii)
+                    local tk = it and reaper.GetActiveTake(it)
+                    if tk and reaper.TakeIsMIDI(tk) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(tk)
+                        local stale_gms = {}
+                        for t_idx = 0, text_cnt - 1 do
+                            local ok, _, _, _, ev_type, msg = reaper.MIDI_GetTextSysexEvt(tk, t_idx)
+                            if ok and ev_type == 15 and msg:match("^NOTATOR_GLISSANDO|") then
+                                local g_parts = {}
+                                for field in (msg .. "|"):gmatch("([^|]*)|") do table.insert(g_parts, field) end
+                                local gid = g_parts[2]
+                                local ch = tonumber(g_parts[4]) or 0
+                                local p1 = tonumber(g_parts[5]) or 60
+                                local sqn1 = tonumber(g_parts[6]) or 0.0
+                                local odur1 = tonumber(g_parts[7]) or 1.0
+                                local p2 = tonumber(g_parts[8]) or 62
+                                local sqn2 = tonumber(g_parts[9]) or 1.0
+                                local n1_k = string.format("%d_%.4f_%d", p1, sqn1, ch)
+                                local n2_k = string.format("%d_%.4f_%d", p2, sqn2, ch)
+                                local pair_key = string.format("%s_%s_%s", norm_trk_guid, n1_k, n2_k)
+                                if gid and not (known[gid .. "_" .. norm_trk_guid] or known_note_pairs[pair_key]) then
+                                    table.insert(stale_gms, { id = gid, p1 = p1, sqn1 = sqn1, odur1 = odur1, ch = ch, p2 = p2, sqn2 = sqn2 })
+                                end
+                            end
+                        end
+                        for _, sg in ipairs(stale_gms) do
+                            clean_glissando_from_take(tk, sg.id, sg.p1, sg.sqn1, sg.odur1, sg.ch, sg.p2, sg.sqn2)
+                            if reaper.MarkTrackItemsDirty then
+                                reaper.MarkTrackItemsDirty(trk, it)
+                            end
+                            any_cleaned = true
+                        end
+                    end
+                end
+            end
+        end
+        sync_glissandos_to_takes(state)
+        if any_cleaned then
+            local MidiService = package.loaded["services.midi_service"]
+            if MidiService and MidiService.invalidate_cache then
+                MidiService.invalidate_cache()
+            end
+            state.active_tracks_cache = nil
+        end
+    end
+
+    -- Dual persistence fallback: scan active MIDI takes if ProjExtState was empty/missed marks (skipped during read_only Undo/Redo reload)
+    local trk_cnt = read_only and 0 or reaper.CountTracks(0)
     for ti = 0, trk_cnt - 1 do
         local trk = reaper.GetTrack(0, ti)
         if trk then
@@ -408,8 +475,15 @@ function GlissandoService.load_glissandos(state)
     end
 
     -- Auto-heal project if duplicated marks were detected and pruned
-    if duplicates_pruned then
+    if not read_only and duplicates_pruned then
         GlissandoService.save_glissandos(state)
+    end
+    if state.selected_glissando then
+        local found = nil
+        for _, gm in ipairs(state.glissando_marks) do
+            if gm.id == state.selected_glissando.id then found = gm; break end
+        end
+        state.selected_glissando = found
     end
 end
 
@@ -562,7 +636,7 @@ local function generate_chromatic_steps_in_take(take, gm, n1, n2)
     reaper.MIDI_Sort(take)
 end
 
-local function clean_glissando_from_take(take, gliss_id, orig_p1, orig_s1, orig_dur1, chan, orig_p2, orig_s2)
+clean_glissando_from_take = function(take, gliss_id, orig_p1, orig_s1, orig_dur1, chan, orig_p2, orig_s2)
     if not take or not reaper.ValidatePtr(take, "MediaItem_Take*") then return end
 
     -- 1. Delete all NOTATOR_GLISS_STEP notes and tags
@@ -763,6 +837,7 @@ function GlissandoService.toggle_glissando(state, active_tracks_data)
         take = find_take_covering_qn(takes_list, n1.start_qn)
     end
 
+    reaper.Undo_BeginBlock2(0)
     if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
         generate_chromatic_steps_in_take(take, gm, n1, n2)
         local it = reaper.GetMediaItemTake_Item(take)
@@ -771,6 +846,7 @@ function GlissandoService.toggle_glissando(state, active_tracks_data)
 
     table.insert(state.glissando_marks, gm)
     GlissandoService.save_glissandos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Add Glissando", -1)
 
     state.selected_glissando = gm
     state.status_msg = string.format("Glissando created: %s -> %s (%d semitones%s)",
@@ -801,6 +877,7 @@ function GlissandoService.delete_glissando(state, gliss_id, active_tracks_data)
 
     if not target_gm then return end
 
+    reaper.Undo_BeginBlock2(0)
     local takes_list, trk = get_all_takes_for_track(target_gm.track_guid, active_tracks_data)
     for _, tinfo in ipairs(takes_list) do
         clean_glissando_from_take(tinfo.take, target_gm.id, target_gm.pitch1, target_gm.start_qn1, target_gm.orig_dur1, target_gm.chan or 0, target_gm.pitch2, target_gm.start_qn2)
@@ -815,6 +892,7 @@ function GlissandoService.delete_glissando(state, gliss_id, active_tracks_data)
     end
 
     GlissandoService.save_glissandos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Delete Glissando", -1)
     state.status_msg = "Glissando removed (chromatic steps cleaned, note duration restored)."
 
     reaper.UpdateArrange()
@@ -877,9 +955,11 @@ end
 function GlissandoService.set_timing_pct(state, gm_or_id, start_pct1, active_tracks_data)
     local gm = resolve_gm(state, gm_or_id)
     if not gm then return end
+    reaper.Undo_BeginBlock2(0)
     if start_pct1 then gm.start_pct1 = math.max(0, math.min(100, start_pct1)) end
     GlissandoService.resync_glissando_in_take(state, gm, active_tracks_data)
     GlissandoService.save_glissandos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Set Glissando Timing", -1)
     reaper.UpdateArrange()
     local MidiService = package.loaded["services.midi_service"]
     if MidiService and MidiService.invalidate_cache then MidiService.invalidate_cache() end
@@ -889,9 +969,11 @@ end
 function GlissandoService.set_vel_mode(state, gm_or_id, vel_mode, active_tracks_data)
     local gm = resolve_gm(state, gm_or_id)
     if not gm then return end
+    reaper.Undo_BeginBlock2(0)
     gm.vel_mode = vel_mode or "interpolate"
     GlissandoService.resync_glissando_in_take(state, gm, active_tracks_data)
     GlissandoService.save_glissandos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Set Glissando Velocity Mode", -1)
     reaper.UpdateArrange()
     local MidiService = package.loaded["services.midi_service"]
     if MidiService and MidiService.invalidate_cache then MidiService.invalidate_cache() end
@@ -901,19 +983,24 @@ end
 function GlissandoService.set_wave_style(state, gm_or_id, wave_style)
     local gm = resolve_gm(state, gm_or_id)
     if not gm then return end
+    reaper.Undo_BeginBlock2(0)
     gm.wave_style = wave_style or "sine"
     GlissandoService.save_glissandos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Set Glissando Wave Style", -1)
 end
 
 function GlissandoService.set_show_text(state, gm_or_id, show_text)
     local gm = resolve_gm(state, gm_or_id)
     if not gm then return end
+    reaper.Undo_BeginBlock2(0)
     gm.show_text = (show_text == true)
     GlissandoService.save_glissandos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Toggle Glissando Text", -1)
 end
 
 function GlissandoService.apply_defaults_to_all(state, active_tracks_data)
     if not state or not state.glissando_marks then return 0 end
+    reaper.Undo_BeginBlock2(0)
     local count = #state.glissando_marks
     for _, gm in ipairs(state.glissando_marks) do
         gm.start_pct1  = state.glissando_default_start_pct or 50
@@ -923,6 +1010,7 @@ function GlissandoService.apply_defaults_to_all(state, active_tracks_data)
         GlissandoService.resync_glissando_in_take(state, gm, active_tracks_data)
     end
     GlissandoService.save_glissandos(state)
+    reaper.Undo_EndBlock2(0, "Notator: Apply Glissando Defaults", -1)
     reaper.UpdateArrange()
     local MidiService = package.loaded["services.midi_service"]
     if MidiService and MidiService.invalidate_cache then MidiService.invalidate_cache() end
@@ -1386,12 +1474,16 @@ end
 function GlissandoService.reconcile_from_takes(state)
     if not state then return false end
     state.glissando_marks = state.glissando_marks or {}
+    state._known_session_glissando_ids = state._known_session_glissando_ids or {}
     local any_changed = false
 
     local gliss_by_id = {}
     local seen_note_pairs = {}
     for _, gm in ipairs(state.glissando_marks) do
-        if gm.id then gliss_by_id[gm.id] = gm end
+        if gm.id then
+            gliss_by_id[gm.id] = gm
+            state._known_session_glissando_ids[gm.id] = true
+        end
         local p_key = string.format("%s_%s_%s", normalize_guid(gm.track_guid), gm.n1_key or "", gm.n2_key or "")
         seen_note_pairs[p_key] = gm
     end
@@ -1409,15 +1501,18 @@ function GlissandoService.reconcile_from_takes(state)
                 local tk = it and reaper.GetActiveTake(it)
                 if tk and reaper.ValidatePtr(tk, "MediaItem_Take*") and reaper.TakeIsMIDI(tk) then
                     local _, _, _, text_cnt = reaper.MIDI_CountEvts(tk)
+                    local stale_gms = {}
                     for t_idx = 0, text_cnt - 1 do
                         local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(tk, t_idx)
                         if ok and ev_type == 15 and msg:match("^NOTATOR_GLISSANDO|") then
                             local g_parts = {}
                             for field in (msg .. "|"):gmatch("([^|]*)|") do table.insert(g_parts, field) end
                             local gid = g_parts[2]
+                            local orig_trk_guid = g_parts[3] or ""
                             local ch = tonumber(g_parts[4]) or 0
                             local p1 = tonumber(g_parts[5]) or 60
                             local sqn1 = tonumber(g_parts[6]) or 0.0
+                            local odur1 = tonumber(g_parts[7]) or 1.0
                             local p2 = tonumber(g_parts[8]) or 62
                             local sqn2 = tonumber(g_parts[9]) or 1.0
                             local n1_k = string.format("%d_%.4f_%d", p1, sqn1, ch)
@@ -1433,14 +1528,18 @@ function GlissandoService.reconcile_from_takes(state)
                                         any_changed = true
                                     end
                                 else
-                                    seen_gliss_ids[gid .. "_" .. norm_trk_guid] = true
                                     local eg = gliss_by_id[gid]
                                     if eg then
+                                        seen_gliss_ids[gid .. "_" .. norm_trk_guid] = true
                                         if eg.track_guid ~= trk_guid then
                                             eg.track_guid = trk_guid
                                             any_changed = true
                                         end
+                                    elseif state._known_session_glissando_ids[gid] and normalize_guid(orig_trk_guid) == norm_trk_guid then
+                                        table.insert(stale_gms, { id = gid, p1 = p1, sqn1 = sqn1, odur1 = odur1, ch = ch, p2 = p2, sqn2 = sqn2 })
                                     else
+                                        seen_gliss_ids[gid .. "_" .. norm_trk_guid] = true
+                                        state._known_session_glissando_ids[gid] = true
                                         local is_cross = (g_parts[13] == "1" or g_parts[13] == "true")
                                         if not is_cross and p1 and p2 then
                                             if (p1 < 60 and p2 >= 60) or (p1 >= 60 and p2 < 60) then
@@ -1454,8 +1553,8 @@ function GlissandoService.reconcile_from_takes(state)
                                             n1_key      = n1_k,
                                             pitch1      = p1,
                                             start_qn1   = sqn1,
-                                            orig_dur1   = tonumber(g_parts[7]) or 1.0,
-                                            dur_qn1     = tonumber(g_parts[7]) or 1.0,
+                                            orig_dur1   = odur1,
+                                            dur_qn1     = odur1,
                                             n2_key      = n2_k,
                                             pitch2      = p2,
                                             start_qn2   = sqn2,
@@ -1473,6 +1572,12 @@ function GlissandoService.reconcile_from_takes(state)
                                     end
                                 end
                             end
+                        end
+                    end
+                    for _, sg in ipairs(stale_gms) do
+                        clean_glissando_from_take(tk, sg.id, sg.p1, sg.sqn1, sg.odur1, sg.ch, sg.p2, sg.sqn2)
+                        if reaper.MarkTrackItemsDirty then
+                            reaper.MarkTrackItemsDirty(trk, it)
                         end
                     end
                 end

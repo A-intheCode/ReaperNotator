@@ -34,7 +34,7 @@ local function sync_dynamic_texts_to_takes(state)
             table.insert(by_guid[dt.track_guid], dt)
         end
     end
-    
+
     local trk_count = reaper.CountTracks(0)
     for ti = 0, trk_count - 1 do
         local trk = reaper.GetTrack(0, ti)
@@ -42,7 +42,7 @@ local function sync_dynamic_texts_to_takes(state)
             local trk_guid = reaper.GetTrackGUID(trk)
             local item_count = reaper.CountTrackMediaItems(trk)
             local track_dt_list = by_guid[trk_guid] or {}
-            
+
             for ii = 0, item_count - 1 do
                 local item = reaper.GetTrackMediaItem(trk, ii)
                 local take = item and reaper.GetActiveTake(item)
@@ -51,7 +51,7 @@ local function sync_dynamic_texts_to_takes(state)
                     local item_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
                     local i_start_qn = reaper.TimeMap2_timeToQN(0, item_pos)
                     local i_end_qn = reaper.TimeMap2_timeToQN(0, item_pos + item_len)
-                    
+
                     local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
                     local to_del = {}
                     for t_idx = text_cnt - 1, 0, -1 do
@@ -63,7 +63,7 @@ local function sync_dynamic_texts_to_takes(state)
                     for _, d_idx in ipairs(to_del) do
                         reaper.MIDI_DeleteTextSysexEvt(take, d_idx)
                     end
-                    
+
                     local inserted = false
                     for _, dt in ipairs(track_dt_list) do
                         if dt.start_qn >= (i_start_qn - 0.05) and dt.start_qn < (i_end_qn + 0.05) then
@@ -85,11 +85,34 @@ local function sync_dynamic_texts_to_takes(state)
     end
 end
 
-function DynamicTextService.load_dynamic_texts(state)
+local function overlaps_existing_dyn_text(list, track_guid, start_qn, end_qn, staff)
+    if not list or not track_guid then return false end
+    local s = tonumber(start_qn) or 0.0
+    local e = tonumber(end_qn) or (s + 4.0)
+    local st = staff or ""
+    for _, existing in ipairs(list) do
+        if existing.track_guid == track_guid and (existing.staff or "") == st then
+            local es = tonumber(existing.start_qn) or 0.0
+            local ee = tonumber(existing.end_qn) or (es + 4.0)
+            if s < (ee - 0.05) and e > (es + 0.05) then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+function DynamicTextService.load_dynamic_texts(state, read_only)
+    local prev_sel_id = state.selected_dynamic_text and state.selected_dynamic_text.id or nil
     state.dynamic_texts = {}
+    state._dynamic_texts_version = (state._dynamic_texts_version or 0) + 1
+    state._dynamic_texts_by_track_cache = nil
+    state._dynamic_texts_loaded = true
     local known = {}
+    local had_duplicates = false
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "dynamic_texts")
-    if raw and raw ~= "" then
+    local has_proj_ext = (raw ~= nil and raw ~= "")
+    if has_proj_ext then
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
             for p in (entry .. "|"):gmatch("([^|]*)|") do
@@ -106,93 +129,131 @@ function DynamicTextService.load_dynamic_texts(state)
             local start_dyn     = (parts[9] and parts[9] ~= "") and parts[9] or nil
             local end_dyn       = (parts[10] and parts[10] ~= "") and parts[10] or nil
             local staff         = (parts[11] and parts[11] ~= "") and parts[11] or nil
-            
+
             if id and id ~= "" and track_guid and dtype then
-                known[id] = true
-                local dt = DynamicText.new({
-                    id            = id,
-                    track_guid    = track_guid,
-                    type          = dtype,
-                    text          = text,
-                    start_qn      = start_qn,
-                    end_qn        = end_qn,
-                    line_pattern  = line_pattern,
-                    curve_pattern = curve_pattern,
-                    start_dyn     = start_dyn,
-                    end_dyn       = end_dyn,
-                    staff         = staff
-                })
-                table.insert(state.dynamic_texts, dt)
+                if not known[id] and not overlaps_existing_dyn_text(state.dynamic_texts, track_guid, start_qn, end_qn, staff) then
+                    known[id] = true
+                    local dt = DynamicText.new({
+                        id            = id,
+                        track_guid    = track_guid,
+                        type          = dtype,
+                        text          = text,
+                        start_qn      = start_qn,
+                        end_qn        = end_qn,
+                        line_pattern  = line_pattern,
+                        curve_pattern = curve_pattern,
+                        start_dyn     = start_dyn,
+                        end_dyn       = end_dyn,
+                        staff         = staff
+                    })
+                    table.insert(state.dynamic_texts, dt)
+                else
+                    had_duplicates = true
+                end
             end
         end
     end
 
-    -- DUAL PERSISTENCE: Read from MIDI takes (Type 15 notation events in .RPP)
-    local trk_count = reaper.CountTracks(0)
-    for ti = 0, trk_count - 1 do
-        local trk = reaper.GetTrack(0, ti)
-        if trk then
-            local trk_guid = reaper.GetTrackGUID(trk)
-            local item_count = reaper.CountTrackMediaItems(trk)
-            for ii = 0, item_count - 1 do
-                local item = reaper.GetTrackMediaItem(trk, ii)
-                local take = item and reaper.GetActiveTake(item)
-                if take and reaper.TakeIsMIDI(take) then
-                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
-                    for text_i = 0, text_cnt - 1 do
-                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
-                        if ok and ev_type == 15 and msg:match("^NOTATOR_DYN_TEXT") then
-                            local parts = {}
-                            for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
-                            local id            = parts[2]
-                            local dtype         = parts[3]
-                            local text          = parts[4]
-                            local start_qn      = tonumber(parts[5]) or reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
-                            local end_qn        = tonumber(parts[6]) or (start_qn + 4.0)
-                            local line_pattern  = (parts[7] and parts[7] ~= "") and parts[7] or "none"
-                            local curve_pattern = (parts[8] and parts[8] ~= "") and parts[8] or "linear"
-                            local start_dyn     = (parts[9] and parts[9] ~= "") and parts[9] or nil
-                            local end_dyn       = (parts[10] and parts[10] ~= "") and parts[10] or nil
-                            local staff         = (parts[11] and parts[11] ~= "") and parts[11] or nil
-                            if id and id ~= "" and not known[id] then
-                                known[id] = true
-                                table.insert(state.dynamic_texts, DynamicText.new({
-                                    id            = id,
-                                    track_guid    = trk_guid,
-                                    type          = dtype,
-                                    text          = text,
-                                    start_qn      = start_qn,
-                                    end_qn        = end_qn,
-                                    line_pattern  = line_pattern,
-                                    curve_pattern = curve_pattern,
-                                    start_dyn     = start_dyn,
-                                    end_dyn       = end_dyn,
-                                    staff         = staff
-                                }))
+    -- DUAL PERSISTENCE: Read from MIDI takes (Type 15 notation events in .RPP) ONLY on initial load when ProjExtState is empty
+    if not read_only and not has_proj_ext then
+        local trk_count = reaper.CountTracks(0)
+        for ti = 0, trk_count - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local trk_guid = reaper.GetTrackGUID(trk)
+                local item_count = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_count - 1 do
+                    local item = reaper.GetTrackMediaItem(trk, ii)
+                    local take = item and reaper.GetActiveTake(item)
+                    if take and reaper.TakeIsMIDI(take) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        for text_i = 0, text_cnt - 1 do
+                            local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                            if ok and ev_type == 15 and msg:match("^NOTATOR_DYN_TEXT") then
+                                local parts = {}
+                                for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
+                                local id            = parts[2]
+                                local dtype         = parts[3]
+                                local text          = parts[4]
+                                local start_qn      = tonumber(parts[5]) or reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                                local end_qn        = tonumber(parts[6]) or (start_qn + 4.0)
+                                local line_pattern  = (parts[7] and parts[7] ~= "") and parts[7] or "none"
+                                local curve_pattern = (parts[8] and parts[8] ~= "") and parts[8] or "linear"
+                                local start_dyn     = (parts[9] and parts[9] ~= "") and parts[9] or nil
+                                local end_dyn       = (parts[10] and parts[10] ~= "") and parts[10] or nil
+                                local staff         = (parts[11] and parts[11] ~= "") and parts[11] or nil
+                                if id and id ~= "" and not known[id] and not overlaps_existing_dyn_text(state.dynamic_texts, trk_guid, start_qn, end_qn, staff) then
+                                    known[id] = true
+                                    table.insert(state.dynamic_texts, DynamicText.new({
+                                        id            = id,
+                                        track_guid    = trk_guid,
+                                        type          = dtype,
+                                        text          = text,
+                                        start_qn      = start_qn,
+                                        end_qn        = end_qn,
+                                        line_pattern  = line_pattern,
+                                        curve_pattern = curve_pattern,
+                                        start_dyn     = start_dyn,
+                                        end_dyn       = end_dyn,
+                                        staff         = staff
+                                    }))
+                                end
                             end
                         end
                     end
                 end
             end
         end
+        if #state.dynamic_texts > 0 then
+            DynamicTextService.save_dynamic_texts(state)
+        end
+    elseif not read_only and (has_proj_ext or had_duplicates) then
+        if had_duplicates then
+            DynamicTextService.save_dynamic_texts(state)
+        else
+            sync_dynamic_texts_to_takes(state)
+        end
+    end
+
+    if prev_sel_id then
+        local found_sel = nil
+        for _, dt in ipairs(state.dynamic_texts) do
+            if dt.id == prev_sel_id then
+                found_sel = dt
+                break
+            end
+        end
+        state.selected_dynamic_text = found_sel
+    else
+        state.selected_dynamic_text = nil
+    end
+    if state.selected_dynamic_texts then
+        local valid_map = {}
+        for _, dt in ipairs(state.dynamic_texts) do
+            if state.selected_dynamic_texts[dt.id] then
+                valid_map[dt.id] = dt
+            end
+        end
+        state.selected_dynamic_texts = valid_map
     end
 end
 
 function DynamicTextService.parse_notation_event(state, track, take, ppq, msg)
     if not state or not msg then return end
+    if state._dynamic_texts_loaded then return end
     if not state.dynamic_texts then state.dynamic_texts = {} end
     local trk_guid = track and reaper.ValidatePtr(track, "MediaTrack*") and reaper.GetTrackGUID(track)
     if not trk_guid then return end
-    
+
     local parts = {}
     for p in (msg .. "|"):gmatch("([^|]*)|") do table.insert(parts, p) end
     local id = parts[2]
     if not id or id == "" then return end
-    
+
     for _, dt in ipairs(state.dynamic_texts) do
         if dt.id == id then return end
     end
-    
+
     local dtype = parts[3] or "crescendo"
     local text = parts[4] or ""
     local start_qn = tonumber(parts[5]) or (take and reaper.MIDI_GetProjQNFromPPQPos(take, ppq)) or 0.0
@@ -202,7 +263,11 @@ function DynamicTextService.parse_notation_event(state, track, take, ppq, msg)
     local start_dyn = (parts[9] and parts[9] ~= "") and parts[9] or nil
     local end_dyn = (parts[10] and parts[10] ~= "") and parts[10] or nil
     local staff = (parts[11] and parts[11] ~= "") and parts[11] or nil
-    
+
+    if overlaps_existing_dyn_text(state.dynamic_texts, trk_guid, start_qn, end_qn, staff) then
+        return
+    end
+
     local DynamicText = package.loaded["classes.dynamic_text"] or require("classes.dynamic_text")
     table.insert(state.dynamic_texts, DynamicText.new({
         id            = id,
@@ -220,6 +285,8 @@ function DynamicTextService.parse_notation_event(state, track, take, ppq, msg)
 end
 
 function DynamicTextService.save_dynamic_texts(state)
+    state._dynamic_texts_version = (state._dynamic_texts_version or 0) + 1
+    state._dynamic_texts_by_track_cache = nil
     local parts = {}
     for _, dt in ipairs(state.dynamic_texts or {}) do
         local entry = string.format("%s|%s|%s|%s|%.4f|%.4f|%s|%s|%s|%s|%s",
@@ -585,8 +652,6 @@ function DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data
     if opt_clear_start_ppq then clear_s_ppq = math.min(clear_s_ppq, opt_clear_start_ppq) end
     if opt_clear_end_ppq   then clear_e_ppq = math.max(clear_e_ppq, opt_clear_end_ppq) end
 
-    reaper.Undo_BeginBlock2(0)
-
     -- Delete old CC values in interval
     local _, _, cc_count = reaper.MIDI_CountEvts(take)
     for j = (cc_count or 0) - 1, 0, -1 do
@@ -743,7 +808,6 @@ function DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data
         reaper.MIDI_Sort(take)
     end
 
-    reaper.Undo_EndBlock2(0, string.format("Notator: %s CC Ramp (%s)", dt.text or dt.type, curve_pattern), -1)
     reaper.UpdateArrange()
 end
 
@@ -751,7 +815,7 @@ function DynamicTextService.create_dynamic_text(state, track_guid, dtype, text, 
     if not track_guid or track_guid == "" then return nil end
     local s_qn = start_qn or 0.0
     local e_qn = end_qn or (s_qn + 4.0)
-    
+
     -- If dynamic texts already exist on the track, check bounds
     if state.dynamic_texts then
         for _, other in ipairs(state.dynamic_texts) do
@@ -801,13 +865,14 @@ function DynamicTextService.create_dynamic_text(state, track_guid, dtype, text, 
         staff         = staff
     })
 
+    reaper.Undo_BeginBlock2(0)
     if not state.dynamic_texts then state.dynamic_texts = {} end
     table.insert(state.dynamic_texts, dt)
     state.selected_dynamic_text = dt
     DynamicTextService.save_dynamic_texts(state)
 
     DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data)
-    reaper.Undo_OnStateChange2(0, string.format("Notator: Add text dynamic '%s'", dt.text))
+    reaper.Undo_EndBlock2(0, string.format("Notator: Add text dynamic '%s'", dt.text), -1)
     state.status_msg = string.format("✨ Inserted text dynamic '%s' (%.1f QN, pattern: %s, curve: %s)",
         dt.text, dt.end_qn - dt.start_qn, dt.line_pattern, dt.curve_pattern)
     return dt
@@ -817,6 +882,7 @@ function DynamicTextService.resize_dynamic_text(state, dt_id, new_start_qn, new_
     if not state.dynamic_texts then return end
     for _, dt in ipairs(state.dynamic_texts) do
         if dt.id == dt_id then
+            reaper.Undo_BeginBlock2(0)
             local old_s = dt.start_qn
             local old_e = dt.end_qn
             dt.start_qn = math.max(0, new_start_qn)
@@ -830,6 +896,7 @@ function DynamicTextService.resize_dynamic_text(state, dt_id, new_start_qn, new_
                 clear_e = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, math.max(old_e, dt.end_qn)) + 0.5)
             end
             DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data, clear_s, clear_e)
+            reaper.Undo_EndBlock2(0, string.format("Notator: Resize text dynamic '%s'", dt.text), -1)
             state.status_msg = string.format("Adjusted text dynamic '%s': %.2f - %.2f QN (length: %.2f QN)",
                 dt.text, dt.start_qn, dt.end_qn, dt.end_qn - dt.start_qn)
             break
@@ -841,6 +908,7 @@ function DynamicTextService.move_dynamic_text(state, dt_id, delta_qn, midi_servi
     if not state.dynamic_texts then return end
     for _, dt in ipairs(state.dynamic_texts) do
         if dt.id == dt_id then
+            reaper.Undo_BeginBlock2(0)
             local dur = dt.end_qn - dt.start_qn
             local old_s = dt.start_qn
             local old_e = dt.end_qn
@@ -855,6 +923,7 @@ function DynamicTextService.move_dynamic_text(state, dt_id, delta_qn, midi_servi
                 clear_e = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, math.max(old_e, dt.end_qn)) + 0.5)
             end
             DynamicTextService.apply_cc(state, dt, midi_service, active_tracks_data, clear_s, clear_e)
+            reaper.Undo_EndBlock2(0, string.format("Notator: Move text dynamic '%s'", dt.text), -1)
             state.status_msg = string.format("Moved text dynamic '%s' to %.2f QN", dt.text, dt.start_qn)
             break
         end
@@ -874,6 +943,7 @@ function DynamicTextService.delete_dynamic_text(state, dt_id, midi_service, acti
     end
     if not target then return end
 
+    reaper.Undo_BeginBlock2(0)
     table.remove(state.dynamic_texts, rem_idx)
     if state.selected_dynamic_text and state.selected_dynamic_text.id == dt_id then
         state.selected_dynamic_text = nil
@@ -884,7 +954,6 @@ function DynamicTextService.delete_dynamic_text(state, dt_id, midi_service, acti
     if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
         local start_ppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, target.start_qn) + 0.5)
         local end_ppq   = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, target.end_qn) + 0.5)
-        reaper.Undo_BeginBlock2(0)
         local _, _, cc_count = reaper.MIDI_CountEvts(take)
         for j = (cc_count or 0) - 1, 0, -1 do
             local ok, _, _, ppq, _, _, m, _ = reaper.MIDI_GetCC(take, j)
@@ -909,9 +978,9 @@ function DynamicTextService.delete_dynamic_text(state, dt_id, midi_service, acti
                 HairpinService.apply_hairpin_cc(state, thp, midi_service, active_tracks_data)
             end
         end
-        reaper.Undo_EndBlock2(0, string.format("Notator: Delete text dynamic '%s'", target.text), -1)
         reaper.UpdateArrange()
     end
+    reaper.Undo_EndBlock2(0, string.format("Notator: Delete text dynamic '%s'", target.text), -1)
     state.status_msg = string.format("🗑 Deleted text dynamic '%s'", target.text)
 end
 

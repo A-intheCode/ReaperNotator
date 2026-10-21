@@ -93,7 +93,17 @@ function TempoDrawer.render(ctx, state, width, height, child_border, sidebar_fla
                         reaper.ImGui_PushItemWidth(ctx, 60)
                         local changed, new_bpm = reaper.ImGui_DragInt(ctx, "##sel_bpm", sel.bpm, 1, 30, 360)
                         if changed then
-                            TempoService.set_custom_bpm(state, sel, new_bpm)
+                            sel.bpm = new_bpm
+                            sel.label = ""
+                            sel.custom_bpm_only = true
+                            state._pending_tempo_bpm_edit = new_bpm
+                        end
+                        local deactivated = (reaper.APIExists("ImGui_IsItemDeactivatedAfterEdit") and reaper.ImGui_IsItemDeactivatedAfterEdit(ctx))
+                            or (state._pending_tempo_bpm_edit ~= nil and not reaper.ImGui_IsItemActive(ctx))
+                        if deactivated and state._pending_tempo_bpm_edit ~= nil then
+                            local final_b = state._pending_tempo_bpm_edit
+                            state._pending_tempo_bpm_edit = nil
+                            TempoService.set_custom_bpm(state, sel, final_b)
                         end
                         reaper.ImGui_PopItemWidth(ctx)
                         reaper.ImGui_SameLine(ctx)
@@ -110,7 +120,16 @@ function TempoDrawer.render(ctx, state, width, height, child_border, sidebar_fla
                         reaper.ImGui_PushItemWidth(ctx, 55)
                         local changed, new_tbpm = reaper.ImGui_DragInt(ctx, "##sel_tbpm", sel.target_bpm or 140, 1, 30, 360)
                         if changed then
-                            TempoService.set_custom_bpm(state, sel, new_tbpm)
+                            sel.target_bpm = new_tbpm
+                            sel.custom_target_bpm = true
+                            state._pending_tempo_tbpm_edit = new_tbpm
+                        end
+                        local deactivated = (reaper.APIExists("ImGui_IsItemDeactivatedAfterEdit") and reaper.ImGui_IsItemDeactivatedAfterEdit(ctx))
+                            or (state._pending_tempo_tbpm_edit ~= nil and not reaper.ImGui_IsItemActive(ctx))
+                        if deactivated and state._pending_tempo_tbpm_edit ~= nil then
+                            local final_tb = state._pending_tempo_tbpm_edit
+                            state._pending_tempo_tbpm_edit = nil
+                            TempoService.set_custom_bpm(state, sel, final_tb)
                         end
                         reaper.ImGui_PopItemWidth(ctx)
                         reaper.ImGui_SameLine(ctx)

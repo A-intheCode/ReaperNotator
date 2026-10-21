@@ -10,11 +10,14 @@ local MidiService = require("services.midi_service")
 
 local RepeatService = {}
 
-function RepeatService.load_repeat_marks(state)
+function RepeatService.load_repeat_marks(state, read_only)
     state.repeat_marks = {}
+    state._repeat_marks_map = nil
+    state._repeat_marks_map_cnt = nil
     local known = {}
     local _, raw = reaper.GetProjExtState(0, "REAPER_Notator", "repeat_marks")
-    if raw and raw ~= "" then
+    local has_proj_ext = (raw and raw ~= "")
+    if has_proj_ext then
         for entry in raw:gmatch("([^;]+)") do
             local parts = {}
             for p in (entry .. "|"):gmatch("([^|]*)|") do
@@ -38,46 +41,54 @@ function RepeatService.load_repeat_marks(state)
         end
     end
 
-    -- DUAL PERSISTENCE: Read from MIDI takes (Type-15 Notation Events in .RPP)
-    local trk_count = reaper.CountTracks(0)
-    for ti = 0, trk_count - 1 do
-        local trk = reaper.GetTrack(0, ti)
-        if trk then
-            local trk_guid = reaper.GetTrackGUID(trk)
-            local item_count = reaper.CountTrackMediaItems(trk)
-            for ii = 0, item_count - 1 do
-                local item = reaper.GetTrackMediaItem(trk, ii)
-                local take = item and reaper.GetActiveTake(item)
-                if take and reaper.TakeIsMIDI(take) then
-                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
-                    for text_i = 0, text_cnt - 1 do
-                        local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
-                        if ok and ev_type == 15 and msg:match("^NOTATOR_REPEAT") then
-                            local qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
-                            local bpi = 4.0
-                            local ts_num, ts_den = reaper.TimeMap_GetTimeSigAtTime(0, reaper.TimeMap2_QNToTime(0, qn))
-                            if ts_num and ts_den and ts_den > 0 then bpi = ts_num * (4.0 / ts_den) end
-                            local m = math.floor((qn + 0.05) / bpi)
-                            local k = trk_guid .. "_" .. tostring(m)
-                            if not known[k] then
-                                known[k] = true
-                                table.insert(state.repeat_marks, {
-                                    id = string.format("rep_%s_%d", trk_guid:sub(2,7), m),
-                                    track_guid = trk_guid,
-                                    measure = m,
-                                    type = "1bar"
-                                })
+    -- DUAL PERSISTENCE: Read from MIDI takes only on initial load when ProjExtState is empty
+    if not read_only and not has_proj_ext then
+        local trk_count = reaper.CountTracks(0)
+        for ti = 0, trk_count - 1 do
+            local trk = reaper.GetTrack(0, ti)
+            if trk then
+                local trk_guid = reaper.GetTrackGUID(trk)
+                local item_count = reaper.CountTrackMediaItems(trk)
+                for ii = 0, item_count - 1 do
+                    local item = reaper.GetTrackMediaItem(trk, ii)
+                    local take = item and reaper.GetActiveTake(item)
+                    if take and reaper.TakeIsMIDI(take) then
+                        local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                        for text_i = 0, text_cnt - 1 do
+                            local ok, _, _, ppq, ev_type, msg = reaper.MIDI_GetTextSysexEvt(take, text_i)
+                            if ok and ev_type == 15 and msg:match("^NOTATOR_REPEAT") then
+                                local qn = reaper.MIDI_GetProjQNFromPPQPos(take, ppq)
+                                local bpi = 4.0
+                                local ts_num, ts_den = reaper.TimeMap_GetTimeSigAtTime(0, reaper.TimeMap2_QNToTime(0, qn))
+                                if ts_num and ts_den and ts_den > 0 then bpi = ts_num * (4.0 / ts_den) end
+                                local m = math.floor((qn + 0.05) / bpi)
+                                local k = trk_guid .. "_" .. tostring(m)
+                                if not known[k] then
+                                    known[k] = true
+                                    table.insert(state.repeat_marks, {
+                                        id = string.format("rep_%s_%d", trk_guid:sub(2,7), m),
+                                        track_guid = trk_guid,
+                                        measure = m,
+                                        type = "1bar"
+                                    })
+                                end
                             end
                         end
                     end
                 end
             end
         end
+        if #state.repeat_marks > 0 then
+            RepeatService.save_repeat_marks(state)
+        end
     end
+
+    state._repeat_marks_loaded = true
 end
 
 function RepeatService.parse_notation_event(state, track, take, ppq, msg)
     if not state or not msg then return end
+    if state._repeat_marks_loaded then return end
     if not state.repeat_marks then state.repeat_marks = {} end
     local trk_guid = track and reaper.ValidatePtr(track, "MediaTrack*") and reaper.GetTrackGUID(track)
     if not trk_guid then return end
@@ -101,6 +112,8 @@ function RepeatService.parse_notation_event(state, track, take, ppq, msg)
 end
 
 function RepeatService.save_repeat_marks(state)
+    state._repeat_marks_map = nil
+    state._repeat_marks_map_cnt = nil
     local parts = {}
     for _, rm in ipairs(state.repeat_marks or {}) do
         local entry = string.format("%s|%s|%d|%s",
@@ -217,36 +230,34 @@ function RepeatService.get_notes_in_range(track, start_qn, end_qn)
 end
 
 -- Physically writes notes of source measure into MIDI item of target measure
-function RepeatService.sync_repeat_measure_notes(state, track, target_measure)
+function RepeatService.sync_repeat_measure_notes(state, track, target_measure, no_undo_block)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") or target_measure == nil then
         return 0
     end
     local track_guid = reaper.GetTrackGUID(track)
     local src_measure = RepeatService.find_source_measure(state, track_guid, target_measure)
-    if src_measure == nil then
-        return 0
-    end
     
     local qn_per_measure = get_qn_per_measure_at(target_measure, 4.0)
-    local src_start_qn = src_measure * qn_per_measure
-    local src_end_qn = (src_measure + 1) * qn_per_measure
+    local src_start_qn = (src_measure or math.max(0, target_measure - 1)) * qn_per_measure
+    local src_end_qn = src_start_qn + qn_per_measure
     
     local tgt_start_qn = target_measure * qn_per_measure
     local tgt_end_qn = (target_measure + 1) * qn_per_measure
     local delta_qn = tgt_start_qn - src_start_qn
     
-    -- 1. Collect source notes
-    local src_notes = RepeatService.get_notes_in_range(track, src_start_qn, src_end_qn)
-    if #src_notes == 0 then
-        return 0
-    end
+    -- 1. Collect source notes (may be empty if preceding bar is a rest bar)
+    local src_notes = (src_measure ~= nil) and RepeatService.get_notes_in_range(track, src_start_qn, src_end_qn) or {}
     
-    reaper.Undo_BeginBlock2(0)
+    if not no_undo_block then
+        reaper.Undo_BeginBlock2(0)
+    end
     
     -- 2. Locate or create target item/take
     local tgt_item, tgt_take = MidiService.get_or_create_item_at_qn(track, tgt_start_qn, qn_per_measure)
     if not tgt_take or not reaper.ValidatePtr(tgt_take, "MediaItem_Take*") then
-        reaper.Undo_EndBlock2(0, "Notator: Repeat Mark sync failed", -1)
+        if not no_undo_block then
+            reaper.Undo_EndBlock2(0, "Notator: Repeat Mark sync failed", -1)
+        end
         return 0
     end
     
@@ -291,7 +302,9 @@ function RepeatService.sync_repeat_measure_notes(state, track, target_measure)
     reaper.MIDI_InsertTextSysexEvt(tgt_take, false, false, tgt_ppq, 15, "NOTATOR_REPEAT 1bar")
     
     reaper.MIDI_Sort(tgt_take)
-    reaper.Undo_EndBlock2(0, string.format("Notator: Write %d repeated notes to Bar %d", inserted_cnt, target_measure + 1), -1)
+    if not no_undo_block then
+        reaper.Undo_EndBlock2(0, string.format("Notator: Write %d repeated notes to Bar %d", inserted_cnt, target_measure + 1), -1)
+    end
     reaper.UpdateArrange()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
     MidiService.invalidate_cache(track)
@@ -300,7 +313,7 @@ function RepeatService.sync_repeat_measure_notes(state, track, target_measure)
 end
 
 -- Physically deletes all notes of a measure from MIDI items of track
-function RepeatService.clear_measure_notes(track, measure)
+function RepeatService.clear_measure_notes(track, measure, no_undo_block)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") or measure == nil then
         return 0
     end
@@ -311,7 +324,9 @@ function RepeatService.clear_measure_notes(track, measure)
     local num_items = reaper.CountTrackMediaItems(track)
     local total_deleted = 0
     
-    reaper.Undo_BeginBlock2(0)
+    if not no_undo_block then
+        reaper.Undo_BeginBlock2(0)
+    end
     
     for i = 0, num_items - 1 do
         local it = reaper.GetTrackMediaItem(track, i)
@@ -361,7 +376,9 @@ function RepeatService.clear_measure_notes(track, measure)
         end
     end
     
-    reaper.Undo_EndBlock2(0, string.format("Notator: Clear %d notes from Bar %d", total_deleted, measure + 1), -1)
+    if not no_undo_block then
+        reaper.Undo_EndBlock2(0, string.format("Notator: Clear %d notes from Bar %d", total_deleted, measure + 1), -1)
+    end
     reaper.UpdateArrange()
     if reaper.MarkProjectDirty then reaper.MarkProjectDirty(0) end
     MidiService.invalidate_cache(track)
@@ -375,6 +392,7 @@ function RepeatService.remove_repeat_mark(state, track, measure)
     local track_guid = reaper.GetTrackGUID(track)
     local has, _ = RepeatService.has_repeat_mark(state, track_guid, measure)
     if has then
+        reaper.Undo_BeginBlock2(0)
         local new_list = {}
         for _, rm in ipairs(state.repeat_marks or {}) do
             if not (rm.track_guid == track_guid and rm.measure == measure) then
@@ -385,7 +403,9 @@ function RepeatService.remove_repeat_mark(state, track, measure)
         RepeatService.save_repeat_marks(state)
         
         -- Physically remove MIDI notes from MIDI item!
-        local del_cnt = RepeatService.clear_measure_notes(track, measure)
+        local del_cnt = RepeatService.clear_measure_notes(track, measure, true)
+        reaper.Undo_EndBlock2(0, string.format("Notator: Remove Repeat Mark (Bar %d)", measure + 1), -1)
+        state.active_tracks_cache = nil
         state.status_msg = string.format("Bar %d: Repeat mark (%%) removed (%d notes cleared from MIDI item)", measure + 1, del_cnt)
         return del_cnt
     end
@@ -403,17 +423,21 @@ function RepeatService.toggle_repeat_mark(state, track, measure, active_tracks_d
         RepeatService.remove_repeat_mark(state, track, measure)
     else
         -- Add
+        reaper.Undo_BeginBlock2(0)
         local new_rm = {
             id = string.format("rep_%d_%d", os.time(), math.random(100, 999)),
             track_guid = track_guid,
             measure = measure,
             type = "1bar"
         }
+        state.repeat_marks = state.repeat_marks or {}
         table.insert(state.repeat_marks, new_rm)
         RepeatService.save_repeat_marks(state)
         
         -- Physically write MIDI notes into MIDI item!
-        local cnt = RepeatService.sync_repeat_measure_notes(state, track, measure)
+        local cnt = RepeatService.sync_repeat_measure_notes(state, track, measure, true)
+        reaper.Undo_EndBlock2(0, string.format("Notator: Set Repeat Mark (Bar %d)", measure + 1), -1)
+        state.active_tracks_cache = nil
         state.status_msg = string.format("Bar %d: Repeat mark (%%) set (%d MIDI notes generated from preceding bar)", measure + 1, cnt)
     end
 end

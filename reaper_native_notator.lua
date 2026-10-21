@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.51
+-- @version 2.52
 -- @changelog
+--   + v2.52: Stable Release: Full Canvas & MIDI Undo/Redo Synchronization (UndoStateService) across all score elements (Hairpins, Sustain Pedals, Dynamic Texts, Tempo Markers, Slurs, Ties, Portamentos, Glissandos, Octave Lines, Fermatas, Repeat Marks, Rehearsal Marks, Text Items & Chords), single-step Undo for Portamento (Hold Pedal CC + Canvas Marker together), clean CC64 Hold Pedal rebuild & MIDI Editor left-edge step rendering, and fix Pattern Browser 5/8 time signature JSON schema
 --   + v2.51: Stable Release: Mid-piece Time Signatures across all staves & REAPER TimeMap (independent of MIDI items), Target Bar Stepper ([ - ] / [ + ]) & Smart Edit Cursor vs. Note detection in Time Signature Drawer, Compound Meter (6/8, 9/8, 12/8) dotted-quarter beam grouping, full English UI labels, barline culling fix when scrolling, and Lua 5.4 local-variable scope optimization in ScoreCanvas.render
 --   + v2.50.7: Hotfix: Fix missing barlines when scrolling (wrap Engraver.qn_to_measure_info single-value return before math.max so multi-return values never inflate vis_min_measure)
 --   + v2.50.6: Hotfix: Fix ReaPack index.xml source URLs (/main/ instead of /testing/), prevent legacy MIDI-item NOTATOR_TIME_SIG events from overwriting mid-piece Time Signatures, prioritize Edit Cursor bar when moving cursor to a new measure, add [ - ] / [ + ] target bar stepper in Time Signature Drawer, and commit REAPER TimeMap after each measure marker
@@ -206,6 +207,15 @@ local ImGuiGuardService     = safe_require("services.imgui_guard_service", {
     unwind_to_snapshot = function() end,
 })
 ImGuiGuardService.install(reaper)
+local UndoStateService      = safe_require("services.undo_state_service", {
+    install = function() end,
+    init_from_project = function() end,
+    on_undo = function() return false end,
+    on_redo = function() return false end,
+    on_external_new_action = function() end,
+    commit_uncommitted_if_idle = function() return false end,
+})
+UndoStateService.install(reaper)
 local RecordQuantizeService = safe_require("services.record_quantize_service", {
     on_record_start = function() end,
     process_recording = function() end,
@@ -236,9 +246,12 @@ AnnotationService.load_metadata(state)
 MidiService.load_stem_directions(state)
 MidiService.load_notehead_types(state)
 MidiService.cleanup_orphaned_score_elements(state)
+UndoStateService.init_from_project()
 state.current_reaproject, state.current_proj_fn = reaper.EnumProjects(-1)
 state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
 state._last_total_tracks_cleanup = reaper.CountTracks(0)
+state._last_can_undo_str = (reaper.Undo_CanUndo2 and reaper.Undo_CanUndo2(0)) or ""
+state._last_can_redo_str = (reaper.Undo_CanRedo2 and reaper.Undo_CanRedo2(0)) or ""
 PatternService.init()
 if RecordQuantizeService and RecordQuantizeService.sync_auto_divisi_input_fx then
     RecordQuantizeService.sync_auto_divisi_input_fx(state, true)
@@ -329,6 +342,32 @@ local function loop()
 
     -- Project-specific data (tempo markers, octave lines, hairpins, pedals, text items, repeat marks & chord items):
     -- Check every frame if the active REAPER project changed or was reloaded
+    if not state.reload_score_from_project then
+        state.reload_score_from_project = function(st)
+            MidiService.invalidate_cache()
+            st.active_tracks_cache = nil
+            st.cached_measure_map = nil
+            st.cached_measure_map_sig = nil
+            KeySignatureService.load(st, true)
+            FermataService.load_fermatas(st, true)
+            TempoService.load_markers(st, true)
+            OctaveService.load_lines(st, true)
+            HairpinService.load_hairpins(st, true)
+            DynamicTextService.load_dynamic_texts(st, true)
+            PortamentoService.load_portamentos(st, true)
+            PedalService.load_pedals(st, true)
+            TextItemService.load_text_items(st, true)
+            RepeatService.load_repeat_marks(st, true)
+            RehearsalMarkService.load_marks(st, true)
+            ScaleService.load_chord_items(st)
+            SlurService.load_slurs(st, true)
+            GlissandoService.load_glissandos(st, true)
+            AnnotationService.load_metadata(st)
+            MidiService.load_stem_directions(st)
+            MidiService.load_notehead_types(st)
+        end
+    end
+
     local cur_proj, proj_fn = reaper.EnumProjects(-1)
     if state.current_reaproject ~= cur_proj or state.current_proj_fn ~= proj_fn then
         state.current_reaproject = cur_proj
@@ -354,11 +393,15 @@ local function loop()
         MidiService.load_stem_directions(state)
         MidiService.load_notehead_types(state)
         MidiService.cleanup_orphaned_score_elements(state)
+        UndoStateService.init_from_project()
         state._last_proj_change_cleanup = reaper.GetProjectStateChangeCount(0)
         state._last_total_tracks_cleanup = reaper.CountTracks(0)
+        state._last_can_undo_str = (reaper.Undo_CanUndo2 and reaper.Undo_CanUndo2(0)) or ""
+        state._last_can_redo_str = (reaper.Undo_CanRedo2 and reaper.Undo_CanRedo2(0)) or ""
+        state._consecutive_undo_steps = 0
         state:clear_selection()
     end
-    
+
     -- Recording state monitoring, Live Note Preview & Auto-Quantize trigger
     local play_state = reaper.GetPlayState()
     local is_recording = (play_state & 4) == 4
@@ -378,7 +421,7 @@ local function loop()
     elseif RecordQuantizeService and RecordQuantizeService.update_midi_step_input then
         RecordQuantizeService.update_midi_step_input(state, MidiService)
     end
-    
+
     -- Authentic dark pro color theme
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_WindowBg(),       0x151619FF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ChildBg(),        0x1E2025FF)
@@ -387,11 +430,11 @@ local function loop()
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(),  0xE67E22FF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(),   0xFF9F1CFF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(),           0xF0F0F0FF)
-    
+
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_WindowRounding(), 6.0)
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FrameRounding(),  4.0)
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(),    8.0, 6.0)
-    
+
     -- Locate REAPER Notator's own native OS top-level window handle (HWND) for exact per-monitor rect & DPI calibration.
     -- IMPORTANT: Never call JS_Window_Find (which recursively walks all child HWNDs of all processes on the Windows desktop
     -- and causes severe lag when the window is docked into REAPER's Docker). Only query JS_Window_FindTop when floating,
@@ -565,7 +608,7 @@ local function loop()
         if ry + rh > vy + vh then ry = math.max(vy, vy + vh - rh) end
         return rx, ry, rw, rh, min_w, min_h
     end
-    
+
     local cur_x = state.cur_win_x or state.prev_win_x or 100
     local cur_y = state.cur_win_y or state.prev_win_y or 60
     local cur_w = state.cur_win_w or state.prev_win_w or 1000
@@ -575,7 +618,7 @@ local function loop()
     local vy = state.screen_work_y or 0
     local vw = state.screen_work_w or 1920
     local vh = state.screen_work_h or 1080
-    
+
     if state.is_window_docked then
         -- When docked into REAPER's Docker, never force floating window pos/size/constraints or maximize stages
         state.request_maximize_toggle = false
@@ -601,7 +644,7 @@ local function loop()
                 state.status_msg = "Window size restored"
             end
         end
-        
+
         local min_w = math.min(640, math.max(360, math.floor(vw * 0.35)))
         local min_h = math.min(420, math.max(260, math.floor(vh * 0.35)))
 
@@ -654,7 +697,7 @@ local function loop()
             if reaper.APIExists("ImGui_SetNextWindowSizeConstraints") then
                 reaper.ImGui_SetNextWindowSizeConstraints(ctx, min_w, min_h, 16384, 16384)
             end
-            
+
             if state.just_restored or not state._window_pos_initialized or (not state._hwnd_calibrated and not reaper.ImGui_IsMouseDown(ctx, 0) and get_notator_hwnd() ~= nil) then
                 -- Both on Restore AND on fresh startup (plus one-shot calibration once native HWND is live):
                 -- Read maximum screen work area of target monitor, then place window cleanly in the center of the screen
@@ -680,15 +723,15 @@ local function loop()
             end
         end
     end
-    
+
     if not state._config_var_init and reaper.APIExists("ImGui_ConfigVar_WindowsMoveFromTitleBarOnly") and reaper.APIExists("ImGui_SetConfigVar") then
         reaper.ImGui_SetConfigVar(ctx, reaper.ImGui_ConfigVar_WindowsMoveFromTitleBarOnly(), 1)
         state._config_var_init = true
     end
-    
+
     local child_border = reaper.APIExists("ImGui_ChildFlags_Borders") and reaper.ImGui_ChildFlags_Borders() or 1
     local child_none = reaper.APIExists("ImGui_ChildFlags_None") and reaper.ImGui_ChildFlags_None() or 0
-    
+
     local window_flags = reaper.ImGui_WindowFlags_NoScrollbar()
     if reaper.APIExists("ImGui_WindowFlags_NoCollapse") then
         window_flags = window_flags | reaper.ImGui_WindowFlags_NoCollapse()
@@ -709,15 +752,15 @@ local function loop()
             window_flags = window_flags | reaper.ImGui_WindowFlags_NoMove()
         end
     end
-    
+
     -- Prevent any legacy collapsed state persisted in ReaImGui's .ini file from hiding the UI
     if reaper.APIExists("ImGui_SetNextWindowCollapsed") then
         reaper.ImGui_SetNextWindowCollapsed(ctx, false, reaper.ImGui_Cond_Always())
     end
-    
+
     local visible, open = reaper.ImGui_Begin(ctx, "REAPER Notator", true, window_flags)
     state.is_open = open
-    
+
     if visible then
         state._window_pos_initialized = true
         local is_docked = false
@@ -746,15 +789,15 @@ local function loop()
         local win_x, win_y = reaper.ImGui_GetWindowPos(ctx)
         local win_w, win_h = reaper.ImGui_GetWindowSize(ctx)
         local mx, my = reaper.ImGui_GetMousePos(ctx)
-        
+
         state.cur_win_x = win_x
         state.cur_win_y = win_y
         state.cur_win_w = win_w
         state.cur_win_h = win_h
-        
+
         local svw = state.screen_work_w or 1920
         local svh = state.screen_work_h or 1080
-        
+
         -- Remember current unmaximized floating window size (for clean restoration)
         if not is_docked and not state.is_maximized and (state._maximize_stage or 0) == 0 then
             if win_w >= 360 and win_h >= 260 and (win_w < (svw - 10) or win_h < (svh - 10)) then
@@ -793,7 +836,7 @@ local function loop()
                 end
             end
         end
-        
+
         -- Double click title bar toggles maximize (only when floating, never when docked)
         if not is_docked and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) and my >= win_y and my <= (win_y + 26) and mx >= win_x and mx <= (win_x + win_w - 60) then
             state.request_maximize_toggle = true
@@ -801,15 +844,49 @@ local function loop()
 
         local project_tracks = MidiService.get_project_midi_tracks()
 
-        -- Continuous synchronization & orphan cleanup upon REAPER project changes or TCP track arm/selection changes
+        -- Continuous synchronization, Undo/Redo reload & orphan cleanup upon REAPER project changes or TCP track arm/selection changes
         local cur_proj_change = reaper.GetProjectStateChangeCount(0)
         local cur_total_tracks = reaper.CountTracks(0)
         local cur_sel_sig = MidiService._last_sel_sig
         if state._last_proj_change_cleanup ~= cur_proj_change or state._last_total_tracks_cleanup ~= cur_total_tracks or state._last_arm_sel_sig ~= cur_sel_sig then
+            local proj_changed = (state._last_proj_change_cleanup ~= cur_proj_change)
+            local tracks_changed = (state._last_total_tracks_cleanup ~= cur_total_tracks)
             state._last_proj_change_cleanup = cur_proj_change
             state._last_total_tracks_cleanup = cur_total_tracks
             state._last_arm_sel_sig = cur_sel_sig
-            MidiService.cleanup_orphaned_score_elements(state)
+
+            local prev_can_undo = state._last_can_undo_str
+            local cur_can_undo = (reaper.Undo_CanUndo2 and reaper.Undo_CanUndo2(0)) or ""
+            local cur_can_redo = (reaper.Undo_CanRedo2 and reaper.Undo_CanRedo2(0)) or ""
+            local is_ext_undo = proj_changed and (cur_can_redo ~= "" and prev_can_undo and prev_can_undo ~= "" and cur_can_redo == prev_can_undo)
+            local is_ext_redo = proj_changed and (cur_can_undo ~= "" and state._last_can_redo_str and state._last_can_redo_str ~= "" and cur_can_undo == state._last_can_redo_str)
+            state._last_can_undo_str = cur_can_undo
+            state._last_can_redo_str = cur_can_redo
+
+            if is_ext_undo or is_ext_redo then
+                if is_ext_undo then
+                    state._consecutive_undo_steps = (state._consecutive_undo_steps or 0) + 1
+                    UndoStateService.on_undo(cur_can_redo)
+                else
+                    if state._consecutive_undo_steps and state._consecutive_undo_steps > 0 then
+                        state._consecutive_undo_steps = state._consecutive_undo_steps - 1
+                    end
+                    UndoStateService.on_redo()
+                end
+                if state.reload_score_from_project then
+                    state:reload_score_from_project()
+                end
+            else
+                if proj_changed and cur_can_redo == "" then
+                    state._consecutive_undo_steps = 0
+                end
+                if proj_changed and cur_can_undo ~= "" and cur_can_undo ~= prev_can_undo then
+                    UndoStateService.on_external_new_action(cur_can_undo)
+                end
+                if proj_changed or tracks_changed then
+                    MidiService.cleanup_orphaned_score_elements(state)
+                end
+            end
             if RecordQuantizeService and RecordQuantizeService.sync_all_tracks_monitoring then
                 RecordQuantizeService.sync_all_tracks_monitoring(state)
             end
@@ -819,13 +896,13 @@ local function loop()
         if State.sync_project_tracks then
             State.sync_project_tracks(state, project_tracks)
         end
-        
+
         -- Intercept keyboard shortcuts (protected so ImGui_End is never skipped on error)
         local kb_ok, kb_err = pcall(KeyboardHandler.handle, ctx, state, MidiService, ClipboardService, DynamicsEngine, state.active_tracks_cache)
         if not kb_ok then
             reaper.ShowConsoleMsg("[KeyboardHandler Error] " .. tostring(kb_err) .. "\n")
         end
-        
+
         -- Modal dialogs (track selection & help) — all guarded against stack leaks ("Missing EndChild()" / "Missing End()")
         ImGuiGuardService.safe_render(ctx, state, "TrackPicker", TrackPicker.render, ctx, state, project_tracks)
         ImGuiGuardService.safe_render(ctx, state, "HelpModal", HelpModal.render, ctx, state)
@@ -841,7 +918,7 @@ local function loop()
         ImGuiGuardService.safe_render(ctx, state, "RecordModal", RecordModal.render, ctx, state, MidiService, project_tracks, state.active_tracks_cache)
         ImGuiGuardService.safe_render(ctx, state, "CircleOfFifthsModal", CircleOfFifthsModal.render, ctx, state, MidiService)
         ImGuiGuardService.safe_render(ctx, state, "ArticulationsLastResortModal", ArticulationsDrawer.render_last_resort_modal, ctx, state, state.active_tracks_cache)
-        
+
         -- ======================================================================
         -- 1. TOP BAR (Transport, time display, layout, tracks, zoom, lock, dynamics)
         -- ======================================================================
@@ -853,7 +930,7 @@ local function loop()
             topbar_flags = topbar_flags | reaper.ImGui_WindowFlags_NoMove()
         end
         ImGuiGuardService.safe_render(ctx, state, "TopBar", TopBar.render, ctx, state, ClipboardService, MidiService, state.active_tracks_cache, #project_tracks, child_border, topbar_flags, project_tracks)
-        
+
         -- ======================================================================
         -- 2. MAIN AREA: Left sidebar (palette) | Center canvas | Right drawer (resizable)
         -- ======================================================================
@@ -861,7 +938,7 @@ local function loop()
         local bottom_bar_h = 46
         local splitter_w = 6
         local spacing = 4
-        
+
         local h_splitter_h = 6
         local browser_h = 0
         if state.show_pattern_browser then
@@ -878,24 +955,24 @@ local function loop()
             midi_editor_pane_h = state.midi_editor_h + h_splitter_h + 10
         end
         local main_content_h = math.max(100, main_avail_h - bottom_bar_h - browser_h - midi_editor_pane_h - 6)
-        
+
         state.sidebar_w = state.sidebar_w or 230
         state.drawer_w = state.drawer_w or 236
-        
+
         local canvas_w = main_avail_w - state.sidebar_w - splitter_w - spacing
         if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures or state.show_tools_drawer or state.show_annotations_drawer then
             canvas_w = canvas_w - state.drawer_w - splitter_w - spacing
         end
         if canvas_w < 150 then canvas_w = 150 end
-        
+
         local sidebar_flags = 0
         if reaper.APIExists("ImGui_WindowFlags_NoMove") then
             sidebar_flags = reaper.ImGui_WindowFlags_NoMove()
         end
-        
+
         -- LEFT SIDEBAR: MAIN PALETTE (Resizable via splitter)
         ImGuiGuardService.safe_render(ctx, state, "Sidebar", Sidebar.render, ctx, state, MidiService, ClipboardService, state.active_tracks_cache, state.sidebar_w, main_content_h, child_border, sidebar_flags)
-        
+
         -- VERTICAL SPLITTER 1: Left sidebar resizing
         reaper.ImGui_SameLine(ctx, 0, 2)
         reaper.ImGui_InvisibleButton(ctx, "vsplitter_left", splitter_w, main_content_h)
@@ -914,7 +991,7 @@ local function loop()
         if reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
             state.sidebar_w = 230 -- Double-click resets to default width
         end
-        
+
         -- CENTER AREA: SCORE CANVAS
         local canvas_flags = reaper.ImGui_WindowFlags_HorizontalScrollbar()
         if reaper.APIExists("ImGui_WindowFlags_NoMove") then
@@ -1075,7 +1152,7 @@ local function loop()
                     end
                 end
             end
-            
+
             local ok, canvas_info = ImGuiGuardService.safe_render(ctx, state, "ScoreCanvas", ScoreCanvas.render, ctx, state, fonts, project_tracks, MidiService)
             if ok and canvas_info then
                 state.active_tracks_cache = canvas_info.active_tracks_data
@@ -1083,7 +1160,7 @@ local function loop()
             end
             reaper.ImGui_EndChild(ctx)
         end
-        
+
         -- RIGHT AREA: DYNAMICS, TEMPO, CLEF, KEY SIGNATURE, ARTICULATIONS, TOOLS OR ANNOTATIONS DRAWER (Resizable via splitter)
         if state.show_dynamics or state.show_tempo or state.show_clefs or state.show_articulations_drawer or state.show_key_signatures or state.show_tools_drawer or state.show_annotations_drawer then
             -- VERTICAL SPLITTER 2: Right drawer resizing
@@ -1104,7 +1181,7 @@ local function loop()
             if reaper.ImGui_IsItemHovered(ctx) and reaper.ImGui_IsMouseDoubleClicked(ctx, 0) then
                 state.drawer_w = 236 -- Double-click resets to default width
             end
-            
+
             reaper.ImGui_SameLine(ctx, 0, 2)
             if state.show_tools_drawer then
                 ImGuiGuardService.safe_render(ctx, state, "ToolsDrawer", ToolsDrawer.render, ctx, state, MidiService, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags, fonts.font_music, fonts.font_main)
@@ -1122,7 +1199,7 @@ local function loop()
                 ImGuiGuardService.safe_render(ctx, state, "AnnotationDrawer", AnnotationDrawer.render, ctx, state, state.active_tracks_cache, state.drawer_w, main_content_h, child_border, sidebar_flags)
             end
         end
-        
+
         -- ======================================================================
         -- 2b. BOTTOM PANE: PATTERN BROWSER (Resizable via horizontal splitter!)
         -- ======================================================================
@@ -1148,7 +1225,7 @@ local function loop()
                 state.pattern_browser_h = 240 -- Double-click resets to default height
                 reaper.SetExtState("REAPER_Notator", "PatternBrowserHeight", "240", true)
             end
-            
+
             ImGuiGuardService.safe_render(ctx, state, "PatternBrowser", PatternBrowser.render, ctx, state, MidiService, AudioPreview, main_avail_w, state.pattern_browser_h, project_tracks, fonts.font_music, fonts.font_main)
         end
 
@@ -1180,7 +1257,7 @@ local function loop()
 
             ImGuiGuardService.safe_render(ctx, state, "MidiEditorDrawer", MidiEditorDrawer.render, ctx, state, MidiService, AudioPreview, DynamicsEngine, main_avail_w, state.midi_editor_h, project_tracks, fonts.font_main)
         end
-        
+
         -- ======================================================================
         -- 3. STATUS & RASTER BAR (Bottom)
         -- ======================================================================
@@ -1195,16 +1272,34 @@ local function loop()
             bottom_flags = bottom_flags | reaper.ImGui_WindowFlags_NoMove()
         end
         ImGuiGuardService.safe_render(ctx, state, "BottomBar", BottomBar.render, ctx, state, bottom_bar_h, child_border, bottom_flags)
+
+        if state.is_open then
+            AudioPreview.update(state, ctx)
+            PatternService.update_preview(AudioPreview)
+        end
+
+        -- Commit any uncommitted scoreProjExtState changes when idle and sync Undo/Redo state after frame interactions
+        UndoStateService.commit_uncommitted_if_idle(ctx, state)
+        local post_proj_change = reaper.GetProjectStateChangeCount(0)
+        if post_proj_change ~= state._last_proj_change_cleanup then
+            local post_can_undo = (reaper.Undo_CanUndo2 and reaper.Undo_CanUndo2(0)) or ""
+            local post_can_redo = (reaper.Undo_CanRedo2 and reaper.Undo_CanRedo2(0)) or ""
+            if post_can_redo == "" and not state._in_undo_redo_action then
+                state._consecutive_undo_steps = 0
+            end
+            state._last_proj_change_cleanup = post_proj_change
+            state._last_total_tracks_cleanup = reaper.CountTracks(0)
+            state._last_can_undo_str = post_can_undo
+            state._last_can_redo_str = post_can_redo
+        end
     end
-    
+
     reaper.ImGui_End(ctx)
-    
+
     reaper.ImGui_PopStyleVar(ctx, 3)
     reaper.ImGui_PopStyleColor(ctx, 7)
-    
+
     if state.is_open then
-        AudioPreview.update(state, ctx)
-        PatternService.update_preview(AudioPreview)
         reaper.defer(loop)
     else
         FrameTimerService.restore()
@@ -1228,7 +1323,7 @@ local function dependency_check_loop()
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(),  0xE67E22FF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(),   0xFF9F1CFF)
     reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(),           0xF0F0F0FF)
-    
+
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_WindowRounding(), 6.0)
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_FrameRounding(),  4.0)
     reaper.ImGui_PushStyleVar(ctx, reaper.ImGui_StyleVar_ItemSpacing(),    8.0, 6.0)
@@ -1297,7 +1392,7 @@ local function dependency_check_loop()
         reaper.ImGui_BulletText(ctx, "2. Click 'Import/commit repository...' and paste the URL (Ctrl+V).")
         reaper.ImGui_BulletText(ctx, "3. In REAPER: Extensions -> ReaPack -> Browse packages...")
         reaper.ImGui_BulletText(ctx, "4. Search for 'Reaticulate', right-click -> Install, then click 'Apply'.")
-        
+
         reaper.ImGui_Spacing(ctx)
         reaper.ImGui_Separator(ctx)
         reaper.ImGui_Spacing(ctx)

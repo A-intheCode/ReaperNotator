@@ -487,15 +487,14 @@ function DynamicsEngine.insert_dynamic_anchor(btn, state, midi_service, active_t
                 end
             end
         end
-        reaper.Undo_EndBlock2(0, "Notator: Dynamic " .. btn.label, -1)
-        reaper.UpdateArrange()
-        
         -- Automatically perform re-blend if 2 or more anchors exist
         for tk in pairs(affected_takes) do
             if #collect_anchors_from_take(tk) >= 2 then
-                DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, tk)
+                DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, tk, nil, nil, true)
             end
         end
+        reaper.Undo_EndBlock2(0, "Notator: Dynamic " .. btn.label, -1)
+        reaper.UpdateArrange()
         if state.dyn_bypass_cc then
             state.status_msg = string.format("Set dynamic %s at %d position(s) (CC Bypassed / Hand-drawn preserved)", btn.label, total_inserted)
         else
@@ -534,13 +533,12 @@ function DynamicsEngine.insert_dynamic_anchor(btn, state, midi_service, active_t
             reaper.MIDI_InsertCC(target_take, false, false, cur_ppq, 176, 0, cc_b, c11_v)
         end
         reaper.MIDI_Sort(target_take)
-        reaper.Undo_EndBlock2(0, "Notator: Dynamic " .. btn.label, -1)
-        reaper.UpdateArrange()
-        
         -- Automatically perform re-blend if 2 or more anchors exist (affected range only!)
         if #collect_anchors_from_take(target_take) >= 2 then
-            DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, target_take, ppq, ppq)
+            DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, target_take, ppq, ppq, true)
         end
+        reaper.Undo_EndBlock2(0, "Notator: Dynamic " .. btn.label, -1)
+        reaper.UpdateArrange()
         if state.dyn_bypass_cc then
             state.status_msg = string.format("Dynamic %s set at cursor (CC Bypassed / Hand-drawn preserved)", btn.label)
         else
@@ -549,7 +547,7 @@ function DynamicsEngine.insert_dynamic_anchor(btn, state, midi_service, active_t
     end
 end
 
-function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, opt_take, opt_range_start_ppq, opt_range_end_ppq)
+function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, opt_take, opt_range_start_ppq, opt_range_end_ppq, no_undo)
     local target_item, take, target_track, item_name
     if opt_take and reaper.ValidatePtr(opt_take, "MediaItem_Take*") and reaper.TakeIsMIDI(opt_take) then
         take = opt_take
@@ -583,7 +581,7 @@ function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_dat
     -- Do not delete or write any CC curves! Hand-drawn CC automation remains 100% intact.
     -- Only keep Text/Sysex notation markers (Type 15 & 7) synchronized.
     if state.dyn_bypass_cc then
-        reaper.Undo_BeginBlock2(0)
+        if not no_undo then reaper.Undo_BeginBlock2(0) end
         for i = 1, #anchors do
             local anc = anchors[i]
             if anc then
@@ -593,7 +591,7 @@ function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_dat
             end
         end
         reaper.MIDI_Sort(take)
-        reaper.Undo_EndBlock2(0, string.format("Sync Notations (CC Bypassed) (%s)", item_name or "Item"), -1)
+        if not no_undo then reaper.Undo_EndBlock2(0, string.format("Sync Notations (CC Bypassed) (%s)", item_name or "Item"), -1) end
         reaper.UpdateArrange()
         state.status_msg = string.format("⚡ Re-Blend (CC Bypassed): Notations synchronized for '%s' (Hand-drawn CCs preserved)", item_name or "Item")
         return
@@ -617,7 +615,7 @@ function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_dat
             return
         end
         
-        reaper.Undo_BeginBlock2(0)
+        if not no_undo then reaper.Undo_BeginBlock2(0) end
         if state.hairpins then
             local HairpinService = package.loaded["services.hairpin_service"] or require("services.hairpin_service")
             if HairpinService and HairpinService.apply_hairpin_cc then
@@ -639,11 +637,11 @@ function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_dat
             end
         end
         reaper.MIDI_Sort(take)
-        reaper.Undo_EndBlock2(0, string.format("Smart Re-Blend (%s)", item_name or "Item"), -1)
+        if not no_undo then reaper.Undo_EndBlock2(0, string.format("Smart Re-Blend (%s)", item_name or "Item"), -1) end
         reaper.UpdateArrange()
         return
     elseif #anchors == 1 then
-        reaper.Undo_BeginBlock2(0)
+        if not no_undo then reaper.Undo_BeginBlock2(0) end
         local a1 = anchors[1]
         local _, _, cc_count = reaper.MIDI_CountEvts(take)
         for j = (cc_count or 0) - 1, 0, -1 do
@@ -682,7 +680,7 @@ function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_dat
             end
         end
         reaper.MIDI_Sort(take)
-        reaper.Undo_EndBlock2(0, string.format("Smart Re-Blend (%s)", item_name or "Item"), -1)
+        if not no_undo then reaper.Undo_EndBlock2(0, string.format("Smart Re-Blend (%s)", item_name or "Item"), -1) end
         reaper.UpdateArrange()
         return
     end
@@ -733,7 +731,7 @@ function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_dat
         pair_end_idx = right_idx - 1
     end
     
-    reaper.Undo_BeginBlock2(0)
+    if not no_undo then reaper.Undo_BeginBlock2(0) end
     
     -- Delete existing CC events on CC_A and CC_B (affected range only!)
     local _, _, cc_count = reaper.MIDI_CountEvts(take)
@@ -1112,7 +1110,7 @@ function DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_dat
     if target_track then
         _, trk_name = reaper.GetTrackName(target_track)
     end
-    reaper.Undo_EndBlock2(0, string.format("Smart Re-Blend (%s)", item_name or "Item"), -1)
+    if not no_undo then reaper.Undo_EndBlock2(0, string.format("Smart Re-Blend (%s)", item_name or "Item"), -1) end
     reaper.UpdateArrange()
     if midi_service and midi_service.invalidate_cache then
         midi_service.invalidate_cache()
@@ -1220,6 +1218,9 @@ function DynamicsEngine.delete_selected_dynamic(state, midi_service, active_trac
     reaper.Undo_BeginBlock2(0)
     delete_dynamic_from_take(take, d.ppq, d.label, 20)
     reaper.MIDI_Sort(take)
+    if #collect_anchors_from_take(take) >= 2 and midi_service then
+        DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, take, d.ppq, d.ppq, true)
+    end
     reaper.Undo_EndBlock2(0, "Notator: Delete dynamic", -1)
     reaper.UpdateArrange()
     if midi_service and midi_service.invalidate_cache then
@@ -1232,13 +1233,9 @@ function DynamicsEngine.delete_selected_dynamic(state, midi_service, active_trac
     state.selected_dynamic = nil
     state.hovered_dynamic = nil
     state.status_msg = string.format("Deleted dynamic %s", d.label)
-    
-    if #collect_anchors_from_take(take) >= 2 and midi_service then
-        DynamicsEngine.smart_reblend_all(state, midi_service, active_tracks_data, take, d.ppq, d.ppq)
-    end
 end
 
-function DynamicsEngine.move_dynamic_marker(d, target_take, target_ppq, target_track)
+function DynamicsEngine.move_dynamic_marker(d, target_take, target_ppq, target_track, no_undo)
     if not d then return end
     local orig_take = d.take
     local orig_ppq = d.ppq
@@ -1248,7 +1245,7 @@ function DynamicsEngine.move_dynamic_marker(d, target_take, target_ppq, target_t
     end
     if not target_take or not reaper.ValidatePtr(target_take, "MediaItem_Take*") then return end
     
-    reaper.Undo_BeginBlock2(0)
+    if not no_undo then reaper.Undo_BeginBlock2(0) end
     if orig_take and reaper.ValidatePtr(orig_take, "MediaItem_Take*") then
         delete_dynamic_from_take(orig_take, orig_ppq, d.label, 20)
         reaper.MIDI_Sort(orig_take)
@@ -1258,7 +1255,7 @@ function DynamicsEngine.move_dynamic_marker(d, target_take, target_ppq, target_t
     reaper.MIDI_InsertTextSysexEvt(target_take, false, false, target_ppq, 7, d.label)
     reaper.MIDI_Sort(target_take)
     
-    reaper.Undo_EndBlock2(0, "Notator: Move dynamic", -1)
+    if not no_undo then reaper.Undo_EndBlock2(0, "Notator: Move dynamic", -1) end
     reaper.UpdateArrange()
     local MidiService = package.loaded["services.midi_service"]
     if MidiService and MidiService.invalidate_cache then
