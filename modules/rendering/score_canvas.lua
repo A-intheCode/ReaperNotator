@@ -4491,7 +4491,8 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     end
                 end
                 
-                local is_rec_armed = AudioPreview.is_track_user_armed(tdata.track)
+                local is_mpf_armed = (state.show_melody_pathfinder_modal == true and AudioPreview.current_track == tdata.track and reaper.GetMediaTrackInfo_Value(tdata.track, "I_RECARM") == 1)
+                local is_rec_armed = AudioPreview.is_track_user_armed(tdata.track) or is_mpf_armed
                 local is_focused = (state.focused_track == tdata.track)
 
                 local hdr_bg

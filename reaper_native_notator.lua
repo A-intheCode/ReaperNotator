@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.52
+-- @version 2.53
 -- @changelog
+--   + v2.53: Stable Release: Melodic Pathfinder 2.0 (8 descriptive Film Score Archetypes, Leitmotif & period phrasing up to 32 bars, automatic Krumhansl-Schmuckler Key & Mode detection, half-bar chord lock, Anchor-Note blending, 3 interactive coupled Bezier curves [Tension -> Velocity/Leaps, Note Length, Pitch] with freehand Draw -> auto-simplified Edit Handles, 4 RAM slots & JSON export/import), pre-armed target track with [REC] badge & 2-stage warmup so first-note audition never drops, and full Reaticulate clone bank resolution (fixing Spitfire BBC Symphony Orchestra Trumpet, Flutes a3, Piccolo & cloned banks)
 --   + v2.52: Stable Release: Full Canvas & MIDI Undo/Redo Synchronization (UndoStateService) across all score elements (Hairpins, Sustain Pedals, Dynamic Texts, Tempo Markers, Slurs, Ties, Portamentos, Glissandos, Octave Lines, Fermatas, Repeat Marks, Rehearsal Marks, Text Items & Chords), single-step Undo for Portamento (Hold Pedal CC + Canvas Marker together), clean CC64 Hold Pedal rebuild & MIDI Editor left-edge step rendering, and fix Pattern Browser 5/8 time signature JSON schema
 --   + v2.51: Stable Release: Mid-piece Time Signatures across all staves & REAPER TimeMap (independent of MIDI items), Target Bar Stepper ([ - ] / [ + ]) & Smart Edit Cursor vs. Note detection in Time Signature Drawer, Compound Meter (6/8, 9/8, 12/8) dotted-quarter beam grouping, full English UI labels, barline culling fix when scrolling, and Lua 5.4 local-variable scope optimization in ScoreCanvas.render
 --   + v2.50.7: Hotfix: Fix missing barlines when scrolling (wrap Engraver.qn_to_measure_info single-value return before math.max so multi-return values never inflate vis_min_measure)

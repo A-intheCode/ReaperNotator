@@ -335,7 +335,7 @@ function BankPickerModal.render(ctx, state, cur_track, active_tracks_data)
                 if pass_vendor and pass_library and pass_section then
                     local pass_query = true
                     if q_low ~= "" then
-                        local name_match = b.name:lower():find(q_low, 1, true)
+                        local name_match = b.name:lower():find(q_low, 1, true) or (b.shortname and b.shortname:lower():find(q_low, 1, true))
                         local lib_match = b_lib:lower():find(q_low, 1, true)
                         local ven_match = b_ven:lower():find(q_low, 1, true)
                         local sec_match = b_sec:lower():find(q_low, 1, true)

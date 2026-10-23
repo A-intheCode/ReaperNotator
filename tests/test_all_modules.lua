@@ -497,6 +497,268 @@ run_test("MelodyPathfinderService: Normal, Inverted, Retrograde & Counter-Melody
     end
 end)
 
+run_test("MelodyPathfinder 2.0: Bezier curves, freehand simplification & coupled curve physics", function()
+    local MPS = require("services.melody_pathfinder_service")
+    local c = MPS.make_curve({ { 0, 0.2 }, { 0.5, 0.9 }, { 1, 0.3 } })
+    assert_eq(#c.nodes, 3, "3 anchor nodes")
+    assert_true(math.abs(MPS.evaluate_bezier_curve(c, 0) - 0.2) < 1e-6, "curve starts at first node value")
+    assert_true(math.abs(MPS.evaluate_bezier_curve(c, 0.5) - 0.9) < 1e-3, "curve passes exactly through anchor node")
+    assert_true(math.abs(MPS.evaluate_bezier_curve(c, 1) - 0.3) < 1e-6, "curve ends at last node value")
+    for i = 0, 50 do
+        local v = MPS.evaluate_bezier_curve(c, i / 50)
+        assert_true(v >= 0 and v <= 1, "curve values stay in 0..1")
+    end
+
+    -- Detailed jittery freehand stroke -> simplified editable Bezier nodes
+    local stroke, seed = {}, 7
+    local function rnd() seed = (seed * 48271) % 2147483647 return seed / 2147483647 end
+    for i = 0, 300 do
+        local t = i / 300
+        stroke[#stroke + 1] = { t = t, v = 0.5 + 0.35 * math.sin(t * math.pi * 2) + (rnd() - 0.5) * 0.02 }
+    end
+    local sc = MPS.simplify_freehand_to_bezier(stroke, nil, 0.025, 12)
+    assert_true(#sc.nodes >= 3 and #sc.nodes <= 12, "freehand simplified to 3..12 anchor nodes, got " .. #sc.nodes)
+    local max_err = 0
+    for i = 0, 100 do
+        local t = i / 100
+        local err = math.abs(MPS.evaluate_bezier_curve(sc, t) - (0.5 + 0.35 * math.sin(t * math.pi * 2)))
+        if err > max_err then max_err = err end
+    end
+    assert_true(max_err < 0.08, "Bezier fit follows the drawn stroke (max error " .. max_err .. ")")
+    for _, nd in ipairs(sc.nodes) do
+        assert_true(type(nd.cp1) == "table" and type(nd.cp2) == "table", "every anchor node has draggable tangent handles")
+    end
+
+    -- Partial redraw only replaces the drawn time range
+    local flat = MPS.make_curve({ { 0, 0.5 }, { 1, 0.5 } })
+    local part = {}
+    for i = 0, 40 do part[#part + 1] = { t = 0.4 + i * 0.005, v = 0.9 } end
+    local pc = MPS.simplify_freehand_to_bezier(part, flat)
+    assert_true(math.abs(MPS.evaluate_bezier_curve(pc, 0.05) - 0.5) < 0.05, "curve outside the stroke is preserved")
+    assert_true(math.abs(MPS.evaluate_bezier_curve(pc, 0.5) - 0.9) < 0.03, "curve inside the stroke is replaced")
+
+    -- Mutual curve coupling
+    local function set(t, l, p)
+        return { tension = MPS.make_curve(t), note_length = MPS.make_curve(l), pitch = MPS.make_curve(p) }
+    end
+    local low = set({ { 0, 0.05 }, { 1, 0.05 } }, { { 0, 0.9 }, { 1, 0.9 } }, { { 0, 0.5 }, { 1, 0.5 } })
+    local high = set({ { 0, 0.95 }, { 1, 0.95 } }, { { 0, 0.1 }, { 1, 0.1 } }, { { 0, 0.5 }, { 1, 0.5 } })
+    local cl, ch = MPS.evaluate_coupled_curves(low, 0.5), MPS.evaluate_coupled_curves(high, 0.5)
+    assert_true(cl.velocity <= 58, "low Tension -> soft pp/p velocity (" .. cl.velocity .. ")")
+    assert_true(ch.velocity >= 110, "high Tension -> powerful f/ff velocity (" .. ch.velocity .. ")")
+    assert_true(cl.breath > ch.breath, "low Tension + long Note Length -> breathing rests")
+    assert_true(ch.density > cl.density, "high Tension + short Note Length -> motoric drive")
+    assert_true(ch.climax_deg >= 2 and ch.climax_deg <= 4, "peak Tension pulls Pitch up by 2..4 degrees")
+    local rising = set({ { 0, 0.4 }, { 1, 0.4 } }, { { 0, 0.5 }, { 1, 0.5 } }, { { 0, 0.0 }, { 1, 1.0 } })
+    assert_true(MPS.evaluate_coupled_curves(rising, 0.5).tension > 0.4, "steep Pitch rise boosts Tension")
+end)
+
+run_test("MelodyPathfinder 2.0: JSON curve export / import round-trip", function()
+    local MPS = require("services.melody_pathfinder_service")
+    local Corpus = require("services.melody_style_corpus")
+    local curves = MPS.get_style_default_curves(Corpus.BY_ID["film_style_1"])
+    curves.tension.nodes[2].cp2 = { dt = 0.05, dv = 0.2 }
+    curves.tension.nodes[2].manual = true
+    local js = MPS.curves_to_json(curves, { style_id = "film_style_1" })
+    local back = MPS.curves_from_json(js)
+    assert_true(type(back) == "table", "JSON parsed back into curves")
+    for _, id in ipairs(MPS.CURVE_IDS) do
+        for i = 0, 20 do
+            local t = i / 20
+            local d = math.abs(MPS.evaluate_bezier_curve(curves[id], t) - MPS.evaluate_bezier_curve(back[id], t))
+            assert_true(d < 2e-3, id .. " curve identical after JSON round-trip")
+        end
+    end
+    assert_true(back.tension.nodes[2].manual == true, "manually edited handle flag preserved")
+
+    local ok, written = MPS.export_curves_json(curves, repo_root .. "/tests/_tmp_mpf_curves", { name = "test" })
+    assert_true(ok and tostring(written):match("%.json$") ~= nil, "export writes a .json file")
+    local imported = MPS.import_curves_json(written)
+    os.remove(written)
+    assert_true(imported and #imported.pitch.nodes == #curves.pitch.nodes, "file import restores all Pitch nodes")
+    assert_true(MPS.curves_from_json("{\"foo\": 1}") == nil, "JSON without curves is rejected")
+end)
+
+run_test("MelodyPathfinder 2.0: Key / Mode detection, modal colour & chord extraction", function()
+    local MPS = require("services.melody_pathfinder_service")
+    local notes = {}
+    local em = { 64, 66, 67, 69, 71, 72, 74, 76, 64, 67, 71, 64 }
+    for i, p in ipairs(em) do
+        notes[#notes + 1] = { pitch = p, start_qn = i - 1, dur_qn = (p % 12 == 4) and 2 or 1 }
+    end
+    local k = MPS.detect_key_from_histogram(MPS.add_notes_to_histogram(nil, notes, 1))
+    assert_eq(k.tonic_pc, 4, "E detected as tonic")
+    assert_eq(k.mode, "minor", "minor mode detected")
+
+    local h2 = {}
+    for pc = 0, 11 do h2[pc] = 0 end
+    for _, pc in ipairs({ 2, 2, 2, 4, 5, 7, 9, 9, 11, 11, 0 }) do h2[pc] = h2[pc] + 1 end
+    assert_eq(MPS.choose_modal_scale(h2, 2, "minor", "aeolian"), "dorian", "natural 6th -> Dorian")
+
+    local h3 = {}
+    for pc = 0, 11 do h3[pc] = 0 end
+    for _, pc in ipairs({ 0, 0, 4, 7, 7, 2, 9, 11 }) do h3[pc] = h3[pc] + 1 end
+    assert_eq(MPS.choose_modal_scale(h3, 0, "major", "lydian"), "lydian", "ambiguous 4th keeps the archetype's Lydian colour")
+    h3[5] = 3
+    assert_eq(MPS.choose_modal_scale(h3, 0, "major", "lydian"), "major", "natural 4th in the music overrides Lydian")
+
+    local r, tones = MPS.chord_item_tones({ text = "Am7", root = 9 })
+    assert_eq(r, 9, "Am7 root")
+    assert_true(tones[9] and tones[0] and tones[4] and tones[7], "Am7 = A C E G")
+    local _, t2 = MPS.chord_item_tones({ text = "Bbmaj7", root = 10 })
+    assert_true(t2[10] and t2[2] and t2[5] and t2[9], "Bbmaj7 = Bb D F A")
+
+    local refs = {
+        { pitch = 48, start_qn = 0, end_qn = 2 }, { pitch = 64, start_qn = 0, end_qn = 2 }, { pitch = 67, start_qn = 0, end_qn = 2 },
+        { pitch = 43, start_qn = 2, end_qn = 4 }, { pitch = 59, start_qn = 2, end_qn = 4 }, { pitch = 62, start_qn = 2, end_qn = 4 },
+    }
+    local pcset = { [0] = true, [2] = true, [4] = true, [5] = true, [7] = true, [9] = true, [11] = true }
+    local sl = MPS.build_harmonic_slices(0, 4, refs, nil, { tonic_pc = 0, scale_ivs = { 0, 2, 4, 5, 7, 9, 11 }, pc_set = pcset, slice_qn = 2 })
+    assert_eq(sl[1].root_pc, 0, "half-bar 1 harmony = C major")
+    assert_eq(sl[2].root_pc, 7, "half-bar 2 harmony = G major")
+end)
+
+run_test("MelodyPathfinder 2.0: Anchor-Note blending keeps every selected anchor exact", function()
+    local st, env, trk1, item1, take1 = setup_rich_mock_project()
+    local MPS = require("services.melody_pathfinder_service")
+    local Note = require("classes.note")
+    local sel = {}
+    local picks = { { idx = 0, s = 0.0, p = 60 }, { idx = 1, s = 1.0, p = 62 }, { idx = 14, s = 5.5, p = 67 } }
+    for _, pk in ipairs(picks) do
+        local n = Note.new({ idx = pk.idx, start_qn = pk.s, end_qn = pk.s + 0.5, pitch = pk.p, vel = 90, chan = 0, take = take1, item = item1, track = trk1 })
+        sel[n:get_key()] = n
+    end
+    st.selected_notes = sel
+    local _, wps = MPS.get_selected_waypoints(st, st.active_tracks_cache)
+    assert_true(#wps >= 2, "at least 2 anchor notes resolved")
+    for _, sid in ipairs({ "film_style_1", "cinematic", "thriller", "magical_waltz", "film_style_3" }) do
+        local pv = MPS.generate_preview(st, st.active_tracks_cache, {
+            style_id = sid, scale_id = "auto", transform_id = "normal", ref_track_mode = "auto_all", harmony_blend = 0.8, seed = 77,
+        })
+        assert_eq(pv.mode, "blend", sid .. ": Anchor-Note blending mode")
+        for _, wp in ipairs(wps) do
+            local found = false
+            for _, n in ipairs(pv.notes) do
+                if n.is_waypoint and math.abs(n.start_qn - wp.start_qn) < 0.002 and n.pitch == wp.pitch then found = true end
+            end
+            assert_true(found, sid .. ": anchor kept at QN " .. wp.start_qn .. " pitch " .. wp.pitch)
+        end
+        for i = 2, #pv.notes do
+            assert_true(pv.notes[i].start_qn >= pv.notes[i - 1].start_qn + 0.05, sid .. ": strictly ascending onsets")
+        end
+    end
+end)
+
+run_test("MelodyPathfinder 2.0: 32-bar phrase, key lock, Leitmotif form, seed & Tension -> Velocity", function()
+    local st, env, trk1, item1, take1 = setup_rich_mock_project()
+    local MPS = require("services.melody_pathfinder_service")
+    local Note = require("classes.note")
+    st.selected_notes = {}
+    st.selected_note = nil
+    st.chord_items = {}
+    local prog = { { "Em", 4 }, { "Am", 9 }, { "B7", 11 }, { "Em", 4 } }
+    for i = 0, 15 do
+        local ch = prog[(i % 4) + 1]
+        table.insert(st.chord_items, { text = ch[1], root = ch[2], start_qn = i * 8, end_qn = i * 8 + 8 })
+    end
+
+    local base = { style_id = "film_style_1", scale_id = "auto", transform_id = "normal", ref_track_mode = "none", phrase_bars = 32, seed = 4242, harmony_blend = 0.8 }
+    local pv = MPS.generate_preview(st, st.active_tracks_cache, base)
+    assert_eq(pv.mode, "phrase", "symphonic phrase mode")
+    assert_true(math.abs((pv.max_qn - pv.min_qn) - 128) < 1e-6, "span = 32 bars")
+    local last = pv.notes[#pv.notes]
+    assert_true(last.start_qn + last.step_dur_qn >= pv.max_qn - 0.01, "melody fills all 32 bars")
+    assert_true(#pv.notes >= 48, "rich 32-bar melody (" .. #pv.notes .. " notes)")
+    assert_eq(pv.layout.phrase_bars, 4, "4-bar phrases")
+    assert_eq(pv.layout.num_phrases, 8, "8 phrases (A A' B A'' x2)")
+    assert_eq(pv.harmony_source, "Chord Lane", "harmony taken from the Chord Lane")
+    for _, n in ipairs(pv.notes) do
+        assert_true(pv.pc_set[n.pitch % 12] == true, "generated pitch " .. n.pitch .. " is in key")
+        assert_true(n.pitch >= pv.clef_register.min_p and n.pitch <= pv.clef_register.max_p, "pitch inside the Clef compass")
+    end
+    local k_idx, k_mode = MPS.resolve_track_key_signature(st, pv.target_track, pv.target_take, pv.min_qn)
+    if (k_idx or 0) == 0 and (k_mode or "major") == "major" then
+        assert_eq(pv.key_source, "detected", "key auto-detected when no key signature is set")
+        assert_eq(pv.tonic_pc, 4, "E minor detected from the Chord Lane")
+    end
+
+    -- Tension curve drives velocity
+    local function mean_vel(tv)
+        local o = {}
+        for k, v in pairs(base) do o[k] = v end
+        o.phrase_bars = 8
+        o.curves = {
+            tension = MPS.make_curve({ { 0, tv }, { 1, tv } }),
+            note_length = MPS.make_curve({ { 0, 0.5 }, { 1, 0.5 } }),
+            pitch = MPS.make_curve({ { 0, 0.5 }, { 1, 0.5 } }),
+        }
+        local p = MPS.generate_preview(st, st.active_tracks_cache, o)
+        local s = 0
+        for _, n in ipairs(p.notes) do s = s + n.vel end
+        return s / #p.notes
+    end
+    local soft, loud = mean_vel(0.1), mean_vel(0.95)
+    assert_true(soft < 66, "low Tension -> soft velocities (" .. soft .. ")")
+    assert_true(loud > 105, "high Tension -> loud velocities (" .. loud .. ")")
+
+    -- Note Length curve drives rhythmic density
+    local function count_notes(lv)
+        local o = {}
+        for k, v in pairs(base) do o[k] = v end
+        o.phrase_bars = 16
+        o.curves = {
+            tension = MPS.make_curve({ { 0, 0.5 }, { 1, 0.5 } }),
+            note_length = MPS.make_curve({ { 0, lv }, { 1, lv } }),
+            pitch = MPS.make_curve({ { 0, 0.5 }, { 1, 0.5 } }),
+        }
+        return #MPS.generate_preview(st, st.active_tracks_cache, o).notes
+    end
+    assert_true(count_notes(0.1) > count_notes(0.95), "short Note Length -> more notes than long Note Length")
+
+    -- 1 Seed Note expansion keeps the seed exactly
+    local seed = Note.new({ idx = 0, start_qn = 0.0, end_qn = 1.0, pitch = 60, vel = 90, chan = 0, take = take1, item = item1, track = trk1 })
+    st.selected_notes = { [seed:get_key()] = seed }
+    local o2 = {}
+    for k, v in pairs(base) do o2[k] = v end
+    o2.phrase_bars = 16
+    local ps = MPS.generate_preview(st, st.active_tracks_cache, o2)
+    assert_eq(#ps.waypoints, 1, "1 seed note")
+    assert_true(ps.notes[1].is_waypoint and ps.notes[1].pitch == ps.waypoints[1].pitch, "seed note kept as first note")
+    assert_true(math.abs((ps.max_qn - ps.min_qn) - 64) < 1e-6, "seed expands to 16 bars")
+
+    -- All transforms / counter-melody / styles stay robust
+    for _, st_def in ipairs(require("services.melody_style_corpus").STYLES) do
+        for _, tf in ipairs({ "normal", "inversion", "retrograde", "retrograde_inversion" }) do
+            for _, cm in ipairs({ false, true }) do
+                local o3 = {}
+                for k, v in pairs(base) do o3[k] = v end
+                o3.style_id, o3.transform_id, o3.counter_melody_mode, o3.phrase_bars = st_def.id, tf, cm, 4
+                local p3 = MPS.generate_preview(st, st.active_tracks_cache, o3)
+                assert_true(#p3.notes > 0, st_def.id .. "/" .. tf .. " generates notes")
+            end
+        end
+    end
+end)
+
+run_test("MelodyPathfinder 2.0: Film Score archetypes use no real composer names", function()
+    local Corpus = require("services.melody_style_corpus")
+    local banned = { "williams", "zimmer", "morricone", "shore", "elfman", "horner", "herrmann", "goldsmith", "desplat", "giacchino", "newman", "silvestri", "jarre", "barry", "korngold", "steiner", "rozsa", "ennio", "hans", "howard" }
+    assert_true(#Corpus.STYLES >= 11, "11 styles incl. 8 film archetypes")
+    for _, st in ipairs(Corpus.STYLES) do
+        local txt = (tostring(st.name) .. " " .. tostring(st.description or "")):lower()
+        for _, b in ipairs(banned) do
+            assert_true(not txt:find(b, 1, true), st.id .. " must not reference a real composer (" .. b .. ")")
+        end
+        assert_true(type(st.motif_templates) == "table" and #st.motif_templates > 0, st.id .. " has Leitmotif templates")
+        for _, m in ipairs(st.motif_templates) do
+            local sum = 0
+            for _, n in ipairs(m) do sum = sum + n.l end
+            assert_true(math.abs(sum - 8.0) < 0.02, st.id .. " motif spans exactly 2 bars (" .. sum .. ")")
+        end
+        assert_true(type(st.default_curves) == "table", st.id .. " has default curves")
+    end
+end)
+
 run_test("PatternService: pattern categories & library integrity", function()
     local PatternService = require("services.pattern_service")
     if PatternService.init then PatternService.init() end
@@ -2466,6 +2728,65 @@ run_test("PortamentoService: Single Undo step removes both CC64 Hold Pedal and C
     st:reload_score_from_project()
     assert_eq(#st.portamento_marks, 1, "Portamento marker restored on Redo")
     assert_eq(count_cc64(take1), 2, "CC64 Hold Pedal events restored on Redo")
+end)
+
+run_test("ReaticulateParser: Cloned Banks (BBC Trumpet -> BBC Horn) resolve all articulations via shortname", function()
+    local ReaticulateParser = require("services.reaticulate_parser")
+    local tmp_reabank = repo_root .. "/_test_bbc_clone.reabank"
+    local f = io.open(tmp_reabank, "w")
+    assert_true(f ~= nil, "Created temp reabank file")
+    f:write([[
+//! g="Spitfire/BBC Symphonic Orchestra/Brass" n="BBC Horn"
+//! id=7a31cd79-73f6-487a-9e1f-8c859ede6e8a
+Bank * * BBC - Horn
+
+//! c=legato i=legato o=note:0
+20 legato (extended)
+//! c=long i=note-whole o=note:1
+1 long
+//! c=short i=spiccato o=note:2
+41 staccatissimo
+//! c=short i=marcato-quarter o=note:3
+52 marcato
+//! c=long-dark i=cuivre o=note:4
+9 long cuivre
+//! c=short i=staccato-sfz o=note:5
+54 long sfz
+//! c=long-dark i=tremolo o=note:6
+11 flutter
+//! c=long i=multitongued o=note:7
+75 multitongued
+//! c=long i=trill-maj2 o=note:8
+71 trill M2
+//! c=long i=trill-min2 o=note:9
+70 trill m2
+//! c=long i=note-whole o=note:10
+81 long (muted)
+//! c=short i=spiccato o=note:11
+82 staccatissimo (muted)
+//! c=short i=marcato-quarter o=note:12
+83 marcato(muted)
+
+//! g="Spitfire/BBC Symphonic Orchestra/Brass" n="BBC Trumpet"
+//! clone="Spitfire/BBC Symphonic Orchestra/Brass/BBC Horn"
+//! id=ed050c9f-1c53-485d-a76e-ca9352215245
+Bank * * BBC - Trumpet
+]])
+    f:close()
+
+    local parsed = {}
+    local ok = ReaticulateParser.parse_file(tmp_reabank, parsed)
+    os.remove(tmp_reabank)
+    assert_true(ok, "parse_file succeeded")
+    assert_eq(#parsed, 2, "Parsed 2 banks (BBC Horn + BBC Trumpet)")
+
+    local trumpet = ReaticulateParser.find_bank(parsed, "BBC - Trumpet")
+    assert_true(trumpet ~= nil, "Found bank by 'BBC - Trumpet'")
+    local trumpet_short = ReaticulateParser.find_bank(parsed, "BBC Trumpet")
+    assert_true(trumpet_short == trumpet, "Found same bank by shortname 'BBC Trumpet'")
+    assert_eq(#trumpet.articulations, 13, "BBC - Trumpet resolved all 13 cloned articulations from BBC Horn")
+    assert_eq(trumpet.articulations[1].pc, 20, "First articulation PC is 20")
+    assert_eq(trumpet.articulations[1].name, "legato (extended)", "First articulation name is 'legato (extended)'")
 end)
 
 run_test("Full Reflection Audit: Count & Verify All Exported Functions Across All 81 Modules", function()

@@ -51,16 +51,23 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - **Intra-Bar Accidental Memory & Multi-Column Chord Stacking**: Automatically tracks altered steps within each bar, emits natural ($\natural$) cancellations when returning to diatonic pitches, stacks chord accidentals into up to 3 collision-free diagonal columns, and leaves a clean visual gap between Clef and Key Signature.
   - **Complete Gould & Read Engraving Details**: 32nd/64th flag & beam stem lengthening with inner-beam clearance, rest-breaking beams, paired fractional stubs, strict 2-side chord 2nd alternation, dotted chord 2nd separation, curved S-bezier Piano/Harp accolade brace (`{`), and stem-centered tremolo slashes.
 
-- **Melodic Pathfinder & Counter-Melody Generator (v2.18–v2.50)**:
-  - **Corpus-Trained 2nd-Order Viterbi Inpainting (`MelodyPathfinderService`)**: Trained on the 1,500-pattern orchestral library ($>126,000$ notes) across 10 musical & Film Composer style profiles. Connects selected Key Waypoint notes ($W_1 \rightarrow W_2 \dots \rightarrow W_k$), grows multi-bar phrases from a single Seed note, or generates species Counter-Melodies against any Reference Track.
-  - **Clef Register Intelligence & Full Key Signature Integration**: Automatically bounds generated notes to the track's active Clef and orchestral instrument register, respects active Major & Minor Key Signatures (`KeySignatureService.resolve_effective_key` & `respell_item_notes`), and supports Melodic Inversion, Retrograde, and Retrograde-Inversion.
+- **Melodic Pathfinder 2.0 — Film-Score Melody & Counter-Melody Composer (v2.53)**:
+  ![Melodic Pathfinder 2.0 Annotated Guide](docs/images/melodic_pathfinder_annotated.png)
+  - **Three Composing Workflows**:
+    1. **Blend Selected Anchor Notes (2+ Notes Selected)**: Your selected landmark notes stay 100% untouched (Orange Anchors) while Melodic Pathfinder composes a smooth musical bridge connecting them.
+    2. **Grow a Theme from 1 Seed Note (1 Note Selected)**: Develops a complete **2- to 32-bar** theme starting from your selected note with recurring motifs, variations (`A – A' – B – A''`), breathing rests, and natural cadences.
+    3. **Free Phrase or Counter-Melody (0 Notes Selected)**: Generates a complete phrase in your track's clef and key, or writes a true **Counter-Melody** moving in contrary motion and complementary rhythm against any Reference Track.
+  - **8 Descriptive Film Score Archetypes**: *Heroic Symphonic Fanfare*, *Intimate Elegiac Strings*, *Minimalist Ostinato Pulse*, *Pastoral Folksong & Wonder*, *Gothic Fairy-Tale Waltz*, *Poetic Suspense & Noir*, *Epic Ancient Brass & Choir*, and *Romantic Contrapuntal Cantabile*.
+  - **3 Interactive Coupled Bezier Curves (Tension, Note Length, Pitch)**: Sketch freehand in **Draw** mode directly over the note map—on mouse release your stroke automatically simplifies into a smooth Bezier curve with draggable handles in **Edit Handles** mode. **Tension** shapes emotional intensity, wider leaps, and note velocity (`pp` $\rightarrow$ `ff`); **Note Length** shapes rhythmic speed (fast 8ths/16ths vs. broad half/whole notes); **Pitch** shapes the high/low contour arch. Includes 4 session **RAM slots** and `.json` **Export/Import**.
+  - **Pre-Armed Instant First-Note Audition & `[● REC]` Indicator (v2.53)**: Pre-arms the target instrument track while the Melodic Pathfinder window is open (showing the red `[● REC]` badge on the staff header and modal) with a 2-stage articulation warmup so clicking **Audition Melody** never drops the first note.
+  - **Full Reaticulate Cloned Bank Support (v2.53)**: Resolves `//! clone="..."` and short bank names across all Reaticulate banks, fixing Spitfire BBC Symphony Orchestra (`BBC - Trumpet`, `BBC - Trumpets a3`, `BBC - Flutes a3`, `BBC - Piccolo Flute`) and Chamber/Symphonic Strings & Woodwinds.
 
 - **Per-Track Freehand Annotation Layer System (v2.28–v2.34)**:
   - **Multi-Layer Freehand Pen & Eraser (`AnnotationService` & `AnnotationDrawer`)**: Draw directly on the score across per-bar transparent PNG tiles with 12 color presets, Analytical Capsule SDF anti-aliasing, quadratic Bézier curve smoothing, and 4 resolution steps (`1x`–`3x`) per instrument track.
 
-- **Global `ImGuiGuardService` & 159-Test Automated Verification Suite (v2.45–v2.51)**:
+- **Global `ImGuiGuardService` & 172-Test Automated Verification Suite (v2.45–v2.53)**:
   - **Zero-Leak ImGui Stack Protection**: Wraps `ImGui_Begin`/`End` and `ImGui_BeginChild`/`EndChild` across all UI modals, drawers, and panels to guarantee zero `Missing EndChild()` errors even on runtime exceptions.
-  - **159 Automated Unit Tests (`tests/test_all_modules.lua`)**: Verifies all 89 Lua modules and 654 exported functions with strict `_G` global-leak protection and 0 failures.
+  - **172 Automated Unit Tests (`tests/test_all_modules.lua`)**: Verifies all 89 Lua modules and 654 exported functions with strict `_G` global-leak protection and 0 failures.
 
 - **1,500 Curated Orchestral Patterns Across 10 Categories (v2.17)**:
   - Added **150 Orchestral & Cinematic Percussion** (`09_Orchestral_Percussion`) and **150 Low Strings — Celli & Double Basses** (`10_Low_Strings_Celli_Basses`) patterns to the 1-click Pattern Browser library.

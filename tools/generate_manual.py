@@ -55,6 +55,12 @@ MANUAL_DATA = [
             },
             {
                 "heading": "1.2 The Three-Column Workspace Layout",
+                "images": [
+                    {
+                        "path": "docs/images/workspace_and_midi_editor.png",
+                        "caption": "Figure 1.1: REAPER-Notator Workspace — Left Input Sidebar (1-2), Score Canvas with Track Header, Dynamics, Hairpin & Pedal (3-4), and Docked Multi-Lane MIDI Editor (5-6)."
+                    }
+                ],
                 "text": "The user interface is designed around an ergonomic three-column layout:\n\n"
                         "- Left Column (Sidebar Palette): Quick tools for note entry modes (pointer, pencil, text, eraser), rhythmic durations (whole to 32nd notes), augmentation dots, accidentals, tuplets, stem orientation, and articulation toggles.\n"
                         "- Center Column (Score Canvas): Infinite interactive notation canvas displaying visual staves, barlines, noteheads, stems, beams, ties, slurs, lyrics, and rehearsal marks.\n"
@@ -100,7 +106,13 @@ MANUAL_DATA = [
                         "- Continuous 60 FPS Auto-Scroll & Counter Tracking: The score viewport smoothly tracks the live recording playhead and updates the top bar Measure.Beat and elapsed time counters continuously."
             },
             {
-                "heading": "2.4 Right-Click Record Modal: Track Arming, MIDI Input Routing, Auto-Divisi Live Recording, MIDI Keyboard Step Input, Pre-Roll & Count-In (v2.0 - v2.50)",
+                "heading": "2.4 Right-Click Record Modal: Track Arming, MIDI Input Routing, Auto-Divisi Live Recording, MIDI Keyboard Step Input, Pre-Roll & Count-In (v2.0 - v2.53)",
+                "images": [
+                    {
+                        "path": "docs/images/recording_auto_quantize.png",
+                        "caption": "Figure 2.1: Right-Click Record & Auto-Quantize Modal — Pre-Roll & Count-In (1), MIDI Input & Overdub (2), Real-Time Auto-Quantize (3), Bidirectional Track Arming (4), and Native Metronome Sync (5)."
+                    }
+                ],
                 "text": "Functions (accessible by right-clicking the Record button in the Top Toolbar):\n"
                         "- Bidirectional REAPER Track Arming: Lists all REAPER project tracks (including empty tracks that do not yet contain MIDI items). Toggling a track's checkbox in the Record Modal immediately synchronizes REAPER's native TCP/MCP Record-Arm button (I_RECARM = 1), enables Input Monitoring (I_RECMON = 1), configures MIDI Overdub (I_RECMODE = 7) so REAPER records directly into MIDI score takes without popping up Audio '.wav' Save prompts, and makes the track visible on the score canvas.\n"
                         "- Armed Track Red Canvas Badges (Genuine User Arming Only, v2.0.7): Any track genuinely armed for recording by the user displays a subtle red background tint, red outer border, red left accent stripe, and a crisp vector circle 'REC' pill badge in the track header (with automatic track title truncation so the badge and track name never overlap). Temporary internal Virtual MIDI Keyboard routing during note click auditioning (AudioPreview.is_track_user_armed) is strictly excluded so auditioning a note never triggers the red 'REC' badge.\n"
@@ -368,8 +380,17 @@ MANUAL_DATA = [
         "title": "Articulations & Reaticulate Integration",
         "sections": [
             {
-                "heading": "6.1 Reaticulate Bank Auto-Discovery & Bank Picker Modal",
-                "text": "Functions: REAPER-Notator automatically scans REAPER's Data and Scripts directories for factory and user Reaticulate sound bank definitions (Reaticulate-factory.reabank and Reaticulate.reabank). When a track is selected, Notator reads the track's P_EXT:reaticulate assignment, user bank override, or matches track names (e.g. 'Violin I', 'Cello', 'Horns') to corresponding library banks. Users can also explicitly assign or switch any track's sound bank at any time via the 'Select Bank...' button in the Articulations Drawer (BankPickerModal)."
+                "heading": "6.1 Reaticulate Bank Auto-Discovery, Cloned Banks & Bank Picker Modal (v2.0 - v2.53)",
+                "images": [
+                    {
+                        "path": "docs/images/articulation_bank_picker.png",
+                        "caption": "Figure 6.1: Articulations Drawer & Reaticulate Sound Bank Picker — Target Track (1), Active Sound Bank (2), Search & Configured Banks (3), Vendor/Library Filter (4), and 1-Click Bank Assignment (5)."
+                    }
+                ],
+                "text": "Functions: REAPER-Notator automatically scans REAPER's Data and Scripts directories for factory and user Reaticulate sound bank definitions (Reaticulate-factory.reabank and Reaticulate.reabank). When a track is selected, Notator reads the track's Reaticulate assignment, user bank override, or matches track names (e.g. 'Violin I', 'Cello', 'Horns', 'Trumpet') to corresponding library banks. Users can also explicitly assign or switch any track's sound bank at any time via the magnifying-glass / bank button in the Articulations Drawer.\n\n"
+                        "Full Support for Cloned Reaticulate Sound Banks (v2.53):\n"
+                        "- Many orchestral libraries in Reaticulate (such as Spitfire BBC Symphony Orchestra 'BBC - Trumpet', 'BBC - Trumpets a3', 'BBC - Flutes a3', 'BBC - Piccolo Flute', and Spitfire Symphonic/Chamber Strings & Woodwinds) share their articulation lists by cloning a parent bank definition.\n"
+                        "- REAPER-Notator automatically resolves all cloned banks and short bank names so that every articulation (Legato, Long, Staccatissimo, Marcato, Cuivre, Sfz, Flutter, Trills, and Muted patches) appears immediately in the Articulations Drawer."
             },
             {
                 "heading": "6.2 Automatic Reaticulate.jsfx FX Slot 1 Setup, Primary Bank Replacement & Bank Sync (v2.0.2 - v2.0.7)",
@@ -711,59 +732,73 @@ MANUAL_DATA = [
                 "text": "Functions: Pressing Ctrl+T inserts a floating score text item at the cursor. Double-click any text item to open an in-place editing field. Configure font size, standard/italic/bold styling, and staff attachment anchor points."
             },
             {
-                "heading": "11.8 Melodic Pathfinder: Corpus-Trained Key-Note Inpainting & Counter-Melody Engine (v2.32 - v2.50)",
-                "text": "Overview & Musical Architecture:\n"
-                        "Melodic Pathfinder (implemented in modules/services/melody_pathfinder_service.lua, modules/services/melody_style_corpus.lua, and modules/ui/melody_pathfinder_modal.lua) is an intelligent, corpus-trained melodic composition, key-note inpainting, and contrapuntal counter-melody generator built directly into REAPER-Notator. Trained via tools/train_melody_style_models.py on the 1,500-pattern orchestral library (>126,000 notes), it computes optimal musical pathways connecting user-placed landmark notes or generates complete phrases and counter-melodies harmonized against other tracks in your REAPER project.\n\n"
-                        "How to Access Melodic Pathfinder:\n"
-                        "- Method 1 (Canvas Context Menu): Select 2 or more landmark notes, 1 seed note, or right-click an empty measure on the ScoreCanvas and choose 'Melodic Pathfinder (Fill Between Key Notes)...'.\n"
-                        "- Method 2 (Score Tools Drawer): Open the right-hand Tools Drawer and click 'Melodic Pathfinder (Fill Key Notes)...'.\n\n"
-                        "The Three Input Workflows (Automatic Selection Detection):\n"
-                        "- 1. Waypoint Inpainting Mode (2+ Key Notes Selected): Sketch two or more structural landmark notes in your score (for example, a starting note in Bar 1, a high climax note in Bar 3, and a cadence note in Bar 4) and select them. Melodic Pathfinder locks your landmark notes as immovable pillars (shown in gold) and computes the optimal musical bridge connecting each consecutive pair (W_1 -> W_2 -> ... -> W_k).\n"
-                        "- 2. Single-Note Seed Mode (1 Note Selected): Select a single note to act as your starting anchor ('Seed Note') and choose a phrase span (2 Bars, 4 Bars, or 8 Bars). The engine generates a complete multi-bar melodic arch or counter-melody starting from that exact note.\n"
-                        "- 3. Bar-Range / Reference-Aligned Mode (0 Notes Selected): With no notes selected, Melodic Pathfinder spans the active MIDI item or a 2/4/8-bar range at the Edit Cursor, derives starting, climax, and cadence anchor pitches inside your track's playable clef register (automatically harmonized with the Reference Track), and generates a complete phrase.\n\n"
-                        "How the 5-Stage Mathematical & Musical Engine Works Under the Hood:\n"
-                        "- Stage 1 - Corpus Rhythm Cell Generation & Contrapuntal Rhythm:\n"
-                        "  * Queries MelodyStyleCorpus for empirical rhythm cells (sparse, medium, or dense) controlled by the Density (10%-100%) slider.\n"
-                        "  * In Counter-Melody Mode ('Generate Counter-Melody'), the engine analyzes the Reference Track's rhythm in real time to synthesize complementary contrapuntal rhythm: when the Reference Track holds a long sustained note or rests, the Counter-Melody becomes rhythmically active (8th/16th motion); when the Reference Track plays fast runs, the Counter-Melody breathes with broader sustained notes (classical 1st/2nd species counterpoint).\n"
-                        "  * Automatically inserts natural breathing rests at phrase midpoints and bar boundaries so wind, brass, and vocal lines sound phrasing-authentic.\n"
-                        "- Stage 2 - Scale / Mode Construction, Key Signature Integration & Strict Playable Instrument / Clef Register Bounding:\n"
-                        "  * Builds candidate pitches in the chosen Scale / Mode (Auto, Major/Ionian, Natural Minor/Aeolian, Harmonic Minor, Dorian, Phrygian, Lydian, Mixolydian, Minor Pentatonic, or Chromatic) transposed to the active Key Signature root.\n"
-                        "  * Full Key Signature Integration (v2.50): Queries KeySignatureService.resolve_effective_key(state, item, qn) so item-scoped, timeline, and project Key Signatures (both Major and Relative Minor) automatically determine the root pitch class and scale mode when Scale / Mode is set to 'Auto', and automatically calls KeySignatureService.respell_item_notes(state, item) after inserting generated notes for standard-compliant enharmonic spelling.\n"
-                        "  * Automatically detects both the track's active Clef (Treble [57..81], Bass [36..62], Alto [48..72], Tenor [45..69], Grand Staff [48..81]) and 16 specific orchestral instrument playable registers from the track name (Contrabass [28..55], Cello [36..67], Viola [48..74], Violin [55..88], Tuba, Trombone, French Horn, Trumpet, Bassoon, Clarinet, Oboe, Flute, Piccolo, Timpani, Harp, Piano).\n"
-                        "  * Interactive Octave Shift Buttons ('-8vb Low', 'Normal', '+8va High', 'Auto') in the modal header shift the target generation register by +/-12 semitones while clamping strictly to MIDI 0..127.\n"
-                        "  * Octave-Folding: Any landmark or reference harmony note from another track is folded into the target track's playable clef register so a Bass/Cello track never receives high Violin ledger lines and vice versa.\n"
-                        "- Stage 3 - 2nd-Order Viterbi Dynamic Programming Pathfinding:\n"
-                        "  * Across all rhythmic slots t = 1..N between two waypoints, the engine executes a Viterbi dynamic programming trellis search over all candidate scale pitches (tracking both current pitch and previous interval for 2nd-order Markov memory).\n"
-                        "  * Each transition step is scored by combining 7 musical reward/penalty functions:\n"
-                        "    1. Empirical Markov Interval Log-Probabilities: Derived from the style's trained interval_weights table (-12 to +12 semitones) and scaled by the Leap Character (0%-100%) slider.\n"
-                        "    2. Post-Leap Gap-Fill Law (Meyer's Law): After any melodic leap >= 4 semitones, the engine strongly rewards reversing direction by stepwise motion (gap_fill_strength 64%-77%) to resolve melodic tension naturally.\n"
-                        "    3. Triadic Fanfare Bonus: Rewards consecutive chordal arpeggiations (3rds, 4ths, 5ths in the same direction) for heroic brass and symphonic styles (triad_fanfare_bonus).\n"
-                        "    4. Ostinato Pivot-Note Return Bonus: Rewards returning to the anchor pitch p_{t-2} after neighbor-note excursions (pivot_return_bonus), creating hypnotic ostinato/suspense cells.\n"
-                        "    5. Modal Color & Leading-Tone Rules: Boosts characteristic modal color intervals (such as Lydian #4, Dorian nat6, Phrygian b2) and optionally suppresses harsh semitone leading tones (avoid_semitone_lead) in pastoral and folk modes.\n"
-                        "    6. Reference Track Harmonic Consonance & Contrary Motion: Evaluates vertical pitch-class intervals against simultaneous notes on the Reference Track ('Auto: All Other Project Tracks', any specific track, or 'None') weighted by the Harmonic Consonance Ratio (0%-100%) slider. At 80%-100%, strongly favors consonant 3rds, 6ths, 5ths, and chord tones; at 0%-25%, favors dark thriller dissonance (minor 2nds and tritones). In Counter-Melody Mode, specifically rewards imperfect consonances (3rds and 6ths) and contrary motion (moving up when the Reference Track moves down, and vice versa).\n"
-                        "    7. Cadential Approach & Phrase Climax Arch: Guides the phrase along a natural sinusoidal climax arch and rewards authentic cadential approaches (-1, +1, -2 -> -1, -5 -> 0) into the destination landmark note.\n"
-                        "- Stage 4 - Classical Melodic Transformations (Inversion, Retrograde, Retrograde-Inversion):\n"
-                        "  * Choose from 4 contour transformations in the 'Melodic Inversion & Contour' dropdown:\n"
-                        "    1. Normal (Original Contour)\n"
-                        "    2. Inversion (Mirror Up <-> Down around Start): Mirrors every diatonic scale-degree delta around the starting note inside the active clef register.\n"
-                        "    3. Retrograde (Reverse Time Order): Reverses the generated pitch sequence in time.\n"
-                        "    4. Retrograde-Inversion (Reverse + Mirror): Combines temporal reversal with diatonic pitch inversion.\n"
-                        "  * Direct In-Place Score Inversion ('Invert Sel.' Button): Immediately inverts any currently selected notes on the score canvas in-place around the first selected note within a single REAPER undo block.\n"
-                        "- Stage 5 - Live Map Preview, Audition & Non-Destructive Score Application:\n"
-                        "  * Live Melodic Map Preview: Real-time interactive vector graph displaying Gold nodes (Key Landmarks), Green curve (Generated Bridge / Counter-Melody), and Purple bars (Reference Track Harmony).\n"
-                        "  * Seed Reroll & Live Audio Audition: Click 'New Variation (Seed #N)' to explore alternative melodic paths, or click 'Audition Melody' to hear the generated phrase played live through your track's virtual instrument on MIDI Channel 1.\n"
-                        "  * Phrase Slur & Insertion Modes: Optionally check 'Add Phrase Slur automatically' to wrap the phrase in a smooth Bezier legato slur, and choose between 'Replace Between Key Notes' (replaces existing notes in the span) or 'Layer (Keep Existing)' (inserts as a polyphonic layer).\n\n"
-                        "The 10 Corpus-Trained Musical & Film Composer Style Profiles:\n"
-                        "- 1. Cinematic / Epic (Blockbuster Score): Aeolian default, 77% gap-fill, balanced heroic 5th/octave leaps and soaring legato (96%).\n"
-                        "- 2. Film Composer Style 1 (Heroic Symphonic Fanfare): Lydian default, 95% triad-fanfare bonus, dotted/triplet brass rhythms, bold 4th/5th/octave leaps.\n"
-                        "- 3. Film Composer Style 2 (Mysterious Pulse & Lyrical Suspense): Dorian default, 92% pivot-note return bonus, hypnotic neighbor-note suspense cells.\n"
-                        "- 4. Film Composer Style 3 (Kinetic Action & Propulsive Hybrid): Aeolian default, 95% sequence-repeat bonus, driving syncopated staccato/accent action propulsion.\n"
-                        "- 5. Film Composer Style 4 (Pastoral & Lyrical Epic Romance): Mixolydian default, 98% legato cantabile arch, avoids semitone leading-tone harshness.\n"
-                        "- 6. Classical / Baroque (Chamber & Counterpoint): Major default, 55% sequence repetition, disciplined stepwise voice-leading.\n"
-                        "- 7. Romantic / Lyrical (Cantabile / Late-Romantic): Harmonic Minor default, 98% legato phrasing with expressive 6th leaps.\n"
-                        "- 8. Punky / Driving Action (Syncopated Pulse): Minor Pentatonic default, 65% staccato and punchy syncopated accents.\n"
-                        "- 9. Ancient / Celtic Modal (Dorian / Mythic): Dorian default, modal folk intervals avoiding semitone leading tones.\n"
-                        "- 10. Dark Thriller / Suspense (Phrygian / Noir): Phrygian default, 80% pivot return, minor-2nd and tritone noir tension."
+                "heading": "11.8 Melodic Pathfinder: Intelligent Film-Score Melody & Counter-Melody Composer (v2.53)",
+                "images": [
+                    {
+                        "path": "docs/images/melodic_pathfinder_annotated.png",
+                        "caption": "Figure 11.1: The Melodic Pathfinder Window — Numbered Controls 1 through 16 (explained step by step below)."
+                    },
+                    {
+                        "path": "docs/images/melodic_pathfinder_workflows.png",
+                        "caption": "Figure 11.2: Overview of the 3 Composing Workflows (Blending Selected Anchor Notes, Growing from 1 Seed Note, Free Phrase / Counter-Melody) and the 3 Interactive Bezier Curves."
+                    }
+                ],
+                "text": "What Melodic Pathfinder Does for You:\n"
+                        "Melodic Pathfinder is your musical co-composer inside REAPER-Notator. Whether you have sketched a few important notes and want a natural melody to connect them, want to grow a single starting note into a complete 4- to 32-bar film theme, or need an expressive counter-melody that weaves around another instrument in your orchestra, Melodic Pathfinder creates musical phrases that fit your track's clef, playable instrument range, key signature, and harmony.\n\n"
+                        "How to Open Melodic Pathfinder:\n"
+                        "- From the Score Canvas: Right-click anywhere on a staff (with 0, 1, or 2+ notes selected) and choose 'Melodic Pathfinder (Fill Between Key Notes)...'.\n"
+                        "- From the Tools Drawer: Open the 'Tools' panel on the right side of the window and click 'Melodic Pathfinder (Fill Key Notes)...'.\n\n"
+                        "The Three Ways to Use Melodic Pathfinder (Automatic Selection Detection):\n"
+                        "- Workflow A - Blend Selected Anchor Notes (Select 2 or More Notes): Place two or more landmark notes in your score—for example, a starting note in Bar 1, a dramatic high peak in Bar 3, and a final cadence note in Bar 4—and select them before opening Melodic Pathfinder. Your selected notes remain 100% untouched (shown in Orange on the preview map), and Melodic Pathfinder composes the missing musical bridge connecting each selected note to the next.\n"
+                        "- Workflow B - Grow a Theme from a Single Starting Note (Select 1 Note): Select just one note on the staff to serve as your starting note ('Seed Note') and choose a length from 2 up to 32 bars. Melodic Pathfinder develops a complete multi-bar theme starting from that exact note, complete with recurring motifs, natural breathing rests, and musical phrase endings.\n"
+                        "- Workflow C - Create a Free Phrase or Counter-Melody (Select 0 Notes): Simply place the Edit Cursor where you want music to begin without selecting any notes. Melodic Pathfinder automatically detects the key and harmony from your other project tracks and writes a complete phrase—or, when 'Generate Counter-Melody' is checked, writes a contrapuntal line that moves in the opposite pitch direction and fills in the pauses of your main melody.\n\n"
+                        "Numbered Guide to Every Button & Control (Matching Numbers 1 to 16 in Figure 11.1):\n"
+                        "- [1] Target Staff & [REC] Ready Indicator: Shows which instrument track will receive the melody (e.g. 'Track 6: Trumpet (B flat)'). While the Melodic Pathfinder window is open, this track is automatically pre-armed—shown by the red '[REC]' badge both here and on the track's staff header in the score—so that clicking 'Audition Melody' plays the very first note cleanly without ever cutting off the attack. As soon as you close the window, the track automatically returns to its previous state.\n"
+                        "- [2] Clef Range & Octave Shift Buttons (-8vb / Clef:0 / +8va): Displays your track's active clef and the natural playable range of your instrument (e.g. 'Treble Clef [F#3-C6]'). Click '-8vb' to shift the generated melody one octave lower, '+8va' to shift it one octave higher, or 'Clef:0' to return to the natural center register.\n"
+                        "- [3] Automatic Key, Harmony Source & Phrase Form Display: Shows the musical context detected from your project at a glance:\n"
+                        "  * Key (e.g. 'B Major (auto-detected)'): Automatically detected from your track's Key Signature, Chord Lane, or surrounding tracks.\n"
+                        "  * Harmony Source (e.g. 'Harmony: Reference Track'): Shows where the underlying chord changes come from so melody notes lock cleanly onto chord tones on every half-bar.\n"
+                        "  * Phrase Form (e.g. 'A A\' (2-bar phrases)' or 'A A\' B A\'\''): Shows how the melody is structured into statement, variation, contrast bridge, and return—just like a real soundtrack theme.\n"
+                        "- [4] Generate Counter-Melody Checkbox: Check this box when you already have a main melody on another track and want a secondary line (such as French Horn or Cello answering the Violins). In Counter-Melody mode, the new melody moves in contrary motion (stepping down when the main melody rises, and rising when the main melody falls) and plays active rhythmic figures whenever the main melody holds a long note or rests.\n"
+                        "- [5] Phrase Length Selector (Span: 2 / 4 / 8 / 16 / 24 / 32 & - / + Step Buttons): When 0 or 1 note is selected, click a quick preset (2, 4, 8, 16, 24, or 32 bars) or use the '-' and '+' buttons to set any exact length from 1 to 32 bars. (When 2 or more Anchor Notes are selected, the span automatically matches the distance between your first and last selected note.)\n"
+                        "- [6] 1. Film Score Archetype Dropdown: Choose from 8 descriptive soundtrack styles (listed in detail below). Each archetype brings its own characteristic intervals, rhythm feel, motif memory, and default phrasing curves.\n"
+                        "- [7] 2. Scale / Mode Dropdown: Leave on 'Auto (From Track Key Signature / Style)' for automatic key matching, or manually choose Major (Ionian), Natural Minor (Aeolian), Harmonic Minor, Dorian, Phrygian, Lydian, Mixolydian, Minor Pentatonic, or Chromatic.\n"
+                        "- [8] 3. Reference Track (Harmony / Key Context): Choose which track Melodic Pathfinder listens to for harmony and counterpoint. 'Auto (All Other Project Tracks)' listens to your whole arrangement, or you can pick a specific track (e.g. Piano or Strings) or 'None'.\n"
+                        "- [9] 4. Harmonic Consonance Ratio Slider (0% to 100%): Controls how closely the melody hugs the chords of your Reference Track. Set to 75%-100% for warm, consonant harmony (chord tones, 3rds, 5ths, and 6ths), around 50% for expressive passing notes, or 0%-25% for dark, gritty thriller tension.\n"
+                        "- [10] 5. Melodic Inversion & Contour, 'Invert Sel.' Button & Phrase Slur Checkbox:\n"
+                        "  * Contour Dropdown: Keep the melody 'Normal (Original Contour)', flip its intervals upside-down ('Inversion'), reverse it in time ('Retrograde'), or combine both ('Retrograde-Inversion').\n"
+                        "  * 'Invert Sel.' Button: Immediately flips any currently selected notes on the score canvas upside-down around the first selected note.\n"
+                        "  * 'Add Phrase Slur automatically' Checkbox: Automatically places a smooth legato slur over the generated phrase so Reaticulate triggers connected legato transitions on your instrument.\n"
+                        "- [11] 6. Shape Curves Selector (Tension / Note Length / Pitch) & Tool Mode (Draw / Edit Handles):\n"
+                        "  * Choose which of the three colored curves you want to edit: 'Tension' (Red), 'Note Length' (Blue), or 'Pitch' (Gold).\n"
+                        "  * 'Draw' Mode (Pencil): Click and drag directly across the note map to sketch the curve freehand. The moment you release the mouse button, your hand-drawn line is automatically smoothed into a clean Bezier curve with control handles.\n"
+                        "  * 'Edit Handles' Mode (Hand): Drag the round anchor points or bend the tangent handles to fine-tune the curve shape with precision. Double-click on the graph in Edit mode to add or remove a control point.\n"
+                        "- [12] Curve Presets, Reset, 4 RAM Slots & JSON Export/Import:\n"
+                        "  * 'Shape: ...' Dropdown: Apply ready-made dramatic shapes (such as Arch, Late Climax, Swell, Ramp Up, Decay, or Wave) to the active curve.\n"
+                        "  * 'Style Curves' Button: Resets all three curves back to the natural default shape of the chosen Film Score Archetype.\n"
+                        "  * 'RAM: 1 2 3 4' Slots: Left-click an empty slot to save your current 3 curves in memory; left-click a filled slot to recall it; right-click a filled slot to overwrite it.\n"
+                        "  * 'Export .json' & 'Import .json': Save your favorite curve setups to disk as a .json file or load them in any other project.\n"
+                        "- [13] Interactive Melodic Map & Bezier Curve Canvas:\n"
+                        "  * Orange Bars: Your selected Anchor Notes (locked in place and preserved 100%).\n"
+                        "  * Green Bars: The generated melody notes. Brighter green bars indicate higher note velocity (louder dynamics); darker green bars indicate softer dynamics.\n"
+                        "  * Purple Bars: Harmony notes from your Reference Track so you can see how your new melody sits inside the accompaniment.\n"
+                        "  * Colored Curves: The Red (Tension), Blue (Note Length), and Gold (Pitch) curves drawn right over the measures.\n"
+                        "- [14] 'New Variation (Seed #...)' Button: Click the dice button to explore a fresh melodic variation while keeping all your chosen style, harmony, and curve shapes.\n"
+                        "- [15] 'Audition Melody' (or 'Stop Audition') Button: Plays the generated melody live through your track's virtual instrument—including its active Reaticulate articulation and dynamic velocity shading—so you can hear the result before inserting it.\n"
+                        "- [16] 'Fill Melodic Path' (or 'Insert Counter-Melody') & 'Close' Buttons: Inserts the melody into your score in a single Undo step (Ctrl+Z) and automatically spells all sharps and flats to match your Key Signature.\n\n"
+                        "How the 3 Interactive Shape Curves Work Together:\n"
+                        "- 1. Tension Curve (Red) - Controls Drama, Velocity & Leaps: When you draw the Red Tension curve low, the melody plays softly (pp to mp velocity) using gentle, calm steps. As you draw the Tension curve higher, note velocities automatically rise (mf to ff), intervals open up into wider heroic leaps, and long notes lean into expressive emotional suspensions before resolving.\n"
+                        "- 2. Note Length Curve (Blue) - Controls Rhythmic Speed: Drawing the Blue curve low creates faster, more active rhythmic motion (8th and 16th notes); drawing it high creates broad, singing sustained notes (half and whole notes).\n"
+                        "- 3. Pitch Curve (Gold) - Controls Melodic Height: Guides where the melody climbs toward a high register climax and where it settles down into a lower register cadence. Steep upward climbs in the Pitch curve also naturally boost musical tension.\n\n"
+                        "The 8 Descriptive Film Score Archetypes:\n"
+                        "- 1. Heroic Symphonic Fanfare: Bold rising 4ths and 5ths, triplet fanfare pickups, dotted heroic stride, and bright uplifting cadences—ideal for brass, horns, and main title themes.\n"
+                        "- 2. Intimate Elegiac Strings: Singing stepwise cantabile lines, expressive 6th leaps, sighing downward resolutions, and emotional suspension notes—ideal for solo violin, cello, oboe, or lyrical string sections.\n"
+                        "- 3. Minimalist Ostinato Pulse: Hypnotic repeating motifs that circle around a central pivot note while gradually building tension—ideal for modern drama, piano/mallet pulses, and driving string textures.\n"
+                        "- 4. Pastoral Folksong & Wonder: Warm, open modal intervals with natural breathing rests and gentle cadences—ideal for flute, clarinet, horn, and sweeping landscape scores.\n"
+                        "- 5. Gothic Fairy-Tale Waltz: Playful chromatic neighbor notes, music-box leaps, and dancing rhythmic lilt—ideal for celesta, pizzicato strings, harp, bassoon, and fantasy cues.\n"
+                        "- 6. Poetic Suspense & Noir: Restrained, mysterious phrases with dark modal colors and long held notes answered by restless rhythmic figures—ideal for muted trumpet, alto flute, solo viola, or noir piano.\n"
+                        "- 7. Epic Ancient Brass & Choir: Monumental, broad themes built on powerful 4ths, 5ths, and octaves with solemn weight—ideal for low brass, horns, choir, and historical/mythic scores.\n"
+                        "- 8. Romantic Contrapuntal Cantabile: Flowing, song-like classical lines with balanced arches and graceful motivic development—ideal for woodwind solos, chamber strings, and expressive counter-melodies."
             },
             {
                 "heading": "11.9 Per-Track Freehand Annotation Layer System (v2.40 - v2.50)",
@@ -796,6 +831,12 @@ MANUAL_DATA = [
             },
             {
                 "heading": "12.2 Importing Scores, Mid-Piece Time Signature Sync & Articulation Auto-Mapping",
+                "images": [
+                    {
+                        "path": "docs/images/orchestral_score_musicxml.png",
+                        "caption": "Figure 12.1: Multi-Staff Orchestral Score Canvas & MusicXML 4.0 Import/Export Modal."
+                    }
+                ],
                 "text": "Functions:\n"
                         "- Orchestral Score Import: Click 'Import MusicXML' to load orchestral scores created in external notation programs. Notator parses parts, measures, time signatures, key signatures, pitch data, dynamics, lyrics, slurs, ties, and tempo markers, creating fully arranged tracks and MIDI items directly in REAPER.\n"
                         "- Mid-Piece Time Signature Timeline Sync & Orphaned Metadata Cleanup (v2.0.7): Automatically synchronizes mid-piece NOTATOR_TIME_SIG changes from imported MIDI takes directly to REAPER's master timeline via SetTempoTimeSigMarker, prunes orphaned legacy ProjExtState ties/key signatures on import and project load, and scopes legacy ties to prevent cross-track duplication.\n"
@@ -936,7 +977,13 @@ MANUAL_DATA = [
                         "- Clear Project Undo History: Dedicated button ('Clear Project Undo History') that purges accumulated project undo history on demand and reclaims RAM."
             },
             {
-                "heading": "16.4 View Navigation & Mouse Engine",
+                "heading": "16.4 View Navigation, Engraving Offsets & Keyboard Shortcut Settings",
+                "images": [
+                    {
+                        "path": "docs/images/settings_and_shortcuts.png",
+                        "caption": "Figure 16.1: Settings & Keyboard Shortcuts Modal — Engraving Offsets (1), Resource & Reaticulate Status (2), Voice & Ghost Note Opacity (3), Dark Mode & Custom Colors (4), and Hotkey Remapping (5)."
+                    }
+                ],
                 "text": "Functions:\n"
                         "- Ergonomic Input Mapping: Full customization of keyboard modifiers (None, Shift, Ctrl, Alt, Space, combinations) and mouse triggers (Mouse Wheel Vertical/Horizontal, Middle Mouse, Right Mouse, Left Mouse).\n"
                         "- Controllable Actions: Independently configure Horizontal View Scroll, Vertical View Scroll, Canvas Pan (Hand-Tool), and Canvas Zoom (In/Out).\n"
@@ -1044,10 +1091,10 @@ MANUAL_DATA = [
                         "- System Braces vs. Brackets: Orchestral family groups use a straight system bracket with winged tips, while Grand Staff (Piano) and Harp tracks use a curved S-Bezier accolade brace tapering to a central point."
             },
             {
-                "heading": "18.9 Tremolo Slash Stem Centering, ImGuiGuardService & 159-Test Automated Verification Suite (Behind Bars pp. 220-224, v2.46 - v2.51)",
+                "heading": "18.9 Tremolo Slash Stem Centering, ImGuiGuardService & 172-Test Automated Verification Suite (Behind Bars pp. 220-224, v2.46 - v2.53)",
                 "text": "- Unmeasured & Measured Tremolo Slash Centering (v2.49): Tremolo slashes (1 to 3 diagonal slashes) are horizontally centered directly on the exact stem X-coordinate (stem_x) for both unbeamed notes and beamed groups across all zoom levels (0.6x to 2.0x), maintaining clearance from noteheads and positioning inside beam groups.\n"
                         "- Global ImGui Stack Guard Engine (modules/services/imgui_guard_service.lua, v2.50): Wraps ImGui_Begin/ImGui_End and ImGui_BeginChild/ImGui_EndChild across all UI modals, drawers, and panels, automatically unwinding any open scopes on error so 'Missing EndChild()' or 'Missing End()' exceptions can never occur.\n"
-                        "- Comprehensive Automated Unit Test Suite (tests/test_all_modules.lua & tests/mock_reaper.lua): Verifies all 89 Lua modules and 654 exported functions via 159 headless automated unit tests—covering Constants, GM Drum Maps (C0-C9), Automatic Clef & Percussion Detection, Custom Notehead Persistence, Note Deletion Cleanup, Tremolo Stem Placement, Engraver Rules, Dynamics, Slurs/Ties, MusicXML Import/Export, Divisi/Divisio Vocum, Melodic Pathfinder, Circle of Fifths, MIDI Keyboard Step Input, ImGuiGuardService, Annotation Layers, and Record/Auto-Quantize."
+                        "- Comprehensive Automated Unit Test Suite (tests/test_all_modules.lua & tests/mock_reaper.lua): Verifies all 89 Lua modules and 654 exported functions via 172 headless automated unit tests—covering Constants, GM Drum Maps (C0-C9), Automatic Clef & Percussion Detection, Custom Notehead Persistence, Note Deletion Cleanup, Tremolo Stem Placement, Engraver Rules, Dynamics, Slurs/Ties, MusicXML Import/Export, Divisi/Divisio Vocum, Melodic Pathfinder, Circle of Fifths, MIDI Keyboard Step Input, ImGuiGuardService, Annotation Layers, and Record/Auto-Quantize."
             }
         ]
     }
@@ -1068,6 +1115,11 @@ with open(MD_PATH, "w", encoding="utf-8") as md:
         md.write(f"## Chapter {chap['chapter']}: {chap['title']}\n\n")
         for sec in chap["sections"]:
             md.write(f"### {sec['heading']}\n\n")
+            if "images" in sec:
+                for img in sec["images"]:
+                    rel_md_path = "../" + img["path"].lstrip("/")
+                    md.write(f"![{img['caption']}]({rel_md_path})\n")
+                    md.write(f"*{img['caption']}*\n\n")
             md.write(f"{sec['text']}\n\n")
         md.write("---\n\n")
 
@@ -1240,6 +1292,29 @@ for chap in MANUAL_DATA:
         pdf.set_text_color(234, 88, 12) # Amber / Orange
         pdf.cell(pdf.epw, 6, sanitize_pdf_text(sec["heading"]), new_x=XPos.LMARGIN, new_y=YPos.NEXT)
         pdf.ln(1)
+
+        if "images" in sec:
+            from PIL import Image as _PILImage
+            for img in sec["images"]:
+                abs_img = os.path.join(REPO_ROOT, img["path"].replace("/", os.sep))
+                if os.path.exists(abs_img):
+                    with _PILImage.open(abs_img) as _pim:
+                        _iw, _ih = _pim.size
+                    target_w = pdf.epw
+                    target_h = target_w * (_ih / float(_iw))
+                    if target_h > 135:
+                        target_h = 135
+                        target_w = target_h * (float(_iw) / _ih)
+                    if pdf.get_y() + target_h + 10 > 274:
+                        pdf.add_page()
+                        pdf.ln(3)
+                    x_pos = pdf.l_margin + (pdf.epw - target_w) / 2.0
+                    pdf.image(abs_img, x=x_pos, y=pdf.get_y(), w=target_w)
+                    pdf.set_y(pdf.get_y() + target_h + 1.5)
+                    pdf.set_font("Helvetica", "I", 7.8)
+                    pdf.set_text_color(100, 116, 139)
+                    pdf.multi_cell(pdf.epw, 4.0, sanitize_pdf_text(img["caption"]), align="C", new_x=XPos.LMARGIN, new_y=YPos.NEXT)
+                    pdf.ln(2)
         
         # Section Body
         pdf.set_font("Helvetica", "", 8.5)

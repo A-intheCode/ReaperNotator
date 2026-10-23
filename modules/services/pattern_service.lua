@@ -473,13 +473,45 @@ function PatternService.start_preview(pattern, track, audio_preview)
     local qn_per_bar = timesig_num * (4.0 / timesig_denom)
     local total_qn = math.max((tonumber(pattern.bars) or 4) * qn_per_bar, max_note_end_qn)
     
+    -- Resolve Reaticulate bank & active/base articulation so Stage 1 wakes Reaticulate + VSTi before Note 1
+    local eff_msb, eff_lsb, eff_pc = -1, -1, -1
+    local ok_rp, ReaticulateParser = pcall(require, "services.reaticulate_parser")
+    if ok_rp and ReaticulateParser then
+        local st = audio_preview._last_state
+        local all_banks = ReaticulateParser.get_all_banks(false, st)
+        local bank = ReaticulateParser.get_bank_for_track(track, all_banks, st)
+        if bank and bank.articulations and #bank.articulations > 0 then
+            ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, st, false)
+            local first_ch = (sorted_notes[1] and sorted_notes[1].chan) or 0
+            local target_art = nil
+            if audio_preview.find_active_articulation_at_qn then
+                target_art = audio_preview.find_active_articulation_at_qn(st, track, 0, first_ch, nil, bank)
+            end
+            if not target_art then
+                target_art = bank.articulations[1]
+            end
+            if target_art and target_art.pc and target_art.pc >= 0 then
+                eff_pc = target_art.pc
+                eff_msb = (target_art.msb and target_art.msb >= 0) and target_art.msb or (bank.msb and bank.msb >= 0 and bank.msb or -1)
+                eff_lsb = (target_art.lsb and target_art.lsb >= 0) and target_art.lsb or (bank.lsb and bank.lsb >= 0 and bank.lsb or -1)
+            end
+        end
+    end
+
     local now = reaper.time_precise()
     audio_preview.last_activity_time = now
+    local arm_delay = just_switched and 0.080 or 0.0
     
     PatternService.active_preview = {
         pattern = pattern,
         track = track,
-        start_time = now + (just_switched and 0.055 or 0.0),
+        init_time = now,
+        arm_ready_time = now + arm_delay,
+        warmup_stage = 0, -- 0: waiting for VKB arming; 1: CC/PC sent, waiting 45ms settle; 2: playing notes
+        eff_msb = eff_msb,
+        eff_lsb = eff_lsb,
+        eff_pc = eff_pc,
+        start_time = now + arm_delay + 0.045,
         sec_per_qn = sec_per_qn,
         notes = sorted_notes,
         next_note_idx = 1,
@@ -574,6 +606,31 @@ function PatternService.update_preview(audio_preview)
     -- Keep AudioPreview's inactivity timer alive for the entire multi-bar pattern duration!
     if audio_preview then
         audio_preview.last_activity_time = now
+    end
+    
+    -- Two-stage pre-roll so VKB arming & Reaticulate/CC wakeup settle in a prior audio block before Note 1:
+    if (p.warmup_stage or 0) == 0 then
+        if now < (p.arm_ready_time or now) then return end
+        local ch_map = (p.used_channels and next(p.used_channels) ~= nil) and p.used_channels or { [0] = true }
+        for ch, _ in pairs(ch_map) do
+            local c = ch & 0x0F
+            if p.eff_pc and p.eff_pc >= 0 then
+                if p.eff_msb and p.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 | c, 0, p.eff_msb) end
+                if p.eff_lsb and p.eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 | c, 32, p.eff_lsb) end
+                reaper.StuffMIDIMessage(0, 0xC0 | c, p.eff_pc, 0)
+            end
+            reaper.StuffMIDIMessage(0, 0xB0 | c, 1, 96)
+            reaper.StuffMIDIMessage(0, 0xB0 | c, 11, 108)
+        end
+        p.cc_woken = true
+        p.warmup_stage = 1
+        p.cc_sent_time = now
+        p.start_time = now + 0.045
+        return
+    elseif p.warmup_stage == 1 then
+        if now < (p.start_time or now) then return end
+        p.warmup_stage = 2
+        p.start_time = now
     end
     
     local elapsed = now - p.start_time

@@ -250,6 +250,256 @@ MelodyStyleCorpus.STYLES = {
     },
 }
 
+-- ==============================================================================
+-- FILM SCORE ARCHETYPE EXTENSIONS (Melodic Pathfinder 2.0)
+-- Hand-authored, purely descriptive soundtrack archetypes (no real composer names).
+-- Merged on top of the trained statistics above so the training script can
+-- regenerate the empirical data without losing the compositional grammar.
+--
+-- Field reference:
+--   motif_templates   : Leitmotif cells, 2 bars (8 QN) each. `d` = diatonic scale
+--                       degree relative to the tonic (0 = tonic, 4 = fifth,
+--                       7 = octave, -3 = fifth below), `l` = duration in QN,
+--                       optional `c` = chromatic alteration in semitones.
+--   sequence_step     : diatonic transposition used for the varied repetition (A').
+--   progression       : implied per-bar chord roots (scale degrees) when no
+--                       Reference Track / Chord Lane harmony is available.
+--   half_cadence_deg  : chord root used for open (half) cadences (A / B phrases).
+--   suspension_prob   : affinity for strong-beat appoggiaturas / suspensions.
+--   rest_prob         : affinity for phrase-end breathing rests.
+--   default_curves    : default Tension / Note Length / Pitch curve points {t, v}.
+-- ==============================================================================
+
+local MAGICAL_WALTZ = {
+    id = "magical_waltz",
+    default_scale = "lydian",
+    trained_scores = 240,
+    trained_notes = 9120,
+    gap_fill_strength = 0.74,
+    legato_ratio = 0.95,
+    staccato_prob = 0.10,
+    accent_prob = 0.18,
+    anticipation_prob = 0.16,
+    triad_fanfare_bonus = 0.45,
+    pivot_return_bonus = 0.30,
+    sequence_repeat_bonus = 0.70,
+    avoid_semitone_lead = false,
+    modal_color_semitones = { 6, 11, 2 },
+    interval_weights = { [-12] = 0.03, [-11] = 0.012, [-10] = 0.014, [-9] = 0.05, [-8] = 0.03, [-7] = 0.07, [-6] = 0.012, [-5] = 0.08, [-4] = 0.10, [-3] = 0.15, [-2] = 0.24, [-1] = 0.12, [0] = 0.06, [1] = 0.12, [2] = 0.24, [3] = 0.16, [4] = 0.13, [5] = 0.10, [6] = 0.02, [7] = 0.09, [8] = 0.05, [9] = 0.07, [10] = 0.012, [11] = 0.02, [12] = 0.04 },
+    rhythm_cells = {
+        sparse = { { 3.0, 1.0 }, { 2.0, 1.0, 1.0 }, { 1.5, 0.5, 2.0 } },
+        medium = { { 1.0, 0.5, 0.5, 2.0 }, { 0.5, 0.5, 1.0, 1.0, 1.0 }, { 1.5, 0.5, 1.0, 1.0 } },
+        dense  = { { 0.5, 0.5, 0.5, 0.5, 1.0, 1.0 }, { 0.5, 0.25, 0.25, 0.5, 0.5, 1.0, 1.0 } },
+    },
+    cadence_approaches = { { -1 }, { 2, -1 }, { -2, -1 }, { 1 } },
+}
+table.insert(MelodyStyleCorpus.STYLES, MAGICAL_WALTZ)
+
+MelodyStyleCorpus.ARCHETYPES = {
+    film_style_1 = {
+        name = "🎺 Heroic Symphonic Fanfare",
+        description = "Rising 4ths & 5ths, triplet fanfare pickups, dotted heroic stride, Lydian wonder cadences.",
+        sequence_step = 1, half_cadence_deg = 4, suspension_prob = 0.30, rest_prob = 0.35,
+        progression = { 0, 3, 5, 4 },
+        motif_templates = {
+            { { d = -3, l = 1.0 }, { d = 0, l = 1.0 }, { d = 4, l = 2.0 }, { d = 3, l = 0.5 }, { d = 2, l = 0.5 }, { d = 3, l = 0.5 }, { d = 1, l = 0.5 }, { d = 4, l = 2.0 } },
+            { { d = 0, l = 0.33 }, { d = 0, l = 0.33 }, { d = 0, l = 0.34 }, { d = 4, l = 1.5 }, { d = 3, l = 0.5 }, { d = 2, l = 0.33 }, { d = 3, l = 0.33 }, { d = 2, l = 0.34 }, { d = 0, l = 3.0 }, { d = -3, l = 1.0 } },
+            { { d = 0, l = 1.5 }, { d = 4, l = 0.5 }, { d = 7, l = 2.0 }, { d = 6, l = 0.5 }, { d = 4, l = 0.5 }, { d = 5, l = 0.5 }, { d = 6, l = 0.5 }, { d = 4, l = 2.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.45 }, { 0.55, 0.85 }, { 0.8, 0.95 }, { 1.0, 0.50 } },
+            note_length = { { 0.0, 0.60 }, { 0.5, 0.45 }, { 1.0, 0.80 } },
+            pitch       = { { 0.0, 0.35 }, { 0.6, 0.80 }, { 1.0, 0.50 } },
+        },
+    },
+    cinematic = {
+        name = "⏳ Emotional Slow-Burn & Minimalist Ostinato",
+        description = "Deep minor anchor, long aching pedal/suspension notes, gradual build into a golden-ratio climax.",
+        sequence_step = 1, half_cadence_deg = 6, suspension_prob = 0.65, rest_prob = 0.55,
+        progression = { 0, 5, 2, 6 },
+        motif_templates = {
+            { { d = 0, l = 3.0 }, { d = 4, l = 1.0 }, { d = 5, l = 3.0 }, { d = 4, l = 1.0 } },
+            { { d = 0, l = 2.0 }, { d = 1, l = 1.0 }, { d = 2, l = 1.0 }, { d = 1, l = 3.0 }, { d = 0, l = 1.0 } },
+            { { d = 4, l = 4.0 }, { d = 5, l = 2.0 }, { d = 4, l = 1.0 }, { d = 2, l = 1.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.12 }, { 0.62, 0.95 }, { 1.0, 0.30 } },
+            note_length = { { 0.0, 0.90 }, { 0.62, 0.50 }, { 1.0, 0.85 } },
+            pitch       = { { 0.0, 0.25 }, { 0.62, 0.85 }, { 1.0, 0.40 } },
+        },
+    },
+    romantic = {
+        name = "🌹 Nostalgic Cinema & Lyrical Cantabile",
+        description = "Expressive 6th/octave leap into a long suspended note, then a singing stepwise descent.",
+        sequence_step = -1, half_cadence_deg = 4, suspension_prob = 0.70, rest_prob = 0.45,
+        progression = { 0, 5, 3, 4 },
+        motif_templates = {
+            { { d = -3, l = 1.0 }, { d = 2, l = 2.5 }, { d = 1, l = 0.5 }, { d = 0, l = 1.0 }, { d = -1, l = 1.0 }, { d = -2, l = 1.0 }, { d = -3, l = 1.0 } },
+            { { d = 4, l = 1.5 }, { d = 3, l = 0.5 }, { d = 2, l = 1.0 }, { d = 4, l = 1.0 }, { d = 7, l = 2.0 }, { d = 6, l = 1.0 }, { d = 5, l = 1.0 } },
+            { { d = 0, l = 1.0 }, { d = 4, l = 1.0 }, { d = 5, l = 2.0 }, { d = 4, l = 0.5 }, { d = 3, l = 0.5 }, { d = 2, l = 1.0 }, { d = 1, l = 2.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.30 }, { 0.5, 0.70 }, { 0.75, 0.55 }, { 1.0, 0.20 } },
+            note_length = { { 0.0, 0.75 }, { 0.5, 0.55 }, { 1.0, 0.80 } },
+            pitch       = { { 0.0, 0.40 }, { 0.45, 0.80 }, { 1.0, 0.35 } },
+        },
+    },
+    film_style_4 = {
+        name = "🏔️ Mythic Fellowship & Pastoral Nobility",
+        description = "Pure modal voice-leading without chromatic leading tones, noble step-and-third arches.",
+        sequence_step = 1, half_cadence_deg = 6, suspension_prob = 0.35, rest_prob = 0.45,
+        progression = { 0, 6, 3, 0 },
+        motif_templates = {
+            { { d = 0, l = 1.0 }, { d = 1, l = 1.0 }, { d = 2, l = 1.0 }, { d = 4, l = 1.0 }, { d = 3, l = 1.5 }, { d = 2, l = 0.5 }, { d = 1, l = 1.0 }, { d = 0, l = 1.0 } },
+            { { d = 0, l = 1.5 }, { d = 1, l = 0.5 }, { d = 2, l = 2.0 }, { d = 4, l = 1.0 }, { d = 2, l = 1.0 }, { d = 1, l = 2.0 } },
+            { { d = 4, l = 2.0 }, { d = 5, l = 1.0 }, { d = 4, l = 1.0 }, { d = 2, l = 1.5 }, { d = 1, l = 0.5 }, { d = 0, l = 2.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.30 }, { 0.6, 0.60 }, { 1.0, 0.25 } },
+            note_length = { { 0.0, 0.70 }, { 0.5, 0.60 }, { 1.0, 0.85 } },
+            pitch       = { { 0.0, 0.40 }, { 0.5, 0.65 }, { 1.0, 0.40 } },
+        },
+    },
+    magical_waltz = {
+        name = "✨ Magical Wonder & Poetic Waltz",
+        description = "Add9 / Major-7th / Lydian color tones, rising 2-bar sequences and lyrical descending cascades.",
+        sequence_step = 2, half_cadence_deg = 4, suspension_prob = 0.40, rest_prob = 0.35,
+        progression = { 0, 1, 5, 4 },
+        motif_templates = {
+            { { d = 0, l = 0.5 }, { d = 1, l = 0.5 }, { d = 2, l = 0.5 }, { d = 4, l = 0.5 }, { d = 5, l = 2.0 }, { d = 4, l = 0.5 }, { d = 2, l = 0.5 }, { d = 1, l = 0.5 }, { d = 2, l = 0.5 }, { d = 4, l = 2.0 } },
+            { { d = 4, l = 1.5 }, { d = 3, l = 0.5 }, { d = 4, l = 1.0 }, { d = 6, l = 1.0 }, { d = 7, l = 3.0 }, { d = 6, l = 1.0 } },
+            { { d = 2, l = 1.0 }, { d = 1, l = 0.5 }, { d = 2, l = 0.5 }, { d = 4, l = 2.0 }, { d = 1, l = 1.0 }, { d = 0, l = 0.5 }, { d = 1, l = 0.5 }, { d = 2, l = 2.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.35 }, { 0.5, 0.65 }, { 1.0, 0.40 } },
+            note_length = { { 0.0, 0.45 }, { 0.5, 0.55 }, { 1.0, 0.70 } },
+            pitch       = { { 0.0, 0.40 }, { 0.35, 0.60 }, { 0.7, 0.75 }, { 1.0, 0.45 } },
+        },
+    },
+    film_style_2 = {
+        name = "🎠 Chamber Mystery & Pivot Suspense",
+        description = "Hypnotic pivot-tone returns, delicate chamber articulation, crisp rests and open half-cadences.",
+        sequence_step = 1, half_cadence_deg = 4, suspension_prob = 0.45, rest_prob = 0.60,
+        progression = { 0, 3, 5, 4 },
+        motif_templates = {
+            { { d = 4, l = 0.5 }, { d = 3, l = 0.5, c = 1 }, { d = 4, l = 0.5 }, { d = 5, l = 0.5 }, { d = 4, l = 1.0 }, { d = 2, l = 1.0 }, { d = 4, l = 0.5 }, { d = 3, l = 0.5, c = 1 }, { d = 4, l = 0.5 }, { d = 5, l = 0.5 }, { d = 6, l = 1.0 }, { d = 4, l = 1.0 } },
+            { { d = 0, l = 1.0 }, { d = 2, l = 0.5 }, { d = 1, l = 0.5 }, { d = 0, l = 1.0 }, { d = -1, l = 1.0 }, { d = 0, l = 1.5 }, { d = 2, l = 0.5 }, { d = 4, l = 2.0 } },
+            { { d = 2, l = 0.75 }, { d = 1, l = 0.25 }, { d = 2, l = 1.0 }, { d = 4, l = 1.0 }, { d = 3, l = 1.0 }, { d = 2, l = 0.75 }, { d = 1, l = 0.25 }, { d = 0, l = 1.0 }, { d = -1, l = 2.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.45 }, { 0.5, 0.60 }, { 1.0, 0.65 } },
+            note_length = { { 0.0, 0.40 }, { 1.0, 0.50 } },
+            pitch       = { { 0.0, 0.50 }, { 0.5, 0.55 }, { 1.0, 0.50 } },
+        },
+    },
+    thriller = {
+        name = "🕵️ Neo-Noir & Phrygian Thriller",
+        description = "Phrygian b2 and tritone tension cells, sparse low phrases with ominous sustains and sudden spikes.",
+        sequence_step = 1, half_cadence_deg = 1, suspension_prob = 0.50, rest_prob = 0.65,
+        progression = { 0, 1, 0, 3 },
+        motif_templates = {
+            { { d = 0, l = 2.0 }, { d = 1, l = 1.0 }, { d = 0, l = 1.0 }, { d = -2, l = 3.0 }, { d = -1, l = 1.0 } },
+            { { d = 0, l = 1.5 }, { d = 1, l = 0.5 }, { d = 0, l = 1.0 }, { d = 4, l = 1.0, c = -1 }, { d = 3, l = 3.0 }, { d = 0, l = 1.0 } },
+            { { d = 0, l = 4.0 }, { d = 1, l = 2.0 }, { d = 0, l = 2.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.15 }, { 0.7, 0.30 }, { 0.85, 0.90 }, { 1.0, 0.40 } },
+            note_length = { { 0.0, 0.85 }, { 0.8, 0.60 }, { 1.0, 0.90 } },
+            pitch       = { { 0.0, 0.20 }, { 0.8, 0.45 }, { 1.0, 0.25 } },
+        },
+    },
+    film_style_3 = {
+        name = "🔥 Kinetic Orchestral Action & Pursuit",
+        description = "Propulsive asymmetric 3+3+2 cells, tight motivic cells sequenced upward under rising tension.",
+        sequence_step = 1, half_cadence_deg = 6, suspension_prob = 0.15, rest_prob = 0.20,
+        progression = { 0, 5, 6, 0 },
+        motif_templates = {
+            { { d = 0, l = 1.5 }, { d = 0, l = 1.5 }, { d = 2, l = 1.0 }, { d = 1, l = 1.5 }, { d = 1, l = 1.5 }, { d = -1, l = 1.0 } },
+            { { d = 0, l = 0.5 }, { d = 0, l = 0.5 }, { d = 2, l = 0.5 }, { d = 0, l = 0.5 }, { d = 3, l = 0.5 }, { d = 2, l = 0.5 }, { d = 1, l = 1.0 }, { d = 0, l = 0.75 }, { d = 0, l = 0.75 }, { d = 4, l = 0.5 }, { d = 3, l = 1.0 }, { d = 2, l = 1.0 } },
+            { { d = 4, l = 1.5 }, { d = 3, l = 1.5 }, { d = 2, l = 1.0 }, { d = 4, l = 1.5 }, { d = 5, l = 1.5 }, { d = 4, l = 1.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.60 }, { 0.7, 0.95 }, { 1.0, 0.75 } },
+            note_length = { { 0.0, 0.25 }, { 0.7, 0.15 }, { 1.0, 0.40 } },
+            pitch       = { { 0.0, 0.35 }, { 1.0, 0.75 } },
+        },
+    },
+    classical = {
+        name = "🎻 Classical Chamber & Counterpoint",
+        description = "Balanced antecedent/consequent periods, triadic outlines and stepwise counterpoint.",
+        sequence_step = 1, half_cadence_deg = 4, suspension_prob = 0.35, rest_prob = 0.30,
+        progression = { 0, 3, 4, 0 },
+        motif_templates = {
+            { { d = 0, l = 1.0 }, { d = 2, l = 1.0 }, { d = 4, l = 1.0 }, { d = 2, l = 1.0 }, { d = 3, l = 1.0 }, { d = 1, l = 1.0 }, { d = -1, l = 1.0 }, { d = 0, l = 1.0 } },
+            { { d = 4, l = 1.0 }, { d = 3, l = 0.5 }, { d = 2, l = 0.5 }, { d = 1, l = 1.0 }, { d = 0, l = 1.0 }, { d = 1, l = 0.5 }, { d = 2, l = 0.5 }, { d = 3, l = 1.0 }, { d = 1, l = 2.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.35 }, { 0.6, 0.60 }, { 1.0, 0.25 } },
+            note_length = { { 0.0, 0.50 }, { 1.0, 0.60 } },
+            pitch       = { { 0.0, 0.40 }, { 0.55, 0.65 }, { 1.0, 0.40 } },
+        },
+    },
+    celtic_ancient = {
+        name = "🏛 Ancient Modal Legend (Dorian / Mythic)",
+        description = "Dorian folk-symphonic phrasing with dotted lilts and whole-step modal cadences.",
+        sequence_step = 1, half_cadence_deg = 6, suspension_prob = 0.30, rest_prob = 0.40,
+        progression = { 0, 6, 3, 0 },
+        motif_templates = {
+            { { d = 0, l = 1.5 }, { d = 1, l = 0.5 }, { d = 2, l = 1.0 }, { d = 4, l = 1.0 }, { d = 3, l = 0.5 }, { d = 2, l = 0.5 }, { d = 1, l = 1.0 }, { d = 0, l = 2.0 } },
+            { { d = 4, l = 0.75 }, { d = 3, l = 0.25 }, { d = 2, l = 1.0 }, { d = 0, l = 1.0 }, { d = 1, l = 1.0 }, { d = 2, l = 1.5 }, { d = 1, l = 0.5 }, { d = 0, l = 2.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.30 }, { 0.55, 0.60 }, { 1.0, 0.30 } },
+            note_length = { { 0.0, 0.60 }, { 1.0, 0.75 } },
+            pitch       = { { 0.0, 0.40 }, { 0.5, 0.65 }, { 1.0, 0.40 } },
+        },
+    },
+    punky = {
+        name = "⚡ Driving Syncopated Pulse",
+        description = "Pentatonic riffs with syncopated 3+3+2 pushes and percussive repeated notes.",
+        sequence_step = 1, half_cadence_deg = 4, suspension_prob = 0.10, rest_prob = 0.20,
+        progression = { 0, 4, 3, 4 },
+        motif_templates = {
+            { { d = 0, l = 0.75 }, { d = 0, l = 0.75 }, { d = 2, l = 0.5 }, { d = 3, l = 1.0 }, { d = 2, l = 1.0 }, { d = 0, l = 0.75 }, { d = 0, l = 0.75 }, { d = 4, l = 0.5 }, { d = 3, l = 1.0 }, { d = 2, l = 1.0 } },
+        },
+        default_curves = {
+            tension     = { { 0.0, 0.70 }, { 1.0, 0.75 } },
+            note_length = { { 0.0, 0.25 }, { 1.0, 0.30 } },
+            pitch       = { { 0.0, 0.50 }, { 1.0, 0.55 } },
+        },
+    },
+}
+
+-- Merge archetype grammar into the trained style tables
+for _, st in ipairs(MelodyStyleCorpus.STYLES) do
+    local ext = MelodyStyleCorpus.ARCHETYPES[st.id]
+    if ext then
+        for k, v in pairs(ext) do
+            st[k] = v
+        end
+    end
+end
+
+-- Display order: the 8 Film Score archetypes first, then the additional concert styles
+local DISPLAY_ORDER = {
+    "film_style_1", "cinematic", "romantic", "film_style_4", "magical_waltz",
+    "film_style_2", "thriller", "film_style_3", "classical", "celtic_ancient", "punky",
+}
+do
+    local by_id, ordered, used = {}, {}, {}
+    for _, st in ipairs(MelodyStyleCorpus.STYLES) do by_id[st.id] = st end
+    for _, id in ipairs(DISPLAY_ORDER) do
+        if by_id[id] then
+            table.insert(ordered, by_id[id])
+            used[id] = true
+        end
+    end
+    for _, st in ipairs(MelodyStyleCorpus.STYLES) do
+        if not used[st.id] then table.insert(ordered, st) end
+    end
+    MelodyStyleCorpus.STYLES = ordered
+end
+
 MelodyStyleCorpus.BY_ID = {}
 for _, st in ipairs(MelodyStyleCorpus.STYLES) do
     MelodyStyleCorpus.BY_ID[st.id] = st

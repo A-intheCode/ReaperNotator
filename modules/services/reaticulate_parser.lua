@@ -45,26 +45,22 @@ function ReaticulateParser.parse_file(filepath, banks_dict)
     for raw_line in f:lines() do
         local line = raw_line:gsub("^%s+", ""):gsub("%s+$", "")
         
-        -- Parse Group and Name: //! g="Group" n="Name"
-        local g, n = line:match('//!%s*g="([^"]+)"%s*n="([^"]+)"')
-        if g and n then
-            pending_group = g
-            pending_name = n
-        else
-            local n_only = line:match('//!%s*n="([^"]+)"')
-            if n_only then pending_name = n_only end
-            local g_only = line:match('//!%s*g="([^"]+)"')
+        -- Parse Group and Name: //! g="Group" n="Name" (order-independent)
+        if line:match("^//!") then
+            local g_only = line:match('g="([^"]+)"')
             if g_only then pending_group = g_only end
+            local n_only = line:match('n="([^"]+)"')
+            if n_only then pending_name = n_only end
         end
         
         -- Parse Clone: //! clone="Target" or //! clone=Target
-        local clone = line:match('//!%s*clone="([^"]+)"') or line:match('//!%s*clone=([%S]+)')
+        local clone = line:match('//!.*clone="([^"]+)"') or line:match('//!.*clone=([%S]+)')
         if clone then
             pending_clone = clone:gsub('^"', ''):gsub('"$', '')
         end
         
         -- Parse ID: //! id="UUID" or //! id=UUID
-        local id = line:match('//!%s*id="([^"]+)"') or line:match('//!%s*id=([%w%-]+)')
+        local id = line:match('//!.*id="([^"]+)"') or line:match('//!.*id=([%w%-]+)')
         if id then
             pending_id = id
         end
@@ -73,11 +69,14 @@ function ReaticulateParser.parse_file(filepath, banks_dict)
         if line:match("^Bank%s+") then
             local b_msb, b_lsb, b_name = line:match("^Bank%s+([^%s]+)%s+([^%s]+)%s+(.*)")
             if b_name then
+                b_name = b_name:gsub("^%s+", ""):gsub("%s+$", "")
+                local s_name = (pending_name and pending_name ~= "") and pending_name or b_name
                 local ven, lib, sec = ReaticulateParser.extract_vendor_library_section(pending_group)
                 current_bank = {
                     msb = (b_msb == "*") and -1 or tonumber(b_msb),
                     lsb = (b_lsb == "*") and -1 or tonumber(b_lsb),
                     name = b_name,
+                    shortname = s_name,
                     group = pending_group,
                     vendor = ven,
                     library = lib,
@@ -87,6 +86,7 @@ function ReaticulateParser.parse_file(filepath, banks_dict)
                     articulations = {}
                 }
                 table.insert(banks_dict, current_bank)
+                pending_name = ""
                 pending_clone = nil
                 pending_id = ""
                 current_category = "long"
@@ -119,7 +119,92 @@ function ReaticulateParser.parse_file(filepath, banks_dict)
     end
     
     f:close()
+    ReaticulateParser.resolve_clones(banks_dict, banks_dict)
     return true
+end
+
+function ReaticulateParser.resolve_clones(banks, raw_banks)
+    if not banks or #banks == 0 then return end
+    local by_path = {}
+    local by_id = {}
+    local by_name = {}
+    local function register_lookup(list)
+        if not list then return end
+        for _, b in ipairs(list) do
+            if b.group and b.group ~= "" then
+                if b.shortname and b.shortname ~= "" then
+                    local ps = b.group .. "/" .. b.shortname
+                    if not by_path[ps] or (#by_path[ps].articulations == 0 and #b.articulations > 0) then
+                        by_path[ps] = b
+                    end
+                end
+                if b.name and b.name ~= "" then
+                    local pn = b.group .. "/" .. b.name
+                    if not by_path[pn] or (#by_path[pn].articulations == 0 and #b.articulations > 0) then
+                        by_path[pn] = b
+                    end
+                end
+            end
+            if b.id and b.id ~= "" then
+                if not by_id[b.id] or (#by_id[b.id].articulations == 0 and #b.articulations > 0) then
+                    by_id[b.id] = b
+                end
+            end
+            if b.shortname and b.shortname ~= "" then
+                if not by_name[b.shortname] or (#by_name[b.shortname].articulations == 0 and #b.articulations > 0) then
+                    by_name[b.shortname] = b
+                end
+            end
+            if b.name and b.name ~= "" then
+                if not by_name[b.name] or (#by_name[b.name].articulations == 0 and #b.articulations > 0) then
+                    by_name[b.name] = b
+                end
+            end
+        end
+    end
+    register_lookup(raw_banks)
+    register_lookup(banks)
+    
+    local all_candidates = raw_banks or banks
+    for pass = 1, 5 do
+        local any_resolved = false
+        for _, b in ipairs(banks) do
+            if b.clone_target and #b.articulations == 0 then
+                local tgt = b.clone_target:gsub('^"', ''):gsub('"$', '')
+                local src = by_id[tgt] or by_path[tgt] or by_name[tgt]
+                if not src then
+                    -- Fallback: prefix match within the same group (e.g. "CWC - Piccolo" -> "CWC - Piccolo Flute")
+                    local tgt_grp, tgt_leaf = tgt:match("^(.+)/([^/]+)$")
+                    local leaf_low = (tgt_leaf or tgt):lower()
+                    for _, cand in ipairs(all_candidates) do
+                        if cand ~= b and #cand.articulations > 0 then
+                            local same_grp = (not tgt_grp) or (cand.group == tgt_grp)
+                            if same_grp then
+                                local cs = (cand.shortname or ""):lower()
+                                local cn = (cand.name or ""):lower()
+                                if (cs ~= "" and cs:find(leaf_low, 1, true) == 1) or (cn ~= "" and cn:find(leaf_low, 1, true) == 1) then
+                                    src = cand
+                                    break
+                                end
+                            end
+                        end
+                    end
+                end
+                if src and #src.articulations > 0 then
+                    for _, a in ipairs(src.articulations) do
+                        table.insert(b.articulations, {
+                            pc = a.pc,
+                            name = a.name,
+                            category = a.category,
+                            icon = a.icon
+                        })
+                    end
+                    any_resolved = true
+                end
+            end
+        end
+        if not any_resolved then break end
+    end
 end
 
 function ReaticulateParser.scan_and_parse_directory(dir_path, banks)
@@ -155,70 +240,44 @@ function ReaticulateParser._load_banks_from_disk(state)
     -- 4. Scan all additional .reabank files in Data/ directory (e.g., custom ReaBanks)
     ReaticulateParser.scan_and_parse_directory(data_dir, raw_banks)
     
-    -- 5. Deduplicate by ID or group+name (user entry retains precedence)
+    -- 5. Deduplicate by ID or group+shortname+name (user entry retains precedence)
     local seen_ids = {}
-    local seen_names = {}
+    local seen_paths = {}
+    local seen_display_in_group = {}
     local banks = {}
     
     for _, b in ipairs(raw_banks) do
         local is_dup = false
         if b.id and b.id ~= "" then
-            if seen_ids[b.id] then is_dup = true else seen_ids[b.id] = true end
+            if seen_ids[b.id] then
+                is_dup = true
+            else
+                seen_ids[b.id] = true
+            end
         end
-        local full_name_key = (b.group or "") .. "///" .. (b.name or "")
-        if seen_names[full_name_key] then
-            is_dup = true
+        local canonical_leaf = (b.shortname and b.shortname ~= "") and b.shortname or (b.name or "")
+        local full_path_key = (b.group or "") .. "///" .. canonical_leaf
+        if seen_paths[full_path_key] then
+            if not b.id or b.id == "" then
+                is_dup = true
+            end
         else
-            seen_names[full_name_key] = true
+            seen_paths[full_path_key] = true
         end
         if not is_dup then
+            local disp_key = (b.group or "") .. "///" .. (b.name or "")
+            if seen_display_in_group[disp_key] and b.shortname and b.shortname ~= "" and b.shortname ~= b.name then
+                -- Disambiguate banks where the Bank line has a duplicate name typo (e.g. BBC Piccolo Flute having Bank * * BBC - Flute)
+                b.name = b.shortname
+                disp_key = (b.group or "") .. "///" .. b.name
+            end
+            seen_display_in_group[disp_key] = true
             table.insert(banks, b)
         end
     end
     
-    -- Lookup maps for clones (from both raw_banks and deduplicated banks)
-    local by_path = {}
-    local by_id = {}
-    local by_name = {}
-    local function register_lookup(list)
-        for _, b in ipairs(list) do
-            if b.group and b.group ~= "" and b.name and b.name ~= "" then
-                local p = b.group .. "/" .. b.name
-                by_path[p] = by_path[p] or b
-            end
-            if b.id and b.id ~= "" then
-                by_id[b.id] = by_id[b.id] or b
-            end
-            if b.name and b.name ~= "" then
-                by_name[b.name] = by_name[b.name] or b
-            end
-        end
-    end
-    register_lookup(raw_banks)
-    register_lookup(banks)
-    
-    -- Resolve clones (multi-pass for potential clone chains)
-    for pass = 1, 5 do
-        local any_resolved = false
-        for _, b in ipairs(banks) do
-            if b.clone_target and #b.articulations == 0 then
-                local tgt = b.clone_target:gsub('^"', ''):gsub('"$', '')
-                local src = by_id[tgt] or by_path[tgt] or by_name[tgt]
-                if src and #src.articulations > 0 then
-                    for _, a in ipairs(src.articulations) do
-                        table.insert(b.articulations, {
-                            pc = a.pc,
-                            name = a.name,
-                            category = a.category,
-                            icon = a.icon
-                        })
-                    end
-                    any_resolved = true
-                end
-            end
-        end
-        if not any_resolved then break end
-    end
+    -- 6. Resolve clones across all raw and deduplicated banks
+    ReaticulateParser.resolve_clones(banks, raw_banks)
     
     -- Sort: Vendor, Library, Section, Name
     table.sort(banks, function(a, b)
@@ -760,7 +819,7 @@ end
 function ReaticulateParser.find_bank(banks, name_or_guid)
     if not banks then return nil end
     for _, b in ipairs(banks) do
-        if b.name == name_or_guid or b.id == name_or_guid then
+        if b.name == name_or_guid or b.shortname == name_or_guid or b.id == name_or_guid then
             return b
         end
     end
@@ -848,10 +907,10 @@ function ReaticulateParser.get_track_assigned_banks(track, all_banks)
                         if b.id == binfo.v then found = b break end
                     end
                 end
-                -- 2. By Name
+                -- 2. By Name or Shortname
                 if not found and binfo.name and binfo.name ~= "" then
                     for _, b in ipairs(all_banks) do
-                        if b.name == binfo.name then found = b break end
+                        if b.name == binfo.name or b.shortname == binfo.name then found = b break end
                     end
                 end
                 -- 3. By MSB/LSB integer
@@ -882,7 +941,7 @@ function ReaticulateParser.get_track_assigned_banks(track, all_banks)
         if #assigned == 0 then
             for name in data:gmatch('"name"%s*:%s*"([^"]+)"') do
                 for _, b in ipairs(all_banks) do
-                    if b.name == name then
+                    if b.name == name or b.shortname == name then
                         table.insert(assigned, b)
                         break
                     end
@@ -942,10 +1001,10 @@ function ReaticulateParser.get_bank_for_track(track, banks, override_or_msb, opt
         end
     end
     
-    -- 0. Override ID or Name
+    -- 0. Override ID, Name, or Shortname
     if override_val and override_val ~= "" then
         for _, b in ipairs(banks) do
-            if b.id == override_val or b.name == override_val then
+            if b.id == override_val or b.name == override_val or b.shortname == override_val then
                 return finalize_resolved_bank(b)
             end
         end
@@ -977,7 +1036,9 @@ function ReaticulateParser.get_bank_for_track(track, banks, override_or_msb, opt
         -- Exact substring
         for _, b in ipairs(banks) do
             local lower_b = b.name:lower()
-            if lower_trk:find(lower_b, 1, true) or lower_b:find(lower_trk, 1, true) then
+            local lower_s = (b.shortname or ""):lower()
+            if lower_trk:find(lower_b, 1, true) or lower_b:find(lower_trk, 1, true)
+                or (lower_s ~= "" and (lower_trk:find(lower_s, 1, true) or lower_s:find(lower_trk, 1, true))) then
                 return finalize_resolved_bank(b)
             end
         end
@@ -986,7 +1047,8 @@ function ReaticulateParser.get_bank_for_track(track, banks, override_or_msb, opt
             if #word >= 3 and word ~= "midi" and word ~= "track" and word ~= "spur" then
                 for _, b in ipairs(banks) do
                     local lower_b = b.name:lower()
-                    if lower_b:find(word, 1, true) then
+                    local lower_s = (b.shortname or ""):lower()
+                    if lower_b:find(word, 1, true) or (lower_s ~= "" and lower_s:find(word, 1, true)) then
                         return finalize_resolved_bank(b)
                     end
                 end
