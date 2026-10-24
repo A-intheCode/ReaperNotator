@@ -51,8 +51,8 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - **Intra-Bar Accidental Memory & Multi-Column Chord Stacking**: Automatically tracks altered steps within each bar, emits natural ($\natural$) cancellations when returning to diatonic pitches, stacks chord accidentals into up to 3 collision-free diagonal columns, and leaves a clean visual gap between Clef and Key Signature.
   - **Complete Gould & Read Engraving Details**: 32nd/64th flag & beam stem lengthening with inner-beam clearance, rest-breaking beams, paired fractional stubs, strict 2-side chord 2nd alternation, dotted chord 2nd separation, curved S-bezier Piano/Harp accolade brace (`{`), and stem-centered tremolo slashes.
 
-- **Melodic Pathfinder 2.0 — Film-Score Melody & Counter-Melody Composer (v2.53)**:
-  ![Melodic Pathfinder 2.0 Annotated Guide](docs/images/melodic_pathfinder_annotated.png)
+- **Melodic Pathfinder 2.0 — Film-Score Melody & Counter-Melody Composer (v2.53–v2.54)**:
+  - **Settings Modal & High-Resolution Illustrated User Manual (v2.54)**: All Settings sections start collapsed by default on launch, with a collapsible `"Donate if you want to contribute"` section at the bottom and a 20-figure high-resolution illustrated PDF User Manual (`docs/reaper_notator_user_manual.pdf`).
   - **Three Composing Workflows**:
     1. **Blend Selected Anchor Notes (2+ Notes Selected)**: Your selected landmark notes stay 100% untouched (Orange Anchors) while Melodic Pathfinder composes a smooth musical bridge connecting them.
     2. **Grow a Theme from 1 Seed Note (1 Note Selected)**: Develops a complete **2- to 32-bar** theme starting from your selected note with recurring motifs, variations (`A – A' – B – A''`), breathing rests, and natural cadences.

@@ -177,7 +177,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             -- ==============================================================
             -- 1. General Settings
             -- ==============================================================
-            if reaper.ImGui_CollapsingHeader(ctx, "⚙ General Settings###hdr_general", nil, default_open) then
+            if reaper.ImGui_CollapsingHeader(ctx, "⚙ General Settings###hdr_general") then
                 reaper.ImGui_Spacing(ctx)
                 
                 -- --- 1. Performance, Framerate & Undo History ---
@@ -447,7 +447,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             -- ==============================================================
             -- 2. Portamento Defaults & Playback Settings
             -- ==============================================================
-            if reaper.ImGui_CollapsingHeader(ctx, "〰 Portamento Defaults & Playback###hdr_portamento", nil, default_open) then
+            if reaper.ImGui_CollapsingHeader(ctx, "〰 Portamento Defaults & Playback###hdr_portamento") then
                 reaper.ImGui_Spacing(ctx)
 
                 -- 1. Default Playback Mode
@@ -1100,7 +1100,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             -- ==============================================================
             -- 5. View Navigation and Mouse Settings
             -- ==============================================================
-            if reaper.ImGui_CollapsingHeader(ctx, "🖱 View Navigation and Mouse Settings###hdr_nav_mouse", nil, default_open) then
+            if reaper.ImGui_CollapsingHeader(ctx, "🖱 View Navigation and Mouse Settings###hdr_nav_mouse") then
                 reaper.ImGui_Spacing(ctx)
                 
                 local KEY_PRESETS = {
@@ -1283,7 +1283,7 @@ function SettingsModal.render(ctx, state, shortcut_manager)
             -- ==============================================================
             -- 6. Customize Keyboard Shortcuts
             -- ==============================================================
-            if reaper.ImGui_CollapsingHeader(ctx, "⌨ Customize Keyboard Shortcuts###hdr_shortcuts", nil, default_open) then
+            if reaper.ImGui_CollapsingHeader(ctx, "⌨ Customize Keyboard Shortcuts###hdr_shortcuts") then
                 reaper.ImGui_Spacing(ctx)
                 reaper.ImGui_TextColored(ctx, 0xAAAAAAFF, "Click 'Assign' and press a key or key combination (with Shift/Ctrl/Alt).")
                 
@@ -1392,6 +1392,39 @@ function SettingsModal.render(ctx, state, shortcut_manager)
                 reaper.ImGui_Spacing(ctx)
             end
             
+            reaper.ImGui_Spacing(ctx)
+
+            -- ==============================================================
+            -- 7. Donate if you want to contribute
+            -- ==============================================================
+            if reaper.ImGui_CollapsingHeader(ctx, "Donate if you want to contribute###hdr_donate") then
+                reaper.ImGui_Spacing(ctx)
+                reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Button(), 0x262930FF)
+                reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonHovered(), 0x353A45FF)
+                reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_ButtonActive(), 0x454C5AFF)
+                reaper.ImGui_PushStyleColor(ctx, reaper.ImGui_Col_Text(), 0xD8DEE9FF)
+                if reaper.ImGui_Button(ctx, "Donate on Gumroad##btn_donate_gumroad", 190, 26) then
+                    local url = "https://amusicstuff.gumroad.com/l/Donate-Reaper-Notator"
+                    if reaper.APIExists("CF_ShellExecute") then
+                        reaper.CF_ShellExecute(url)
+                    else
+                        local os_name = reaper.GetOS()
+                        if os_name:find("Win") then
+                            os.execute(string.format('start "" "%s"', url))
+                        elseif os_name:find("OSX") or os_name:find("macOS") then
+                            os.execute(string.format('open "%s"', url))
+                        else
+                            os.execute(string.format('xdg-open "%s"', url))
+                        end
+                    end
+                end
+                reaper.ImGui_PopStyleColor(ctx, 4)
+                if reaper.ImGui_IsItemHovered(ctx) then
+                    reaper.ImGui_SetTooltip(ctx, "https://amusicstuff.gumroad.com/l/Donate-Reaper-Notator")
+                end
+                reaper.ImGui_Spacing(ctx)
+            end
+
             reaper.ImGui_EndChild(ctx)
         end
         

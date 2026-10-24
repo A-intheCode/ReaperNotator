@@ -106,8 +106,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="2.53" author="A-intheCode" time="2026-10-24T01:25:00Z">
+      <version name="2.54" author="A-intheCode" time="2026-10-24T03:26:00Z">
         <changelog><![CDATA[
++ v2.54: Stable Release: Settings Modal improvements (all sections collapsed by default on launch & collapsible "Donate if you want to contribute" section with Gumroad link) and updated high-resolution illustrated User Manual (PDF)
 + v2.53: Stable Release: Melodic Pathfinder 2.0 (8 descriptive Film Score Archetypes, Leitmotif & period phrasing up to 32 bars, automatic Key & Mode detection, half-bar chord lock, Anchor-Note blending, 3 interactive coupled Bezier curves [Tension, Note Length, Pitch] with freehand Draw -> auto-simplified Edit Handles, 4 RAM slots & JSON export/import), pre-armed target track with [REC] badge & 2-stage warmup for instant first-note audition, full Reaticulate clone bank resolution (fixing Spitfire BBC Trumpet & cloned banks), and updated illustrated User Manual
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
