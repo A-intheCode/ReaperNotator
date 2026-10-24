@@ -121,6 +121,305 @@ function Engraver.measure_to_qn_info(m, bpi, measure_map)
     return m_idx * eff_bpi, (m_idx + 1) * eff_bpi, eff_bpi, nil, nil
 end
 
+function Engraver.get_display_quantized_qn(start_qn, dur_qn, dq_grid, qn_per_measure, measure_map)
+    if not dq_grid or dq_grid <= 0.001 then return start_qn end
+    local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
+    local m, bar_sqn, bar_bpi = Engraver.qn_to_measure_info(start_qn + 0.0005, bpi, measure_map)
+    bar_sqn = bar_sqn or (m * bpi)
+    bar_bpi = (bar_bpi and bar_bpi > 0) and bar_bpi or bpi
+    local eff_dq = math.min(dq_grid, bar_bpi)
+
+    local rel_qn = math.max(0.0, start_qn - bar_sqn)
+    local g_idx = math.floor((rel_qn / eff_dq) + 0.20 + 1e-9)
+    local snapped_rel = g_idx * eff_dq
+    local max_rel = math.max(0.0, bar_bpi - eff_dq)
+    if snapped_rel > max_rel then
+        snapped_rel = max_rel
+    end
+    return bar_sqn + snapped_rel
+end
+
+function Engraver.quantize_notes_for_display(notes, dq_grid, qn_per_measure, measure_map, user_ties)
+    if not notes or #notes == 0 or not dq_grid or dq_grid <= 0.001 then
+        return notes
+    end
+    local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
+
+    -- 1. Sort input notes chronologically
+    local sorted = {}
+    for _, n in ipairs(notes) do
+        table.insert(sorted, n)
+    end
+    table.sort(sorted, function(a, b)
+        local s1 = a.start_qn or a.sqn or 0
+        local s2 = b.start_qn or b.sqn or 0
+        if math.abs(s1 - s2) > 0.001 then return s1 < s2 end
+        return (a.pitch or 0) < (b.pitch or 0)
+    end)
+
+    -- 2. Merge contiguous tied chains first so tied notes are quantized as unified spans
+    local visited = {}
+    local merged_chains = {}
+    for _, n in ipairs(sorted) do
+        if not visited[n] then
+            visited[n] = true
+            local chain = { n }
+            local search_forward = true
+            while search_forward do
+                local cur_tail = chain[#chain]
+                local tail_pitch = cur_tail.pitch
+                local tail_chan = cur_tail.chan or 0
+                local tail_s = cur_tail.start_qn or cur_tail.sqn or 0
+                local tail_e = cur_tail.end_qn or cur_tail.eqn or (tail_s + (cur_tail.dur_qn or 1.0))
+                local next_cand = nil
+                for j = 1, #sorted do
+                    local cand = sorted[j]
+                    if not visited[cand] and cand.pitch == tail_pitch and (cand.chan or 0) == tail_chan then
+                        local cand_s = cand.start_qn or cand.sqn or 0
+                        if cand_s >= (tail_s - 0.01) and math.abs(cand_s - tail_e) <= 0.08 then
+                            local is_connected = false
+                            if cur_tail.tie_id and cand.tie_id and cur_tail.tie_id == cand.tie_id then
+                                is_connected = true
+                            elseif cur_tail.is_tied_master and (cand.is_tied_slave or (cand.idx and cand.idx == -1)) then
+                                is_connected = true
+                            elseif user_ties and #user_ties > 0 then
+                                for _, ut in ipairs(user_ties) do
+                                    if ut.pitch == tail_pitch and (ut.chan == nil or ut.chan == tail_chan) then
+                                        local ut_s1 = ut.n1_start_qn or 0
+                                        local ut_s2 = ut.n2_start_qn or 0
+                                        if math.abs(ut_s1 - tail_s) <= 0.10 and math.abs(ut_s2 - cand_s) <= 0.10 then
+                                            is_connected = true
+                                            break
+                                        end
+                                    end
+                                end
+                            end
+                            if is_connected then
+                                next_cand = cand
+                                break
+                            end
+                        end
+                    end
+                end
+                if next_cand then
+                    visited[next_cand] = true
+                    table.insert(chain, next_cand)
+                else
+                    search_forward = false
+                end
+            end
+            table.insert(merged_chains, chain)
+        end
+    end
+
+    -- 3. Slice each note/chain by measure so every segment stays strictly within its own bar [bar_sqn, bar_eqn]
+    local bar_chan_entries = {}
+    local bar_list = {}
+    local bar_seen = {}
+    local tie_serial = 0
+
+    for _, chain in ipairs(merged_chains) do
+        local first_n = chain[1]
+        local last_n = chain[#chain]
+        local c_sqn = first_n.start_qn or first_n.sqn or 0
+        local c_eqn = last_n.end_qn or last_n.eqn or (c_sqn + (last_n.dur_qn or 1.0))
+        if c_eqn <= c_sqn + 0.005 then c_eqn = c_sqn + 0.0625 end
+
+        local start_bar = Engraver.qn_to_measure_info(c_sqn + 0.0005, bpi, measure_map)
+        local end_bar = Engraver.qn_to_measure_info(math.max(c_sqn + 0.0005, c_eqn - 0.005), bpi, measure_map)
+        local is_cross_bar = (end_bar > start_bar)
+        local cross_tie_id = nil
+        if is_cross_bar then
+            tie_serial = tie_serial + 1
+            cross_tie_id = string.format("_dq_xbar_%d", tie_serial)
+        end
+
+        local orig_ref = first_n.orig or first_n
+        local raw_chain = {}
+        for _, cn in ipairs(chain) do
+            table.insert(raw_chain, cn.orig or cn)
+        end
+
+        for bar = start_bar, end_bar do
+            local bar_sqn, bar_eqn, bar_bpi = Engraver.measure_to_qn_info(bar, bpi, measure_map)
+            local s_qn = math.max(c_sqn, bar_sqn)
+            local e_qn = math.min(c_eqn, bar_eqn)
+            if e_qn - s_qn > 0.005 then
+                if not bar_seen[bar] then
+                    bar_seen[bar] = true
+                    table.insert(bar_list, bar)
+                end
+                local ch = first_n.chan or 0
+                if not bar_chan_entries[bar] then bar_chan_entries[bar] = {} end
+                if not bar_chan_entries[bar][ch] then bar_chan_entries[bar][ch] = {} end
+                table.insert(bar_chan_entries[bar][ch], {
+                    orig = orig_ref,
+                    chain_notes = raw_chain,
+                    pitch = first_n.pitch,
+                    chan = ch,
+                    vel = first_n.vel,
+                    start_qn = s_qn,
+                    end_qn = e_qn,
+                    dur_qn = e_qn - s_qn,
+                    bar = bar,
+                    bar_sqn = bar_sqn,
+                    bar_eqn = bar_eqn,
+                    bar_bpi = (bar_bpi and bar_bpi > 0) and bar_bpi or bpi,
+                    cross_tie_id = cross_tie_id,
+                    is_cross_master = is_cross_bar and (bar < end_bar),
+                    is_cross_slave = is_cross_bar and (bar > start_bar)
+                })
+            end
+        end
+    end
+
+    table.sort(bar_list)
+
+    -- 4. Quantize positions & durations inside each (bar, chan) and consolidate notes falling on the same grid slot
+    local result = {}
+    for _, bar in ipairs(bar_list) do
+        local chan_map = bar_chan_entries[bar]
+        local chans = {}
+        for ch in pairs(chan_map) do table.insert(chans, ch) end
+        table.sort(chans)
+
+        for _, ch in ipairs(chans) do
+            local entries = chan_map[ch]
+            local bar_sqn = entries[1].bar_sqn
+            local bar_eqn = entries[1].bar_eqn
+            local bar_bpi = entries[1].bar_bpi
+            local eff_dq = math.min(dq_grid, bar_bpi)
+
+            local slots_by_idx = {}
+            local slot_indices = {}
+            for _, e in ipairs(entries) do
+                local rel_s = math.max(0.0, e.start_qn - bar_sqn)
+                local g_idx = math.floor((rel_s / eff_dq) + 0.20 + 1e-9)
+                local max_idx = math.max(0, math.floor(((bar_bpi - eff_dq) / eff_dq) + 0.5))
+                if g_idx > max_idx then g_idx = max_idx end
+                local snapped_s = bar_sqn + g_idx * eff_dq
+
+                local dur_mult = math.max(1, math.floor((e.dur_qn / eff_dq) + 0.5))
+                local snapped_d = math.min(bar_eqn - snapped_s, dur_mult * eff_dq)
+                e.snapped_start = snapped_s
+                e.snapped_dur = snapped_d
+                e.snapped_end = snapped_s + snapped_d
+
+                if not slots_by_idx[g_idx] then
+                    slots_by_idx[g_idx] = {}
+                    table.insert(slot_indices, g_idx)
+                end
+                table.insert(slots_by_idx[g_idx], e)
+            end
+
+            table.sort(slot_indices)
+
+            local consolidated_slots = {}
+            for _, g_idx in ipairs(slot_indices) do
+                local s_entries = slots_by_idx[g_idx]
+                local slot_sqn = bar_sqn + g_idx * eff_dq
+
+                -- Sort so the note closest to the grid beat (or earliest on tie) is primary
+                table.sort(s_entries, function(a, b)
+                    local da = math.abs(a.start_qn - slot_sqn)
+                    local db = math.abs(b.start_qn - slot_sqn)
+                    if math.abs(da - db) > 0.01 then return da < db end
+                    if math.abs(a.start_qn - b.start_qn) > 0.001 then return a.start_qn < b.start_qn end
+                    return (a.pitch or 0) < (b.pitch or 0)
+                end)
+
+                local primary_orig_s = s_entries[1].start_qn
+                local max_orig_e = s_entries[1].end_qn
+                local max_snapped_d = s_entries[1].snapped_dur
+                for _, se in ipairs(s_entries) do
+                    if se.end_qn > max_orig_e then max_orig_e = se.end_qn end
+                    if se.snapped_dur > max_snapped_d then max_snapped_d = se.snapped_dur end
+                end
+
+                local span_mult = math.max(1, math.floor(((max_orig_e - slot_sqn) / eff_dq) + 0.5))
+                local slot_dur = math.min(bar_eqn - slot_sqn, math.max(max_snapped_d, span_mult * eff_dq))
+
+                -- Keep simultaneous chord notes (within 0.08 QN of primary_orig_s); consolidate sequential notes into slot
+                local kept_by_pitch = {}
+                local kept_list = {}
+                local all_slot_origs = {}
+                local orig_seen = {}
+                for _, se in ipairs(s_entries) do
+                    for _, cn in ipairs(se.chain_notes) do
+                        if not orig_seen[cn] then
+                            orig_seen[cn] = true
+                            table.insert(all_slot_origs, cn)
+                        end
+                    end
+                    local is_chord_member = (math.abs(se.start_qn - primary_orig_s) <= 0.08)
+                    if is_chord_member and not kept_by_pitch[se.pitch] then
+                        kept_by_pitch[se.pitch] = se
+                        table.insert(kept_list, se)
+                    elseif kept_by_pitch[se.pitch] then
+                        if se.is_cross_master then kept_by_pitch[se.pitch].is_cross_master = true end
+                        if se.is_cross_slave then kept_by_pitch[se.pitch].is_cross_slave = true end
+                        if se.cross_tie_id and not kept_by_pitch[se.pitch].cross_tie_id then
+                            kept_by_pitch[se.pitch].cross_tie_id = se.cross_tie_id
+                        end
+                    else
+                        if se.is_cross_master then kept_list[1].is_cross_master = true end
+                    end
+                end
+
+                table.insert(consolidated_slots, {
+                    start_qn = slot_sqn,
+                    dur_qn = slot_dur,
+                    end_qn = slot_sqn + slot_dur,
+                    notes = kept_list,
+                    all_origs = all_slot_origs
+                })
+            end
+
+            -- 5. Truncate slot duration at the next distinct slot onset in the same (bar, chan)
+            for si = 1, #consolidated_slots do
+                local cslot = consolidated_slots[si]
+                if si < #consolidated_slots then
+                    local next_s = consolidated_slots[si + 1].start_qn
+                    if cslot.end_qn > next_s then
+                        cslot.end_qn = next_s
+                        cslot.dur_qn = math.max(eff_dq, cslot.end_qn - cslot.start_qn)
+                    end
+                end
+
+                for _, ke in ipairs(cslot.notes) do
+                    local base_n = ke.orig
+                    local qn_note = {
+                        orig = base_n,
+                        idx = base_n.idx,
+                        pitch = ke.pitch,
+                        start_qn = cslot.start_qn,
+                        end_qn = cslot.end_qn,
+                        dur_qn = cslot.dur_qn,
+                        vel = ke.vel or base_n.vel,
+                        chan = ke.chan,
+                        take = base_n.take,
+                        item = base_n.item,
+                        item_obj = base_n.item_obj,
+                        track = base_n.track,
+                        articulation = base_n.articulation,
+                        stem_dir = base_n.stem_dir,
+                        notehead_type = base_n.notehead_type,
+                        arpeggio = base_n.arpeggio,
+                        staff = base_n.staff,
+                        tie_id = ke.cross_tie_id,
+                        is_tied_master = ke.is_cross_master or false,
+                        is_tied_slave = ke.is_cross_slave or false,
+                        chain_notes = (#cslot.all_origs > 1) and cslot.all_origs or nil
+                    }
+                    table.insert(result, qn_note)
+                end
+            end
+        end
+    end
+
+    return result
+end
+
 function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_measure, margin_left, s, state)
     local bpi = (qn_per_measure and qn_per_measure > 0) and qn_per_measure or 4.0
     local base_w = 260.0 * s * (bpi / 4.0)
@@ -187,7 +486,9 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
     local max_map_qn = m_end_qn[num_m + 1] or ((num_m + 1) * bpi)
 
     for _, tdata in ipairs(active_tracks_data or {}) do
-        local vnotes = Engraver.get_visual_notes(tdata.notes or {}, bpi, nil, max_map_qn, user_ties, time_map_ref)
+        local raw_notes = tdata.notes or {}
+        local src_notes = dq and Engraver.quantize_notes_for_display(raw_notes, dq, bpi, time_map_ref, user_ties) or raw_notes
+        local vnotes = Engraver.get_visual_notes(src_notes, bpi, nil, max_map_qn, user_ties, time_map_ref)
         local vnotes_by_bar = {}
         track_vnotes_by_bar[tdata] = vnotes_by_bar
 
@@ -204,7 +505,7 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
                 table.insert(blist, vn)
             end
 
-            local n_sqn = dq and (math.floor((vn.start_qn / dq) + 0.5) * dq) or vn.start_qn
+            local n_sqn = dq and Engraver.get_display_quantized_qn(vn.start_qn, vn.dur_qn, dq, bpi, time_map_ref) or vn.start_qn
             local n_dur = vn.dur_qn or 1.0
             local en = {
                 pitch = vn.pitch,
@@ -299,7 +600,8 @@ function Engraver.build_measure_map(active_tracks_data, total_measures, qn_per_m
 
             if bar_vnotes then
                 for _, vn in ipairs(bar_vnotes) do
-                    local raw_rel = math.max(0.0, math.min(mb - 0.03125, vn.start_qn - m_sqn))
+                    local eff_vn_sqn = dq and Engraver.get_display_quantized_qn(vn.start_qn, vn.dur_qn, dq, mb, time_map_ref) or vn.start_qn
+                    local raw_rel = math.max(0.0, math.min(mb - 0.03125, eff_vn_sqn - m_sqn))
                     local rel_qn = math.floor(raw_rel * 32.0 + 0.5) / 32.0
                     m_combined_onsets[rel_qn] = true
                     local o = onsets[rel_qn]
@@ -1720,7 +2022,7 @@ function Engraver.generate_track_rests(track_notes, total_measures, qn_per_measu
     for m = start_m, stop_m do notes_by_bar[m] = {} end
     
     for _, n in ipairs(track_notes) do
-        local n_start = dq and (math.floor((n.start_qn / dq) + 0.5) * dq) or n.start_qn
+        local n_start = dq and Engraver.get_display_quantized_qn(n.start_qn, n.dur_qn or (n.end_qn - n.start_qn), dq, bpi, measure_map) or n.start_qn
         local n_dur = dq and (math.max(dq, math.floor(((n.dur_qn or (n.end_qn - n.start_qn)) / dq) + 0.5) * dq)) or (n.dur_qn or (n.end_qn - n.start_qn))
         local n_end = n_start + n_dur
         local start_bar = Engraver.qn_to_measure_info(n_start + 0.001, bpi, measure_map)
@@ -1902,7 +2204,7 @@ function Engraver.generate_voice_rests(track_notes, total_measures, qn_per_measu
     for m = start_m, stop_m do notes_by_bar[m] = {} end
     
     for _, n in ipairs(track_notes or {}) do
-        local n_start = dq and (math.floor((n.start_qn / dq) + 0.5) * dq) or n.start_qn
+        local n_start = dq and Engraver.get_display_quantized_qn(n.start_qn, n.dur_qn or (n.end_qn - n.start_qn), dq, bpi, measure_map) or n.start_qn
         local n_dur = dq and (math.max(dq, math.floor(((n.dur_qn or (n.end_qn - n.start_qn)) / dq) + 0.5) * dq)) or (n.dur_qn or (n.end_qn - n.start_qn))
         local n_end = n_start + n_dur
         local start_bar = Engraver.qn_to_measure_info(n_start + 0.001, bpi, measure_map)
@@ -2536,9 +2838,32 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                 end
                                 if not active_n then active_n = first_n end
 
-                                local target_orig = active_n
+                                local target_orig = active_n.orig or active_n
                                 if target_orig.idx and target_orig.idx < 0 then
-                                    target_orig = first_n
+                                    target_orig = first_n.orig or first_n
+                                end
+
+                                local seg_chain_notes = nil
+                                if active_n.orig or first_n.orig then
+                                    if #chain > 1 then
+                                        local c_list = {}
+                                        local c_seen = {}
+                                        for _, cn in ipairs(chain) do
+                                            if cn.chain_notes then
+                                                for _, rcn in ipairs(cn.chain_notes) do
+                                                    if not c_seen[rcn] then c_seen[rcn] = true table.insert(c_list, rcn) end
+                                                end
+                                            else
+                                                local rcn = cn.orig or cn
+                                                if not c_seen[rcn] then c_seen[rcn] = true table.insert(c_list, rcn) end
+                                            end
+                                        end
+                                        if #c_list > 1 then seg_chain_notes = c_list end
+                                    else
+                                        seg_chain_notes = active_n.chain_notes or first_n.chain_notes
+                                    end
+                                elseif #chain > 1 then
+                                    seg_chain_notes = chain
                                 end
 
                                 local it_str = tostring(active_n.item or first_n.item or "0")
@@ -2563,7 +2888,7 @@ function Engraver.get_visual_notes(notes, qn_per_measure, vis_min_qn, vis_max_qn
                                     stem_dir = target_orig and target_orig.stem_dir or nil,
                                     custom_notehead_type = target_orig and target_orig.notehead_type or nil,
                                     is_tied_chain = (#chain > 1),
-                                    chain_notes = (#chain > 1) and chain or nil,
+                                    chain_notes = seg_chain_notes,
                                     is_tied_from_prev = (prev_seg ~= nil),
                                     is_tied_to_next = false
                                 }

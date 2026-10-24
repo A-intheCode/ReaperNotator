@@ -473,7 +473,9 @@ local function is_note_irregular_preview(n, vn, state)
 end
 
 local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_clef, is_grand, is_harp, treble_bottom_y, mid_bottom_y, bass_bottom_y, staff_bottom_y, step_y, filter_chan, measure_map, margin_left, total_measures)
-    local visual_notes, bar_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, nil, nil, state and state.user_ties, measure_map)
+    local dq_layout = (state and state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001) and state.display_quantize_grid or nil
+    local src_notes = dq_layout and Engraver.quantize_notes_for_display(tdata.notes, dq_layout, qn_per_measure, measure_map, state and state.user_ties) or tdata.notes
+    local visual_notes, bar_ties = Engraver.get_visual_notes(src_notes, qn_per_measure, nil, nil, state and state.user_ties, measure_map)
     
     -- Voice filtering and ghosting (MIDI channels 0-15)
     if filter_chan ~= nil then
@@ -530,8 +532,7 @@ local function build_track_layout(tdata, state, s, qn_per_measure, bpi, track_cl
         -- Display quantize: visual snapping of note positions to the selected grid
         local display_qn = vn.start_qn
         if state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001 then
-            local dq_grid = state.display_quantize_grid
-            display_qn = math.floor((vn.start_qn / dq_grid) + 0.5) * dq_grid
+            display_qn = Engraver.get_display_quantized_qn(vn.start_qn, vn.dur_qn, state.display_quantize_grid, qn_per_measure, measure_map)
         end
         vn.display_qn = display_qn
         vn.head_x_offset = 0
@@ -1215,9 +1216,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
     local measure_map = nil
     do
         local live_note_cnt = is_recording and #(RecordQuantizeService._live_notes or {}) or 0
-        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%d_%d_%s_%d_%s",
+        local mmap_sig = string.format("%.3f_%d_%.3f_%d_%d_%d_%d_%d_%s_%s_%d_%s",
             s, total_measures, qn_per_measure, timesig_num, timesig_denom, proj_change_cnt, #active_tracks_data,
-            (state and state.key_signature) or 0, tostring(state and state.display_quantize_grid), live_note_cnt, ts_changes_sig)
+            (state and state.key_signature) or 0, tostring(state and state.display_quantize), tostring(state and state.display_quantize_grid), live_note_cnt, ts_changes_sig)
         if state.cached_measure_map and state.cached_measure_map_sig == mmap_sig then
             measure_map = state.cached_measure_map
             Engraver.reanchor_measure_map(measure_map, margin_left)
@@ -1890,7 +1891,7 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             base_sqn = math.max(0, n.start_qn + delta_qn)
                             base_pitch = math.max(0, math.min(127, n.pitch + delta_p))
                         end
-                        local eff_sqn = dq and (math.max(0, math.floor((base_sqn / dq) + 0.5) * dq)) or base_sqn
+                        local eff_sqn = dq and Engraver.get_display_quantized_qn(base_sqn, base_dur, dq, qn_per_measure, measure_map) or base_sqn
                         local eff_dur = dq and (math.max(dq, math.floor((base_dur / dq) + 0.5) * dq)) or base_dur
                         local eff_eqn = eff_sqn + eff_dur
                         local active_oct = OctaveService.get_active_line_at_qn(state, tdata.guid, eff_sqn)
@@ -2154,7 +2155,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         else
             -- Fallback / Live Drag path: un-cached dynamic calculation
             local live_ties
-            visual_notes, live_ties = Engraver.get_visual_notes(tdata.notes, qn_per_measure, vis_min_qn, vis_max_qn, state and state.user_ties, measure_map)
+            local dq_live = (state and state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001) and state.display_quantize_grid or nil
+            local live_src_notes = dq_live and Engraver.quantize_notes_for_display(tdata.notes, dq_live, qn_per_measure, measure_map, state and state.user_ties) or tdata.notes
+            visual_notes, live_ties = Engraver.get_visual_notes(live_src_notes, qn_per_measure, vis_min_qn, vis_max_qn, state and state.user_ties, measure_map)
             for _, bt in ipairs(live_ties) do table.insert(all_bar_ties, bt) end
             
             if filter_chan ~= nil then
@@ -2208,9 +2211,9 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 
                 local display_qn = vn.start_qn
                 if state.display_quantize and state.display_quantize_grid and state.display_quantize_grid > 0.001 then
-                    local dq_grid = state.display_quantize_grid
-                    display_qn = math.floor((vn.start_qn / dq_grid) + 0.5) * dq_grid
+                    display_qn = Engraver.get_display_quantized_qn(vn.start_qn, vn.dur_qn, state.display_quantize_grid, qn_per_measure, measure_map)
                 end
+                vn.display_qn = display_qn
                 vn.nominal_nx = Engraver.qn_to_canvas_x(display_qn, margin_left, s, qn_per_measure, measure_map)
                 vn.head_x_offset = 0
                 vn.acc_x_offset = 0

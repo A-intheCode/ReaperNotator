@@ -249,6 +249,8 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
         local dq_chg, new_dq = reaper.ImGui_Checkbox(ctx, "Display Quantize (Visual Snap)", dq_val)
         if dq_chg then
             state.display_quantize = new_dq
+            state.cached_measure_map = nil
+            require("state").save_settings(state)
             state.status_msg = state.display_quantize and "Display Quantize ON – notes visually snap to grid" or "Display Quantize OFF"
         end
         if reaper.ImGui_IsItemHovered(ctx) then
@@ -273,6 +275,8 @@ function ToolsDrawer.render(ctx, state, midi_service, active_tracks_data, width,
                     if reaper.ImGui_Selectable(ctx, g[1], is_sel) then
                         state.display_quantize_grid = g[2]
                         state.display_quantize_label = g[1]
+                        state.cached_measure_map = nil
+                        require("state").save_settings(state)
                         state.status_msg = "D-Quantize Grid: " .. g[1]
                     end
                 end

@@ -551,6 +551,8 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
         -- Display Quantize Toggle
         if toggle_btn(ctx, "D-Quantize", state.display_quantize, 105, 26, 0x9B59B6FF) then
             state.display_quantize = not state.display_quantize
+            state.cached_measure_map = nil
+            require("state").save_settings(state)
             state.status_msg = state.display_quantize and "Display Quantize ON – notes visually snap to grid" or "Display Quantize OFF"
         end
         -- Display Quantize grid selection (only visible when active)
@@ -571,6 +573,8 @@ function TopBar.render(ctx, state, clipboard_service, midi_service, active_track
                     if reaper.ImGui_Selectable(ctx, g[1], is_sel) then
                         state.display_quantize_grid = g[2]
                         state.display_quantize_label = g[1]
+                        state.cached_measure_map = nil
+                        require("state").save_settings(state)
                         state.status_msg = "D-Quantize Grid: " .. g[1]
                     end
                 end
