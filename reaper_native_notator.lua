@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.55
+-- @version 2.56
 -- @changelog
+--   + v2.56: Hotfix: Fix `ImGui assertion failed: font_cfg->SizePixels > 0.0f` crash on systems running ReaImGui < 0.10 (auto-detect legacy 3-argument `ImGui_CreateFont(family, size_px, flags)` / `ImGui_CreateFontFromFile(file, size_px, flags)` vs. ReaImGui 0.10+ 2-argument dynamic font API in `FontManager.init`), and document `ReaImGui v0.10+` dependency requirement in GitHub README & ReaPack metadata
 --   + v2.55: Stable Release: Fix Display Quantize (1/1 to 1/32) visual note position & duration quantization (`Engraver.quantize_notes_for_display` & `Engraver.get_display_quantized_qn`), intra-measure barline clamping (notes at the end of a bar never jump across the barline into the next measure), grid-slot consolidation (preserving simultaneous chords and selection links), immediate measure-map cache invalidation & ProjExtState/ExtState persistence when toggling Display Quantize in Top Bar or Tools Drawer, and 100% zero impact on score rendering or MIDI when Display Quantize is disabled
 --   + v2.54: Stable Release: Settings Modal improvements (all sections collapsed by default on launch & collapsible "Donate if you want to contribute" section with Gumroad link) and updated high-resolution illustrated User Manual (PDF)
 --   + v2.53: Stable Release: Melodic Pathfinder 2.0 (8 descriptive Film Score Archetypes, Leitmotif & period phrasing up to 32 bars, automatic Krumhansl-Schmuckler Key & Mode detection, half-bar chord lock, Anchor-Note blending, 3 interactive coupled Bezier curves [Tension -> Velocity/Leaps, Note Length, Pitch] with freehand Draw -> auto-simplified Edit Handles, 4 RAM slots & JSON export/import), pre-armed target track with [REC] badge & 2-stage warmup so first-note audition never drops, and full Reaticulate clone bank resolution (fixing Spitfire BBC Symphony Orchestra Trumpet, Flutes a3, Piccolo & cloned banks)
@@ -70,6 +71,7 @@
 -- @about
 --   # REAPER-Notator
 --   Native musical notation, score editing, and engraving environment for Cockos REAPER.
+--   Requires ReaImGui v0.10+ (Dear ImGui for REAPER by cfillion) and Reaticulate.
 --   Features SMuFL font rendering, intelligent beaming, dynamics CC automation,
 --   articulations drawer, MusicXML import/export, and seamless DAW integration.
 -- @provides
@@ -120,11 +122,11 @@ end
 
 -- 2. ReaImGui initialization & version check
 if not reaper.APIExists("ImGui_CreateContext") then
-    local err_msg = "ReaImGui is required for REAPER Notator to run!\n\n" ..
-        "How to install ReaImGui:\n" ..
+    local err_msg = "ReaImGui (v0.10+) is required for REAPER Notator to run!\n\n" ..
+        "How to install or update ReaImGui (v0.10+):\n" ..
         "1. Open REAPER: Extensions -> ReaPack -> Browse packages\n" ..
         "2. Search for 'ReaImGui' (by cfillion)\n" ..
-        "3. Right-click 'ReaImGui: Dear ImGui for Cockos REAPER' -> Install\n" ..
+        "3. Right-click 'ReaImGui: Dear ImGui for Cockos REAPER' -> Install / Update to v0.10+\n" ..
         "4. Click 'Apply' in the bottom right corner of ReaPack and restart REAPER.\n\n" ..
         "Official ReaPack Repository URL:\n" ..
         "https://github.com/cfillion/reapack-index/raw/master/index.xml"

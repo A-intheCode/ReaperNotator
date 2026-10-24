@@ -2,11 +2,15 @@
 
 [![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
 [![REAPER](https://img.shields.io/badge/REAPER-v7.0+-orange.svg)](https://www.reaper.fm/)
-[![ReaImGui](https://img.shields.io/badge/ReaImGui-v0.9+-green.svg)](https://github.com/cfillion/reaimgui)
+[![ReaImGui](https://img.shields.io/badge/ReaImGui-v0.10%2B%20Required-brightgreen.svg)](https://github.com/cfillion/reaimgui)
 [![Reaticulate](https://img.shields.io/badge/Reaticulate-Required-blueviolet.svg)](https://reaticulate.com/)
 [![Platform](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#)
 
 > **REAPER-Notator** is a native, professional music notation, score editing, and engraving suite built directly for Cockos REAPER using ReaImGui and standard SMuFL vector glyphs.
+
+> [!IMPORTANT]
+> **Required Dependency — ReaImGui v0.10+ (`v0.10.0` or newer):**
+> Make sure your **ReaImGui** extension (*"ReaImGui: Dear ImGui for Cockos REAPER"* by cfillion) is updated to **`v0.10+`** via **Extensions $\rightarrow$ ReaPack $\rightarrow$ Synchronize packages** (or *Browse packages* $\rightarrow$ search `ReaImGui` $\rightarrow$ update to `v0.10+` and restart REAPER).
 
 ---
 
@@ -51,7 +55,8 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
   - **Intra-Bar Accidental Memory & Multi-Column Chord Stacking**: Automatically tracks altered steps within each bar, emits natural ($\natural$) cancellations when returning to diatonic pitches, stacks chord accidentals into up to 3 collision-free diagonal columns, and leaves a clean visual gap between Clef and Key Signature.
   - **Complete Gould & Read Engraving Details**: 32nd/64th flag & beam stem lengthening with inner-beam clearance, rest-breaking beams, paired fractional stubs, strict 2-side chord 2nd alternation, dotted chord 2nd separation, curved S-bezier Piano/Harp accolade brace (`{`), and stem-centered tremolo slashes.
 
-- **Melodic Pathfinder 2.0 — Film-Score Melody & Counter-Melody Composer (v2.53–v2.55)**:
+- **Melodic Pathfinder 2.0 — Film-Score Melody & Counter-Melody Composer (v2.53–v2.56)**:
+  - **ReaImGui `v0.10+` Dynamic Font & `< v0.10` Legacy Compatibility (`FontManager`, v2.56)**: Automatically detects ReaImGui `v0.10+` vs. older `< v0.10` installations to prevent `font_cfg->SizePixels > 0.0f` font-atlas assertions on startup.
   - **Display Quantize Engine (`1/1` to `1/32`, v2.55)**: True non-destructive visual quantization (`Engraver.quantize_notes_for_display` & `Engraver.get_display_quantized_qn`) snaps both visual note start positions (strictly clamped within each note's own measure so bar-end notes never jump across the barline) and visual durations to the selected grid (`1/1` whole notes down to `1/32`), consolidates notes falling into the same grid slot while preserving simultaneous chords and selection links, and guarantees 0% side effects when Display Quantize is disabled.
   - **Settings Modal & High-Resolution Illustrated User Manual (v2.54)**: All Settings sections start collapsed by default on launch, with a collapsible `"Donate if you want to contribute"` section at the bottom and a 20-figure high-resolution illustrated PDF User Manual (`docs/reaper_notator_user_manual.pdf`).
   - **Three Composing Workflows**:
@@ -239,7 +244,7 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 1. Ensure you have **ReaPack** installed in REAPER ([reapack.com](https://reapack.com/)).
 2. Install the required dependencies in ReaPack (`Extensions` → `ReaPack` → `Browse packages...`):
-   - **ReaImGui** (v0.9+ from ReaTeam Extensions)
+   - **ReaImGui v0.10+** (**required** — `v0.10.0` or newer from ReaTeam Extensions via ReaPack)
    - **Reaticulate** (**required** — install via ReaPack or import repository `https://reaticulate.com/index.xml`)
 3. In REAPER, go to:
    `Extensions` → `ReaPack` → `Import a repository...`
@@ -254,7 +259,7 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 ### Method 2: Manual Installation
 
 1. Install the required dependencies:
-   - **ReaImGui** (v0.9+)
+   - **ReaImGui v0.10+** (**required** — `v0.10.0` or newer)
    - **Reaticulate** (**required** — [reaticulate.com](https://reaticulate.com/))
 2. Clone or download this repository into your REAPER Scripts folder:
    - **Windows:** `%APPDATA%\REAPER\Scripts\REAPER-Notator`
@@ -267,7 +272,7 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 ## Requirements
 
 - **Cockos REAPER** v7.0 or higher
-- **ReaImGui** v0.9+ (required — available via ReaPack from the ReaTeam repository)
+- **ReaImGui v0.10+** (**required** — `v0.10.0` or newer, available via ReaPack from the ReaTeam repository; run `Extensions -> ReaPack -> Synchronize packages` to update)
 - **Reaticulate** (**required** — available via ReaPack: [reaticulate.com](https://reaticulate.com/))
   > **Note:** Reaticulate is an essential prerequisite for REAPER-Notator to run. It handles articulation sound bank definitions, keyswitch chasing, and MIDI playback orchestration. Make sure Reaticulate is installed before launching REAPER-Notator.
 - **SWS / S&M Extension** (recommended — [sws-extension.org](https://www.sws-extension.org/))

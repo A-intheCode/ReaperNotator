@@ -3,7 +3,7 @@
   <category name="Notation">
     <reapack name="reaper_native_notator.lua" type="script" desc="REAPER-Notator: Native Musical Notation &amp; Engraving Suite">
       <metadata>
-        <description>Native musical notation, score editing, and engraving environment for Cockos REAPER.</description>
+        <description>Native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate.</description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
       <version name="2.52" author="A-intheCode" time="2026-10-21T23:06:00Z">
@@ -106,8 +106,9 @@
         <source file="modules/ui/track_picker.lua">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/ui/track_picker.lua</source>
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
       </version>
-      <version name="2.55" author="A-intheCode" time="2026-10-24T13:15:00Z">
+      <version name="2.56" author="A-intheCode" time="2026-10-24T14:02:00Z">
         <changelog><![CDATA[
++ v2.56: Hotfix: Fix "ImGui assertion failed: font_cfg->SizePixels > 0.0f" crash on systems running ReaImGui < 0.10 (auto-detect legacy 3-argument ImGui_CreateFont / ImGui_CreateFontFromFile vs. ReaImGui 0.10+ 2-argument dynamic font API in FontManager.init), and prominently document ReaImGui v0.10+ dependency in GitHub README & ReaPack metadata
 + v2.55: Stable Release: Fix Display Quantize (1/1 to 1/32) visual note position & duration quantization (Engraver.quantize_notes_for_display & Engraver.get_display_quantized_qn), intra-measure barline clamping (notes at the end of a bar never jump across the barline into the next measure), grid-slot consolidation (preserving simultaneous chords and selection links), immediate measure-map cache invalidation & ProjExtState/ExtState persistence when toggling Display Quantize in Top Bar or Tools Drawer, and 100% zero impact on score rendering or MIDI when Display Quantize is disabled
 + v2.54: Stable Release: Settings Modal improvements (all sections collapsed by default on launch & collapsible "Donate if you want to contribute" section with Gumroad link) and updated high-resolution illustrated User Manual (PDF)
 + v2.53: Stable Release: Melodic Pathfinder 2.0 (8 descriptive Film Score Archetypes, Leitmotif & period phrasing up to 32 bars, automatic Key & Mode detection, half-bar chord lock, Anchor-Note blending, 3 interactive coupled Bezier curves [Tension, Note Length, Pitch] with freehand Draw -> auto-simplified Edit Handles, 4 RAM slots & JSON export/import), pre-armed target track with [REC] badge & 2-stage warmup for instant first-note audition, full Reaticulate clone bank resolution (fixing Spitfire BBC Trumpet & cloned banks), and updated illustrated User Manual
