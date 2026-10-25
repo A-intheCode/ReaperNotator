@@ -1886,10 +1886,12 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                         local base_dur = n.dur_qn
                         local base_pitch = n.pitch
                         if is_dragging_notes and drag_keys[k] then
-                            local delta_qn = state.drag_delta_qn or 0
-                            local delta_p = state.drag_delta_pitch or 0
-                            base_sqn = math.max(0, n.start_qn + delta_qn)
-                            base_pitch = math.max(0, math.min(127, n.pitch + delta_p))
+                            if not state.drag_target_track or state.drag_target_track == tdata.track then
+                                local delta_qn = state.drag_delta_qn or 0
+                                local delta_p = state.drag_delta_pitch or 0
+                                base_sqn = math.max(0, n.start_qn + delta_qn)
+                                base_pitch = math.max(0, math.min(127, n.pitch + delta_p))
+                            end
                         end
                         local eff_sqn = dq and Engraver.get_display_quantized_qn(base_sqn, base_dur, dq, qn_per_measure, measure_map) or base_sqn
                         local eff_dur = dq and (math.max(dq, math.floor((base_dur / dq) + 0.5) * dq)) or base_dur
@@ -1912,6 +1914,33 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                             is_tr = false st_target = "bass"
                         end
                         table.insert(eff_notes, { pitch = written_pitch, start_qn = eff_sqn, end_qn = eff_eqn, dur_qn = eff_dur, in_treble = is_tr, in_staff = st_target })
+                    end
+                end
+            end
+            if is_dragging_notes and state.drag_target_track == tdata.track then
+                local delta_qn = state.drag_delta_qn or 0
+                local delta_p = state.drag_delta_pitch or 0
+                for _, sn in ipairs(state.drag_selected_snapshot) do
+                    if sn.track ~= tdata.track then
+                        local g_sqn = math.max(0, (sn.start_qn or 0) + delta_qn)
+                        local g_dur = sn.dur_qn or 1.0
+                        local g_pitch = math.max(0, math.min(127, (sn.pitch or 60) + delta_p))
+                        local eff_sqn = dq and Engraver.get_display_quantized_qn(g_sqn, g_dur, dq, qn_per_measure, measure_map) or g_sqn
+                        local eff_dur = dq and (math.max(dq, math.floor((g_dur / dq) + 0.5) * dq)) or g_dur
+                        local active_oct = OctaveService.get_active_line_at_qn(state, tdata.guid, eff_sqn)
+                        local oct_shift = active_oct and (Constants.OCTAVE_LINE_DEFS[active_oct.type] and Constants.OCTAVE_LINE_DEFS[active_oct.type].shift_semitones or 0) or 0
+                        local written_pitch = math.max(0, math.min(127, g_pitch - oct_shift))
+                        local is_tr = (track_clef ~= "bass")
+                        local st_target = is_tr and "treble" or "bass"
+                        if is_harp then
+                            if written_pitch >= 65 then is_tr = true st_target = "treble"
+                            elseif written_pitch >= 53 then is_tr = false st_target = "mid"
+                            else is_tr = false st_target = "bass" end
+                        elseif is_grand then
+                            is_tr = (written_pitch >= 60)
+                            st_target = is_tr and "treble" or "bass"
+                        end
+                        table.insert(eff_notes, { pitch = written_pitch, start_qn = eff_sqn, end_qn = eff_sqn + eff_dur, dur_qn = eff_dur, in_treble = is_tr, in_staff = st_target })
                     end
                 end
             end
@@ -2613,27 +2642,44 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                     state.last_drag_audition_pitch = n.pitch
                     if is_shift or is_ctrl then
                         state:toggle_note_selection(n)
+                        state._clicked_already_selected_note = nil
                     else
-                        if state:count_selected_notes() > 1 or not state:is_note_selected(n) then
+                        if not state:is_note_selected(n) then
                             state:clear_selection()
+                            state:select_note(n)
+                            state._clicked_already_selected_note = nil
+                        else
+                            -- Keep multi-note selection intact so dragging moves the entire selected block!
+                            -- If released without dragging, MouseHandler narrows selection to `n`.
+                            state._clicked_already_selected_note = (state:count_selected_notes() > 1) and n or nil
+                            state.selected_note = n
                         end
-                        state:select_note(n)
                     end
                     state.drag_note = n
                     state.drag_start_x = mouse_x
                     state.drag_start_y = mouse_y
                     state.drag_target_qn = n.start_qn
                     state.drag_target_pitch = n.pitch
+                    state.drag_target_track = n.track
+                    state.drag_target_guid = tdata.guid
+                    state.drag_copy_mode = false
                     state.is_dragging = false
                     
                     state.drag_selected_snapshot = {}
                     for k, sn in pairs(state.selected_notes) do
+                        local snap_k = k or (sn.get_key and sn:get_key())
+                        local head_t = sn.notehead_type or (Engraver.get_note_custom_notehead_type and Engraver.get_note_custom_notehead_type(sn, state))
+                        local stem_d = sn.stem_dir or (state.note_stem_directions and snap_k and state.note_stem_directions[snap_k])
+                        local pref_a = (state.note_accidentals and snap_k and state.note_accidentals[snap_k]) or nil
                         table.insert(state.drag_selected_snapshot, {
-                            key = k or (sn.get_key and sn:get_key()),
+                            key = snap_k,
                             idx = sn.idx, pitch = sn.pitch, start_qn = sn.start_qn,
                             end_qn = sn.end_qn, dur_qn = sn.dur_qn, vel = sn.vel,
                             chan = sn.chan, take = sn.take, item = sn.item, track = sn.track,
-                            articulation = sn.articulation
+                            articulation = sn.articulation,
+                            notehead_type = head_t,
+                            stem_dir = stem_d,
+                            pref_acc = pref_a
                         })
                     end
                     midi_service.sync_selection_to_reaper(state, active_tracks_data)
@@ -4735,28 +4781,48 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
         state.draw_preview = nil
     end
 
-    -- DRAG PREVIEW (Ghost notes & position badge during move)
+    -- DRAG PREVIEW (Full Ghost Notes block preview & target system badge during move/copy)
     if state.is_dragging and state.drag_note and #state.drag_selected_snapshot > 0 then
         local delta_qn = state.drag_delta_qn or 0
         local delta_pitch = state.drag_delta_pitch or 0
         local bpi = qn_per_measure or 4
         local primary_drag_key_idx = nil
-        
+
+        -- Map displayed tracks to their visual system index (1 .. #active_tracks_data)
+        local trk_to_sys_idx = {}
+        for idx, tdata in ipairs(active_tracks_data) do
+            if tdata.track then trk_to_sys_idx[tdata.track] = idx end
+        end
+        local orig_sys_idx = (state.drag_note and state.drag_note.track and trk_to_sys_idx[state.drag_note.track]) or 1
+        local target_sys_idx = (state.drag_target_track and trk_to_sys_idx[state.drag_target_track]) or orig_sys_idx
+        local delta_sys_idx = target_sys_idx - orig_sys_idx
+        local is_cross_sys = (delta_sys_idx ~= 0)
+        local is_copy_drag = (state.drag_copy_mode == true) or is_ctrl
+
+        local accent_col = is_copy_drag and 0x2ECC71FF or 0xFF9F1CFF
+        local fill_col   = is_copy_drag and 0x2ECC7166 or 0xFF9F1C66
+        local glow_col   = is_copy_drag and 0x2ECC7133 or 0xFF9F1C33
+        local guide_col  = is_copy_drag and 0x2ECC7177 or 0xFF9F1C77
+
+        -- Draw vertical beat alignment guide line on the primary target system
+        local primary_target_tdata = active_tracks_data[target_sys_idx] or active_tracks_data[1]
+        local primary_qn = math.max(0, ((state.drag_note and state.drag_note.start_qn) or 0) + delta_qn)
+        local primary_gx = Engraver.qn_to_canvas_x(primary_qn, margin_left, s, qn_per_measure, measure_map)
+        if primary_target_tdata and primary_target_tdata.band_y0 and primary_target_tdata.band_y1 then
+            reaper.ImGui_DrawList_AddLine(draw_list, primary_gx, primary_target_tdata.band_y0 + 12 * s, primary_gx, primary_target_tdata.band_y1 - 12 * s, guide_col, 1.5 * s)
+        end
+
         for _, sn in ipairs(state.drag_selected_snapshot) do
-            local ghost_qn = (sn.start_qn or 0) + delta_qn
+            local ghost_qn = math.max(0, (sn.start_qn or 0) + delta_qn)
+            local ghost_dur = sn.dur_qn or 1.0
             local ghost_pitch = math.max(0, math.min(127, (sn.pitch or 60) + delta_pitch))
             local gx = Engraver.qn_to_canvas_x(ghost_qn, margin_left, s, qn_per_measure, measure_map)
-            
-            -- Find the note's track
-            local ghost_trk = nil
-            for _, tdata in ipairs(active_tracks_data) do
-                if tdata.track == sn.track then
-                    ghost_trk = tdata
-                    break
-                end
-            end
-            ghost_trk = ghost_trk or active_tracks_data[1]
-            
+            local end_gx = Engraver.qn_to_canvas_x(ghost_qn + ghost_dur, margin_left, s, qn_per_measure, measure_map)
+
+            local sn_sys_idx = (sn.track and trk_to_sys_idx[sn.track]) or orig_sys_idx
+            local dst_sys_idx = math.max(1, math.min(#active_tracks_data, sn_sys_idx + delta_sys_idx))
+            local ghost_trk = active_tracks_data[dst_sys_idx] or primary_target_tdata
+
             if ghost_trk then
                 local line_spacing = 8.0 * s
                 local step_y = line_spacing / 2.0
@@ -4764,30 +4830,77 @@ function ScoreCanvas.render(ctx, state, fonts, project_tracks, midi_service)
                 local bass_bot = ghost_trk.bass_bottom_y or (ghost_trk.is_grand and (ghost_trk.band_y0 and (ghost_trk.band_y0 + 148 * s) or (148 * s)) or (ghost_trk.band_y0 and (ghost_trk.band_y0 + 80 * s) or (80 * s)))
                 local ghost_key_idx = resolve_effective_key(state, ghost_trk, nil, ghost_qn)
                 if primary_drag_key_idx == nil then primary_drag_key_idx = ghost_key_idx end
-                local gy = Engraver.pitch_to_canvas_y(ghost_pitch, treble_bot, bass_bot, step_y, ghost_trk.is_grand, ghost_trk.clef, nil, ghost_trk.mid_bottom_y, ghost_key_idx)
-                
-                -- Glowing semi-transparent gold-orange ghost note with outline
-                reaper.ImGui_DrawList_AddCircleFilled(draw_list, gx, gy, 7.5 * s, 0xFF9F1C88)
-                reaper.ImGui_DrawList_AddCircle(draw_list, gx, gy, 8.5 * s, 0xFF9F1CFF, 0, 2.0 * s)
+
+                local eff_pitch = Engraver.get_note_effective_pitch(ghost_pitch, ghost_qn, ghost_trk.guid, state)
+                local cdef = Constants.CLEF_DEFS and Constants.CLEF_DEFS[ghost_trk.clef]
+                local is_unpitched = cdef and cdef.unpitched
+                local gy, _, dstep, preview_acc, staff_tgt = Engraver.pitch_to_canvas_y(eff_pitch, treble_bot, bass_bot, step_y, ghost_trk.is_grand, ghost_trk.clef, sn.pref_acc, ghost_trk.mid_bottom_y, ghost_key_idx)
+
+                -- 1. Ledger lines on target system
+                local staff_bot = (staff_tgt == "treble") and treble_bot or ((staff_tgt == "mid" or staff_tgt == "alto") and (ghost_trk.mid_bottom_y or bass_bot) or bass_bot)
+                if dstep <= -2 then
+                    for ls = -2, dstep, -2 do
+                        local ly = staff_bot - (ls * step_y)
+                        reaper.ImGui_DrawList_AddLine(draw_list, gx - 10 * s, ly, gx + 10 * s, ly, accent_col, 1.5 * s)
+                    end
+                elseif dstep >= 10 then
+                    for ls = 10, dstep, 2 do
+                        local ly = staff_bot - (ls * step_y)
+                        reaper.ImGui_DrawList_AddLine(draw_list, gx - 10 * s, ly, gx + 10 * s, ly, accent_col, 1.5 * s)
+                    end
+                end
+
+                -- 2. Duration span bar behind ghost notehead
+                if end_gx > gx + 6 * s then
+                    reaper.ImGui_DrawList_AddRectFilled(draw_list, gx, gy - 2.5 * s, end_gx, gy + 2.5 * s, glow_col, 2.0 * s)
+                end
+
+                -- 3. Accidental glyph in target key signature
+                if preview_acc and preview_acc ~= 0 and not is_unpitched then
+                    Engraver.draw_accidental(draw_list, preview_acc, gx - 12.0 * s, gy, s, font_music, accent_col)
+                end
+
+                -- 4. Glowing ghost halo + SMuFL notehead + ghost stem
+                reaper.ImGui_DrawList_AddCircleFilled(draw_list, gx, gy, 8.5 * s, fill_col)
+                reaper.ImGui_DrawList_AddCircle(draw_list, gx, gy, 9.2 * s, accent_col, 0, 1.8 * s)
+                local is_whole = (math.abs(ghost_dur - 4.0) < 0.15)
+                local is_half  = (math.abs(ghost_dur - 2.0) < 0.15 or math.abs(ghost_dur - 3.0) < 0.15)
+                Engraver.draw_oval_notehead(draw_list, gx, gy, s, 0xFFFFFFFF, not (is_whole or is_half), is_whole, font_music, sn.notehead_type)
+
+                if not is_whole then
+                    local stem_down = (dstep >= 4)
+                    local stem_x = stem_down and (gx - 5.0 * s) or (gx + 5.0 * s)
+                    local stem_y2 = stem_down and (gy + 26.0 * s) or (gy - 26.0 * s)
+                    reaper.ImGui_DrawList_AddLine(draw_list, stem_x, gy, stem_x, stem_y2, accent_col, 2.0 * s)
+                end
             end
         end
-        
-        -- Tooltip box beside mouse cursor with target pitch and measure position
+
+        -- Tooltip box beside mouse cursor with target pitch, measure/beat, block count, and target staff
         local base_pitch = (state.drag_note and state.drag_note.pitch) or 60
         local target_pitch = math.max(0, math.min(127, base_pitch + delta_pitch))
         local base_qn = (state.drag_note and state.drag_note.start_qn) or 0
         local target_qn = math.max(0, base_qn + delta_qn)
-        local badge_key_idx = primary_drag_key_idx or resolve_effective_key(state, active_tracks_data[1], nil, target_qn)
+        local badge_key_idx = primary_drag_key_idx or resolve_effective_key(state, primary_target_tdata, nil, target_qn)
         local p_name, p_oct = Engraver.get_pitch_display_name(target_pitch, nil, badge_key_idx)
-        local tip = string.format("%s%d | Measure %.2f", p_name, p_oct, (target_qn / bpi) + 1)
-        
-        local bw = 120 * s
+        local bar_num = math.floor((target_qn + 0.001) / bpi) + 1
+        local beat_num = (target_qn % bpi) + 1.0
+        local cnt_str = (#state.drag_selected_snapshot > 1) and string.format("[%d notes] ", #state.drag_selected_snapshot) or ""
+        local sys_str = ""
+        if is_cross_sys or is_copy_drag then
+            local tname = (primary_target_tdata and primary_target_tdata.name) or "Staff"
+            if #tname > 14 then tname = tname:sub(1, 12) .. ".." end
+            sys_str = string.format(" %s %s", is_copy_drag and "➕➔" or "➔", tname)
+        end
+        local tip = string.format("%s%s%d | Bar %d Beat %.2f%s", cnt_str, p_name, p_oct, bar_num, beat_num, sys_str)
+
+        local bw = math.max(135 * s, (#tip * 6.8 * s) + 18 * s)
         local bh = 22 * s
         local bx = mouse_x + 16 * s
         local by = mouse_y - 26 * s
         reaper.ImGui_DrawList_AddRectFilled(draw_list, bx, by, bx + bw, by + bh, 0x111111EE, 4)
-        reaper.ImGui_DrawList_AddRect(draw_list, bx, by, bx + bw, by + bh, 0xFF9F1CFF, 4, 0, 1.2 * s)
-        reaper.ImGui_DrawList_AddText(draw_list, bx + 8 * s, by + 3 * s, 0xFF9F1CFF, tip)
+        reaper.ImGui_DrawList_AddRect(draw_list, bx, by, bx + bw, by + bh, accent_col, 4, 0, 1.2 * s)
+        reaper.ImGui_DrawList_AddText(draw_list, bx + 8 * s, by + 3 * s, accent_col, tip)
     end
 
     -- DRAG PREVIEW FOR DYNAMICS (Ghost dynamic, measure guideline & position badge)

@@ -1078,4 +1078,227 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
     return true
 end
 
+-- ==============================================================================
+-- COPY SELECTED NOTES TO DISPLAYED SYSTEM ABOVE (-1) OR BELOW (+1)
+-- Strictly uses the currently displayed tracks in active_tracks_data.
+-- ==============================================================================
+function ClipboardService.copy_selected_notes_to_adjacent_system(state, direction, midi_service, active_tracks_data)
+    if not state or not midi_service then return false end
+    local eff_tracks = active_tracks_data or state.active_tracks_cache
+    if not eff_tracks or #eff_tracks == 0 then
+        state.status_msg = "Copy to staff: No displayed staves found"
+        return false
+    end
+
+    local selected_list = {}
+    local seen_keys = {}
+    if state.selected_notes then
+        for k, sn in pairs(state.selected_notes) do
+            if sn then
+                local nk = k or (sn.get_key and sn:get_key()) or tostring(sn)
+                if not seen_keys[nk] then
+                    seen_keys[nk] = true
+                    table.insert(selected_list, sn)
+                end
+            end
+        end
+    end
+    if #selected_list == 0 and state.selected_note then
+        table.insert(selected_list, state.selected_note)
+    end
+    if #selected_list == 0 then
+        state.status_msg = "Copy to staff: No notes selected"
+        return false
+    end
+
+    table.sort(selected_list, function(a, b)
+        if math.abs((a.start_qn or 0) - (b.start_qn or 0)) > 0.001 then
+            return (a.start_qn or 0) < (b.start_qn or 0)
+        end
+        return (a.pitch or 60) < (b.pitch or 60)
+    end)
+
+    -- Build lookup from track pointer / track GUID to displayed index (1 .. #eff_tracks)
+    local track_to_idx = {}
+    local guid_to_idx = {}
+    for idx, tdata in ipairs(eff_tracks) do
+        if tdata.track then
+            track_to_idx[tdata.track] = idx
+        end
+        if tdata.guid then
+            guid_to_idx[tdata.guid] = idx
+        elseif tdata.track and reaper.ValidatePtr(tdata.track, "MediaTrack*") then
+            guid_to_idx[reaper.GetTrackGUID(tdata.track)] = idx
+        end
+    end
+
+    local dir_step = (direction and direction < 0) and -1 or 1
+    local groups_by_target_idx = {}
+    local target_indices_order = {}
+    local skipped_boundary = 0
+
+    local Engraver = package.loaded["rendering.engraver"] or require("rendering.engraver")
+
+    for _, sn in ipairs(selected_list) do
+        local src_trk = sn.track or (sn.take and get_track_from_take(sn.take))
+        local src_guid = sn.track_guid or (src_trk and reaper.ValidatePtr(src_trk, "MediaTrack*") and reaper.GetTrackGUID(src_trk))
+        local src_idx = (src_trk and track_to_idx[src_trk]) or (src_guid and guid_to_idx[src_guid])
+        if src_idx then
+            local dst_idx = src_idx + dir_step
+            if dst_idx >= 1 and dst_idx <= #eff_tracks then
+                if not groups_by_target_idx[dst_idx] then
+                    groups_by_target_idx[dst_idx] = {}
+                    table.insert(target_indices_order, dst_idx)
+                end
+                local k = (sn.get_key and sn:get_key()) or sn.key
+                local head_type = sn.notehead_type
+                if not head_type and Engraver and Engraver.get_note_custom_notehead_type then
+                    head_type = Engraver.get_note_custom_notehead_type(sn, state)
+                end
+                local stem_dir = sn.stem_dir or (state.note_stem_directions and k and state.note_stem_directions[k])
+                local pref_acc = (state.note_accidentals and k and state.note_accidentals[k]) or nil
+                table.insert(groups_by_target_idx[dst_idx], {
+                    sn = sn,
+                    start_qn = sn.start_qn or 0,
+                    dur_qn = sn.dur_qn or 1.0,
+                    end_qn = sn.end_qn or ((sn.start_qn or 0) + (sn.dur_qn or 1.0)),
+                    pitch = sn.pitch or 60,
+                    vel = sn.vel or 96,
+                    chan = sn.chan or 0,
+                    articulation = sn.articulation,
+                    notehead_type = head_type,
+                    stem_dir = stem_dir,
+                    pref_acc = pref_acc
+                })
+            else
+                skipped_boundary = skipped_boundary + 1
+            end
+        end
+    end
+
+    if #target_indices_order == 0 then
+        if skipped_boundary > 0 then
+            state.status_msg = (dir_step < 0)
+                and "▲ Already at top displayed staff"
+                or "▼ Already at bottom displayed staff"
+        else
+            state.status_msg = "Copy to staff: Source staff is not in displayed track list"
+        end
+        return false
+    end
+
+    reaper.Undo_BeginBlock2(0)
+    state:clear_selection()
+
+    local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
+    local all_banks = ReaticulateParser and ReaticulateParser.get_all_banks and ReaticulateParser.get_all_banks()
+    local copied_count = 0
+    local has_copied_heads = false
+    local last_target_tdata = nil
+    local first_new_note = nil
+
+    for _, dst_idx in ipairs(target_indices_order) do
+        local dst_tdata = eff_tracks[dst_idx]
+        local dst_track = dst_tdata and dst_tdata.track
+        local dst_guid = (dst_tdata and dst_tdata.guid) or (dst_track and reaper.ValidatePtr(dst_track, "MediaTrack*") and reaper.GetTrackGUID(dst_track))
+        local notes_group = groups_by_target_idx[dst_idx]
+
+        if dst_track and reaper.ValidatePtr(dst_track, "MediaTrack*") and notes_group and #notes_group > 0 then
+            last_target_tdata = dst_tdata
+            local min_sqn = notes_group[1].start_qn
+            local max_eqn = notes_group[1].end_qn
+            for _, ng in ipairs(notes_group) do
+                if ng.start_qn < min_sqn then min_sqn = ng.start_qn end
+                if ng.end_qn > max_eqn then max_eqn = ng.end_qn end
+            end
+
+            local target_item, target_take = midi_service.get_or_create_item_at_qn(dst_track, min_sqn, math.max(0.25, max_eqn - min_sqn))
+            if target_take and reaper.ValidatePtr(target_take, "MediaItem_Take*") then
+                reaper.MIDI_DisableSort(target_take)
+                local ref_inserted = {}
+
+                for _, ng in ipairs(notes_group) do
+                    local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(target_take, ng.start_qn) + 0.5)
+                    -- Prevent duplicate stacking at identical PPQ + pitch + channel
+                    local _, existing_cnt = reaper.MIDI_CountEvts(target_take)
+                    for ni = existing_cnt - 1, 0, -1 do
+                        local ok, _, _, ex_sppq, _, ex_chan, ex_pitch = reaper.MIDI_GetNote(target_take, ni)
+                        if ok and ex_pitch == ng.pitch and ex_chan == ng.chan and math.abs(ex_sppq - sppq) <= 10 then
+                            reaper.MIDI_DeleteNote(target_take, ni)
+                        end
+                    end
+
+                    local n_obj = midi_service.insert_note(target_take, ng.start_qn, ng.pitch, ng.dur_qn, ng.vel, ng.chan, ng.articulation)
+                    if n_obj then
+                        local eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(target_take, ng.start_qn + ng.dur_qn) + 0.5)
+                        table.insert(ref_inserted, { idx = -1, pitch = ng.pitch, chan = ng.chan, sppq = sppq, eppq = eppq })
+                        local new_k = (n_obj.get_key and n_obj:get_key()) or n_obj.key
+                        if ng.notehead_type and ng.notehead_type ~= "auto" then
+                            n_obj.notehead_type = ng.notehead_type
+                            reaper.MIDI_InsertTextSysexEvt(target_take, false, false, sppq, 15, string.format("NOTATOR_NOTEHEAD %d %d %s %.4f", ng.pitch, ng.chan or 0, ng.notehead_type, ng.start_qn))
+                            reaper.MIDI_InsertTextSysexEvt(target_take, false, false, sppq, 15, string.format("NOTE %d %d head %s", ng.pitch, ng.chan or 0, ng.notehead_type))
+                            state.note_head_types = state.note_head_types or {}
+                            if new_k then state.note_head_types[new_k] = ng.notehead_type end
+                            if dst_guid then
+                                local trk_k = string.format("trk_%s_%.3f_%d_%d", tostring(dst_guid), ng.start_qn, ng.pitch, ng.chan or 0)
+                                state.note_head_types[trk_k] = ng.notehead_type
+                            end
+                            has_copied_heads = true
+                        end
+                        if ng.stem_dir and (ng.stem_dir == "up" or ng.stem_dir == "down") then
+                            n_obj.stem_dir = ng.stem_dir
+                            reaper.MIDI_InsertTextSysexEvt(target_take, false, false, sppq, 15, string.format("NOTATOR_STEM %d %d %s", ng.pitch, ng.chan or 0, ng.stem_dir))
+                            state.note_stem_directions = state.note_stem_directions or {}
+                            if new_k then state.note_stem_directions[new_k] = ng.stem_dir end
+                        end
+                        if ng.pref_acc ~= nil and new_k then
+                            state.note_accidentals = state.note_accidentals or {}
+                            state.note_accidentals[new_k] = ng.pref_acc
+                        end
+                        state:select_note(n_obj)
+                        if not first_new_note then first_new_note = n_obj end
+                        copied_count = copied_count + 1
+                    end
+                end
+
+                midi_service.resolve_voice_conflicts(target_take, ref_inserted)
+                local bank = dst_track and ReaticulateParser and ReaticulateParser.get_bank_for_track(dst_track, all_banks)
+                midi_service.auto_chase_momentary_articulations(target_take, bank)
+                reaper.MIDI_Sort(target_take)
+
+                state.focused_track = dst_track
+                state.selected_item = target_item
+                state.selected_take = target_take
+                reaper.SetOnlyTrackSelected(dst_track)
+            end
+        end
+    end
+
+    if has_copied_heads and midi_service.save_notehead_types then
+        midi_service.save_notehead_types(state)
+    end
+
+    if midi_service.invalidate_cache then
+        midi_service.invalidate_cache()
+    end
+    state.active_tracks_cache = nil
+    midi_service.sync_selection_to_reaper(state, eff_tracks)
+    reaper.UpdateArrange()
+
+    local undo_lbl = (dir_step < 0) and "Notator: Copy Notes to Staff Above" or "Notator: Copy Notes to Staff Below"
+    reaper.Undo_EndBlock2(0, undo_lbl, -1)
+
+    if first_new_note and state.audition_notes then
+        local AudioPreview = package.loaded["services.audio_preview"] or require("services.audio_preview")
+        if AudioPreview and AudioPreview.play_note then
+            AudioPreview.play_note(state, first_new_note.pitch, first_new_note.vel, first_new_note.chan, first_new_note.track, first_new_note.start_qn, first_new_note)
+        end
+    end
+
+    local dst_name = (last_target_tdata and last_target_tdata.name) or "Target Staff"
+    local arrow_lbl = (dir_step < 0) and "▲ Staff Above" or "▼ Staff Below"
+    state.status_msg = string.format("Copied %d note(s) to %s (%s)", copied_count, dst_name, arrow_lbl)
+    return true
+end
+
 return ClipboardService

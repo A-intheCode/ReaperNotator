@@ -241,6 +241,24 @@ ShortcutManager.DEFAULT_SHORTCUTS = {
         shift = true,
         alt  = false
     },
+    copy_to_system_above = {
+        name = "Copy selected notes to displayed staff above",
+        cat  = "Edit & Selection",
+        key  = "UpArrow",
+        ctrl = true,
+        shift = false,
+        alt  = false,
+        desc = "Copies all selected notes to the adjacent displayed staff above in the Track Picker."
+    },
+    copy_to_system_below = {
+        name = "Copy selected notes to displayed staff below",
+        cat  = "Edit & Selection",
+        key  = "DownArrow",
+        ctrl = true,
+        shift = false,
+        alt  = false,
+        desc = "Copies all selected notes to the adjacent displayed staff below in the Track Picker."
+    },
     select_all = {
         name = "Select all notes",
         cat  = "Edit & Selection",
@@ -595,6 +613,8 @@ ShortcutManager.ACTION_LIST = {
     "copy",
     "paste",
     "cut",
+    "copy_to_system_above",
+    "copy_to_system_below",
     "select_all",
     "select_next_note",
     "select_prev_note",

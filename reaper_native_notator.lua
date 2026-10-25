@@ -1,7 +1,8 @@
 -- @description REAPER-Notator: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 2.57
+-- @version 2.58
 -- @changelog
+--   + v2.58: New: Multi-Note Block Drag & Drop across staves with full SMuFL Ghost Notes preview (Ctrl+Drag to copy), Shortcut Copy of selected notes to adjacent displayed staff above/below (Ctrl+UpArrow / Ctrl+DownArrow), and Legal Notice addition
 --   + v2.57: Hotfix: Reliable first-click Note Preview (AudioPreview) with active REAPER track MIDI & Audio status detection (Track_GetPeakInfo on MIDI channels 1024/1025 and Audio channels 0/1), immediate Mouse-Down warmup & trigger sequence (immune to 3px mouse micro-jitter during clicks), closed-loop Note-On retry if REAPER's audio thread swallowed the initial Note-On while arming a heavy VSTi track, and fix Reaticulate P_EXT:reaticulate re-sync loop during note clicks
 --   + v2.56: Hotfix: Fix `ImGui assertion failed: font_cfg->SizePixels > 0.0f` crash on systems running ReaImGui < 0.10 (auto-detect legacy 3-argument `ImGui_CreateFont(family, size_px, flags)` / `ImGui_CreateFontFromFile(file, size_px, flags)` vs. ReaImGui 0.10+ 2-argument dynamic font API in `FontManager.init`), and document `ReaImGui v0.10+` dependency requirement in GitHub README & ReaPack metadata
 --   + v2.55: Stable Release: Fix Display Quantize (1/1 to 1/32) visual note position & duration quantization (`Engraver.quantize_notes_for_display` & `Engraver.get_display_quantized_qn`), intra-measure barline clamping (notes at the end of a bar never jump across the barline into the next measure), grid-slot consolidation (preserving simultaneous chords and selection links), immediate measure-map cache invalidation & ProjExtState/ExtState persistence when toggling Display Quantize in Top Bar or Tools Drawer, and 100% zero impact on score rendering or MIDI when Display Quantize is disabled
@@ -82,6 +83,9 @@
 --
 -- ==============================================================================
 -- Copyright (C) 2026 A-intheCode
+--
+-- LEGAL NOTICE: Any copying or use of code from REAPER-Notator is not permitted
+-- without an express written agreement with the author (A-intheCode).
 --
 -- This program is free software: you can redistribute it and/or modify
 -- it under the terms of the GNU General Public License as published by

@@ -590,6 +590,15 @@ function KeyboardHandler.handle(ctx, state, midi_service, clipboard_service, dyn
             midi_service.move_selected_qn(state, step)
         elseif is_action_pressed("move_left") then
             midi_service.move_selected_qn(state, -step)
+        -- Copy selected notes to displayed system above / below (Ctrl + Up/Down default)
+        elseif is_action_pressed("copy_to_system_above") then
+            if clipboard_service and clipboard_service.copy_selected_notes_to_adjacent_system then
+                clipboard_service.copy_selected_notes_to_adjacent_system(state, -1, midi_service, active_tracks_data)
+            end
+        elseif is_action_pressed("copy_to_system_below") then
+            if clipboard_service and clipboard_service.copy_selected_notes_to_adjacent_system then
+                clipboard_service.copy_selected_notes_to_adjacent_system(state, 1, midi_service, active_tracks_data)
+            end
         -- Transposition (semitone / octave)
         elseif is_action_pressed("octave_up") then
             midi_service.transpose_selected(state, 12)

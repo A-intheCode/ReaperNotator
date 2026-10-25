@@ -1581,15 +1581,18 @@ function MidiService.get_or_create_item_at_qn(track, target_qn, dur_qn)
             local i_start_qn = reaper.TimeMap2_timeToQN(0, ipos)
             local i_end_qn = reaper.TimeMap2_timeToQN(0, ipos + ilen)
             
-            -- Exact match: target lies within item
-            if target_qn >= (i_start_qn - 0.05) and target_qn <= (i_end_qn + 0.05) then
+            -- Exact or overlapping match: target range intersects item
+            if (target_qn >= (i_start_qn - 0.05) and target_qn <= (i_end_qn + 0.05))
+                or ((target_qn + need_dur) >= (i_start_qn - 0.05) and target_qn <= (i_end_qn + 0.05))
+            then
                 best_item = it
                 best_take = tk
-                -- Expand item if necessary without looping
-                if (target_qn + need_dur) > i_end_qn then
-                    local new_end_qn = math.max(i_end_qn, target_qn + need_dur + 1.0)
+                local new_start_qn = math.min(i_start_qn, target_qn)
+                local new_end_qn = math.max(i_end_qn, target_qn + need_dur)
+                if new_start_qn < (i_start_qn - 0.01) or new_end_qn > (i_end_qn + 0.01) then
+                    if new_end_qn > i_end_qn then new_end_qn = math.max(i_end_qn, target_qn + need_dur + 1.0) end
                     reaper.SetMediaItemInfo_Value(it, "B_LOOPSRC", 0)
-                    reaper.MIDI_SetItemExtents(it, i_start_qn, new_end_qn)
+                    reaper.MIDI_SetItemExtents(it, new_start_qn, new_end_qn)
                     reaper.SetMediaItemInfo_Value(it, "B_LOOPSRC", 0)
                 end
                 break

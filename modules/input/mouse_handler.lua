@@ -145,7 +145,22 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                     break
                 end
             end
+            if not target_trk and #active_tracks_data > 0 then
+                local best_dist = math.huge
+                for _, tdata in ipairs(active_tracks_data) do
+                    if tdata.band_y0 and tdata.band_y1 then
+                        local d = (mouse_y < tdata.band_y0) and (tdata.band_y0 - mouse_y) or ((mouse_y > tdata.band_y1) and (mouse_y - tdata.band_y1) or 0)
+                        if d < best_dist then
+                            best_dist = d
+                            target_trk = tdata
+                        end
+                    end
+                end
+            end
             target_trk = target_trk or note_trk or active_tracks_data[1]
+            state.drag_target_track = (target_trk and target_trk.track) or (state.drag_note and state.drag_note.track)
+            state.drag_target_guid = (target_trk and target_trk.guid) or nil
+            state.drag_copy_mode = is_ctrl and true or false
             
             if target_trk and target_trk.band_y0 then
                 local line_spacing = 8.0 * s
@@ -153,16 +168,20 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                 local treble_bot = target_trk.treble_bottom_y or (target_trk.band_y0 + 72 * s)
                 local bass_bot = target_trk.bass_bottom_y or (target_trk.is_grand and (target_trk.band_y0 + 148 * s) or (target_trk.band_y0 + 80 * s))
                 local mid_bot = target_trk.mid_bottom_y
-                local drag_qn = (state.drag_note and state.drag_note.start_qn) or 0
+                local drag_qn = (state.drag_target_qn or (state.drag_note and state.drag_note.start_qn)) or 0
                 local drag_key_idx = 0
                 if has_kss and KeySignatureService and KeySignatureService.resolve_effective_key then
-                    local res = KeySignatureService.resolve_effective_key(state, target_trk, state.drag_note and state.drag_note.item, drag_qn)
+                    local res = KeySignatureService.resolve_effective_key(state, target_trk, nil, drag_qn)
                     drag_key_idx = (type(res) == "table" and (res.idx or res.key_idx)) or (type(res) == "number" and res) or 0
                 else
                     drag_key_idx = state.key_signature or 0
                 end
                 local new_pitch, in_tr = Engraver.canvas_y_to_pitch(mouse_y, treble_bot, bass_bot, step_y, target_trk.is_grand, target_trk.clef, nil, mid_bot, drag_key_idx)
-                state.drag_target_pitch = math.max(0, math.min(127, new_pitch or (state.drag_note and state.drag_note.pitch) or 60))
+                local written_p = new_pitch or (state.drag_note and state.drag_note.pitch) or 60
+                local active_oct = OctaveService and OctaveService.get_active_line_at_qn and OctaveService.get_active_line_at_qn(state, target_trk.guid, drag_qn)
+                local Constants = package.loaded["constants"] or require("constants")
+                local oct_shift = active_oct and (Constants.OCTAVE_LINE_DEFS[active_oct.type] and Constants.OCTAVE_LINE_DEFS[active_oct.type].shift_semitones or 0) or 0
+                state.drag_target_pitch = math.max(0, math.min(127, written_p + oct_shift))
             else
                 state.drag_target_pitch = state.drag_note and state.drag_note.pitch or 60
             end
@@ -210,12 +229,13 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
                 end
             end
             
-            -- Audition upon vertical movement (pitch change)
+            -- Audition upon vertical movement (pitch change or target staff change)
             local effective_pitch = orig_pitch + state.drag_delta_pitch
-            if state.is_dragging and state.last_drag_audition_pitch ~= effective_pitch then
+            local trk_ptr = (target_trk and target_trk.track) or (state.drag_note and state.drag_note.track)
+            if state.is_dragging and (state.last_drag_audition_pitch ~= effective_pitch or state.last_drag_audition_track ~= trk_ptr) then
                 state.last_drag_audition_pitch = effective_pitch
-                local trk_ptr = (target_trk and target_trk.track) or (state.drag_note and state.drag_note.track)
-                AudioPreview.play_note(state, effective_pitch, state.drag_note and state.drag_note.vel, state.drag_note and state.drag_note.chan, trk_ptr, state.drag_note and state.drag_note.start_qn, state.drag_note)
+                state.last_drag_audition_track = trk_ptr
+                AudioPreview.play_note(state, effective_pitch, state.drag_note and state.drag_note.vel, state.drag_note and state.drag_note.chan, trk_ptr, (state.drag_note and state.drag_note.start_qn or 0) + (state.drag_delta_qn or 0), state.drag_note)
             end
         end
     end
@@ -229,144 +249,341 @@ function MouseHandler.handle(ctx, state, canvas_info, midi_service, dynamics_eng
             local delta_qn = state.drag_delta_qn or ((state.drag_target_qn or orig_start_qn) - orig_start_qn)
             local delta_pitch = state.drag_delta_pitch or ((state.drag_target_pitch or orig_pitch) - orig_pitch)
             
-            if (math.abs(delta_qn) > 0.01 or delta_pitch ~= 0) and #state.drag_selected_snapshot > 0 then
+            local trk_to_sys_idx = {}
+            for idx, tdata in ipairs(active_tracks_data) do
+                if tdata.track then trk_to_sys_idx[tdata.track] = idx end
+            end
+            local orig_sys_idx = (state.drag_note and state.drag_note.track and trk_to_sys_idx[state.drag_note.track]) or 1
+            local target_sys_idx = (state.drag_target_track and trk_to_sys_idx[state.drag_target_track]) or orig_sys_idx
+            local delta_sys_idx = target_sys_idx - orig_sys_idx
+            local is_cross_system = (delta_sys_idx ~= 0) or (state.drag_target_track and state.drag_note and state.drag_target_track ~= state.drag_note.track)
+            local is_copy_drag = (state.drag_copy_mode == true) or is_ctrl
+
+            if (math.abs(delta_qn) > 0.01 or delta_pitch ~= 0 or is_cross_system or is_copy_drag) and #state.drag_selected_snapshot > 0 then
                 reaper.Undo_BeginBlock2(0)
                 local affected_takes = {}
                 local take_moved_notes = {}
                 local new_selected = {}
                 local items_to_expand = {}
-                
-                -- Disable re-sorting prior to modifying all notes so indices remain stable!
-                for _, sn in ipairs(state.drag_selected_snapshot) do
-                    local take = sn.take
-                    if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
-                        if not affected_takes[take] then
-                            affected_takes[take] = true
-                            reaper.MIDI_DisableSort(take)
+                local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
+                local all_banks = ReaticulateParser and ReaticulateParser.get_all_banks and ReaticulateParser.get_all_banks()
+
+                if not is_cross_system and not is_copy_drag then
+                    -- CASE A: Same-system in-place block move
+                    for _, sn in ipairs(state.drag_selected_snapshot) do
+                        local take = sn.take
+                        if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
+                            if not affected_takes[take] then
+                                affected_takes[take] = true
+                                reaper.MIDI_DisableSort(take)
+                            end
                         end
                     end
-                end
-                
-                for _, sn in ipairs(state.drag_selected_snapshot) do
-                    local take = sn.take
-                    if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
-                        local new_sqn = math.max(0, sn.start_qn + delta_qn)
-                        local new_eqn = new_sqn + sn.dur_qn
-                        local new_pitch = math.max(0, math.min(127, sn.pitch + delta_pitch))
-                        
-                        local item = reaper.GetMediaItemTake_Item(take)
-                        if item and delta_qn > 0 then
-                            local it_pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
-                            local it_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
-                            local it_end_qn = reaper.TimeMap2_timeToQN(0, it_pos + it_len)
-                            if new_eqn > it_end_qn then
-                                items_to_expand[item] = math.max(items_to_expand[item] or it_end_qn, new_eqn + 1.0)
-                            end
-                        end
-                        
-                        local orig_sppq = reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn)
-                        local target_idx = nil
-                        local ok, _, muted, s_chk, e_chk, chan, p_chk, vel = reaper.MIDI_GetNote(take, sn.idx)
-                        if ok and p_chk == sn.pitch and math.abs(s_chk - orig_sppq) < 15 then
-                            target_idx = sn.idx
-                        else
-                            local _, notecnt = reaper.MIDI_CountEvts(take)
-                            for i = 0, notecnt - 1 do
-                                local ok2, _, m2, s2, e2, c2, p2, v2 = reaper.MIDI_GetNote(take, i)
-                                if ok2 and p2 == sn.pitch and math.abs(s2 - orig_sppq) < 15 then
-                                    target_idx = i
-                                    ok, muted, s_chk, e_chk, chan, p_chk, vel = ok2, m2, s2, e2, c2, p2, v2
-                                    break
+
+                    for _, sn in ipairs(state.drag_selected_snapshot) do
+                        local take = sn.take
+                        if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
+                            local new_sqn = math.max(0, sn.start_qn + delta_qn)
+                            local new_eqn = new_sqn + sn.dur_qn
+                            local new_pitch = math.max(0, math.min(127, sn.pitch + delta_pitch))
+
+                            local item = reaper.GetMediaItemTake_Item(take)
+                            if item and delta_qn > 0 then
+                                local it_pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+                                local it_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+                                local it_end_qn = reaper.TimeMap2_timeToQN(0, it_pos + it_len)
+                                if new_eqn > it_end_qn then
+                                    items_to_expand[item] = math.max(items_to_expand[item] or it_end_qn, new_eqn + 1.0)
+                                end
+                            elseif item and delta_qn < 0 then
+                                local it_pos = reaper.GetMediaItemInfo_Value(item, "D_POSITION")
+                                local it_start_qn = reaper.TimeMap2_timeToQN(0, it_pos)
+                                if new_sqn < it_start_qn then
+                                    local it_len = reaper.GetMediaItemInfo_Value(item, "D_LENGTH")
+                                    local it_end_qn = reaper.TimeMap2_timeToQN(0, it_pos + it_len)
+                                    reaper.SetMediaItemInfo_Value(item, "B_LOOPSRC", 0)
+                                    reaper.MIDI_SetItemExtents(item, math.max(0, new_sqn), it_end_qn)
+                                    reaper.SetMediaItemInfo_Value(item, "B_LOOPSRC", 0)
                                 end
                             end
-                        end
-                        
-                        if target_idx and ok then
-                            -- If only pitch changed: sppq and eppq remain 1:1 untouched!
-                            local sppq, eppq
-                            if math.abs(delta_qn) <= 0.01 then
-                                sppq = s_chk
-                                eppq = e_chk
-                                new_sqn = sn.start_qn
-                                new_eqn = sn.end_qn
+
+                            local orig_sppq = reaper.MIDI_GetPPQPosFromProjQN(take, sn.start_qn)
+                            local target_idx = nil
+                            local ok, _, muted, s_chk, e_chk, chan, p_chk, vel = reaper.MIDI_GetNote(take, sn.idx)
+                            if ok and p_chk == sn.pitch and math.abs(s_chk - orig_sppq) < 15 then
+                                target_idx = sn.idx
                             else
-                                sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_sqn) + 0.5)
-                                eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_eqn) + 0.5)
-                            end
-                            
-                            reaper.MIDI_SetNote(take, target_idx, true, muted, sppq, eppq, chan, new_pitch, vel, true)
-                            take_moved_notes[take] = take_moved_notes[take] or {}
-                            table.insert(take_moved_notes[take], { idx = target_idx, pitch = new_pitch, chan = chan, sppq = sppq, eppq = eppq })
-                            
-                            local updated = MidiNote.new({
-                                idx = target_idx, pitch = new_pitch, start_qn = new_sqn, end_qn = new_eqn,
-                                dur_qn = sn.dur_qn, vel = vel, chan = chan, take = take, item = item or sn.item,
-                                track = sn.track, articulation = sn.articulation
-                            })
-                            local new_k = updated:get_key()
-                            new_selected[new_k] = updated
-                            
-                            local old_k = sn.key or (sn.get_key and sn:get_key()) or string.format("%s_%s_%.3f_%d_%d", tostring(sn.item or item), tostring(take), sn.start_qn, sn.pitch, sn.chan or chan or 0)
-                            local old_id = string.format("%s_%s_%.3f", tostring(take), tostring(sn.idx), sn.start_qn)
-                            local old_pos = string.format("%s_%.3f_%d", tostring(take), sn.start_qn, sn.pitch)
-                            local new_id = string.format("%s_%s_%.3f", tostring(take), tostring(target_idx), new_sqn)
-                            local new_pos = string.format("%s_%.3f_%d", tostring(take), new_sqn, new_pitch)
-                            if state.note_base_pitch then
-                                local bp = state.note_base_pitch[old_k] or state.note_base_pitch[old_id] or state.note_base_pitch[old_pos]
-                                if bp then
-                                    state.note_base_pitch[new_k] = bp + delta_pitch
-                                    state.note_base_pitch[new_id] = bp + delta_pitch
-                                    state.note_base_pitch[new_pos] = bp + delta_pitch
-                                    state.note_base_pitch[old_k] = nil
-                                    state.note_base_pitch[old_id] = nil
-                                    state.note_base_pitch[old_pos] = nil
+                                local _, notecnt = reaper.MIDI_CountEvts(take)
+                                for i = 0, notecnt - 1 do
+                                    local ok2, _, m2, s2, e2, c2, p2, v2 = reaper.MIDI_GetNote(take, i)
+                                    if ok2 and p2 == sn.pitch and math.abs(s2 - orig_sppq) < 15 then
+                                        target_idx = i
+                                        ok, muted, s_chk, e_chk, chan, p_chk, vel = ok2, m2, s2, e2, c2, p2, v2
+                                        break
+                                    end
                                 end
                             end
-                            if state.note_accidentals then
-                                local acc = state.note_accidentals[old_k] or state.note_accidentals[old_id] or state.note_accidentals[old_pos]
-                                if acc ~= nil then
-                                    state.note_accidentals[new_k] = acc
-                                    state.note_accidentals[new_id] = acc
-                                    state.note_accidentals[new_pos] = acc
-                                    state.note_accidentals[old_k] = nil
-                                    state.note_accidentals[old_id] = nil
-                                    state.note_accidentals[old_pos] = nil
+
+                            if target_idx and ok then
+                                local sppq, eppq
+                                if math.abs(delta_qn) <= 0.01 then
+                                    sppq = s_chk
+                                    eppq = e_chk
+                                    new_sqn = sn.start_qn
+                                    new_eqn = sn.end_qn
+                                else
+                                    sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_sqn) + 0.5)
+                                    eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(take, new_eqn) + 0.5)
+                                end
+
+                                reaper.MIDI_SetNote(take, target_idx, true, muted, sppq, eppq, chan, new_pitch, vel, true)
+                                take_moved_notes[take] = take_moved_notes[take] or {}
+                                table.insert(take_moved_notes[take], { idx = target_idx, pitch = new_pitch, chan = chan, sppq = sppq, eppq = eppq })
+
+                                -- Update associated Type 15 events (articulation, notehead, stem) when note moves
+                                if math.abs(sppq - orig_sppq) > 1 or new_pitch ~= sn.pitch then
+                                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(take)
+                                    local p_pat = "^(NOTE%s+)" .. tostring(sn.pitch) .. "(%s+" .. tostring(chan) .. "%s+)"
+                                    local nh_pat = "^(NOTATOR_NOTEHEAD%s+)" .. tostring(sn.pitch) .. "(%s+" .. tostring(chan) .. "%s+)"
+                                    local st_pat = "^(NOTATOR_STEM%s+)" .. tostring(sn.pitch) .. "(%s+" .. tostring(chan) .. "%s+)"
+                                    for ti = 0, text_cnt - 1 do
+                                        local tok, tsel, tmut, tppq, tetype, tmsg = reaper.MIDI_GetTextSysexEvt(take, ti)
+                                        if tok and tetype == 15 and math.abs(tppq - orig_sppq) <= 15 then
+                                            local new_msg = tmsg:gsub(p_pat, "%1" .. tostring(new_pitch) .. "%2")
+                                            new_msg = new_msg:gsub(nh_pat, "%1" .. tostring(new_pitch) .. "%2")
+                                            new_msg = new_msg:gsub(st_pat, "%1" .. tostring(new_pitch) .. "%2")
+                                            if new_msg ~= tmsg then
+                                                reaper.MIDI_SetTextSysexEvt(take, ti, tsel, tmut, sppq, tetype, new_msg, true)
+                                            end
+                                        end
+                                    end
+                                end
+
+                                local updated = MidiNote.new({
+                                    idx = target_idx, pitch = new_pitch, start_qn = new_sqn, end_qn = new_eqn,
+                                    dur_qn = sn.dur_qn, vel = vel, chan = chan, take = take, item = item or sn.item,
+                                    track = sn.track, articulation = sn.articulation,
+                                    notehead_type = sn.notehead_type, stem_dir = sn.stem_dir
+                                })
+                                local new_k = updated:get_key()
+                                new_selected[new_k] = updated
+
+                                local old_k = sn.key or (sn.get_key and sn:get_key()) or string.format("%s_%s_%.3f_%d_%d", tostring(sn.item or item), tostring(take), sn.start_qn, sn.pitch, sn.chan or chan or 0)
+                                local old_id = string.format("%s_%s_%.3f", tostring(take), tostring(sn.idx), sn.start_qn)
+                                local old_pos = string.format("%s_%.3f_%d", tostring(take), sn.start_qn, sn.pitch)
+                                local new_id = string.format("%s_%s_%.3f", tostring(take), tostring(target_idx), new_sqn)
+                                local new_pos = string.format("%s_%.3f_%d", tostring(take), new_sqn, new_pitch)
+                                if state.note_base_pitch then
+                                    local bp = state.note_base_pitch[old_k] or state.note_base_pitch[old_id] or state.note_base_pitch[old_pos]
+                                    if bp then
+                                        state.note_base_pitch[new_k] = bp + delta_pitch
+                                        state.note_base_pitch[new_id] = bp + delta_pitch
+                                        state.note_base_pitch[new_pos] = bp + delta_pitch
+                                        state.note_base_pitch[old_k] = nil
+                                        state.note_base_pitch[old_id] = nil
+                                        state.note_base_pitch[old_pos] = nil
+                                    end
+                                end
+                                if state.note_accidentals then
+                                    local acc = state.note_accidentals[old_k] or state.note_accidentals[old_id] or state.note_accidentals[old_pos]
+                                    if acc ~= nil then
+                                        state.note_accidentals[new_k] = acc
+                                        state.note_accidentals[new_id] = acc
+                                        state.note_accidentals[new_pos] = acc
+                                        state.note_accidentals[old_k] = nil
+                                        state.note_accidentals[old_id] = nil
+                                        state.note_accidentals[old_pos] = nil
+                                    end
                                 end
                             end
                         end
                     end
+                    for tk, ref_list in pairs(take_moved_notes) do
+                        MidiService.resolve_voice_conflicts(tk, ref_list)
+                        local trk = MidiService.get_track_from_take and MidiService.get_track_from_take(tk)
+                        local bank = trk and ReaticulateParser and ReaticulateParser.get_bank_for_track(trk, all_banks)
+                        MidiService.auto_chase_momentary_articulations(tk, bank)
+                    end
+                    for tk in pairs(affected_takes) do reaper.MIDI_Sort(tk) end
+                    for it, max_eqn in pairs(items_to_expand) do
+                        local it_pos = reaper.GetMediaItemInfo_Value(it, "D_POSITION")
+                        local it_start_qn = reaper.TimeMap2_timeToQN(0, it_pos)
+                        reaper.SetMediaItemInfo_Value(it, "B_LOOPSRC", 0)
+                        reaper.MIDI_SetItemExtents(it, it_start_qn, max_eqn)
+                        reaper.SetMediaItemInfo_Value(it, "B_LOOPSRC", 0)
+                    end
+                    reaper.Undo_EndBlock2(0, "Notator: Move notes", -1)
+                    state.status_msg = string.format("Moved %d note(s) (Δ %.2f QN, %+d semitones)", #state.drag_selected_snapshot, delta_qn, delta_pitch)
+                else
+                    -- CASE B: Cross-system block move OR Ctrl+Drag block copy
+                    local dest_groups = {}
+                    local dest_order = {}
+                    for _, sn in ipairs(state.drag_selected_snapshot) do
+                        local sn_sys_idx = (sn.track and trk_to_sys_idx[sn.track]) or orig_sys_idx
+                        local dst_sys_idx = math.max(1, math.min(#active_tracks_data, sn_sys_idx + delta_sys_idx))
+                        local dst_tdata = active_tracks_data[dst_sys_idx]
+                        local dst_track = (dst_tdata and dst_tdata.track) or state.drag_target_track or sn.track
+                        if dst_track and reaper.ValidatePtr(dst_track, "MediaTrack*") then
+                            if not dest_groups[dst_track] then
+                                dest_groups[dst_track] = { tdata = dst_tdata, notes = {} }
+                                table.insert(dest_order, dst_track)
+                            end
+                            table.insert(dest_groups[dst_track].notes, sn)
+                        end
+                    end
+
+                    -- 1. If moving (not copying), delete original notes & their Type 15 events from source takes
+                    if not is_copy_drag then
+                        local src_takes_notes = {}
+                        for _, sn in ipairs(state.drag_selected_snapshot) do
+                            local take = sn.take
+                            if take and reaper.ValidatePtr(take, "MediaItem_Take*") then
+                                if not affected_takes[take] then
+                                    affected_takes[take] = true
+                                    reaper.MIDI_DisableSort(take)
+                                end
+                                src_takes_notes[take] = src_takes_notes[take] or {}
+                                table.insert(src_takes_notes[take], sn)
+                            end
+                        end
+                        for src_take, sn_list in pairs(src_takes_notes) do
+                            local del_indices = {}
+                            local _, notecnt = reaper.MIDI_CountEvts(src_take)
+                            for _, sn in ipairs(sn_list) do
+                                local orig_sppq = reaper.MIDI_GetPPQPosFromProjQN(src_take, sn.start_qn)
+                                for ni = notecnt - 1, 0, -1 do
+                                    if not del_indices[ni] then
+                                        local ok2, _, _, s2, _, c2, p2 = reaper.MIDI_GetNote(src_take, ni)
+                                        if ok2 and p2 == sn.pitch and c2 == (sn.chan or 0) and math.abs(s2 - orig_sppq) < 15 then
+                                            del_indices[ni] = true
+                                            break
+                                        end
+                                    end
+                                end
+                                -- Clean associated Type 15 events at orig_sppq
+                                local _, _, _, text_cnt = reaper.MIDI_CountEvts(src_take)
+                                local p_pat = "^NOTE%s+" .. tostring(sn.pitch) .. "%s+" .. tostring(sn.chan or 0) .. "%s+"
+                                local nh_pat = "^NOTATOR_NOTEHEAD%s+" .. tostring(sn.pitch) .. "%s+" .. tostring(sn.chan or 0) .. "%s+"
+                                local st_pat = "^NOTATOR_STEM%s+" .. tostring(sn.pitch) .. "%s+" .. tostring(sn.chan or 0) .. "%s+"
+                                for ti = text_cnt - 1, 0, -1 do
+                                    local tok, _, _, tppq, tetype, tmsg = reaper.MIDI_GetTextSysexEvt(src_take, ti)
+                                    if tok and tetype == 15 and math.abs(tppq - orig_sppq) <= 15 then
+                                        if tmsg:match(p_pat) or tmsg:match(nh_pat) or tmsg:match(st_pat) then
+                                            reaper.MIDI_DeleteTextSysexEvt(src_take, ti)
+                                        end
+                                    end
+                                end
+                            end
+                            local sorted_del = {}
+                            for ni in pairs(del_indices) do table.insert(sorted_del, ni) end
+                            table.sort(sorted_del, function(a, b) return a > b end)
+                            for _, ni in ipairs(sorted_del) do
+                                reaper.MIDI_DeleteNote(src_take, ni)
+                            end
+                            local src_trk = MidiService.get_track_from_take and MidiService.get_track_from_take(src_take)
+                            local src_bank = src_trk and ReaticulateParser and ReaticulateParser.get_bank_for_track(src_trk, all_banks)
+                            MidiService.auto_chase_momentary_articulations(src_take, src_bank)
+                        end
+                    end
+
+                    -- 2. Insert moved/copied notes onto destination track(s)
+                    local last_dst_name = "Staff"
+                    for _, dst_track in ipairs(dest_order) do
+                        local grp = dest_groups[dst_track]
+                        if grp and #grp.notes > 0 then
+                            if grp.tdata and grp.tdata.name then last_dst_name = grp.tdata.name end
+                            local min_sqn = math.huge
+                            local max_eqn = 0
+                            for _, sn in ipairs(grp.notes) do
+                                local n_sqn = math.max(0, (sn.start_qn or 0) + delta_qn)
+                                local n_eqn = n_sqn + (sn.dur_qn or 1.0)
+                                if n_sqn < min_sqn then min_sqn = n_sqn end
+                                if n_eqn > max_eqn then max_eqn = n_eqn end
+                            end
+                            local dst_item, dst_take = MidiService.get_or_create_item_at_qn(dst_track, min_sqn, math.max(0.25, max_eqn - min_sqn))
+                            if dst_take and reaper.ValidatePtr(dst_take, "MediaItem_Take*") then
+                                if not affected_takes[dst_take] then
+                                    affected_takes[dst_take] = true
+                                    reaper.MIDI_DisableSort(dst_take)
+                                end
+                                local ref_inserted = {}
+                                for _, sn in ipairs(grp.notes) do
+                                    local new_sqn = math.max(0, (sn.start_qn or 0) + delta_qn)
+                                    local new_dur = sn.dur_qn or 1.0
+                                    local new_pitch = math.max(0, math.min(127, (sn.pitch or 60) + delta_pitch))
+                                    local n_obj = MidiService.insert_note(dst_take, new_sqn, new_pitch, new_dur, sn.vel, sn.chan, sn.articulation)
+                                    if n_obj then
+                                        local sppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(dst_take, new_sqn) + 0.5)
+                                        local eppq = math.floor(reaper.MIDI_GetPPQPosFromProjQN(dst_take, new_sqn + new_dur) + 0.5)
+                                        table.insert(ref_inserted, { idx = -1, pitch = new_pitch, chan = sn.chan or 0, sppq = sppq, eppq = eppq })
+                                        local new_k = n_obj:get_key()
+                                        if sn.notehead_type and sn.notehead_type ~= "auto" then
+                                            n_obj.notehead_type = sn.notehead_type
+                                            reaper.MIDI_InsertTextSysexEvt(dst_take, false, false, sppq, 15, string.format("NOTATOR_NOTEHEAD %d %d %s %.4f", new_pitch, sn.chan or 0, sn.notehead_type, new_sqn))
+                                            reaper.MIDI_InsertTextSysexEvt(dst_take, false, false, sppq, 15, string.format("NOTE %d %d head %s", new_pitch, sn.chan or 0, sn.notehead_type))
+                                            state.note_head_types = state.note_head_types or {}
+                                            state.note_head_types[new_k] = sn.notehead_type
+                                        end
+                                        if sn.stem_dir and (sn.stem_dir == "up" or sn.stem_dir == "down") then
+                                            n_obj.stem_dir = sn.stem_dir
+                                            reaper.MIDI_InsertTextSysexEvt(dst_take, false, false, sppq, 15, string.format("NOTATOR_STEM %d %d %s", new_pitch, sn.chan or 0, sn.stem_dir))
+                                            state.note_stem_directions = state.note_stem_directions or {}
+                                            state.note_stem_directions[new_k] = sn.stem_dir
+                                        end
+                                        if sn.pref_acc ~= nil then
+                                            state.note_accidentals = state.note_accidentals or {}
+                                            state.note_accidentals[new_k] = sn.pref_acc
+                                        end
+                                        new_selected[new_k] = n_obj
+                                    end
+                                end
+                                MidiService.resolve_voice_conflicts(dst_take, ref_inserted)
+                                local dst_bank = dst_track and ReaticulateParser and ReaticulateParser.get_bank_for_track(dst_track, all_banks)
+                                MidiService.auto_chase_momentary_articulations(dst_take, dst_bank)
+                                state.focused_track = dst_track
+                                state.selected_item = dst_item
+                                state.selected_take = dst_take
+                                reaper.SetOnlyTrackSelected(dst_track)
+                            end
+                        end
+                    end
+
+                    for tk in pairs(affected_takes) do reaper.MIDI_Sort(tk) end
+                    reaper.Undo_EndBlock2(0, is_copy_drag and "Notator: Copy notes" or "Notator: Move notes to staff", -1)
+                    state.status_msg = string.format("%s %d note(s) to %s (Δ %.2f QN, %+d semitones)", is_copy_drag and "Copied" or "Moved", #state.drag_selected_snapshot, last_dst_name, delta_qn, delta_pitch)
                 end
-                for tk, ref_list in pairs(take_moved_notes) do
-                    MidiService.resolve_voice_conflicts(tk, ref_list)
-                end
-                for tk in pairs(affected_takes) do reaper.MIDI_Sort(tk) end
-                for it, max_eqn in pairs(items_to_expand) do
-                    local it_pos = reaper.GetMediaItemInfo_Value(it, "D_POSITION")
-                    local it_start_qn = reaper.TimeMap2_timeToQN(0, it_pos)
-                    reaper.SetMediaItemInfo_Value(it, "B_LOOPSRC", 0)
-                    reaper.MIDI_SetItemExtents(it, it_start_qn, max_eqn)
-                    reaper.SetMediaItemInfo_Value(it, "B_LOOPSRC", 0)
-                end
-                reaper.Undo_EndBlock2(0, "Notator: Move notes", -1)
+
                 reaper.UpdateArrange()
                 if MidiService and MidiService.invalidate_cache then
                     MidiService.invalidate_cache()
                 end
-                
+                state.active_tracks_cache = nil
                 state.selected_notes = new_selected
+                state.selected_note = nil
                 for _, sn in pairs(new_selected) do state.selected_note = sn break end
-                state.status_msg = string.format("Moved %d note(s) (Δ %.2f QN, %+d semitones)", #state.drag_selected_snapshot, delta_qn, delta_pitch)
+                MidiService.sync_selection_to_reaper(state, active_tracks_data)
             end
         end
     else
+        if state._clicked_already_selected_note then
+            local clicked_n = state._clicked_already_selected_note
+            state:clear_selection()
+            state:select_note(clicked_n)
+            MidiService.sync_selection_to_reaper(state, active_tracks_data)
+        end
         AudioPreview.play_note_on_release(state)
     end
+        state._clicked_already_selected_note = nil
         state.is_dragging = false
         state.drag_note = nil
+        state.drag_target_track = nil
+        state.drag_target_guid = nil
+        state.drag_copy_mode = false
         state.drag_selected_snapshot = {}
         state.drag_delta_qn = 0
         state.drag_delta_pitch = 0
         state.last_drag_audition_pitch = nil
+        state.last_drag_audition_track = nil
         AudioPreview.on_mouse_released(state)
     end
     
