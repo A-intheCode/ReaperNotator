@@ -17,6 +17,50 @@ AudioPreview.active_cc_override = nil -- { track = ..., chan = ..., cc = ..., it
 AudioPreview._timer_running = false
 AudioPreview._last_state = nil
 AudioPreview.arm_click_note = nil
+AudioPreview.track_armed_since = {}
+AudioPreview.track_confirmed_ready = {}
+
+--- Checks whether the track has produced any audible output signal (> -120 dB) on channels 0/1
+--- @param track MediaTrack
+--- @return boolean has_audio
+function AudioPreview.has_track_audio_output(track)
+    if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return false end
+    if not reaper.Track_GetPeakInfo then return true end
+    local p0 = reaper.Track_GetPeakInfo(track, 0) or 0
+    local p1 = reaper.Track_GetPeakInfo(track, 1) or 0
+    return (p0 > 0.000001 or p1 > 0.000001)
+end
+
+--- Checks whether REAPER's track MIDI input meter (channel 1024/1025) or audio meter has registered activity
+--- @param track MediaTrack
+--- @return boolean has_signal
+function AudioPreview.has_track_live_signal(track)
+    if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return false end
+    if not reaper.Track_GetPeakInfo then return false end
+    local pm1 = reaper.Track_GetPeakInfo(track, 1024) or 0
+    local pm2 = reaper.Track_GetPeakInfo(track, 1025) or 0
+    local p0  = reaper.Track_GetPeakInfo(track, 0) or 0
+    local p1  = reaper.Track_GetPeakInfo(track, 1) or 0
+    return (pm1 > 0.0001 or pm2 > 0.0001 or p0 > 0.000001 or p1 > 0.000001)
+end
+
+--- Ensures the track is still armed on Virtual MIDI Keyboard (6080) with monitoring enabled
+--- @param track MediaTrack
+function AudioPreview.ensure_track_vkb_active(track)
+    if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return end
+    if reaper.GetMediaTrackInfo_Value(track, "I_RECINPUT") ~= 6080 then
+        reaper.SetMediaTrackInfo_Value(track, "I_RECINPUT", 6080)
+    end
+    if reaper.GetMediaTrackInfo_Value(track, "I_RECMON") == 0 then
+        reaper.SetMediaTrackInfo_Value(track, "I_RECMON", 1)
+    end
+    if reaper.GetMediaTrackInfo_Value(track, "I_RECARM") == 0 then
+        reaper.SetMediaTrackInfo_Value(track, "I_RECARM", 1)
+        if reaper.APIExists("CSurf_OnRecArmChange") then
+            pcall(reaper.CSurf_OnRecArmChange, track, 1)
+        end
+    end
+end
 
 --- Restores any temporarily altered CC values to their original pre-preview state
 --- @param state table
@@ -140,6 +184,9 @@ function AudioPreview.restore_track(track)
         AudioPreview.track_restore[track] = nil
     end
 
+    AudioPreview.track_armed_since[track] = nil
+    AudioPreview.track_confirmed_ready[track] = nil
+
     if AudioPreview.current_track == track then
         AudioPreview.current_track = nil
         AudioPreview.current_art_pc = nil
@@ -155,6 +202,8 @@ function AudioPreview.restore_all_tracks()
     AudioPreview.current_track = nil
     AudioPreview.current_art_pc = nil
     AudioPreview.track_restore = {}
+    AudioPreview.track_armed_since = {}
+    AudioPreview.track_confirmed_ready = {}
 end
 
 --- Returns true only if the track was genuinely record-armed by the user,
@@ -237,6 +286,7 @@ function AudioPreview.prepare_track(track)
     local needs_arm = (orig_arm == 0)
     local needs_mon = (orig_mon == 0)
 
+    local now = reaper.time_precise()
     local just_switched = false
     if needs_inp or needs_arm or needs_mon or divisi_fx_to_restore then
         if not AudioPreview.track_restore[track] then
@@ -249,7 +299,7 @@ function AudioPreview.prepare_track(track)
                 changed_arm = needs_arm,
                 changed_mon = needs_mon,
                 divisi_rec_fx = divisi_fx_to_restore,
-                switched_time = reaper.time_precise()
+                switched_time = now
             }
         elseif divisi_fx_to_restore and not AudioPreview.track_restore[track].divisi_rec_fx then
             AudioPreview.track_restore[track].divisi_rec_fx = divisi_fx_to_restore
@@ -269,10 +319,22 @@ function AudioPreview.prepare_track(track)
         reaper.TrackList_AdjustWindows(false)
         reaper.UpdateArrange()
         just_switched = (needs_inp or needs_arm or needs_mon)
+        if just_switched then
+            AudioPreview.track_armed_since[track] = now
+            AudioPreview.track_confirmed_ready[track] = false
+        end
+    end
+
+    -- If the track was armed very recently (< 350ms ago) and hasn't confirmed audio output yet,
+    -- still treat it as warming up so rapid clicks never bypass the warmup sequence!
+    if not just_switched and AudioPreview.track_armed_since[track] and not AudioPreview.track_confirmed_ready[track] then
+        if (now - AudioPreview.track_armed_since[track]) < 0.350 then
+            just_switched = true
+        end
     end
 
     AudioPreview.current_track = track
-    AudioPreview.last_activity_time = reaper.time_precise()
+    AudioPreview.last_activity_time = now
     return just_switched
 end
 
@@ -707,7 +769,13 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
         end
     end
 
-    -- Store note data for mouse release trigger
+    local now = reaper.time_precise()
+    local cc_list = {
+        { cc = 1, val = final_c1 },
+        { cc = 11, val = final_c11 }
+    }
+
+    -- Store note data for mouse release & immediate Mouse-Down warmup/trigger
     AudioPreview.arm_click_note = {
         pitch = p,
         vel = final_vel,
@@ -722,20 +790,83 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
         eff_msb = eff_msb,
         eff_lsb = eff_lsb,
         just_armed = just_switched,
-        click_time = reaper.time_precise()
+        click_time = now,
+        triggered_on_down = true
     }
+
+    -- Trigger the warmup / playback sequence immediately on Mouse Down!
+    -- This ensures:
+    -- 1. The warmup timer and status detection start at 0ms on Mouse Down (not delayed until Mouse Up).
+    -- 2. Micro-movements of the mouse (>3px) during clicking never cancel the note audition.
+    AudioPreview.stop_note(state, true)
+    if just_switched then
+        AudioPreview.pending_note = {
+            pitch = p,
+            chan = ch,
+            vel = final_vel,
+            track = target_track,
+            target_art = target_art,
+            eff_msb = eff_msb,
+            eff_lsb = eff_lsb,
+            cc_list = cc_list,
+            switch_time = now,
+            delay = 0.205,
+            stage2_delay = 0.045,
+            just_switched = true,
+            bank = bank,
+            stage = 1,
+            last_probe_time = 0
+        }
+        AudioPreview.start_sequence_loop(state)
+    else
+        AudioPreview.pending_note = {
+            pitch = p,
+            chan = ch,
+            vel = final_vel,
+            track = target_track,
+            target_art = target_art,
+            eff_msb = eff_msb,
+            eff_lsb = eff_lsb,
+            cc_list = cc_list,
+            switch_time = now,
+            stage2_time = now,
+            stage2_delay = 0.035,
+            just_switched = false,
+            bank = bank,
+            stage = 2
+        }
+        AudioPreview.start_sequence_loop(state)
+    end
 end
 
---- Plays the prepared note on Mouse Release (clean two-stage PC -> Note On trigger)
+--- Plays the prepared note on Mouse Release (or marks already-triggered Mouse Down note for clean release)
 --- @param state table
 function AudioPreview.play_note_on_release(state)
     local ac = AudioPreview.arm_click_note
-    if not ac then return end
+    if not ac then
+        AudioPreview.on_mouse_released(state)
+        return
+    end
     AudioPreview.arm_click_note = nil
 
     if state and state.audition_notes == false then return end
 
-    -- Stop any active sounding note beforehand
+    -- If prepare_for_note_click already started pending_note or active_note on Mouse Down,
+    -- keep it running and mirror pending_release_note for backward-compatible state inspection!
+    if ac.triggered_on_down and (AudioPreview.pending_note or AudioPreview.active_note) then
+        if AudioPreview.active_note then
+            AudioPreview.active_note.released = true
+        end
+        if AudioPreview.pending_note then
+            AudioPreview.pending_note.released_on_up = true
+            AudioPreview.pending_release_note = AudioPreview.pending_note
+        end
+        AudioPreview.last_activity_time = reaper.time_precise()
+        AudioPreview.start_sequence_loop(state)
+        return
+    end
+
+    -- Fallback if not yet triggered on Mouse Down:
     AudioPreview.stop_note(state, true)
 
     local target_track = ac.track
@@ -745,9 +876,6 @@ function AudioPreview.play_note_on_release(state)
     local now = reaper.time_precise()
     AudioPreview.last_activity_time = now
 
-    -- If track was freshly armed on this click, run two-stage release:
-    -- Stage 1 (after VKB input settles): Send Bank Select + Program Change + CCs
-    -- Stage 2 (45 ms after Stage 1): Send Note On so Reaticulate & VSTi keyswitch finish before Note On arrives!
     if ac.just_armed then
         AudioPreview.pending_release_note = {
             pitch = ac.pitch,
@@ -762,7 +890,8 @@ function AudioPreview.play_note_on_release(state)
             bank = ac.bank,
             release_time = now,
             stage = 1,
-            delay = 0.080
+            delay = 0.205,
+            stage2_delay = 0.045
         }
         AudioPreview.start_sequence_loop(state)
         return
@@ -1012,7 +1141,7 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note, fo
     AudioPreview.last_activity_time = now
 
     if just_switched then
-        -- Timing: Wait 50 ms for Virtual MIDI Keyboard & arming to settle, then another 50 ms before Note On
+        -- Timing: Wait 250 ms total (205 ms for Virtual MIDI Keyboard & track arming to settle + 45 ms after PC/CC before Note On)
         AudioPreview.pending_note = {
             pitch = p,
             extra_pitches = extra_pitches,
@@ -1024,6 +1153,9 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note, fo
             eff_lsb = eff_lsb,
             cc_list = cc_list,
             switch_time = now,
+            delay = 0.205,
+            stage2_delay = 0.045,
+            just_switched = true,
             bank = bank,
             stage = 1
         }
@@ -1088,7 +1220,14 @@ function AudioPreview.play_note(state, pitch, vel, chan, track, qn, opt_note, fo
             chan = ch,
             vel = final_vel,
             track = target_track,
+            target_art = target_art,
+            eff_msb = eff_msb,
+            eff_lsb = eff_lsb,
+            cc_list = cc_list,
             start_time = now,
+            last_trigger_time = now,
+            retry_count = 0,
+            confirmed_sounding = false,
             released = false,
             is_momentary = is_momentary,
             bank = bank
@@ -1161,14 +1300,38 @@ function AudioPreview.update(state, ctx)
     if type(state) == "table" then AudioPreview._last_state = state else state = AudioPreview._last_state end
     local now = reaper.time_precise()
 
-    -- 1. Check pending note (Two-stage delay: 50ms arming/VKB stage + additional 45ms settling stage before note)
+    -- 1. Check pending note (Active track-readiness detection + two-stage PC -> Note On)
     if AudioPreview.pending_note then
         local pn = AudioPreview.pending_note
-        local elapsed = now - pn.switch_time
+        local elapsed = now - (pn.switch_time or pn.release_time or now)
+        local ch = pn.chan & 0x0F
 
-        -- Stage 1: At 50ms, track is armed and VKB is active -> send Bank/PC and CC messages
-        if pn.stage == 1 and elapsed >= 0.050 then
-            local ch = pn.chan
+        if pn.track then
+            AudioPreview.ensure_track_vkb_active(pn.track)
+        end
+
+        -- While in Stage 1, periodically pre-send Bank/PC + CCs + silent Note-Off probe (every 55ms after 60ms)
+        -- so REAPER's track MIDI meter (1024) & Reaticulate receive the signal on the exact audio block VKB wakes up!
+        if pn.stage == 1 and elapsed >= 0.060 and (now - (pn.last_probe_time or 0)) >= 0.055 then
+            pn.last_probe_time = now
+            if pn.target_art and pn.target_art.pc and pn.target_art.pc >= 0 then
+                if pn.eff_msb and pn.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, pn.eff_msb) end
+                if pn.eff_lsb and pn.eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, pn.eff_lsb) end
+                reaper.StuffMIDIMessage(0, 0xC0 + ch, pn.target_art.pc, 0)
+            end
+            if pn.cc_list then
+                for _, cmsg in ipairs(pn.cc_list) do
+                    reaper.StuffMIDIMessage(0, 0xB0 + ch, cmsg.cc, cmsg.val)
+                end
+            end
+            reaper.StuffMIDIMessage(0, 0x80 + ch, pn.pitch, 64)
+        end
+
+        -- Stage 1 completes when either:
+        -- (a) Track live MIDI/audio peak is detected after at least 110ms, OR
+        -- (b) The 205ms warmup window has elapsed
+        local live_detected = (elapsed >= 0.110 and pn.track and AudioPreview.has_track_live_signal(pn.track))
+        if pn.stage == 1 and (live_detected or elapsed >= (pn.delay or 0.205)) then
             if pn.target_art and pn.target_art.pc and pn.target_art.pc >= 0 then
                 if pn.eff_msb and pn.eff_msb >= 0 then
                     reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, pn.eff_msb)
@@ -1191,8 +1354,20 @@ function AudioPreview.update(state, ctx)
         end
 
         -- Stage 2: Wait 45ms after Program Change so Reaticulate & VSTi keyswitch complete before triggering Note On
-        if pn.stage == 2 and (now - (pn.stage2_time or pn.switch_time) >= 0.045) then
-            local ch = pn.chan
+        if pn.stage == 2 and (now - (pn.stage2_time or pn.switch_time or now) >= (pn.stage2_delay or 0.045)) then
+            if pn.just_switched then
+                if pn.target_art and pn.target_art.pc and pn.target_art.pc >= 0 then
+                    if pn.eff_msb and pn.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, pn.eff_msb) end
+                    if pn.eff_lsb and pn.eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, pn.eff_lsb) end
+                    reaper.StuffMIDIMessage(0, 0xC0 + ch, pn.target_art.pc, 0)
+                    AudioPreview.current_art_pc = pn.target_art.pc
+                end
+                if pn.cc_list then
+                    for _, cmsg in ipairs(pn.cc_list) do
+                        reaper.StuffMIDIMessage(0, 0xB0 + ch, cmsg.cc, cmsg.val)
+                    end
+                end
+            end
             local is_momentary = false
             if pn.target_art and pn.target_art.name then
                 local MidiService = package.loaded["services.midi_service"] or require("services.midi_service")
@@ -1211,8 +1386,16 @@ function AudioPreview.update(state, ctx)
                 chan = ch,
                 vel = pn.vel,
                 track = pn.track,
+                target_art = pn.target_art,
+                eff_msb = pn.eff_msb,
+                eff_lsb = pn.eff_lsb,
+                cc_list = pn.cc_list,
                 start_time = now,
-                released = false,
+                last_trigger_time = now,
+                retry_count = 0,
+                confirmed_sounding = false,
+                was_freshly_armed = pn.just_switched,
+                released = pn.released_on_up or false,
                 is_momentary = is_momentary,
                 bank = pn.bank
             }
@@ -1220,16 +1403,24 @@ function AudioPreview.update(state, ctx)
             if state then
                 state.audition_active_note = note_info
             end
+            if AudioPreview.pending_release_note == pn then
+                AudioPreview.pending_release_note = nil
+            end
             AudioPreview.pending_note = nil
             AudioPreview.last_activity_time = now
         end
     end
 
-    -- 1b. Check pending release note (two-stage: Stage 1 sends Bank/PC after VKB settles, Stage 2 sends Note On 45ms later)
-    if AudioPreview.pending_release_note then
+    -- 1b. Check pending release note (if created via standalone play_note_on_release call)
+    if AudioPreview.pending_release_note and AudioPreview.pending_release_note ~= AudioPreview.pending_note then
         local prn = AudioPreview.pending_release_note
         local ch = prn.chan & 0x0F
-        if (prn.stage or 1) == 1 and (now - prn.release_time) >= (prn.delay or 0.080) then
+        if prn.track then
+            AudioPreview.ensure_track_vkb_active(prn.track)
+        end
+        local elapsed = now - (prn.release_time or now)
+        local live_detected = (elapsed >= 0.110 and prn.track and AudioPreview.has_track_live_signal(prn.track))
+        if (prn.stage or 1) == 1 and (live_detected or elapsed >= (prn.delay or 0.205)) then
             if prn.target_art and prn.target_art.pc and prn.target_art.pc >= 0 then
                 if prn.eff_msb and prn.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, prn.eff_msb) end
                 if prn.eff_lsb and prn.eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, prn.eff_lsb) end
@@ -1240,8 +1431,10 @@ function AudioPreview.update(state, ctx)
             if prn.final_c11 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, prn.final_c11) end
             prn.stage = 2
             prn.stage2_time = now
-            prn.stage2_delay = 0.045
-        elseif prn.stage == 2 and (now - (prn.stage2_time or prn.release_time)) >= (prn.stage2_delay or 0.045) then
+            prn.stage2_delay = prn.stage2_delay or 0.045
+        elseif prn.stage == 2 and (now - (prn.stage2_time or prn.release_time or now)) >= (prn.stage2_delay or 0.045) then
+            if prn.final_c1 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, prn.final_c1) end
+            if prn.final_c11 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, prn.final_c11) end
             reaper.StuffMIDIMessage(0, 0x90 + ch, prn.pitch, prn.vel)
 
             local is_momentary = false
@@ -1255,7 +1448,18 @@ function AudioPreview.update(state, ctx)
                 chan = ch,
                 vel = prn.vel,
                 track = prn.track,
+                target_art = prn.target_art,
+                eff_msb = prn.eff_msb,
+                eff_lsb = prn.eff_lsb,
+                cc_list = {
+                    { cc = 1, val = prn.final_c1 or 100 },
+                    { cc = 11, val = prn.final_c11 or 100 }
+                },
                 start_time = now,
+                last_trigger_time = now,
+                retry_count = 0,
+                confirmed_sounding = false,
+                was_freshly_armed = true,
                 released = true,
                 is_momentary = is_momentary,
                 bank = prn.bank
@@ -1269,9 +1473,43 @@ function AudioPreview.update(state, ctx)
         end
     end
 
-    -- 2. Check active playing note
+    -- 2. Check active playing note (with Closed-Loop Audio Output Detection & Retry!)
     local an = AudioPreview.active_note or (state and state.audition_active_note)
     if an then
+        -- Closed-loop audio detection: check if the VSTi actually produced audio (> -120 dB)
+        if not an.confirmed_sounding and an.track then
+            if AudioPreview.has_track_audio_output(an.track) then
+                an.confirmed_sounding = true
+                AudioPreview.track_confirmed_ready[an.track] = true
+            elseif (an.retry_count or 0) < 4 and (now - (an.last_trigger_time or an.start_time)) >= 0.105 then
+                -- Track output is still 0.0 (silent) 105ms after Note On because REAPER's audio thread
+                -- swallowed the Note On while finishing track arming -> automatically re-send PC/CC + Note On!
+                AudioPreview.ensure_track_vkb_active(an.track)
+                local ch = (an.chan or 0) & 0x0F
+                if an.target_art and an.target_art.pc and an.target_art.pc >= 0 then
+                    if an.eff_msb and an.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, an.eff_msb) end
+                    if an.eff_lsb and an.eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, an.eff_lsb) end
+                    reaper.StuffMIDIMessage(0, 0xC0 + ch, an.target_art.pc, 0)
+                    AudioPreview.current_art_pc = an.target_art.pc
+                end
+                if an.cc_list then
+                    for _, cmsg in ipairs(an.cc_list) do
+                        reaper.StuffMIDIMessage(0, 0xB0 + ch, cmsg.cc, cmsg.val)
+                    end
+                end
+                reaper.StuffMIDIMessage(0, 0x90 + ch, an.pitch, an.vel)
+                if an.extra_pitches then
+                    for _, ep in ipairs(an.extra_pitches) do
+                        reaper.StuffMIDIMessage(0, 0x90 + ch, ep, an.vel)
+                    end
+                end
+                an.retry_count = (an.retry_count or 0) + 1
+                an.last_trigger_time = now
+                an.start_time = now
+                AudioPreview.last_activity_time = now
+            end
+        end
+
         local dur = now - an.start_time
 
         -- Safety timeout: automatically stop after at most 3.0 seconds

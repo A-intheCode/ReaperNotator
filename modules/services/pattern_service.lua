@@ -500,7 +500,7 @@ function PatternService.start_preview(pattern, track, audio_preview)
 
     local now = reaper.time_precise()
     audio_preview.last_activity_time = now
-    local arm_delay = just_switched and 0.080 or 0.0
+    local arm_delay = just_switched and 0.205 or 0.0
     
     PatternService.active_preview = {
         pattern = pattern,

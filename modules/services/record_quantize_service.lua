@@ -199,7 +199,7 @@ function RecordQuantizeService.sync_all_tracks_monitoring(state)
         if trk and reaper.ValidatePtr(trk, "MediaTrack*") then
             local r = ap and ap.track_restore and ap.track_restore[trk]
             local cur_recarm = (reaper.GetMediaTrackInfo_Value(trk, "I_RECARM") == 1)
-            if r and cur_recarm and (ap.current_track ~= trk or not r.changed_arm) then
+            if r and cur_recarm and ap.current_track ~= trk then
                 r.orig_arm = 1
                 r.changed_arm = false
                 r.orig_mon = 1

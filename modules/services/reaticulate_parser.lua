@@ -746,7 +746,7 @@ function ReaticulateParser.ensure_track_reaticulate_fx_and_bank(track, bank, sta
             table.insert(kept_banks, 1, new_entry)
             appdata.banks = kept_banks
             appdata_modified = true
-        elseif fx_added_or_moved or (appdata.banks[1] and not appdata.banks[1].h) then
+        elseif fx_added_or_moved then
             if appdata.banks[1] then
                 appdata.banks[1].h = nil
             end
