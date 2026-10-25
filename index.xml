@@ -8,7 +8,7 @@
       </metadata>
       <version name="2.58" author="A-intheCode" time="2026-10-25T14:35:00Z">
         <changelog><![CDATA[
-+ v2.58: New: Multi-Note Block Drag & Drop across staves with full SMuFL Ghost Notes preview (Ctrl+Drag to copy), Shortcut Copy of selected notes to adjacent displayed staff above/below (Ctrl+UpArrow / Ctrl+DownArrow), and Legal Notice update
++ v2.58: New: Multi-Note Block Drag & Drop across staves with full SMuFL Ghost Notes preview (Ctrl+Drag to copy), Shortcut Move of selected notes to adjacent displayed staff above/below (Ctrl+UpArrow / Ctrl+DownArrow), Note Preview 4-case (Arm / Monitoring) track preparation & full 250ms warmup fix, and Legal Notice update
 + v2.57: Hotfix: Reliable first-click Note Preview (AudioPreview) with active REAPER track MIDI & Audio status detection (Track_GetPeakInfo on MIDI channels 1024/1025 and Audio channels 0/1) and closed-loop Note-On retry
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>

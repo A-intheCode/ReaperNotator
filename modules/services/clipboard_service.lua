@@ -1079,14 +1079,16 @@ function ClipboardService.paste(state, midi_service, active_tracks_data)
 end
 
 -- ==============================================================================
--- COPY SELECTED NOTES TO DISPLAYED SYSTEM ABOVE (-1) OR BELOW (+1)
+-- MOVE SELECTED NOTES TO DISPLAYED SYSTEM ABOVE (-1) OR BELOW (+1)
 -- Strictly uses the currently displayed tracks in active_tracks_data.
+-- Deletes the moved notes from their source staff and inserts them on the
+-- adjacent displayed staff (or copies if copy_mode == true).
 -- ==============================================================================
-function ClipboardService.copy_selected_notes_to_adjacent_system(state, direction, midi_service, active_tracks_data)
+function ClipboardService.move_selected_notes_to_adjacent_system(state, direction, midi_service, active_tracks_data, copy_mode)
     if not state or not midi_service then return false end
     local eff_tracks = active_tracks_data or state.active_tracks_cache
     if not eff_tracks or #eff_tracks == 0 then
-        state.status_msg = "Copy to staff: No displayed staves found"
+        state.status_msg = "Move to staff: No displayed staves found"
         return false
     end
 
@@ -1107,7 +1109,7 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
         table.insert(selected_list, state.selected_note)
     end
     if #selected_list == 0 then
-        state.status_msg = "Copy to staff: No notes selected"
+        state.status_msg = "Move to staff: No notes selected"
         return false
     end
 
@@ -1121,20 +1123,21 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
     -- Build lookup from track pointer / track GUID to displayed index (1 .. #eff_tracks)
     local track_to_idx = {}
     local guid_to_idx = {}
-    for idx, tdata in ipairs(eff_tracks) do
+    for idx_t, tdata in ipairs(eff_tracks) do
         if tdata.track then
-            track_to_idx[tdata.track] = idx
+            track_to_idx[tdata.track] = idx_t
         end
         if tdata.guid then
-            guid_to_idx[tdata.guid] = idx
+            guid_to_idx[tdata.guid] = idx_t
         elseif tdata.track and reaper.ValidatePtr(tdata.track, "MediaTrack*") then
-            guid_to_idx[reaper.GetTrackGUID(tdata.track)] = idx
+            guid_to_idx[reaper.GetTrackGUID(tdata.track)] = idx_t
         end
     end
 
     local dir_step = (direction and direction < 0) and -1 or 1
     local groups_by_target_idx = {}
     local target_indices_order = {}
+    local notes_to_delete_by_take = {}
     local skipped_boundary = 0
 
     local Engraver = package.loaded["rendering.engraver"] or require("rendering.engraver")
@@ -1157,8 +1160,10 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
                 end
                 local stem_dir = sn.stem_dir or (state.note_stem_directions and k and state.note_stem_directions[k])
                 local pref_acc = (state.note_accidentals and k and state.note_accidentals[k]) or nil
-                table.insert(groups_by_target_idx[dst_idx], {
+                local entry = {
                     sn = sn,
+                    old_key = k,
+                    src_guid = src_guid,
                     start_qn = sn.start_qn or 0,
                     dur_qn = sn.dur_qn or 1.0,
                     end_qn = sn.end_qn or ((sn.start_qn or 0) + (sn.dur_qn or 1.0)),
@@ -1169,7 +1174,12 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
                     notehead_type = head_type,
                     stem_dir = stem_dir,
                     pref_acc = pref_acc
-                })
+                }
+                table.insert(groups_by_target_idx[dst_idx], entry)
+                if not copy_mode and sn.take and reaper.ValidatePtr(sn.take, "MediaItem_Take*") then
+                    notes_to_delete_by_take[sn.take] = notes_to_delete_by_take[sn.take] or {}
+                    table.insert(notes_to_delete_by_take[sn.take], entry)
+                end
             else
                 skipped_boundary = skipped_boundary + 1
             end
@@ -1182,7 +1192,7 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
                 and "▲ Already at top displayed staff"
                 or "▼ Already at bottom displayed staff"
         else
-            state.status_msg = "Copy to staff: Source staff is not in displayed track list"
+            state.status_msg = "Move to staff: Source staff is not in displayed track list"
         end
         return false
     end
@@ -1192,8 +1202,66 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
 
     local ReaticulateParser = package.loaded["services.reaticulate_parser"] or require("services.reaticulate_parser")
     local all_banks = ReaticulateParser and ReaticulateParser.get_all_banks and ReaticulateParser.get_all_banks()
-    local copied_count = 0
-    local has_copied_heads = false
+
+    -- 1. Delete moved notes and their Type 15 metadata from source takes (when moving, not copying)
+    if not copy_mode then
+        for src_take, del_entries in pairs(notes_to_delete_by_take) do
+            if reaper.ValidatePtr(src_take, "MediaItem_Take*") then
+                reaper.MIDI_DisableSort(src_take)
+                local del_indices = {}
+                local _, notecnt = reaper.MIDI_CountEvts(src_take)
+                for _, ng in ipairs(del_entries) do
+                    local orig_sppq = reaper.MIDI_GetPPQPosFromProjQN(src_take, ng.start_qn)
+                    for ni = notecnt - 1, 0, -1 do
+                        if not del_indices[ni] then
+                            local ok2, _, _, s2, _, c2, p2 = reaper.MIDI_GetNote(src_take, ni)
+                            if ok2 and p2 == ng.pitch and c2 == (ng.chan or 0) and math.abs(s2 - orig_sppq) <= 15 then
+                                del_indices[ni] = true
+                                break
+                            end
+                        end
+                    end
+                    -- Clean associated Type 15 events at orig_sppq
+                    local _, _, _, text_cnt = reaper.MIDI_CountEvts(src_take)
+                    local p_pat = "^NOTE%s+" .. tostring(ng.pitch) .. "%s+" .. tostring(ng.chan or 0) .. "%s+"
+                    local nh_pat = "^NOTATOR_NOTEHEAD%s+" .. tostring(ng.pitch) .. "%s+" .. tostring(ng.chan or 0) .. "%s+"
+                    local st_pat = "^NOTATOR_STEM%s+" .. tostring(ng.pitch) .. "%s+" .. tostring(ng.chan or 0) .. "%s+"
+                    for ti = text_cnt - 1, 0, -1 do
+                        local tok, _, _, tppq, tetype, tmsg = reaper.MIDI_GetTextSysexEvt(src_take, ti)
+                        if tok and tetype == 15 and math.abs(tppq - orig_sppq) <= 15 then
+                            if tmsg:match(p_pat) or tmsg:match(nh_pat) or tmsg:match(st_pat) then
+                                reaper.MIDI_DeleteTextSysexEvt(src_take, ti)
+                            end
+                        end
+                    end
+                    -- Clean old state metadata keys
+                    if ng.old_key then
+                        if state.note_head_types then state.note_head_types[ng.old_key] = nil end
+                        if state.note_stem_directions then state.note_stem_directions[ng.old_key] = nil end
+                        if state.note_accidentals then state.note_accidentals[ng.old_key] = nil end
+                    end
+                    if ng.src_guid and state.note_head_types then
+                        local old_trk_k = string.format("trk_%s_%.3f_%d_%d", tostring(ng.src_guid), ng.start_qn, ng.pitch, ng.chan or 0)
+                        state.note_head_types[old_trk_k] = nil
+                    end
+                end
+                local sorted_del = {}
+                for ni in pairs(del_indices) do table.insert(sorted_del, ni) end
+                table.sort(sorted_del, function(a, b) return a > b end)
+                for _, ni in ipairs(sorted_del) do
+                    reaper.MIDI_DeleteNote(src_take, ni)
+                end
+                local src_trk = get_track_from_take(src_take)
+                local src_bank = src_trk and ReaticulateParser and ReaticulateParser.get_bank_for_track(src_trk, all_banks)
+                midi_service.auto_chase_momentary_articulations(src_take, src_bank)
+                reaper.MIDI_Sort(src_take)
+            end
+        end
+    end
+
+    -- 2. Insert moved notes on the target adjacent staff(s)
+    local moved_count = 0
+    local has_moved_heads = false
     local last_target_tdata = nil
     local first_new_note = nil
 
@@ -1243,7 +1311,7 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
                                 local trk_k = string.format("trk_%s_%.3f_%d_%d", tostring(dst_guid), ng.start_qn, ng.pitch, ng.chan or 0)
                                 state.note_head_types[trk_k] = ng.notehead_type
                             end
-                            has_copied_heads = true
+                            has_moved_heads = true
                         end
                         if ng.stem_dir and (ng.stem_dir == "up" or ng.stem_dir == "down") then
                             n_obj.stem_dir = ng.stem_dir
@@ -1257,7 +1325,7 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
                         end
                         state:select_note(n_obj)
                         if not first_new_note then first_new_note = n_obj end
-                        copied_count = copied_count + 1
+                        moved_count = moved_count + 1
                     end
                 end
 
@@ -1274,7 +1342,7 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
         end
     end
 
-    if has_copied_heads and midi_service.save_notehead_types then
+    if has_moved_heads and midi_service.save_notehead_types then
         midi_service.save_notehead_types(state)
     end
 
@@ -1285,7 +1353,10 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
     midi_service.sync_selection_to_reaper(state, eff_tracks)
     reaper.UpdateArrange()
 
-    local undo_lbl = (dir_step < 0) and "Notator: Copy Notes to Staff Above" or "Notator: Copy Notes to Staff Below"
+    local verb_title = copy_mode and "Copy" or "Move"
+    local undo_lbl = (dir_step < 0)
+        and ("Notator: " .. verb_title .. " Notes to Staff Above")
+        or ("Notator: " .. verb_title .. " Notes to Staff Below")
     reaper.Undo_EndBlock2(0, undo_lbl, -1)
 
     if first_new_note and state.audition_notes then
@@ -1297,8 +1368,14 @@ function ClipboardService.copy_selected_notes_to_adjacent_system(state, directio
 
     local dst_name = (last_target_tdata and last_target_tdata.name) or "Target Staff"
     local arrow_lbl = (dir_step < 0) and "▲ Staff Above" or "▼ Staff Below"
-    state.status_msg = string.format("Copied %d note(s) to %s (%s)", copied_count, dst_name, arrow_lbl)
+    local verb_past = copy_mode and "Copied" or "Moved"
+    state.status_msg = string.format("%s %d note(s) to %s (%s)", verb_past, moved_count, dst_name, arrow_lbl)
     return true
+end
+
+-- Backward-compatible alias (defaults to moving notes)
+function ClipboardService.copy_selected_notes_to_adjacent_system(state, direction, midi_service, active_tracks_data, copy_mode)
+    return ClipboardService.move_selected_notes_to_adjacent_system(state, direction, midi_service, active_tracks_data, copy_mode or false)
 end
 
 return ClipboardService

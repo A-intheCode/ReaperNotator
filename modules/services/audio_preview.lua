@@ -44,17 +44,23 @@ function AudioPreview.has_track_live_signal(track)
     return (pm1 > 0.0001 or pm2 > 0.0001 or p0 > 0.000001 or p1 > 0.000001)
 end
 
---- Ensures the track is still armed on Virtual MIDI Keyboard (6080) with monitoring enabled
+--- Ensures the track is armed on Virtual MIDI Keyboard (6080) with monitoring enabled,
+--- skipping monitoring if already active and skipping arming if already armed.
 --- @param track MediaTrack
 function AudioPreview.ensure_track_vkb_active(track)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return end
-    if reaper.GetMediaTrackInfo_Value(track, "I_RECINPUT") ~= 6080 then
+    local cur_inp = math.floor(reaper.GetMediaTrackInfo_Value(track, "I_RECINPUT") or 0)
+    local cur_arm = math.floor(reaper.GetMediaTrackInfo_Value(track, "I_RECARM") or 0)
+    local cur_mon = math.floor(reaper.GetMediaTrackInfo_Value(track, "I_RECMON") or 0)
+    if cur_inp ~= 6080 then
         reaper.SetMediaTrackInfo_Value(track, "I_RECINPUT", 6080)
     end
-    if reaper.GetMediaTrackInfo_Value(track, "I_RECMON") == 0 then
+    -- Skip activating monitoring if monitoring is already active (cur_mon > 0)
+    if cur_mon == 0 then
         reaper.SetMediaTrackInfo_Value(track, "I_RECMON", 1)
     end
-    if reaper.GetMediaTrackInfo_Value(track, "I_RECARM") == 0 then
+    -- Skip arming if track is already armed (cur_arm == 1)
+    if cur_arm == 0 then
         reaper.SetMediaTrackInfo_Value(track, "I_RECARM", 1)
         if reaper.APIExists("CSurf_OnRecArmChange") then
             pcall(reaper.CSurf_OnRecArmChange, track, 1)
@@ -145,7 +151,7 @@ function AudioPreview.get_track_cc_at_qn(track, chan, cc_num, qn, opt_take)
     end
 end
 
---- Restores a modified track's input device and arm state cleanly to its original setting
+--- Restores a modified track's input device, monitoring, and arm state cleanly to its original pre-preview setting
 --- @param track MediaTrack
 function AudioPreview.restore_track(track)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return end
@@ -170,11 +176,7 @@ function AudioPreview.restore_track(track)
             end
         end
         if r.changed_mon and r.orig_mon ~= nil then
-            local st = AudioPreview._last_state
-            local keep_mon_on = (not st or st.rec_auto_monitor ~= false)
-            if r.orig_mon > 0 or not keep_mon_on then
-                reaper.SetMediaTrackInfo_Value(track, "I_RECMON", r.orig_mon)
-            end
+            reaper.SetMediaTrackInfo_Value(track, "I_RECMON", r.orig_mon)
         end
         if r.changed_inp and r.orig_inp ~= nil then
             reaper.SetMediaTrackInfo_Value(track, "I_RECINPUT", r.orig_inp)
@@ -216,13 +218,17 @@ function AudioPreview.is_track_user_armed(track)
     if r and r.changed_arm then
         return (r.orig_arm == 1)
     end
-    return (reaper.GetMediaTrackInfo_Value(track, "I_RECARM") == 1)
+    return (math.floor(reaper.GetMediaTrackInfo_Value(track, "I_RECARM") or 0) == 1)
 end
 
 --- Prepares a track by temporarily switching its input device to Virtual MIDI Keyboard (6080)
---- and arming the track for monitoring during the initial 50ms window.
+--- and handling the 4 explicit (Arm / Monitoring) track constellations:
+---   1. Monitoring ALREADY active (I_RECMON > 0), NOT armed (I_RECARM == 0) -> skip monitoring step, ONLY arm track.
+---   2. ALREADY armed (I_RECARM == 1), Monitoring OFF (I_RECMON == 0)       -> skip arming step, ONLY enable monitoring.
+---   3. ALREADY armed (I_RECARM == 1) AND Monitoring active (I_RECMON > 0)  -> skip both arming and monitoring steps.
+---   4. Neither armed nor monitoring active (0, 0)                          -> enable monitoring AND arm track.
 --- @param track MediaTrack
---- @return boolean just_switched Returns true if input or arm was switched (requiring >=50ms delay)
+--- @return boolean just_switched Returns true if input, monitoring, or arm state was switched (requiring 250ms warmup)
 function AudioPreview.prepare_track(track)
     if not track or not reaper.ValidatePtr(track, "MediaTrack*") then return false end
 
@@ -236,13 +242,17 @@ function AudioPreview.prepare_track(track)
     for ti = 0, proj_track_count - 1 do
         local other_track = reaper.GetTrack(0, ti)
         if other_track and other_track ~= track and reaper.ValidatePtr(other_track, "MediaTrack*") then
-            local other_arm = reaper.GetMediaTrackInfo_Value(other_track, "I_RECARM")
+            local other_arm = math.floor(reaper.GetMediaTrackInfo_Value(other_track, "I_RECARM") or 0)
             if other_arm == 1 then
                 if not AudioPreview.track_restore[other_track] then
                     AudioPreview.track_restore[other_track] = {
                         track = other_track,
+                        orig_inp = math.floor(reaper.GetMediaTrackInfo_Value(other_track, "I_RECINPUT") or 0),
                         orig_arm = 1,
+                        orig_mon = math.floor(reaper.GetMediaTrackInfo_Value(other_track, "I_RECMON") or 0),
+                        changed_inp = false,
                         changed_arm = true,
+                        changed_mon = false,
                         switched_time = reaper.time_precise()
                     }
                 end
@@ -277,45 +287,90 @@ function AudioPreview.prepare_track(track)
         end
     end
 
-    local orig_inp = reaper.GetMediaTrackInfo_Value(track, "I_RECINPUT")
-    local orig_arm = reaper.GetMediaTrackInfo_Value(track, "I_RECARM")
-    local orig_mon = reaper.GetMediaTrackInfo_Value(track, "I_RECMON")
+    local cur_inp = math.floor(reaper.GetMediaTrackInfo_Value(track, "I_RECINPUT") or 0)
+    local cur_arm = math.floor(reaper.GetMediaTrackInfo_Value(track, "I_RECARM") or 0)
+    local cur_mon = math.floor(reaper.GetMediaTrackInfo_Value(track, "I_RECMON") or 0)
     local VKB_INPUT = 6080 -- Virtual MIDI Keyboard (All Channels: 4096 | (62 << 5) | 0)
 
-    local needs_inp = (orig_inp ~= VKB_INPUT)
-    local needs_arm = (orig_arm == 0)
-    local needs_mon = (orig_mon == 0)
+    local is_already_armed = (cur_arm == 1)
+    local is_monitoring_active = (cur_mon > 0)
+    local needs_inp = (cur_inp ~= VKB_INPUT)
+    local needs_arm = false
+    local needs_mon = false
+
+    -- Explicit 4-case routine for (Arm / Monitoring) constellations:
+    if is_monitoring_active and not is_already_armed then
+        -- CASE 1: Track ALREADY has Monitoring active (I_RECMON > 0), but is NOT armed (I_RECARM == 0).
+        -- Skip the step of activating monitoring completely; ONLY arm the track!
+        needs_mon = false
+        needs_arm = true
+    elseif is_already_armed and not is_monitoring_active then
+        -- CASE 2: Track is ALREADY armed (I_RECARM == 1), but Monitoring is OFF (I_RECMON == 0).
+        -- Skip the step of arming the track completely; ONLY enable monitoring!
+        needs_arm = false
+        needs_mon = true
+    elseif is_already_armed and is_monitoring_active then
+        -- CASE 3: Track is ALREADY armed AND Monitoring is ALREADY active.
+        -- Skip both arming and monitoring steps!
+        needs_arm = false
+        needs_mon = false
+    else
+        -- CASE 4: Track has NEITHER monitoring active NOR is armed (0, 0).
+        -- Activate both monitoring and arming!
+        needs_mon = true
+        needs_arm = true
+    end
 
     local now = reaper.time_precise()
     local just_switched = false
     if needs_inp or needs_arm or needs_mon or divisi_fx_to_restore then
-        if not AudioPreview.track_restore[track] then
+        local existing_r = AudioPreview.track_restore[track]
+        if not existing_r then
             AudioPreview.track_restore[track] = {
                 track = track,
-                orig_inp = orig_inp,
-                orig_arm = orig_arm,
-                orig_mon = orig_mon,
+                orig_inp = cur_inp,
+                orig_arm = cur_arm,
+                orig_mon = cur_mon,
                 changed_inp = needs_inp,
                 changed_arm = needs_arm,
                 changed_mon = needs_mon,
                 divisi_rec_fx = divisi_fx_to_restore,
                 switched_time = now
             }
-        elseif divisi_fx_to_restore and not AudioPreview.track_restore[track].divisi_rec_fx then
-            AudioPreview.track_restore[track].divisi_rec_fx = divisi_fx_to_restore
+        else
+            if existing_r.orig_inp == nil then existing_r.orig_inp = cur_inp end
+            if existing_r.orig_arm == nil then existing_r.orig_arm = cur_arm end
+            if existing_r.orig_mon == nil then existing_r.orig_mon = cur_mon end
+            if needs_inp then existing_r.changed_inp = true end
+            if needs_arm then existing_r.changed_arm = true end
+            if needs_mon then existing_r.changed_mon = true end
+            if divisi_fx_to_restore and not existing_r.divisi_rec_fx then
+                existing_r.divisi_rec_fx = divisi_fx_to_restore
+            end
         end
+
         if needs_inp then
             reaper.SetMediaTrackInfo_Value(track, "I_RECINPUT", VKB_INPUT)
         end
-        if needs_mon then
+
+        if is_monitoring_active and not is_already_armed then
+            -- Routine 1: Monitoring is already active -> skip I_RECMON step, only arm!
+            reaper.SetMediaTrackInfo_Value(track, "I_RECARM", 1)
+            if reaper.APIExists("CSurf_OnRecArmChange") then
+                pcall(reaper.CSurf_OnRecArmChange, track, 1)
+            end
+        elseif is_already_armed and not is_monitoring_active then
+            -- Routine 2: Track is already armed -> skip I_RECARM step, only activate monitoring!
             reaper.SetMediaTrackInfo_Value(track, "I_RECMON", 1)
-        end
-        if needs_arm then
+        elseif not is_already_armed and not is_monitoring_active then
+            -- Routine 4: Neither active -> activate monitoring and arm track
+            reaper.SetMediaTrackInfo_Value(track, "I_RECMON", 1)
             reaper.SetMediaTrackInfo_Value(track, "I_RECARM", 1)
             if reaper.APIExists("CSurf_OnRecArmChange") then
                 pcall(reaper.CSurf_OnRecArmChange, track, 1)
             end
         end
+
         reaper.TrackList_AdjustWindows(false)
         reaper.UpdateArrange()
         just_switched = (needs_inp or needs_arm or needs_mon)
@@ -325,7 +380,7 @@ function AudioPreview.prepare_track(track)
         end
     end
 
-    -- If the track was armed very recently (< 350ms ago) and hasn't confirmed audio output yet,
+    -- If the track was armed/switched very recently (< 350ms ago) and hasn't confirmed audio output yet,
     -- still treat it as warming up so rapid clicks never bypass the warmup sequence!
     if not just_switched and AudioPreview.track_armed_since[track] and not AudioPreview.track_confirmed_ready[track] then
         if (now - AudioPreview.track_armed_since[track]) < 0.350 then
@@ -741,8 +796,10 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
 
     local cc_mode = state and state.audition_cc or "11_1"
     if cc_mode == "none" or cc_mode == -1 or cc_mode == "-1" then
-        reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, math.max(final_c1, 100))
-        reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, math.max(final_c11, 100))
+        if not just_switched then
+            reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, math.max(final_c1, 100))
+            reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, math.max(final_c11, 100))
+        end
     elseif cc_mode == "11_1" or cc_mode == "11" then
         if not AudioPreview.active_cc_override or AudioPreview.active_cc_override.track ~= target_track or AudioPreview.active_cc_override.chan ~= ch then
             local orig_1  = AudioPreview.get_track_cc_at_qn(target_track, ch, 1, qn_pos, opt_take)
@@ -756,16 +813,20 @@ function AudioPreview.prepare_for_note_click(state, pitch, vel, chan, track, qn,
                 }
             }
         end
-        reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, final_c1)
-        reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, final_c11)
+        if not just_switched then
+            reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, final_c1)
+            reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, final_c11)
+        end
     else
         local target_cc = tonumber(cc_mode) or 11
         local val_to_send = (target_cc == 1) and final_c1 or final_c11
-        reaper.StuffMIDIMessage(0, 0xB0 + ch, target_cc, val_to_send)
-        if target_cc == 1 then
-            reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, math.max(final_c11, 100))
-        elseif target_cc == 11 then
-            reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, math.max(final_c1, 100))
+        if not just_switched then
+            reaper.StuffMIDIMessage(0, 0xB0 + ch, target_cc, val_to_send)
+            if target_cc == 1 then
+                reaper.StuffMIDIMessage(0, 0xB0 + ch, 11, math.max(final_c11, 100))
+            elseif target_cc == 11 then
+                reaper.StuffMIDIMessage(0, 0xB0 + ch, 1, math.max(final_c1, 100))
+            end
         end
     end
 
@@ -1310,9 +1371,8 @@ function AudioPreview.update(state, ctx)
             AudioPreview.ensure_track_vkb_active(pn.track)
         end
 
-        -- While in Stage 1, periodically pre-send Bank/PC + CCs + silent Note-Off probe (every 55ms after 60ms)
-        -- so REAPER's track MIDI meter (1024) & Reaticulate receive the signal on the exact audio block VKB wakes up!
-        if pn.stage == 1 and elapsed >= 0.060 and (now - (pn.last_probe_time or 0)) >= 0.055 then
+        -- While in Stage 1, pre-send Bank/PC + CCs once at >= 90ms so Reaticulate & the VSTi receive the patch/CCs while warming up
+        if pn.stage == 1 and elapsed >= 0.090 and (pn.last_probe_time or 0) == 0 then
             pn.last_probe_time = now
             if pn.target_art and pn.target_art.pc and pn.target_art.pc >= 0 then
                 if pn.eff_msb and pn.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, pn.eff_msb) end
@@ -1324,14 +1384,11 @@ function AudioPreview.update(state, ctx)
                     reaper.StuffMIDIMessage(0, 0xB0 + ch, cmsg.cc, cmsg.val)
                 end
             end
-            reaper.StuffMIDIMessage(0, 0x80 + ch, pn.pitch, 64)
         end
 
-        -- Stage 1 completes when either:
-        -- (a) Track live MIDI/audio peak is detected after at least 110ms, OR
-        -- (b) The 205ms warmup window has elapsed
-        local live_detected = (elapsed >= 0.110 and pn.track and AudioPreview.has_track_live_signal(pn.track))
-        if pn.stage == 1 and (live_detected or elapsed >= (pn.delay or 0.205)) then
+        -- Stage 1 completes after the full 205ms warmup window (+ 45ms Stage 2 = 250ms total),
+        -- preventing pre-enabled track monitoring (I_RECMON > 0) from prematurely aborting Stage 1 via MIDI input peak 1024!
+        if pn.stage == 1 and elapsed >= (pn.delay or 0.205) then
             if pn.target_art and pn.target_art.pc and pn.target_art.pc >= 0 then
                 if pn.eff_msb and pn.eff_msb >= 0 then
                     reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, pn.eff_msb)
@@ -1419,8 +1476,7 @@ function AudioPreview.update(state, ctx)
             AudioPreview.ensure_track_vkb_active(prn.track)
         end
         local elapsed = now - (prn.release_time or now)
-        local live_detected = (elapsed >= 0.110 and prn.track and AudioPreview.has_track_live_signal(prn.track))
-        if (prn.stage or 1) == 1 and (live_detected or elapsed >= (prn.delay or 0.205)) then
+        if (prn.stage or 1) == 1 and elapsed >= (prn.delay or 0.205) then
             if prn.target_art and prn.target_art.pc and prn.target_art.pc >= 0 then
                 if prn.eff_msb and prn.eff_msb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 0, prn.eff_msb) end
                 if prn.eff_lsb and prn.eff_lsb >= 0 then reaper.StuffMIDIMessage(0, 0xB0 + ch, 32, prn.eff_lsb) end

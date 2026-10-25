@@ -28,10 +28,11 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## Key Features
 
-- **Multi-Note Block Drag & Drop Across Staves with Ghost Preview & Adjacent-Staff Copy Shortcuts (v2.58)**:
+- **Multi-Note Block Drag & Drop Across Staves with Ghost Preview, Adjacent-Staff Move Shortcuts & Pre-Monitored Note Preview Fix (v2.58)**:
   - **Multi-Note Block Drag & Drop (Same-System & Cross-System)**: Select multiple notes (via `Shift+Click` or Marquee rectangle) and drag any selected note to move the entire block horizontally and vertically—either within the same staff or directly into any other displayed staff in the score. Hold `Ctrl` while dragging (`Ctrl + Drag`) to **copy** the entire block instead of moving it.
   - **Full Engraved Ghost Notes Preview**: While dragging a single note or multi-note block, REAPER-Notator renders translucent cyan/green **Ghost Notes** at the exact target beat and target staff—complete with SMuFL noteheads, stems, ledger lines, accidentals in the target track's key signature, duration span bars, a vertical beat-alignment guide line, and a target staff tooltip badge (`-> Violins II (Copy)`).
-  - **Shortcut Copy to Displayed Staff Above / Below (`Ctrl + UpArrow` / `Ctrl + DownArrow`)**: Instantly copy all selected notes at their exact beat positions and pitches to the next visible staff above (`Ctrl + Up`) or below (`Ctrl + Down`) according to the active **Track Picker (`🎼 Tracks`)** selection, preserving articulations, custom noteheads, stem directions, and accidentals.
+  - **Shortcut Move to Displayed Staff Above / Below (`Ctrl + UpArrow` / `Ctrl + DownArrow`)**: Instantly move all selected notes at their exact beat positions and pitches to the next visible staff above (`Ctrl + Up`) or below (`Ctrl + Down`) according to the active **Track Picker (`🎼 Tracks`)** selection, preserving articulations, custom noteheads, stem directions, and accidentals.
+  - **Pre-Monitored / Pre-Armed Note Preview Routine (`AudioPreview`)**: Dedicated 4-state `(Arm / Monitoring)` preparation in `AudioPreview.prepare_track` skips monitoring activation when a track already has Input Monitoring active (`I_RECMON > 0`), skips arming when a track is already armed (`I_RECARM == 1`), preserves the full 250ms warmup without premature MIDI-meter cutoff, and cleanly restores the exact pre-preview state.
 
 - **Mid-Piece Time Signatures, Multi-Staff Meter Engraving & Scroll-Independent Barlines (v2.51)**:
   - **Bar-Targeted Time Signature Placement (`TempoService` & `KeySignatureDrawer` / `TopBar`)**: Place the Edit Cursor at any measure (e.g., Bar 5) and click any Time Signature (`3/4`, `4/4`, `2/4`, `6/8`, `12/8`, `5/4`, `7/8`, `9/8`, or Custom). REAPER-Notator automatically:
@@ -76,9 +77,9 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 - **Per-Track Freehand Annotation Layer System (v2.28–v2.34)**:
   - **Multi-Layer Freehand Pen & Eraser (`AnnotationService` & `AnnotationDrawer`)**: Draw directly on the score across per-bar transparent PNG tiles with 12 color presets, Analytical Capsule SDF anti-aliasing, quadratic Bézier curve smoothing, and 4 resolution steps (`1x`–`3x`) per instrument track.
 
-- **Global `ImGuiGuardService` & 173-Test Automated Verification Suite (v2.45–v2.58)**:
+- **Global `ImGuiGuardService` & 174-Test Automated Verification Suite (v2.45–v2.58)**:
   - **Zero-Leak ImGui Stack Protection**: Wraps `ImGui_Begin`/`End` and `ImGui_BeginChild`/`EndChild` across all UI modals, drawers, and panels to guarantee zero `Missing EndChild()` errors even on runtime exceptions.
-  - **173 Automated Unit Tests (`tests/test_all_modules.lua`)**: Verifies all 89 Lua modules and 655 exported functions with strict `_G` global-leak protection and 0 failures.
+  - **174 Automated Unit Tests (`tests/test_all_modules.lua`)**: Verifies all 89 Lua modules and 655 exported functions with strict `_G` global-leak protection and 0 failures.
 
 - **1,500 Curated Orchestral Patterns Across 10 Categories (v2.17)**:
   - Added **150 Orchestral & Cinematic Percussion** (`09_Orchestral_Percussion`) and **150 Low Strings — Celli & Double Basses** (`10_Low_Strings_Celli_Basses`) patterns to the 1-click Pattern Browser library.

@@ -218,15 +218,17 @@ function RecordQuantizeService.sync_all_tracks_monitoring(state)
                 if is_armed then
                     local newly_armed = (guid and not RecordQuantizeService._tracked_armed_guids[guid])
                     if guid then RecordQuantizeService._tracked_armed_guids[guid] = true end
-                    if not state or state.rec_auto_monitor ~= false then
-                        local cur_mon = math.floor(reaper.GetMediaTrackInfo_Value(trk, "I_RECMON") or 0)
-                        if cur_mon == 0 then
-                            reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 1)
+                    if newly_armed then
+                        if not state or state.rec_auto_monitor ~= false then
+                            local cur_mon = math.floor(reaper.GetMediaTrackInfo_Value(trk, "I_RECMON") or 0)
+                            if cur_mon == 0 then
+                                reaper.SetMediaTrackInfo_Value(trk, "I_RECMON", 1)
+                            end
                         end
-                    end
-                    if newly_armed and state and state.selected_tracks and guid then
-                        if state.disabled_tracks then state.disabled_tracks[guid] = nil end
-                        state.selected_tracks[guid] = true
+                        if state and state.selected_tracks and guid then
+                            if state.disabled_tracks then state.disabled_tracks[guid] = nil end
+                            state.selected_tracks[guid] = true
+                        end
                     end
                 elseif guid and RecordQuantizeService._tracked_armed_guids[guid] then
                     RecordQuantizeService._tracked_armed_guids[guid] = nil
