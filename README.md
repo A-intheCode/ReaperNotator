@@ -1,6 +1,6 @@
 # REAPER-Notator
 
-[![License: GPL v3](https://img.shields.io/badge/License-GPLv3-blue.svg)](LICENSE)
+[![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20(All%20Rights%20Reserved)-red.svg)](LICENSE)
 [![REAPER](https://img.shields.io/badge/REAPER-v7.0+-orange.svg)](https://www.reaper.fm/)
 [![ReaImGui](https://img.shields.io/badge/ReaImGui-v0.10%2B%20Required-brightgreen.svg)](https://github.com/cfillion/reaimgui)
 [![Reaticulate](https://img.shields.io/badge/Reaticulate-Required-blueviolet.svg)](https://reaticulate.com/)
@@ -288,7 +288,7 @@ REAPER-Notator brings high-end music engraving and scoring workflows straight in
 
 ## License & Legal Notice
 
-This project is licensed under the **GNU General Public License v3.0 (GPL-3.0)**.  
+This project is proprietary and closed-source (**All Rights Reserved — Copyright © 2026 A-intheCode**).  
 See the [LICENSE](LICENSE) file for details.
 
 ### Legal Notice / Rechtlicher Hinweis

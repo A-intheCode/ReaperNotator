@@ -79,7 +79,7 @@
 -- @provides
 --   modules/**
 --   docs/**
--- @license GPL-3.0
+-- @license Proprietary (All Rights Reserved - Copyright (C) 2026 A-intheCode)
 --
 -- ==============================================================================
 -- Copyright (C) 2026 A-intheCode
@@ -87,18 +87,18 @@
 -- LEGAL NOTICE: Any copying or use of code from REAPER-Notator is not permitted
 -- without an express written agreement with the author (A-intheCode).
 --
--- This program is free software: you can redistribute it and/or modify
--- it under the terms of the GNU General Public License as published by
--- the Free Software Foundation, either version 3 of the License, or
--- (at your option) any later version.
+-- PROPRIETARY SOFTWARE — ALL RIGHTS RESERVED (NOT OPEN SOURCE).
+-- All rights are strictly reserved by the author (A-intheCode).
+-- Unauthorized copying, modification, redistribution, or sale is prohibited.
+-- See the LICENSE file for the complete binding terms and conditions.
 --
 -- This program is distributed in the hope that it will be useful,
 -- but WITHOUT ANY WARRANTY; without even the implied warranty of
 -- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
--- GNU General Public License for more details.
+-- THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND.
 --
--- You should have received a copy of the GNU General Public License
--- along with this program. If not, see <https://www.gnu.org/licenses/>.
+-- Copyright (C) 2026 A-intheCode. All Rights Reserved.
+-- See LICENSE in the repository root for full legal terms.
 -- ==============================================================================
 -- REAPER Native Notator (Pro Edition) - Modular Main Entry Point
 -- 100% Native Notation Editor for Cockos REAPER
