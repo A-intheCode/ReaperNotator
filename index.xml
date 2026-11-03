@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<index version="1" name="REAPER-Notator" commit="main">
+  <category name="Notation">
+    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.0: Native Musical Notation &amp; Engraving Suite">
+      <metadata>
+        <description><![CDATA[REAPER Notator 3.0 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
+        <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
+      </metadata>
+      <version name="3.0" author="A-intheCode" time="2026-11-03T19:47:58Z">
+        <changelog><![CDATA[
++ v3.0: Major Exclusive Release: REAPER Notator 3.0 — Protected Closed-Source Binary Core Architecture, Multi-Staff Engraving, Synthesizer V Studio Pro 2 Live Bridge, Automatic Articulation Negative Delay Scanner, Guitar/Bass Tablature, Melodic Pathfinder 2.0, Circle of Fifths & 1,500 Orchestral Patterns
+        ]]></changelog>
+        <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
+        <source file="notator_3_core.bin">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/notator_3_core.bin</source>
+        <source file="LICENSE">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/LICENSE</source>
+        <source file="README.md">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/README.md</source>
+        <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
+        <source file="patterns.zip">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip</source>
+        <source file="modules/bin/notator_timer_x64.dll">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/bin/notator_timer_x64.dll</source>
+        <source file="data/articulation_delays.json">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/articulation_delays.json</source>
+        <source file="effects/notator_auto_divisi_input.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/notator_auto_divisi_input.jsfx</source>
+        <source file="effects/Notator_Attack_Detector.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Attack_Detector.jsfx</source>
+        <source file="effects/Notator_Articulation_Delay.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Articulation_Delay.jsfx</source>
+        <source file="docs/reaper_notator_user_manual.pdf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/docs/reaper_notator_user_manual.pdf</source>
+      </version>
+    </reapack>
+  </category>
+</index>

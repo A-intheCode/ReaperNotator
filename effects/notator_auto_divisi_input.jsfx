@@ -1,0 +1,509 @@
+desc:REAPER Notator Auto-Divisi Live Input Router
+// VERSION: 2.50
+options:gmem=REAPER_Notator_Divisi
+
+slider1:1<1,32,1>-Voice Rank (1=Highest .. M=Lowest)
+slider2:1<1,32,1>-Total Armed Tracks (M)
+slider3:0<0,2,1{Smart Register,Top-Down,Bottom-Up}>-Divisi Mode
+slider4:45<5,240,1>-Transition Tolerance (Ticks)
+slider5:1<0,1,1{Bypass,Active}>-Auto-Divisi Enabled
+
+@init
+kb_held = 0;
+kb_vel = 128;
+kb_chan = 256;
+kb_onset = 384;
+locked_rank = 512;
+my_sounding = 640;
+my_sounding_chan = 768;
+preempted_rank = 896;
+cluster_notes = 1024;
+is_sustained = 1200;
+sust_pitch = 1264;
+is_legato_tail = 1328;
+dp = 2000;
+parent = 3024;
+
+running_samples = 0;
+prev_single_k = 0;
+prev_single_pitch = -1;
+prev_single_sample = -1000000;
+gliss_dir = 0;
+
+function single_note_cost(pitch, k, is_solo) local(base, min_p, max_p, center_p, is_prim, trk_mode, dist, out_pen, sust_pen, cross_pen, k2, sp, lead_bonus, step_diff, step_abs, dt_sec) (
+  base = 1010 + (k - 1) * 8;
+  min_p = gmem[base + 0];
+  max_p = gmem[base + 1];
+  center_p = gmem[base + 2];
+  is_prim = gmem[base + 3];
+  trk_mode = floor(gmem[base + 4] + 0.5);
+  (min_p <= 0 && max_p <= 0) ? (
+    min_p = 36; max_p = 84; center_p = 60; is_prim = 1; trk_mode = 0;
+  );
+  dist = abs(pitch - center_p);
+  out_pen = 0;
+  pitch < min_p ? (
+    out_pen = 42.0 + (min_p - pitch) * 3.5;
+  ) : (
+    pitch > max_p ? (
+      out_pen = 42.0 + (pitch - max_p) * 3.5;
+    );
+  );
+  // Strictly protect genuinely sustained independent voices whenever free tracks exist
+  sust_pen = is_sustained[k] ? 100000.0 : 0.0;
+
+  // Penalize voice-crossing against any currently sustained voices
+  cross_pen = 0.0;
+  k2 = 1;
+  loop(M,
+    (k2 != k && is_sustained[k2]) ? (
+      sp = sust_pitch[k2];
+      sp >= 0 ? (
+        (k2 < k && pitch > sp) ? (
+          cross_pen += 500.0 + (pitch - sp) * 10.0;
+        ) : (
+          (k2 > k && pitch < sp) ? (
+            cross_pen += 500.0 + (sp - pitch) * 10.0;
+          );
+        );
+      );
+    );
+    k2 += 1;
+  );
+
+  lead_bonus = 0.0;
+  is_solo ? (
+    is_prim ? ( lead_bonus -= 1.5; );
+    // Fluid Glissando & Melodic Legato Continuity Engine:
+    // Keeps slow right-hand glissandi and melodic lines on the active instrument through its core register,
+    // and transitions smoothly to the immediate neighbor without ping-ponging or audio dropouts.
+    (prev_single_k >= 1 && prev_single_pitch >= 0) ? (
+      step_diff = pitch - prev_single_pitch;
+      step_abs = abs(step_diff);
+      dt_sec = (ev_sample - prev_single_sample) / max(1000.0, srate);
+      (step_abs <= 5 && dt_sec <= 1.25) ? (
+        (k == prev_single_k && out_pen == 0 && dist <= 9.5 && !is_sustained[k]) ? (
+          // Hysteresis: keep the current instrument while comfortably inside its natural core zone
+          lead_bonus -= 4.2;
+        ) : (step_diff > 0 && k == prev_single_k - 1 && out_pen == 0 && !is_sustained[k]) ? (
+          // Ascending glissando handover to the next higher instrument (#k-1)
+          lead_bonus -= 3.2;
+        ) : (step_diff < 0 && k == prev_single_k + 1 && out_pen == 0 && !is_sustained[k]) ? (
+          // Descending glissando handover to the next lower instrument (#k+1)
+          lead_bonus -= 3.2;
+        );
+        // Prevent backward register jumps against the active glissando direction
+        (gliss_dir > 0 && step_diff > 0 && k > prev_single_k) ? (
+          lead_bonus += 28.0;
+        ) : (gliss_dir < 0 && step_diff < 0 && k < prev_single_k) ? (
+          lead_bonus += 28.0;
+        );
+      );
+    );
+  );
+  dist + out_pen + sust_pen + cross_pen + lead_bonus;
+);
+
+function chord_note_cost(note_idx, N, pitch, k) local(base_c, base, center_p, dist, trk_mode, t_ord, b_ord, total_t, total_b, is_mixed, bottom_note_idx) (
+  base_c = single_note_cost(pitch, k, 0);
+  base = 1010 + (k - 1) * 8;
+  center_p = gmem[base + 2];
+  dist = abs(pitch - center_p);
+  trk_mode = floor(gmem[base + 4] + 0.5);
+  t_ord = floor(gmem[base + 5] + 0.5);
+  b_ord = floor(gmem[base + 6] + 0.5);
+  total_t = floor(gmem[1004] + 0.5);
+  total_b = floor(gmem[1005] + 0.5);
+  is_mixed = (total_t < M && total_b < M);
+  bottom_note_idx = N - 1 - note_idx; // 0 for lowest note, 1 for 2nd lowest, etc.
+
+  trk_mode == 1 ? (
+    // Top-Down (T) track: strongly prefers the (t_ord - 1)-th highest note of the chord
+    t_ord >= 1 ? (
+      (t_ord == 1 || !is_mixed || dist <= 8.0) ? (
+        note_idx == (t_ord - 1) ? (
+          base_c -= 38.0;
+        ) : (
+          base_c += abs(note_idx - (t_ord - 1)) * 22.0;
+        );
+      );
+    );
+  ) : (trk_mode == 2) ? (
+    // Bottom-Up (B) track: strongly prefers the (b_ord - 1)-th lowest note of the chord
+    b_ord >= 1 ? (
+      (b_ord == 1 || !is_mixed || dist <= 8.0) ? (
+        bottom_note_idx == (b_ord - 1) ? (
+          base_c -= 38.0;
+        ) : (
+          base_c += abs(bottom_note_idx - (b_ord - 1)) * 22.0;
+        );
+      );
+    );
+  );
+  base_c;
+);
+
+function assign_cluster(N, M, mode) local(p0, best_k, best_cost, k, c_val, i, p_cur, p_prev, pitch_gap, max_k, base_c, prev_k, step_adj, cand, best_last_k, best_total, cur_k, rem_notes, min_rem, max_allowed_k, best_c, step_diff) (
+  N == 1 ? (
+    // Single note (or single moving glissando/melody note): pick best voice slot with hysteresis & momentum
+    p0 = cluster_notes[0];
+    best_k = 1;
+    best_cost = 1000000000;
+    k = 1;
+    loop(M,
+      c_val = single_note_cost(p0, k, 1);
+      c_val < best_cost ? (
+        best_cost = c_val;
+        best_k = k;
+      );
+      k += 1;
+    );
+    locked_rank[p0] = best_k;
+    prev_single_pitch >= 0 ? (
+      step_diff = p0 - prev_single_pitch;
+      (step_diff >= 1 && step_diff <= 5) ? ( gliss_dir = 1; )
+      : (step_diff <= -1 && step_diff >= -5) ? ( gliss_dir = -1; )
+      : (step_diff != 0) ? ( gliss_dir = 0; );
+    );
+    prev_single_k = best_k;
+    prev_single_pitch = p0;
+    prev_single_sample = ev_sample;
+  ) : (N <= M) ? (
+    // Unified Monotonic DP (1 <= k_0 < k_1 < ... < k_{N-1} <= M)
+    // Seamlessly handles pure Smart (S), pure Top-Down (T), pure Bottom-Up (B), AND mixed T + B + S ensembles!
+    i = 0;
+    loop(N,
+      k = 1;
+      loop(M,
+        dp[i * 32 + k] = 1000000000;
+        parent[i * 32 + k] = 1;
+        k += 1;
+      );
+      i += 1;
+    );
+    k = 1;
+    loop(M - N + 1,
+      dp[0 * 32 + k] = chord_note_cost(0, N, cluster_notes[0], k);
+      k += 1;
+    );
+    i = 1;
+    loop(N - 1,
+      p_cur = cluster_notes[i];
+      p_prev = cluster_notes[i - 1];
+      pitch_gap = p_prev - p_cur;
+      k = i + 1;
+      max_k = M - (N - 1 - i);
+      loop(max_k - k + 1,
+        base_c = chord_note_cost(i, N, p_cur, k);
+        prev_k = i;
+        loop(k - i,
+          step_adj = 0.0;
+          (pitch_gap <= 9 && k == prev_k + 1) ? (
+            step_adj = -4.5;
+          ) : (
+            (pitch_gap >= 14 && k == prev_k + 1 && M > N) ? (
+              step_adj = 2.5;
+            );
+          );
+          cand = dp[(i - 1) * 32 + prev_k] + base_c + step_adj;
+          cand < dp[i * 32 + k] ? (
+            dp[i * 32 + k] = cand;
+            parent[i * 32 + k] = prev_k;
+          );
+          prev_k += 1;
+        );
+        k += 1;
+      );
+      i += 1;
+    );
+    best_last_k = N;
+    best_total = 1000000000;
+    k = N;
+    loop(M - N + 1,
+      dp[(N - 1) * 32 + k] < best_total ? (
+        best_total = dp[(N - 1) * 32 + k];
+        best_last_k = k;
+      );
+      k += 1;
+    );
+    cur_k = best_last_k;
+    i = N - 1;
+    loop(N,
+      p_cur = cluster_notes[i];
+      locked_rank[p_cur] = cur_k;
+      cur_k = parent[i * 32 + cur_k];
+      cur_k < 1 ? cur_k = 1;
+      i -= 1;
+    );
+    prev_single_k = 0;
+    gliss_dir = 0;
+  ) : (
+    // N > M: Monotonic non-decreasing assignment across 1..M
+    prev_k = 1;
+    i = 0;
+    loop(N,
+      p_cur = cluster_notes[i];
+      rem_notes = N - 1 - i;
+      min_rem = M - prev_k;
+      rem_notes < min_rem ? min_rem = rem_notes;
+      max_allowed_k = M - min_rem;
+      max_allowed_k < prev_k ? max_allowed_k = prev_k;
+      best_k = prev_k;
+      best_c = 1000000000;
+      k = prev_k;
+      loop(max_allowed_k - prev_k + 1,
+        c_val = chord_note_cost(i, N, p_cur, k);
+        c_val < best_c ? (
+          best_c = c_val;
+          best_k = k;
+        );
+        k += 1;
+      );
+      prev_k = best_k;
+      locked_rank[p_cur] = best_k;
+      i += 1;
+    );
+    prev_single_k = 0;
+    gliss_dir = 0;
+  );
+);
+
+function reconcile_my_output(offset, reattack_pitch) local(p) (
+  // 1. Send Note-Off FIRST for any pitch on this track that was released, or moved to another voice rank
+  //    EXCEPT legato tail notes on an outgoing instrument during a cross-instrument handover, which ring
+  //    naturally until the player's finger releases the old key (!kb_held[p]) for zero playback breaks!
+  p = 0;
+  loop(128,
+    my_sounding[p] ? (
+      (!kb_held[p] || (locked_rank[p] != my_rank && !is_legato_tail[p])) ? (
+        midisend(offset, 0x80 | my_sounding_chan[p], p, 0);
+        my_sounding[p] = 0;
+        is_legato_tail[p] = 0;
+      );
+    );
+    p += 1;
+  );
+
+  // 2. Send Note-On for any pitch now assigned to this track
+  p = 0;
+  loop(128,
+    (kb_held[p] && locked_rank[p] == my_rank) ? (
+      !my_sounding[p] ? (
+        midisend(offset, 0x90 | kb_chan[p], p, kb_vel[p]);
+        my_sounding[p] = 1;
+        my_sounding_chan[p] = kb_chan[p];
+      ) : (p == reattack_pitch) ? (
+        midisend(offset, 0x80 | my_sounding_chan[p], p, 0);
+        midisend(offset, 0x90 | kb_chan[p], p, kb_vel[p]);
+        my_sounding_chan[p] = kb_chan[p];
+      );
+    );
+    p += 1;
+  );
+);
+
+@block
+my_rank = max(1, floor(slider1 + 0.5));
+M = gmem[1000] > 0 ? floor(gmem[1000] + 0.5) : max(1, floor(slider2 + 0.5));
+mode = gmem[1000] > 0 ? floor(gmem[1001] + 0.5) : floor(slider3 + 0.5);
+tol_ticks = gmem[1002] > 0 ? gmem[1002] : slider4;
+enabled = gmem[1000] > 0 ? (gmem[1003] > 0.5) : (slider5 > 0.5);
+
+cur_bpm = tempo > 10 ? tempo : 120;
+cur_srate = srate > 1000 ? srate : 48000;
+tol_samples = (tol_ticks / 960.0) * (60.0 / cur_bpm) * cur_srate;
+chord_window_samples = max(tol_samples * 1.65, 0.045 * cur_srate);
+gliss_legato_window_samples = max(chord_window_samples * 2.0, 0.65 * cur_srate);
+
+while (midirecv(offset, msg1, msg2, msg3)) (
+  status = msg1 & 0xF0;
+  chan = msg1 & 0x0F;
+  pitch = msg2 & 0x7F;
+  vel = msg3 & 0x7F;
+  ev_sample = running_samples + offset;
+
+  (!enabled || M <= 1 || (status != 0x90 && status != 0x80) || pitch < 16) ? (
+    // Pass through non-note events, keyswitches (<16), or when Auto-Divisi is disabled
+    (status == 0x80 || (status == 0x90 && vel == 0)) ? (
+      kb_held[pitch] = 0;
+      locked_rank[pitch] = 0;
+      preempted_rank[pitch] = 0;
+      is_legato_tail[pitch] = 0;
+      my_sounding[pitch] = 0;
+    );
+    midisend(offset, msg1, msg2, msg3);
+  ) : (
+    (status == 0x80 || (status == 0x90 && vel == 0)) ? (
+      // Note-Off: close on this track if sounding, and perform Note-On handover if a held key was waiting for this voice!
+      freed_rank = locked_rank[pitch];
+      kb_held[pitch] = 0;
+      locked_rank[pitch] = 0;
+      preempted_rank[pitch] = 0;
+      is_legato_tail[pitch] = 0;
+
+      (freed_rank >= 1 && freed_rank <= M) ? (
+        // Check if another note is already assigned to freed_rank
+        rank_busy = 0;
+        p = 0;
+        loop(128,
+          (kb_held[p] && locked_rank[p] == freed_rank) ? rank_busy = 1;
+          p += 1;
+        );
+        !rank_busy ? (
+          // Hand over freed_rank to any still-held key waiting in standby (e.g. trill or legato overlap release)
+          best_wait_p = -1;
+          best_wait_dist = 1000000000;
+          p = 0;
+          loop(128,
+            (kb_held[p] && locked_rank[p] == 0 && !is_legato_tail[p]) ? (
+              w_dist = abs(p - pitch);
+              preempted_rank[p] == freed_rank ? ( w_dist -= 1000.0; );
+              w_dist < best_wait_dist ? (
+                best_wait_dist = w_dist;
+                best_wait_p = p;
+              );
+            );
+            p += 1;
+          );
+          best_wait_p >= 0 ? (
+            locked_rank[best_wait_p] = freed_rank;
+            preempted_rank[best_wait_p] = 0;
+          );
+        );
+      );
+
+      reconcile_my_output(offset, -1);
+    ) : (
+      // Note-On (vel > 0)
+      kb_held[pitch] = 1;
+      kb_vel[pitch] = vel;
+      kb_chan[pitch] = chan;
+      kb_onset[pitch] = ev_sample;
+      locked_rank[pitch] = 0;
+      preempted_rank[pitch] = 0;
+      is_legato_tail[pitch] = 0;
+
+      // 1. Identify older sustained notes vs. current chord attack cluster (sorted Highest -> Lowest pitch)
+      k = 1;
+      loop(M + 2,
+        is_sustained[k] = 0;
+        sust_pitch[k] = -1;
+        k += 1;
+      );
+      sust_cnt = 0;
+      N = 0;
+      p = 127;
+      loop(128,
+        kb_held[p] ? (
+          ((ev_sample - kb_onset[p]) > chord_window_samples && locked_rank[p] >= 1 && locked_rank[p] <= M) ? (
+            rk = locked_rank[p];
+            // Fluid Glissando & Stepwise Legato Overlap Detection:
+            // If a new key is struck 1..4 semitones away from a recently played note (< ~650ms),
+            // treat the older note as a same-voice legato/glissando finger overlap rather than an independent sustained voice!
+            (p != pitch && abs(pitch - p) <= 4 && (ev_sample - kb_onset[p]) <= gliss_legato_window_samples) ? (
+              is_legato_tail[p] = 1;
+              locked_rank[p] = 0;
+              preempted_rank[p] = rk;
+            ) : (
+              !is_sustained[rk] ? (
+                is_sustained[rk] = 1;
+                sust_pitch[rk] = p;
+                sust_cnt += 1;
+              ) : (
+                // Safety: never allow two sustained notes to occupy the same rank
+                locked_rank[p] = 0;
+                preempted_rank[p] = rk;
+              );
+            );
+          ) : (
+            // Only include active attack notes (not older preempted standby keys or legato tails)
+            (preempted_rank[p] == 0 && !is_legato_tail[p]) ? (
+              cluster_notes[N] = p;
+              N += 1;
+            );
+          );
+        );
+        p -= 1;
+      );
+
+      // 2. Legato Finger-Change Voice Handover when all M tracks are busy:
+      ni = 0;
+      loop(N,
+        (sust_cnt > 0 && (sust_cnt + N) > M) ? (
+          p_new = cluster_notes[ni];
+          best_rep_k = 0;
+          best_rep_cost = 1000000000;
+          k = 1;
+          loop(M,
+            is_sustained[k] ? (
+              p_old = sust_pitch[k];
+              rep_c = abs(p_new - p_old);
+              k2 = 1;
+              loop(M,
+                (k2 != k && is_sustained[k2]) ? (
+                  sp2 = sust_pitch[k2];
+                  (k2 < k && p_new > sp2) ? ( rep_c += 500.0 + (p_new - sp2) * 10.0; );
+                  (k2 > k && p_new < sp2) ? ( rep_c += 500.0 + (sp2 - p_new) * 10.0; );
+                );
+                k2 += 1;
+              );
+              rep_c < best_rep_cost ? (
+                best_rep_cost = rep_c;
+                best_rep_k = k;
+              );
+            );
+            k += 1;
+          );
+          best_rep_k >= 1 ? (
+            p_pre = sust_pitch[best_rep_k];
+            p_pre >= 0 ? (
+              locked_rank[p_pre] = 0;
+              preempted_rank[p_pre] = best_rep_k;
+            );
+            is_sustained[best_rep_k] = 0;
+            sust_pitch[best_rep_k] = -1;
+            sust_cnt -= 1;
+          );
+        );
+        ni += 1;
+      );
+
+      N > 0 ? (
+        assign_cluster(N, M, mode);
+        // Ensure strict 1-note-per-rank on the same instrument:
+        // If the new note stayed on the SAME instrument rank as a legato tail or sustained note, cut the old note cleanly;
+        // if the new note transitioned to an ADJACENT instrument rank, is_legato_tail[p] stays 1 so the outgoing instrument
+        // rings naturally until finger release!
+        i = 0;
+        loop(N,
+          cp = cluster_notes[i];
+          rk = locked_rank[cp];
+          (rk >= 1 && rk <= M) ? (
+            sust_pitch[rk] >= 0 && sust_pitch[rk] != cp ? (
+              p_pre = sust_pitch[rk];
+              locked_rank[p_pre] = 0;
+              preempted_rank[p_pre] = rk;
+              is_legato_tail[p_pre] = 0;
+              is_sustained[rk] = 0;
+              sust_pitch[rk] = -1;
+            );
+            // Also check if any legato_tail note was sounding on this exact rank `rk`: if so, clear its legato_tail flag
+            // so the same instrument cleanly switches to the new note without double-stops!
+            p = 0;
+            loop(128,
+              (p != cp && is_legato_tail[p] && preempted_rank[p] == rk) ? (
+                is_legato_tail[p] = 0;
+              );
+              p += 1;
+            );
+          );
+          i += 1;
+        );
+      );
+
+      reconcile_my_output(offset, pitch);
+    );
+  );
+);
+
+running_samples += samplesblock;

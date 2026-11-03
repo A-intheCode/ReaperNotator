@@ -1,0 +1,120 @@
+desc:REAPER Notator - Per-Articulation Negative Delay Compensator
+// @description Glitch-free per-articulation MIDI lookahead delay compensator driven by REAPER Notator JSON database
+// @author REAPER Notator
+
+options:gmem=NotatorArtDelay
+
+slider1:1<1,512,1>Notator Track Slot ID
+slider2:0<0,500,1>Track Lookahead Offset (ms)
+slider3:0<-500,0,1>Current Active Articulation Delay (ms)
+slider4:0<0,127,1>Current Active Program Change (PC)
+
+@init
+ext_noinit = 1;
+MAX_EVENTS = 2048;
+BUF_BASE = 1024; // Each event = 4 slots: [target_sample, msg1, msg2, msg3]
+active_pc = 0; // Per-channel active PC at slots 0..15
+ch_i = 0;
+loop(16,
+  active_pc[ch_i] = -1;
+  ch_i += 1;
+);
+sample_clock = 0;
+was_playing = 0;
+
+function flush_queue() (
+  e_i = 0;
+  loop(MAX_EVENTS,
+    base = BUF_BASE + e_i * 4;
+    (base[0] > 0) ? (
+      midisend(0, base[1], base[2], base[3]);
+      base[0] = -1;
+    );
+    e_i += 1;
+  );
+);
+
+function push_event(t_samp, m1, m2, m3) (
+  e_i = 0;
+  placed = 0;
+  loop(MAX_EVENTS,
+    (!placed) ? (
+      base = BUF_BASE + e_i * 4;
+      (base[0] <= 0) ? (
+        base[0] = t_samp;
+        base[1] = m1;
+        base[2] = m2;
+        base[3] = m3;
+        placed = 1;
+      );
+    );
+    e_i += 1;
+  );
+  (!placed) ? (
+    midisend(0, m1, m2, m3);
+  );
+);
+
+@block
+slot_id = max(1, min(512, floor(slider1 + 0.5)));
+g_base = slot_id * 256;
+lookahead_ms = gmem[g_base + 0];
+default_delay_mag = gmem[g_base + 1];
+(lookahead_ms <= 0) ? (lookahead_ms = slider2;);
+
+is_playing = (play_state & 1);
+(!is_playing && was_playing) ? (
+  flush_queue();
+);
+was_playing = is_playing;
+
+while (midirecv(offset, msg1, msg2, msg3)) (
+  st = msg1 & 0xF0;
+  ch = msg1 & 0x0F;
+
+  (st == 0xC0) ? (
+    active_pc[ch] = msg2 & 0x7F;
+    slider4 = active_pc[ch];
+  );
+
+  (!is_playing || lookahead_ms <= 0.5) ? (
+    // Zero-latency pass-through when stopped / auditioning
+    midisend(offset, msg1, msg2, msg3);
+  ) : (
+    cur_pc = active_pc[ch];
+    art_mag = (cur_pc >= 0) ? gmem[g_base + 128 + cur_pc] : default_delay_mag;
+    (art_mag < 0) ? (art_mag = default_delay_mag;);
+    slider3 = -art_mag;
+
+    hold_ms = max(0.0, lookahead_ms - art_mag);
+    // Send Bank Select (CC0/CC32) and Program Change (0xC0) 12ms earlier so keyswitches settle before Note On
+    (st == 0xC0 || (st == 0xB0 && (msg2 == 0 || msg2 == 32))) ? (
+      hold_ms = max(0.0, hold_ms - 12.0);
+    );
+
+    hold_samples = floor((hold_ms * srate) / 1000.0 + 0.5);
+    (hold_samples <= 0) ? (
+      midisend(offset, msg1, msg2, msg3);
+    ) : (
+      push_event(sample_clock + offset + hold_samples, msg1, msg2, msg3);
+    );
+  );
+);
+
+// Dispatch due events within this audio block
+(is_playing) ? (
+  block_end = sample_clock + samplesblock;
+  e_i = 0;
+  loop(MAX_EVENTS,
+    base = BUF_BASE + e_i * 4;
+    t_s = base[0];
+    (t_s > 0 && t_s < block_end) ? (
+      out_off = max(0, min(samplesblock - 1, floor(t_s - sample_clock)));
+      midisend(out_off, base[1], base[2], base[3]);
+      base[0] = -1;
+    );
+    e_i += 1;
+  );
+  sample_clock = block_end;
+);
+

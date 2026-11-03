@@ -1,0 +1,111 @@
+desc:REAPER Notator - Sample Attack & Negative Delay Detector
+// @description Sample-accurate (48kHz) onset and perceptual attack center detector for VSTi articulation delay calibration
+// @author REAPER Notator
+
+slider1:0<0,500,0.1>Sample Onset Latency (ms)
+slider2:0<0,500,0.1>Musical Attack Latency (ms)
+slider3:-120<-120,12,0.1>Detected Peak Level (dB)
+slider4:0<0,3,1{Idle,Waiting for Note,Measuring Attack,Complete}>Status
+slider5:0<0,1,1{Off,Trigger Arm}>Arm Trigger
+
+@init
+ext_noinit = 1;
+HIST_LEN = 500; // 500 ms history buffer at 1 ms resolution
+env_hist = 1024;
+status = 0;
+sample_cnt = 0;
+onset_samples = -1;
+env = 0.0;
+max_env = 0.0;
+max_peak = 0.0;
+prev_arm = 0;
+measure_window_samples = floor(0.420 * srate);
+onset_thresh = 0.00316227766; // -50 dB
+
+function start_measurement() (
+  status = 2;
+  slider4 = 2;
+  sample_cnt = 0;
+  onset_samples = -1;
+  env = 0.0;
+  max_env = 0.0;
+  max_peak = 0.0;
+  measure_window_samples = floor(0.420 * srate);
+  i = 0;
+  loop(HIST_LEN,
+    env_hist[i] = 0.0;
+    i += 1;
+  );
+);
+
+@slider
+(slider5 >= 0.5 && prev_arm < 0.5) ? (
+  start_measurement();
+);
+prev_arm = slider5;
+
+@block
+while (midirecv(offset, msg1, msg2, msg3)) (
+  st = msg1 & 0xF0;
+  (st == 0x90 && msg3 > 0 && (status == 1 || slider5 >= 0.5)) ? (
+    start_measurement();
+  );
+  midisend(offset, msg1, msg2, msg3);
+);
+
+@sample
+(status == 2) ? (
+  abs_l = abs(spl0);
+  abs_r = abs(spl1);
+  cur_amp = max(abs_l, abs_r);
+
+  // Fast RMS-like envelope follower (~2.5 ms smoothing)
+  env = env * 0.990 + cur_amp * 0.010;
+  (cur_amp > max_peak) ? (max_peak = cur_amp;);
+  (env > max_env) ? (max_env = env;);
+
+  (onset_samples < 0 && cur_amp >= onset_thresh) ? (
+    onset_samples = sample_cnt;
+  );
+
+  ms_idx = floor((sample_cnt * 1000.0) / srate);
+  (ms_idx >= 0 && ms_idx < HIST_LEN) ? (
+    (env > env_hist[ms_idx]) ? (
+      env_hist[ms_idx] = env;
+    );
+  );
+
+  sample_cnt += 1;
+  (sample_cnt >= measure_window_samples) ? (
+    (max_peak >= onset_thresh && onset_samples >= 0) ? (
+      onset_ms = (onset_samples * 1000.0) / srate;
+      // Find perceptual musical attack center (68% of peak envelope in attack window)
+      target_env = max_env * 0.68;
+      att_ms = onset_ms;
+      k = 0;
+      found_att = 0;
+      loop(HIST_LEN,
+        (!found_att && env_hist[k] >= target_env) ? (
+          att_ms = k;
+          found_att = 1;
+        );
+        k += 1;
+      );
+      (att_ms < onset_ms) ? (att_ms = onset_ms;);
+      (att_ms > 280.0) ? (att_ms = 280.0;);
+
+      slider1 = floor(onset_ms * 10.0 + 0.5) * 0.1;
+      slider2 = floor(att_ms + 0.5);
+      slider3 = floor((20.0 * log10(max(0.000001, max_peak))) * 10.0 + 0.5) * 0.1;
+    ) : (
+      slider1 = 0;
+      slider2 = 0;
+      slider3 = -120.0;
+    );
+    status = 3;
+    slider4 = 3;
+    slider5 = 0;
+    prev_arm = 0;
+  );
+);
+

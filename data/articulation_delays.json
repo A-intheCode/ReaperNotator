@@ -1,0 +1,631 @@
+{
+  "instruments": {
+    "Spitfire\/BBC Symphonic Orchestra\/BBC Celli": {
+      "library": "BBC Symphonic Orchestra",
+      "vendor": "Spitfire",
+      "articulations": {
+        "8": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 75,
+          "name": "long flautando",
+          "peak_db": -30.9,
+          "pc": 8,
+          "measured_attack_ms": 280,
+          "delay_ms": -280,
+          "scanned": true
+        },
+        "9": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long marcato attack",
+          "peak_db": -8.0,
+          "pc": 9,
+          "measured_attack_ms": 242,
+          "delay_ms": -242,
+          "scanned": true
+        },
+        "7": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long cs",
+          "peak_db": -23.9,
+          "pc": 7,
+          "measured_attack_ms": 3,
+          "delay_ms": -3,
+          "scanned": true
+        },
+        "71": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "trill M2",
+          "peak_db": -7.5,
+          "pc": 71,
+          "measured_attack_ms": 205,
+          "delay_ms": -205,
+          "scanned": true
+        },
+        "70": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "trill m2",
+          "peak_db": -6.7,
+          "pc": 70,
+          "measured_attack_ms": 143,
+          "delay_ms": -143,
+          "scanned": true
+        },
+        "61": {
+          "category": "short-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "short harmonics",
+          "peak_db": -11.0,
+          "pc": 61,
+          "measured_attack_ms": 138,
+          "delay_ms": -138,
+          "scanned": true
+        },
+        "40": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "staccato",
+          "peak_db": -5.2,
+          "pc": 40,
+          "measured_attack_ms": 97,
+          "delay_ms": -97,
+          "scanned": true
+        },
+        "11": {
+          "category": "long-dark",
+          "is_overridden": false,
+          "measured_onset_ms": 1,
+          "name": "tremolo",
+          "peak_db": -6.7,
+          "pc": 11,
+          "measured_attack_ms": 30,
+          "delay_ms": -30,
+          "scanned": true
+        },
+        "10": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long harmonics",
+          "peak_db": -26.9,
+          "pc": 10,
+          "measured_attack_ms": 145,
+          "delay_ms": -145,
+          "scanned": true
+        },
+        "18": {
+          "category": "long-dark",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long sul pont",
+          "peak_db": -16.0,
+          "pc": 18,
+          "measured_attack_ms": 2,
+          "delay_ms": -2,
+          "scanned": true
+        },
+        "20": {
+          "category": "legato",
+          "is_overridden": false,
+          "measured_onset_ms": 26,
+          "name": "legato",
+          "peak_db": -14.5,
+          "pc": 20,
+          "measured_attack_ms": 129,
+          "delay_ms": -129,
+          "scanned": true
+        },
+        "58": {
+          "category": "short-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "col legno",
+          "peak_db": -16.9,
+          "pc": 58,
+          "measured_attack_ms": 65,
+          "delay_ms": -65,
+          "scanned": true
+        },
+        "12": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "tremolo cs",
+          "peak_db": -2.8,
+          "pc": 12,
+          "measured_attack_ms": 115,
+          "delay_ms": -115,
+          "scanned": true
+        },
+        "47": {
+          "category": "short-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "spiccato cs",
+          "peak_db": -9.4,
+          "pc": 47,
+          "measured_attack_ms": 177,
+          "delay_ms": -177,
+          "scanned": true
+        },
+        "57": {
+          "category": "short-dark",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "bartok pizz",
+          "peak_db": -5.6,
+          "pc": 57,
+          "measured_attack_ms": 51,
+          "delay_ms": -51,
+          "scanned": true
+        },
+        "56": {
+          "category": "short-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "pizzicato",
+          "peak_db": -6.1,
+          "pc": 56,
+          "measured_attack_ms": 57,
+          "delay_ms": -57,
+          "scanned": true
+        },
+        "13": {
+          "category": "long-dark",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "tremolo sul pont",
+          "peak_db": -9.5,
+          "pc": 13,
+          "measured_attack_ms": 100,
+          "delay_ms": -100,
+          "scanned": true
+        },
+        "42": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "spiccato",
+          "peak_db": -7.7,
+          "pc": 42,
+          "measured_attack_ms": 103,
+          "delay_ms": -103,
+          "scanned": true
+        },
+        "17": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long sul tasto",
+          "peak_db": -18.1,
+          "pc": 17,
+          "measured_attack_ms": 3,
+          "delay_ms": -3,
+          "scanned": true
+        },
+        "1": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long",
+          "peak_db": -23.9,
+          "pc": 1,
+          "measured_attack_ms": 3,
+          "delay_ms": -3,
+          "scanned": true
+        }
+      },
+      "bank_name": "BBC Celli"
+    },
+    "VSTi\/Synthesizer V Studio 2 Plugin (Dreamtonics Co., Ltd.) (32 out)": {
+      "library": "Synthesizer V Studio 2 Plugin (Dreamtonics Co., Ltd.) (32 out)",
+      "vendor": "VSTi",
+      "articulations": {
+        "1": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 45,
+          "name": "Standard \/ Sustain",
+          "peak_db": -12.1,
+          "pc": 1,
+          "measured_attack_ms": 50,
+          "delay_ms": -50,
+          "scanned": true
+        }
+      },
+      "bank_name": "Synthesizer V Studio 2 Plugin (Dreamtonics Co., Ltd.) (32 out)"
+    },
+    "Spitfire\/BBC Symphonic Orchestra\/BBC - Untuned Percussion": {
+      "library": "BBC Symphonic Orchestra",
+      "vendor": "Spitfire",
+      "articulations": {
+        "116": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Military Drum",
+          "peak_db": -60.0,
+          "pc": 116,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "118": {
+          "category": "short",
+          "is_overridden": false,
+          "test_note": 48,
+          "measured_onset_ms": 6,
+          "name": "Snare 1",
+          "no_signal": false,
+          "measured_attack_ms": 58,
+          "pc": 118,
+          "peak_db": -13.7,
+          "delay_ms": -58,
+          "scanned": true
+        },
+        "112": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Anvil",
+          "peak_db": -60.0,
+          "pc": 112,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "124": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Triangle",
+          "peak_db": -60.0,
+          "pc": 124,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "114": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Bass Drum 2",
+          "peak_db": -60.0,
+          "pc": 114,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "122": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Tenor Drum",
+          "peak_db": -60.0,
+          "pc": 122,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "117": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Piatti",
+          "peak_db": -60.0,
+          "pc": 117,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "121": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Tambrourine",
+          "peak_db": -60.0,
+          "pc": 121,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "119": {
+          "category": "short",
+          "is_overridden": false,
+          "test_note": 48,
+          "measured_onset_ms": 6,
+          "name": "Snare 2",
+          "no_signal": false,
+          "measured_attack_ms": 33,
+          "pc": 119,
+          "peak_db": -18.4,
+          "delay_ms": -33,
+          "scanned": true
+        },
+        "120": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Tam Tam",
+          "peak_db": -60.0,
+          "pc": 120,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "113": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Bass Drum 1",
+          "peak_db": -60.0,
+          "pc": 113,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "123": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Toys",
+          "peak_db": -60.0,
+          "pc": 123,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "115": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "Cymbals",
+          "peak_db": -60.0,
+          "pc": 115,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        }
+      },
+      "bank_name": "BBC - Untuned Percussion"
+    },
+    "Spitfire\/BBC Symphonic Orchestra\/BBC Violas": {
+      "library": "BBC Symphonic Orchestra",
+      "vendor": "Spitfire",
+      "articulations": {
+        "8": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long flautando",
+          "peak_db": -25.8,
+          "pc": 8,
+          "measured_attack_ms": 2,
+          "delay_ms": -2,
+          "scanned": true
+        },
+        "9": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long marcato attack",
+          "peak_db": -9.1,
+          "pc": 9,
+          "measured_attack_ms": 115,
+          "delay_ms": -115,
+          "scanned": true
+        },
+        "7": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long cs",
+          "peak_db": -24.6,
+          "pc": 7,
+          "measured_attack_ms": 250,
+          "delay_ms": -250,
+          "scanned": true
+        },
+        "71": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "trill M2",
+          "peak_db": -15.2,
+          "pc": 71,
+          "measured_attack_ms": 193,
+          "delay_ms": -193,
+          "scanned": true
+        },
+        "70": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "trill m2",
+          "peak_db": -15.6,
+          "pc": 70,
+          "measured_attack_ms": 278,
+          "delay_ms": -278,
+          "scanned": true
+        },
+        "61": {
+          "category": "short-light",
+          "is_overridden": false,
+          "measured_onset_ms": 5,
+          "name": "short harmonics",
+          "peak_db": -60.0,
+          "pc": 61,
+          "measured_attack_ms": 20,
+          "delay_ms": -20,
+          "scanned": true
+        },
+        "40": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "staccato",
+          "peak_db": -11.7,
+          "pc": 40,
+          "measured_attack_ms": 84,
+          "delay_ms": -84,
+          "scanned": true
+        },
+        "11": {
+          "category": "long-dark",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "tremolo",
+          "peak_db": -5.4,
+          "pc": 11,
+          "measured_attack_ms": 120,
+          "delay_ms": -120,
+          "scanned": true
+        },
+        "10": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 1,
+          "name": "long harmonics",
+          "peak_db": -41.6,
+          "pc": 10,
+          "measured_attack_ms": 6,
+          "delay_ms": -6,
+          "scanned": true
+        },
+        "18": {
+          "category": "long-dark",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long sul pont",
+          "peak_db": -22.8,
+          "pc": 18,
+          "measured_attack_ms": 6,
+          "delay_ms": -6,
+          "scanned": true
+        },
+        "20": {
+          "category": "legato",
+          "is_overridden": false,
+          "measured_onset_ms": 36,
+          "name": "legato",
+          "peak_db": -21.1,
+          "pc": 20,
+          "measured_attack_ms": 102,
+          "delay_ms": -102,
+          "scanned": true
+        },
+        "58": {
+          "category": "short-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "col legno",
+          "peak_db": -19.6,
+          "pc": 58,
+          "measured_attack_ms": 72,
+          "delay_ms": -72,
+          "scanned": true
+        },
+        "12": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "tremolo cs",
+          "peak_db": -7.6,
+          "pc": 12,
+          "measured_attack_ms": 152,
+          "delay_ms": -152,
+          "scanned": true
+        },
+        "47": {
+          "category": "short-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "spiccato cs",
+          "peak_db": -15.2,
+          "pc": 47,
+          "measured_attack_ms": 94,
+          "delay_ms": -94,
+          "scanned": true
+        },
+        "57": {
+          "category": "short-dark",
+          "is_overridden": false,
+          "measured_onset_ms": 17,
+          "name": "bartok pizz",
+          "peak_db": -10.4,
+          "pc": 57,
+          "measured_attack_ms": 60,
+          "delay_ms": -60,
+          "scanned": true
+        },
+        "56": {
+          "category": "short-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "pizzicato",
+          "peak_db": -11.9,
+          "pc": 56,
+          "measured_attack_ms": 55,
+          "delay_ms": -55,
+          "scanned": true
+        },
+        "13": {
+          "category": "long-dark",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "tremolo sul pont",
+          "peak_db": -16.4,
+          "pc": 13,
+          "measured_attack_ms": 76,
+          "delay_ms": -76,
+          "scanned": true
+        },
+        "42": {
+          "category": "short",
+          "is_overridden": false,
+          "measured_onset_ms": 1,
+          "name": "spiccato",
+          "peak_db": -12.6,
+          "pc": 42,
+          "measured_attack_ms": 61,
+          "delay_ms": -61,
+          "scanned": true
+        },
+        "17": {
+          "category": "long-light",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long sul tasto",
+          "peak_db": -26.5,
+          "pc": 17,
+          "measured_attack_ms": 13,
+          "delay_ms": -13,
+          "scanned": true
+        },
+        "1": {
+          "category": "long",
+          "is_overridden": false,
+          "measured_onset_ms": 0,
+          "name": "long",
+          "peak_db": -29.3,
+          "pc": 1,
+          "measured_attack_ms": 272,
+          "delay_ms": -272,
+          "scanned": true
+        }
+      },
+      "bank_name": "BBC Violas"
+    }
+  },
+  "version": 1
+}

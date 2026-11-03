@@ -1,0 +1,168 @@
+================================================================================
+PROPRIETARY SOFTWARE LICENSE AGREEMENT — ALL RIGHTS RESERVED
+EIGENTÜMER-LIZENZVERTRAG (CLOSED SOURCE) — ALLE RECHTE VORBEHALTEN
+================================================================================
+
+Project / Projekt:  REAPER-Notator (including REAPER Notator 3.0 and all editions)
+Copyright (C) 2026 A-intheCode. All Rights Reserved / Alle Rechte vorbehalten.
+
+================================================================================
+PART I — ENGLISH VERSION (BINDING LICENSE TERMS)
+================================================================================
+
+1. OWNERSHIP & EXCLUSIVE COPYRIGHT
+This software, including but not limited to all Lua source code, binary files,
+compiled modules, C/C++ extensions, JSFX audio/MIDI effects, algorithms, user
+interface designs, data structures, orchestral pattern libraries, and
+accompanying documentation (collectively, the "Software"), is the exclusive
+proprietary intellectual property of A-intheCode ("the Author") and is protected
+by international copyright laws and treaties.
+
+THIS SOFTWARE IS NOT OPEN SOURCE. No open-source, free-software, or copyleft
+license (such as GPL, LGPL, MIT, BSD, or Apache) applies to this Software. Even
+where source files are publicly viewable in a repository for technical delivery
+via ReaPack, ALL RIGHTS ARE STRICTLY RESERVED BY THE AUTHOR.
+
+2. STRICT PROHIBITIONS (NO COPYING, MODIFICATION, DISTRIBUTION, OR SALE)
+Without an express prior written license agreement signed by the Author
+(A-intheCode), you are STRICTLY PROHIBITED from:
+  a) Copying, reproducing, duplicating, or extracting any part of the source
+     code, binaries, algorithms, or assets of the Software (except as cached
+     automatically by Cockos REAPER / ReaPack for authorized personal execution);
+  b) Modifying, adapting, translating, patching, or creating derivative works
+     of the Software or any portion of its code;
+  c) Distributing, redistributing, publishing, mirroring, hosting, sublicensing,
+     leasing, renting, or lending the Software or any portion thereof to any
+     third party;
+  d) Selling, offering for sale, monetizing, bundling, or using the Software or
+     any portion of its code or architecture in any commercial or non-commercial
+     product, script, plugin, or service;
+  e) Reverse-engineering, decompiling, disassembling, decrypting, unpacking, or
+     bypassing any technical protection, obfuscation, or encryption mechanisms
+     of the Software;
+  f) Using any portion of the Software's code, architecture, or documentation
+     to train, fine-tune, or prompt-engineer artificial intelligence (AI) or
+     machine learning (ML) models or code-generation systems;
+  g) Removing, altering, or obscuring any copyright notices, watermarks, author
+     attributions, or license headers in the Software.
+
+3. LIMITED PERSONAL END-USER EXECUTION LICENSE & GITHUB ToS §D.5 COMPLIANCE
+Subject to your strict and continuous compliance with all terms of this
+Agreement, the Author grants you a revocable, non-exclusive, non-transferable,
+non-sublicensable, limited license solely to install and execute the unmodified
+Software within Cockos REAPER on your personal computer(s) for creating music
+and musical scores. You retain full ownership of the musical works, MIDI files,
+and MusicXML scores you create using the Software.
+
+Where this repository is hosted publicly on GitHub for ReaPack delivery, the
+platform-level permissions required by GitHub Terms of Service §D.5 (solely to
+view the repository and use GitHub's built-in "fork" feature within the GitHub
+Service) are acknowledged; however, this grants NO license or permission to
+modify, decrypt, adapt, create derivative works from, redistribute, or use the
+Software outside of unmodified personal execution in Cockos REAPER.
+
+4. TERMINATION
+This license is effective until terminated. Your rights under this Agreement will
+terminate automatically and immediately without notice from the Author if you
+fail to comply with any provision of this Agreement. Upon termination, you must
+immediately cease all use of the Software and destroy all copies in your
+possession or control.
+
+5. DISCLAIMER OF WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE, AND NONINFRINGEMENT. THE ENTIRE RISK AS TO
+THE QUALITY AND PERFORMANCE OF THE SOFTWARE IS WITH YOU.
+
+6. LIMITATION OF LIABILITY
+IN NO EVENT SHALL THE AUTHOR (A-INTHECODE) BE LIABLE FOR ANY CLAIM, DAMAGES, OR
+OTHER LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT, OR OTHERWISE, ARISING
+FROM, OUT OF, OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+IN THE SOFTWARE, INCLUDING ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, OR
+CONSEQUENTIAL DAMAGES (INCLUDING LOSS OF DATA OR LOSS OF PROFITS).
+
+7. THIRD-PARTY COMPONENTS
+The bundled SMuFL music font file "Bravura.otf" is copyright Steinberg Media
+Technologies GmbH and is distributed under the SIL Open Font License v1.1
+(OFL-1.1). The inclusion of this font asset does not affect or diminish the
+exclusive proprietary copyright of A-intheCode over the REAPER-Notator Software.
+
+================================================================================
+TEIL II — DEUTSCHE FASSUNG (VERBINDLICHE LIZENZBESTIMMUNGEN)
+================================================================================
+
+1. URHEBERRECHT & EXKLUSIVES EIGENTUM
+Diese Software – einschließlich, aber nicht beschränkt auf sämtlichen Lua-
+Quellcode, Binärdateien, kompilierte/verschlüsselte Module, C/C++-Erweiterungen,
+JSFX-Audio-/MIDI-Effekte, Algorithmen, Benutzeroberflächen-Designs,
+Datenstrukturen, Orchester-Pattern-Bibliotheken und zugehörige Dokumentationen
+(zusammenfassend die „Software“) – ist das ausschließliche geistige Eigentum von
+A-intheCode („der Autor“) und durch nationales sowie internationales
+Urheberrecht geschützt.
+
+DIESE SOFTWARE IST KEIN OPEN SOURCE. Für diese Software gilt keinerlei Open-
+Source-, Freie-Software- oder Copyleft-Lizenz (wie GPL, LGPL, MIT, BSD oder
+Apache). Selbst sofern Dateien zu technischen Auslieferungszwecken (z. B. via
+ReaPack) in einem Repository einsehbar sind, SIND SÄMTLICHE RECHTE AUSDRÜCKLICH
+DEM AUTOR VORBEHALTEN (ALL RIGHTS RESERVED).
+
+2. STRIKTE VERBOTE (KEIN KOPIEREN, VERÄNDERN, WEITERVERBREITEN ODER VERKAUFEN)
+Ohne eine vorherige, ausdrückliche und schriftliche Lizenzvereinbarung mit dem
+Autor (A-intheCode) ist es Ihnen STRIKT UNTERSAGT:
+  a) Den Quellcode, Binärcode, Algorithmen oder Bestandteile der Software ganz
+     oder teilweise zu kopieren, zu vervielfältigen oder zu extrahieren (mit
+     Ausnahme der rein technischen Ausführung einer autorisierten Installation
+     innerhalb von Cockos REAPER);
+  b) Die Software oder Teile ihres Codes zu modifizieren, anzupassen, zu
+     übersetzen, zu patchen oder abgeleitete Werke (Derivate) daraus zu
+     erstellen;
+  c) Die Software oder Teile davon an Dritte weiterzugeben, zu verbreiten, zu
+     veröffentlichen, auf fremden Servern/Repositories zu spiegeln (Mirroring),
+     unterzulizenzieren, zu vermieten oder zu verleihen;
+  d) Die Software oder Teile ihres Codes bzw. ihrer Architektur zu verkaufen,
+     zum Verkauf anzubieten, kommerziell zu verwerten oder in eigene bzw. fremde
+     kommerzielle oder nicht-kommerzielle Softwareprojekte, Skripte, Plugins
+     oder Dienstleistungen einzubinden;
+  e) Die Software zurückzuentwickeln (Reverse Engineering), zu dekompilieren,
+     zu disassemblieren, zu entschlüsseln, zu entpacken oder technische Schutz-,
+     Obfuskierungs- oder Verschlüsselungsmaßnahmen zu umgehen;
+  f) Teile des Codes, der Architektur oder der Dokumentation für das Training,
+     Fine-Tuning oder Prompting von Systemen der Künstlichen Intelligenz (KI)
+     oder des Maschinellen Lernens (ML) zu verwenden;
+  g) Urheberrechtshinweise, Wasserzeichen, Autorenangaben oder Lizenz-Header in
+     der Software zu entfernen, zu verändern oder unkenntlich zu machen.
+
+3. EINGESCHRÄNKTE PERSÖNLICHE ENDNUTZER-LIZENZ & GITHUB ToS §D.5 KONFORMITÄT
+Vorbehaltlich Ihrer vollständigen Einhaltung sämtlicher Bestimmungen dieses
+Lizenzvertrags gewährt Ihnen der Autor ein widerrufliches, nicht-exklusives,
+nicht-übertragbares und nicht-unterlizenzierbares Recht, die unveränderte
+Software ausschließlich innerhalb von Cockos REAPER auf Ihrem eigenen Computer
+zur Erstellung von Musik und Partituren auszuführen. Die Rechte an den von Ihnen
+mit der Software geschaffenen musikalischen Werken, MIDI-Dateien und MusicXML-
+Partituren verbleiben vollständig bei Ihnen.
+
+Sofern dieses Repository zur ReaPack-Auslieferung öffentlich auf GitHub
+bereitgestellt wird, bleiben die nach den GitHub Terms of Service §D.5
+erforderlichen rein plattforminternen Funktionen (das bloße Betrachten des
+Repositories sowie die Nutzung der GitHub-eigenen „Fork“-Funktion innerhalb des
+GitHub-Dienstes) unberührt; hierdurch werden jedoch KEINERLEI Rechte eingeräumt,
+die Software zu modifizieren, zu entschlüsseln, abgeleitete Werke daraus zu
+erstellen, weiterzuverbreiten oder außerhalb der unveränderten Ausführung in
+Cockos REAPER zu nutzen.
+
+4. BEENDIGUNG DER LIZENZ
+Bei jedem Verstoß gegen eine Bestimmung dieses Lizenzvertrags erlöschen sämtliche
+Ihnen eingeräumten Nutzungsrechte sofort und automatisch, ohne dass es einer
+Kündigung durch den Autor bedarf. Im Falle des Erlöschens sind Sie verpflichtet,
+jede Nutzung der Software sofort einzustellen und alle Kopien zu löschen.
+
+5. GEWÄHRLEISTUNGSAUSSCHLUSS & HAFTUNGSBESCHRÄNKUNG
+DIE BEREITSTELLUNG DER SOFTWARE ERFOLGT „WIE BESEHEN“ (AS IS) OHNE JEGLICHE
+AUSDRÜCKLICHE ODER STILLSCHWEIGENDE GEWÄHRLEISTUNG. DER AUTOR (A-INTHECODE)
+HAFTET IN KEINEM FALL FÜR DIREKTE, INDIREKTE, ZUFÄLLIGE ODER FOLGESCHÄDEN
+(EINSCHLIESSLICH DATENVERLUST ODER ENTGANGENEM GEWINN), DIE AUS DER NUTZUNG ODER
+NICHTNUTZBARKEIT DER SOFTWARE ENTSTEHEN, SOWEIT GESETZLICH ZULÄSSIG.
+
+================================================================================
+Copyright (C) 2026 A-intheCode. All Rights Reserved.
+================================================================================
