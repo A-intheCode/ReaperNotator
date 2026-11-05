@@ -6,7 +6,7 @@
         <description><![CDATA[REAPER Notator 3.0 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="3.0" author="A-intheCode" time="2026-11-05T00:32:22Z">
+      <version name="3.0" author="A-intheCode" time="2026-11-05T00:50:24Z">
         <changelog><![CDATA[
 + v3.0: Major Exclusive Release: REAPER Notator 3.0 — Protected Closed-Source Binary Core Architecture, Multi-Staff Engraving, Synthesizer V Studio Pro 2 Live Bridge, Automatic Articulation Negative Delay Scanner, Guitar/Bass Tablature, Melodic Pathfinder 2.0, Circle of Fifths & 1,500 Orchestral Patterns
         ]]></changelog>
