@@ -1,7 +1,8 @@
 -- @description REAPER Notator 3.0: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 3.0
+-- @version 3.01
 -- @changelog
+--   + v3.01: Update & Hotfix: Add multilingual '• Dot (×1.5) [.]' toggle button in the Left Sidebar under Note Values (toggles augmentation dot on selected notes or for new note input), exact grid-aligned MIDI note durations (0-tick gap on repeated same-pitch notes in Write Notes [D] & Step Input, 0-tick overlap on Slurs), chord slur target pitch resolution, and independent chord note & slur deletion
 --   + v3.0: Major Exclusive Release: REAPER Notator 3.0 — Closed-Source Binary Core Architecture, Multi-Staff Engraving, Synthesizer V Studio Pro 2 Live Bridge, Automatic Articulation Negative Delay Scanner, Guitar/Bass Tablature, Melodic Pathfinder 2.0, Circle of Fifths & 1,500 Orchestral Patterns
 -- @about
 --   # REAPER Notator 3.0 (Exclusive Edition)

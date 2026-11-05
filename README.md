@@ -1,7 +1,7 @@
 # REAPER Notator 3.0 (Exclusive Release)
 
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20(All%20Rights%20Reserved)-red.svg)](LICENSE)
-[![Version: 3.0](https://img.shields.io/badge/Version-3.0-gold.svg)](#)
+[![Version: 3.01](https://img.shields.io/badge/Version-3.01-gold.svg)](#)
 [![REAPER](https://img.shields.io/badge/REAPER-v7.0+-orange.svg)](https://www.reaper.fm/)
 [![ReaImGui](https://img.shields.io/badge/ReaImGui-v0.10%2B%20Required-brightgreen.svg)](https://github.com/cfillion/reaimgui)
 [![Reaticulate](https://img.shields.io/badge/Reaticulate-Required-blueviolet.svg)](https://reaticulate.com/)

@@ -6,8 +6,9 @@
         <description><![CDATA[REAPER Notator 3.0 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="3.0" author="A-intheCode" time="2026-11-05T00:50:24Z">
+      <version name="3.01" author="A-intheCode" time="2026-11-05T01:07:22Z">
         <changelog><![CDATA[
++ v3.01: Update & Hotfix: Add multilingual '• Dot (×1.5) [.]' toggle button in the Left Sidebar under Note Values (toggles augmentation dot on selected notes or for new note input), exact grid-aligned MIDI note durations (0-tick gap on repeated same-pitch notes in Write Notes [D] & Step Input, 0-tick overlap on Slurs), chord slur target pitch resolution, and independent chord note & slur deletion
 + v3.0: Major Exclusive Release: REAPER Notator 3.0 — Protected Closed-Source Binary Core Architecture, Multi-Staff Engraving, Synthesizer V Studio Pro 2 Live Bridge, Automatic Articulation Negative Delay Scanner, Guitar/Bass Tablature, Melodic Pathfinder 2.0, Circle of Fifths & 1,500 Orchestral Patterns
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
