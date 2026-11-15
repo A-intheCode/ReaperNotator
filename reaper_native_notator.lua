@@ -1,14 +1,16 @@
--- @description REAPER Notator 3.0: Native Musical Notation & Engraving Suite
+-- @description REAPER Notator 3.2: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 3.1
+-- @version 3.2
 -- @changelog
+--   + v3.2: Major Feature & Engine Update: Master Acoustic Studio ('Notator Acoustic Master' 64-bit VST3 with 1-click zero-UAC/zero-sudo auto-installer, 8-Point TPT-SVF Graphical EQ, Dynamic Concert Mastering & Anti-Click Lookahead Limiter — supported on Windows x64 & macOS Universal2; greyed out on Linux with 'Linux not supported' tooltip), Tempo-Mapped Audio Wave Tracks & Audio-to-MIDI transcription, Multilingual UI (English / Deutsch / Français) & Studio Dark/Light UI themes, 1-Bar Non-Overlapping Live Recording Engine with syncopation extension, Stop-only Auto-Voice, 60-FPS 16-track gmem preview & true playable instrument ranges, expanded MusicXML (.musicxml / .xml / .mxl) importer with Elaine Gould Grand Staff slur & orchestral clef autodetection, dedicated Notator vs. REAPER update checker, and updated v3.2 User Manual
 --   + v3.1: Major Feature & Engine Update: Massive upgrade of Melodic Pathfinder (Orchestra, Guitar & Bass, and Percussions / Drums modes, Reference Profile blending, dedicated Select Notes marquee mode, Merge Selected Notes / Overridden Note locks, and Note Length Multiplier — see Manual for details), plus improvements for Hairpins & Crescendos and Articulation Switching
 --   + v3.01: Update & Hotfix: Add multilingual '• Dot (×1.5) [.]' toggle button in the Left Sidebar under Note Values (toggles augmentation dot on selected notes or for new note input), exact grid-aligned MIDI note durations (0-tick gap on repeated same-pitch notes in Write Notes [D] & Step Input, 0-tick overlap on Slurs), chord slur target pitch resolution, and independent chord note & slur deletion
 --   + v3.0: Major Exclusive Release: REAPER Notator 3.0 — Closed-Source Binary Core Architecture, Multi-Staff Engraving, Synthesizer V Studio Pro 2 Live Bridge, Automatic Articulation Negative Delay Scanner, Guitar/Bass Tablature, Melodic Pathfinder 2.0, Circle of Fifths & 1,500 Orchestral Patterns
 -- @about
---   # REAPER Notator 3.0 (Exclusive Edition)
+--   # REAPER Notator 3.2 (Exclusive Edition)
 --   Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER.
 --   Requires ReaImGui v0.10+ (Dear ImGui for REAPER by cfillion) and Reaticulate.
+--   Note: Master Acoustic Studio VST3 ('Notator Acoustic Master') is supported on Windows (x64) and macOS (Universal2) only — Linux not supported.
 --   Copyright (C) 2026 A-intheCode. All Rights Reserved.
 -- @provides
 --   [nomain] notator_3_core.bin
@@ -19,8 +21,11 @@
 --   [nomain] modules/bin/notator_timer_x64.dll
 --   [nomain] data/articulation_delays.json
 --   [nomain] effects/notator_auto_divisi_input.jsfx
+--   [nomain] effects/notator_audition_router.jsfx
 --   [nomain] effects/Notator_Attack_Detector.jsfx
 --   [nomain] effects/Notator_Articulation_Delay.jsfx
+--   [nomain] effects/Notator_Acoustic_Master.vst3
+--   [nomain] effects/Notator_Acoustic_Master_macOS.zip
 --   [nomain] docs/reaper_notator_user_manual.pdf
 -- @license Proprietary (All Rights Reserved - Copyright (C) 2026 A-intheCode)
 --
@@ -45,7 +50,7 @@ local _0x3c = _0x2b .. "notator_3_core.bin"
 local _0x4d = io.open(_0x3c, "rb")
 if not _0x4d then
     if reaper and reaper.MB then
-        reaper.MB("REAPER Notator 3.0 Core Binary ('notator_3_core.bin') is missing!\nPlease synchronize or reinstall via ReaPack.", "REAPER Notator 3.0 - Integrity Error", 0)
+        reaper.MB("REAPER Notator 3.2 Core Binary ('notator_3_core.bin') is missing!\nPlease synchronize or reinstall via ReaPack.", "REAPER Notator 3.2 - Integrity Error", 0)
     end
     return
 end
@@ -54,7 +59,7 @@ _0x4d:close()
 
 if not _0x5e or #_0x5e < 16 or _0x5e:sub(1, 4) ~= "RN30" then
     if reaper and reaper.MB then
-        reaper.MB("Corrupted or invalid REAPER Notator 3.0 core binary.", "REAPER Notator 3.0 - Integrity Error", 0)
+        reaper.MB("Corrupted or invalid REAPER Notator 3.2 core binary.", "REAPER Notator 3.2 - Integrity Error", 0)
     end
     return
 end

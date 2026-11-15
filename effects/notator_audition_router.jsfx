@@ -1,0 +1,25 @@
+desc:REAPER Notator Multi-Track Audition Router
+// VERSION: 1.01
+in_pin:none
+out_pin:none
+
+slider1:0<0,15,1>-Listen VKB Channel (0-15)
+slider2:0<0,15,1>-Target Output Channel (0-15)
+slider3:1<0,1,1{Passthrough,Remap}>-Channel Remap Active
+
+@block
+listen_ch = floor(slider1 + 0.5) & 15;
+out_ch    = floor(slider2 + 0.5) & 15;
+do_remap  = (slider3 >= 0.5);
+while (midirecv(offset, msg1, msg2, msg3)) (
+  st = msg1 & $xF0;
+  in_ch = msg1 & $x0F;
+  (st >= $x80 && st <= $xE0) ? (
+    (in_ch == listen_ch || in_ch == out_ch) ? (
+      final_ch = do_remap ? out_ch : in_ch;
+      midisend(offset, st | final_ch, msg2, msg3);
+    );
+  ) : (
+    midisend(offset, msg1, msg2, msg3);
+  );
+);
