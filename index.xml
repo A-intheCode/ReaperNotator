@@ -1,13 +1,14 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="REAPER-Notator" commit="main">
   <category name="Notation">
-    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.2.2: Native Musical Notation &amp; Engraving Suite">
+    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.2.3: Native Musical Notation &amp; Engraving Suite">
       <metadata>
-        <description><![CDATA[REAPER Notator 3.2.2 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
+        <description><![CDATA[REAPER Notator 3.2.3 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="3.2.2" author="A-intheCode" time="2026-11-16T23:28:12Z">
+      <version name="3.2.3" author="A-intheCode" time="2026-11-17T21:50:43Z">
         <changelog><![CDATA[
++ v3.2.3: Linked multi-staff transposition (Ctrl+A + Key & Chords, EN/DE/FR), MusicXML chord import, collapsible Score Tools, taller Chord & Rehearsal lanes, and updated v3.2.3 Manual
 + v3.2.2: Hotfix Record Caching
 + v3.2.1: Record Mode Performance Hotfix: Fix 'Live Note Preview on Canvas while Recording' toggle (strictly zero canvas notes, zero mid-recording MediaItems, and 0.0ms silent-canvas cache reuse when unchecked while preserving 100% of recorded notes, Auto-Divisi, Full Ensemble Fill & CCs on Stop), fix 1-Bar Recording Pre-roll punch-in session sync, batch multi-track bar commits inside PreventUIRefresh, bypass mid-recording full-project item/hash scans, add O(1) incremental live-bar engraving & monotonic active-bar width stabilization for stutter-free Smooth Auto-Scroll, and update User Manual to v3.2.1
 + v3.2: Major Feature & Engine Update: Master Acoustic Studio ('Notator Acoustic Master' 64-bit VST3 with 1-click zero-UAC/zero-sudo auto-installer, 8-Point TPT-SVF Graphical EQ, Dynamic Concert Mastering & Anti-Click Lookahead Limiter — supported on Windows x64 & macOS Universal2; greyed out on Linux with 'Linux not supported' tooltip), Tempo-Mapped Audio Wave Tracks & Audio-to-MIDI transcription, Multilingual UI (English / Deutsch / Français) & Studio Dark/Light UI themes, 1-Bar Non-Overlapping Live Recording Engine with syncopation extension, Stop-only Auto-Voice, 60-FPS 16-track gmem preview & true playable instrument ranges, expanded MusicXML (.musicxml / .xml / .mxl) importer with Elaine Gould Grand Staff slur & orchestral clef autodetection, dedicated Notator vs. REAPER update checker, and updated v3.2 User Manual
