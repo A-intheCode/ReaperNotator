@@ -1,7 +1,8 @@
--- @description REAPER Notator 3.2.3: Native Musical Notation & Engraving Suite
+-- @description REAPER Notator 3.3: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 3.2.3
+-- @version 3.3
 -- @changelog
+--   + v3.3: Integrated Notation-Safe Piano Roll: Dual-Reality Played Durations (Shift+Drag Pre-Roll & Legato Tail Ghost-Halos + Humanizer with 0% score/MusicXML impact), Draw-Hold-Drag auto-lengthening, Grid Razor Split (✂) & Same-Pitch Heal/Glue Brush, Scale Check ('Out-of-Scale Red'), Percussion Drum Map sidebar, Multi-Track Stencils & Smart-Lock, Top Bar View/Note-Coloring menus (incl. Sub-Beat Rests), and updated v3.3 Manual
 --   + v3.2.3: Linked multi-staff transposition (Ctrl+A + Key & Chords, EN/DE/FR), MusicXML chord import, collapsible Score Tools, taller Chord & Rehearsal lanes, and updated v3.2.3 Manual
 --   + v3.2.2: Hotfix Record Caching
 --   + v3.2.1: Record Mode Performance Hotfix: Fix 'Live Note Preview on Canvas while Recording' toggle (strictly zero canvas notes, zero mid-recording MediaItems, and 0.0ms silent-canvas cache reuse when unchecked while preserving 100% of recorded notes, Auto-Divisi, Full Ensemble Fill & CCs on Stop), fix 1-Bar Recording Pre-roll punch-in session sync, batch multi-track bar commits inside PreventUIRefresh, bypass mid-recording full-project item/hash scans, add O(1) incremental live-bar engraving & monotonic active-bar width stabilization for stutter-free Smooth Auto-Scroll, and update User Manual to v3.2.1
@@ -10,7 +11,7 @@
 --   + v3.01: Update & Hotfix: Add multilingual '• Dot (×1.5) [.]' toggle button in the Left Sidebar under Note Values (toggles augmentation dot on selected notes or for new note input), exact grid-aligned MIDI note durations (0-tick gap on repeated same-pitch notes in Write Notes [D] & Step Input, 0-tick overlap on Slurs), chord slur target pitch resolution, and independent chord note & slur deletion
 --   + v3.0: Major Exclusive Release: REAPER Notator 3.0 — Closed-Source Binary Core Architecture, Multi-Staff Engraving, Synthesizer V Studio Pro 2 Live Bridge, Automatic Articulation Negative Delay Scanner, Guitar/Bass Tablature, Melodic Pathfinder 2.0, Circle of Fifths & 1,500 Orchestral Patterns
 -- @about
---   # REAPER Notator 3.2.3 (Exclusive Edition)
+--   # REAPER Notator 3.3 (Exclusive Edition)
 --   Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER.
 --   Requires ReaImGui v0.10+ (Dear ImGui for REAPER by cfillion) and Reaticulate.
 --   Note: Master Acoustic Studio VST3 ('Notator Acoustic Master') is supported on Windows (x64) and macOS (Universal2) only — Linux not supported.
@@ -53,7 +54,7 @@ local _0x3c = _0x2b .. "notator_3_core.bin"
 local _0x4d = io.open(_0x3c, "rb")
 if not _0x4d then
     if reaper and reaper.MB then
-        reaper.MB("REAPER Notator 3.2.3 Core Binary ('notator_3_core.bin') is missing!\nPlease synchronize or reinstall via ReaPack.", "REAPER Notator 3.2.3 - Integrity Error", 0)
+        reaper.MB("REAPER Notator 3.3 Core Binary ('notator_3_core.bin') is missing!\nPlease synchronize or reinstall via ReaPack.", "REAPER Notator 3.3 - Integrity Error", 0)
     end
     return
 end
@@ -62,7 +63,7 @@ _0x4d:close()
 
 if not _0x5e or #_0x5e < 16 or _0x5e:sub(1, 4) ~= "RN30" then
     if reaper and reaper.MB then
-        reaper.MB("Corrupted or invalid REAPER Notator 3.2.3 core binary.", "REAPER Notator 3.2.3 - Integrity Error", 0)
+        reaper.MB("Corrupted or invalid REAPER Notator 3.3 core binary.", "REAPER Notator 3.3 - Integrity Error", 0)
     end
     return
 end
