@@ -1,17 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="REAPER-Notator" commit="main">
   <category name="Notation">
-    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.1: Native Musical Notation &amp; Engraving Suite">
+    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.2: Native Musical Notation &amp; Engraving Suite">
       <metadata>
-        <description><![CDATA[REAPER Notator 3.3.1 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
+        <description><![CDATA[REAPER Notator 3.3.2 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="3.3.1" author="A-intheCode" time="2026-11-21T11:17:01Z">
+      <version name="3.3.2" author="A-intheCode" time="2026-11-21T11:32:49Z">
         <changelog><![CDATA[
-+ v3.3.1 — 1-Click Update & Auto-Restart + Compact Changelog:
-  - 1-click 'Update & Restart REAPER-Notator' button runs ReaPack 'Synchronize packages' (_REAPACK_SYNC), closes REAPER-Notator cleanly, and automatically restarts into the newly installed version
-  - Dedicated secondary 'ReaPack Browser' button & compact scrollable latest-version-only changelog box
-  - Updated v3.3.1 User Manual
++ v3.3.2 — 1-Click Update & Auto-Restart Hotfix + Compact Changelog:
+  - 1-click 'Update & Restart REAPER-Notator' button runs ReaPack 'Synchronize packages' (_REAPACK_SYNC), closes REAPER-Notator cleanly, and immediately restarts into the newly installed version
+  - Dedicated secondary 'ReaPack Browser' button, unified version readouts & compact scrollable latest-version-only changelog box
+  - Updated v3.3.2 User Manual
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
         <source file="notator_3_core.bin">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/notator_3_core.bin</source>

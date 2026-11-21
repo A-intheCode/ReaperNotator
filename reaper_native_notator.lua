@@ -1,13 +1,13 @@
--- @description REAPER Notator 3.3.1: Native Musical Notation & Engraving Suite
+-- @description REAPER Notator 3.3.2: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 3.3.1
+-- @version 3.3.2
 -- @changelog
---   + v3.3.1 — 1-Click Update & Auto-Restart + Compact Changelog:
---     - 1-click 'Update & Restart REAPER-Notator' button runs ReaPack 'Synchronize packages' (_REAPACK_SYNC), closes REAPER-Notator cleanly, and automatically restarts into the newly installed version
---     - Dedicated secondary 'ReaPack Browser' button & compact scrollable latest-version-only changelog box
---     - Updated v3.3.1 User Manual
+--   + v3.3.2 — 1-Click Update & Auto-Restart Hotfix + Compact Changelog:
+--     - 1-click 'Update & Restart REAPER-Notator' button runs ReaPack 'Synchronize packages' (_REAPACK_SYNC), closes REAPER-Notator cleanly, and immediately restarts into the newly installed version
+--     - Dedicated secondary 'ReaPack Browser' button, unified version readouts & compact scrollable latest-version-only changelog box
+--     - Updated v3.3.2 User Manual
 -- @about
---   # REAPER Notator 3.3.1 (Exclusive Edition)
+--   # REAPER Notator 3.3.2 (Exclusive Edition)
 --   Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER.
 --   Requires ReaImGui v0.10+ (Dear ImGui for REAPER by cfillion) and Reaticulate.
 --   Note: Master Acoustic Studio VST3 ('Notator Acoustic Master') is supported on Windows (x64) and macOS (Universal2) only — Linux not supported.
@@ -59,7 +59,7 @@ local _0x3c = _0x2b .. "notator_3_core.bin"
 local _0x4d = io.open(_0x3c, "rb")
 if not _0x4d then
     if reaper and reaper.MB then
-        reaper.MB("REAPER Notator 3.3.1 Core Binary ('notator_3_core.bin') is missing!\nPlease synchronize or reinstall via ReaPack.", "REAPER Notator 3.3.1 - Integrity Error", 0)
+        reaper.MB("REAPER Notator 3.3.2 Core Binary ('notator_3_core.bin') is missing!\nPlease synchronize or reinstall via ReaPack.", "REAPER Notator 3.3.2 - Integrity Error", 0)
     end
     return
 end
@@ -68,7 +68,7 @@ _0x4d:close()
 
 if not _0x5e or #_0x5e < 16 or _0x5e:sub(1, 4) ~= "RN30" then
     if reaper and reaper.MB then
-        reaper.MB("Corrupted or invalid REAPER Notator 3.3.1 core binary.", "REAPER Notator 3.3.1 - Integrity Error", 0)
+        reaper.MB("Corrupted or invalid REAPER Notator 3.3.2 core binary.", "REAPER Notator 3.3.2 - Integrity Error", 0)
     end
     return
 end
