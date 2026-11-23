@@ -1,17 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="REAPER-Notator" commit="main">
   <category name="Notation">
-    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.3: Native Musical Notation &amp; Engraving Suite">
+    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.4: Native Musical Notation &amp; Engraving Suite">
       <metadata>
-        <description><![CDATA[REAPER Notator 3.3.3 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
+        <description><![CDATA[REAPER Notator 3.3.4 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="3.3.3" author="A-intheCode" time="2026-11-22T16:42:54Z">
+      <version name="3.3.4" author="A-intheCode" time="2026-11-23T21:04:01Z">
         <changelog><![CDATA[
-+ v3.3.3 — Articulation Played Duration Overlap (%) & Score Tools Update:
-  - New 'Articulation Overlap (%)' tool (Score Tools & Piano Roll '🔗%') with track articulation dropdown, next-note % tail overlap (0% score/MusicXML impact, 0 collisions) & auto-saved JSON ('data/articulation_overlaps.json')
-  - Added 'Make Notes Legato' ('⌒ Leg') button to Piano Roll toolbar, dedicated 'Filters' tab in Score Tools & persistent open/collapsed section states
-  - Full EN / DE / FR localization & updated v3.3.3 User Manual
++ v3.3.4 — Startup Splash Screen, Multi-DPI Branding & Tempo Map Sync:
+  - New flicker-free Startup Splash Screen with 1:1 Multi-DPI logo banner, real-time progress bar (0%-100%), staged core decryption & non-blocking incremental Pattern Library indexing (EN / DE / FR)
+  - High-DPI 1:1 logo branding across the Top Bar badge, centered Settings hero banner (with version readout), and native 3-state (100% / 150% / 200%) REAPER toolbar icons
+  - Fixed Lua 5.4 fractional-BPM integer crash in Tempo Drawer & context menus (plus global integer input guard) and added 1-click 'Sync to REAPER Tempo Map'
+  - Updated v3.3.4 User Manual (PDF)
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
         <source file="notator_3_core.bin">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/notator_3_core.bin</source>
@@ -21,6 +22,19 @@
         <source file="patterns.zip">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip</source>
         <source file="modules/bin/notator_timer_x64.dll">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/bin/notator_timer_x64.dll</source>
         <source file="data/articulation_delays.json">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/articulation_delays.json</source>
+        <source file="data/icons/ReaperNotator_UI_Badge_1x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_Badge_1x.png</source>
+        <source file="data/icons/ReaperNotator_UI_Badge_125x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_Badge_125x.png</source>
+        <source file="data/icons/ReaperNotator_UI_Badge_150x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_Badge_150x.png</source>
+        <source file="data/icons/ReaperNotator_UI_Badge_2x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_Badge_2x.png</source>
+        <source file="data/icons/ReaperNotator_UI_Badge_Transparent_64x64.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_Badge_Transparent_64x64.png</source>
+        <source file="data/icons/ReaperNotator_Settings_Banner_1x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_Settings_Banner_1x.png</source>
+        <source file="data/icons/ReaperNotator_Settings_Banner_125x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_Settings_Banner_125x.png</source>
+        <source file="data/icons/ReaperNotator_Settings_Banner_150x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_Settings_Banner_150x.png</source>
+        <source file="data/icons/ReaperNotator_Settings_Banner_2x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_Settings_Banner_2x.png</source>
+        <source file="data/icons/ReaperNotator_UI_RN_Transparent_128x128.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_RN_Transparent_128x128.png</source>
+        <source file="data/icons/toolbar_icons/toolbar_reaper_notator.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/toolbar_icons/toolbar_reaper_notator.png</source>
+        <source file="data/icons/toolbar_icons/150/toolbar_reaper_notator.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/toolbar_icons/150/toolbar_reaper_notator.png</source>
+        <source file="data/icons/toolbar_icons/200/toolbar_reaper_notator.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/toolbar_icons/200/toolbar_reaper_notator.png</source>
         <source file="effects/notator_auto_divisi_input.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/notator_auto_divisi_input.jsfx</source>
         <source file="effects/notator_audition_router.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/notator_audition_router.jsfx</source>
         <source file="effects/Notator_Attack_Detector.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Attack_Detector.jsfx</source>
@@ -28,6 +42,9 @@
         <source file="effects/Notator_Acoustic_Master.vst3">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Acoustic_Master.vst3</source>
         <source file="effects/Notator_Acoustic_Master_macOS.zip">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Acoustic_Master_macOS.zip</source>
         <source file="docs/reaper_notator_user_manual.pdf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/docs/reaper_notator_user_manual.pdf</source>
+        <source type="data" file="toolbar_icons/toolbar_reaper_notator.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/toolbar_icons/toolbar_reaper_notator.png</source>
+        <source type="data" file="toolbar_icons/150/toolbar_reaper_notator.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/toolbar_icons/150/toolbar_reaper_notator.png</source>
+        <source type="data" file="toolbar_icons/200/toolbar_reaper_notator.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/toolbar_icons/200/toolbar_reaper_notator.png</source>
       </version>
     </reapack>
   </category>
