@@ -1,14 +1,13 @@
--- @description REAPER Notator 3.3.4: Native Musical Notation & Engraving Suite
+-- @description REAPER Notator 3.3.5: Native Musical Notation & Engraving Suite
 -- @author A-intheCode
--- @version 3.3.4
+-- @version 3.3.5
 -- @changelog
---   + v3.3.4 — Startup Splash Screen, Multi-DPI Branding & Tempo Map Sync:
---     - New flicker-free Startup Splash Screen with 1:1 Multi-DPI logo banner, real-time progress bar (0%-100%), staged core decryption & non-blocking incremental Pattern Library indexing (EN / DE / FR)
---     - High-DPI 1:1 logo branding across the Top Bar badge, centered Settings hero banner (with version readout), and native 3-state (100% / 150% / 200%) REAPER toolbar icons
---     - Fixed Lua 5.4 fractional-BPM integer crash in Tempo Drawer & context menus (plus global integer input guard) and added 1-click 'Sync to REAPER Tempo Map'
---     - Updated v3.3.4 User Manual (PDF)
+--   + v3.3.5 — EdgeCase StaffPad MusicXML Import Fix & Unified Tie Consolidation:
+--     - EdgeCase StaffPad MusicXML import Fix: consolidated standard MusicXML <tie>/<tied> chains (cross-bar, syncopated & multi-bar) into unified continuous MIDI notes so Piano Roll, Velocity Lane & selection show single sustained notes while Score Canvas auto-generates bar ties
+--     - Added <tied type="continue"/>, case-insensitive tie parsing, tiered cross-voice / cross-staff & out-of-order <backup> tie resolution, plus tuplet-tie grid protection
+--     - Updated v3.3.5 User Manual (PDF)
 -- @about
---   # REAPER Notator 3.3.4 (Exclusive Edition)
+--   # REAPER Notator 3.3.5 (Exclusive Edition)
 --   Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER.
 --   Requires ReaImGui v0.10+ (Dear ImGui for REAPER by cfillion) and Reaticulate.
 --   Note: Master Acoustic Studio VST3 ('Notator Acoustic Master') is supported on Windows (x64) and macOS (Universal2) only — Linux not supported.
@@ -76,7 +75,7 @@ local _0x3c = _0x2b .. "notator_3_core.bin"
 local _0x4d = io.open(_0x3c, "rb")
 if not _0x4d then
     if reaper and reaper.MB then
-        reaper.MB("REAPER Notator 3.3.4 Core Binary ('notator_3_core.bin') is missing!\nPlease synchronize or reinstall via ReaPack.", "REAPER Notator 3.3.4 - Integrity Error", 0)
+        reaper.MB("REAPER Notator 3.3.5 Core Binary ('notator_3_core.bin') is missing!\nPlease synchronize or reinstall via ReaPack.", "REAPER Notator 3.3.5 - Integrity Error", 0)
     end
     return
 end
@@ -85,7 +84,7 @@ _0x4d:close()
 
 if not _0x5e or #_0x5e < 16 or _0x5e:sub(1, 4) ~= "RN30" then
     if reaper and reaper.MB then
-        reaper.MB("Corrupted or invalid REAPER Notator 3.3.4 core binary.", "REAPER Notator 3.3.4 - Integrity Error", 0)
+        reaper.MB("Corrupted or invalid REAPER Notator 3.3.5 core binary.", "REAPER Notator 3.3.5 - Integrity Error", 0)
     end
     return
 end
@@ -151,7 +150,7 @@ end
 local _has_imgui = reaper and reaper.APIExists and reaper.APIExists("ImGui_CreateContext") and reaper.defer
 if _has_imgui then
     local _cfg = (reaper.APIExists("ImGui_ConfigFlags_None") and reaper.ImGui_ConfigFlags_None()) or 0
-    local _bctx = reaper.ImGui_CreateContext("REAPER Notator 3.3.4", _cfg)
+    local _bctx = reaper.ImGui_CreateContext("REAPER Notator 3.3.5", _cfg)
     if reaper.APIExists("ImGui_SetConfigVar") and reaper.APIExists("ImGui_ConfigVar_WindowsResizeFromEdges") then
         reaper.ImGui_SetConfigVar(_bctx, reaper.ImGui_ConfigVar_WindowsResizeFromEdges(), 1)
     end
@@ -202,7 +201,7 @@ if _has_imgui then
 
     local _lang = (reaper.APIExists("GetExtState") and reaper.GetExtState("REAPER_Notator", "ui_language")) or "en"
     local _st_txt = (_lang == "de" and "Kern-Engine wird geladen...") or (_lang == "fr" and "Chargement du moteur principal...") or "Decrypting Core Engine..."
-    local _sub_txt = "v3.3.4  •  " .. ((_lang == "de" and "Native Musiknotation & Notensatz-Suite") or (_lang == "fr" and "Suite native de notation et gravure musicale") or "Native Musical Notation & Engraving Suite")
+    local _sub_txt = "v3.3.5  •  " .. ((_lang == "de" and "Native Musiknotation & Notensatz-Suite") or (_lang == "fr" and "Suite native de notation et gravure musicale") or "Native Musical Notation & Engraving Suite")
     local _bflags = 0
     for _, _fn in ipairs({ "ImGui_WindowFlags_NoTitleBar", "ImGui_WindowFlags_NoResize", "ImGui_WindowFlags_NoMove", "ImGui_WindowFlags_NoScrollbar", "ImGui_WindowFlags_NoScrollWithMouse", "ImGui_WindowFlags_NoCollapse", "ImGui_WindowFlags_NoSavedSettings", "ImGui_WindowFlags_TopMost" }) do
         if reaper[_fn] then _bflags = _bflags | reaper[_fn]() end

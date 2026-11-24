@@ -1,18 +1,17 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="REAPER-Notator" commit="main">
   <category name="Notation">
-    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.4: Native Musical Notation &amp; Engraving Suite">
+    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.5: Native Musical Notation &amp; Engraving Suite">
       <metadata>
-        <description><![CDATA[REAPER Notator 3.3.4 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
+        <description><![CDATA[REAPER Notator 3.3.5 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="3.3.4" author="A-intheCode" time="2026-11-23T21:04:01Z">
+      <version name="3.3.5" author="A-intheCode" time="2026-11-24T23:31:40Z">
         <changelog><![CDATA[
-+ v3.3.4 — Startup Splash Screen, Multi-DPI Branding & Tempo Map Sync:
-  - New flicker-free Startup Splash Screen with 1:1 Multi-DPI logo banner, real-time progress bar (0%-100%), staged core decryption & non-blocking incremental Pattern Library indexing (EN / DE / FR)
-  - High-DPI 1:1 logo branding across the Top Bar badge, centered Settings hero banner (with version readout), and native 3-state (100% / 150% / 200%) REAPER toolbar icons
-  - Fixed Lua 5.4 fractional-BPM integer crash in Tempo Drawer & context menus (plus global integer input guard) and added 1-click 'Sync to REAPER Tempo Map'
-  - Updated v3.3.4 User Manual (PDF)
++ v3.3.5 — EdgeCase StaffPad MusicXML Import Fix & Unified Tie Consolidation:
+  - EdgeCase StaffPad MusicXML import Fix: consolidated standard MusicXML <tie>/<tied> chains (cross-bar, syncopated & multi-bar) into unified continuous MIDI notes so Piano Roll, Velocity Lane & selection show single sustained notes while Score Canvas auto-generates bar ties
+  - Added <tied type="continue"/>, case-insensitive tie parsing, tiered cross-voice / cross-staff & out-of-order <backup> tie resolution, plus tuplet-tie grid protection
+  - Updated v3.3.5 User Manual (PDF)
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
         <source file="notator_3_core.bin">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/notator_3_core.bin</source>
