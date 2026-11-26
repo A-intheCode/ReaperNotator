@@ -1,17 +1,20 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="REAPER-Notator" commit="main">
   <category name="Notation">
-    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.6: Native Musical Notation &amp; Engraving Suite">
+    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.7: Native Musical Notation &amp; Engraving Suite">
       <metadata>
-        <description><![CDATA[REAPER Notator 3.3.6 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
+        <description><![CDATA[REAPER Notator 3.3.7 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="3.3.6" author="A-intheCode" time="2026-11-25T20:01:20Z">
+      <version name="3.3.7" author="A-intheCode" time="2026-11-26T19:23:55Z">
         <changelog><![CDATA[
-+ v3.3.6 — Integration of UI Scaling Options for Laptops:
-  - Integration of UI Scaling Options for Laptops: razor-sharp global interface scaling from 50% to 200% in Settings -> General Settings (dynamic ReaImGui v0.10+ vector fonts, 5% slider with release-commit, quick presets 50%/65%/75%/85%/100%/125%/150%/200%, and live laptop-fit readout so all Top & Bottom Bar buttons fit on 15.6" screens without horizontal scrolling while Score Canvas & Piano Roll zoom remain independent)
-  - Scalable Startup Splash Screen (50%-200% from frame 1) and guaranteed multi-monitor parent-centered pop-up modals (every dialog opens centered over REAPER-Notator's current window)
-  - Updated v3.3.6 User Manual (PDF) with complete UI Scaling & Laptop setup guide
++ v3.3.7:
+  - Dynamics multi-select & move
+  - Dynamics & hairpins copy/paste
+  - Tempo map reset fix
+  - Slur/unslur legato fix
+  - Crushed hairpin resize fix
+  - Negative delay save fix
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
         <source file="notator_3_core.bin">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/notator_3_core.bin</source>

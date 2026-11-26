@@ -12,6 +12,7 @@ slider4:0<0,127,1>Current Active Program Change (PC)
 @init
 ext_noinit = 1;
 MAX_EVENTS = 2048;
+LOCAL_PC_BASE = 256; // Persisted 128-entry per-PC negative delay table (slots 256..383)
 BUF_BASE = 1024; // Each event = 4 slots: [target_sample, msg1, msg2, msg3]
 active_pc = 0; // Per-channel active PC at slots 0..15
 ch_i = 0;
@@ -19,8 +20,26 @@ loop(16,
   active_pc[ch_i] = -1;
   ch_i += 1;
 );
+(!local_table_valid) ? (
+  local_lookahead_ms = 0;
+  local_default_mag = 0;
+  local_table_valid = 0;
+  init_pc = 0;
+  loop(128,
+    LOCAL_PC_BASE[init_pc] = 0;
+    init_pc += 1;
+  );
+);
 sample_clock = 0;
 was_playing = 0;
+
+@serialize
+ser_ver = 1;
+file_var(0, ser_ver);
+file_var(0, local_table_valid);
+file_var(0, local_lookahead_ms);
+file_var(0, local_default_mag);
+file_mem(0, LOCAL_PC_BASE, 128);
 
 function flush_queue() (
   e_i = 0;
@@ -58,8 +77,19 @@ function push_event(t_samp, m1, m2, m3) (
 @block
 slot_id = max(1, min(512, floor(slider1 + 0.5)));
 g_base = slot_id * 256;
-lookahead_ms = gmem[g_base + 0];
-default_delay_mag = gmem[g_base + 1];
+g_valid = gmem[g_base + 2];
+(g_valid >= 0.5) ? (
+  local_lookahead_ms = gmem[g_base + 0];
+  local_default_mag = gmem[g_base + 1];
+  s_pc = 0;
+  loop(128,
+    LOCAL_PC_BASE[s_pc] = gmem[g_base + 128 + s_pc];
+    s_pc += 1;
+  );
+  local_table_valid = 1;
+);
+lookahead_ms = (local_table_valid >= 0.5) ? local_lookahead_ms : gmem[g_base + 0];
+default_delay_mag = (local_table_valid >= 0.5) ? local_default_mag : gmem[g_base + 1];
 (lookahead_ms <= 0) ? (lookahead_ms = slider2;);
 
 is_playing = (play_state & 1);
@@ -82,7 +112,9 @@ while (midirecv(offset, msg1, msg2, msg3)) (
     midisend(offset, msg1, msg2, msg3);
   ) : (
     cur_pc = active_pc[ch];
-    art_mag = (cur_pc >= 0) ? gmem[g_base + 128 + cur_pc] : default_delay_mag;
+    art_mag = (local_table_valid >= 0.5)
+      ? ((cur_pc >= 0) ? LOCAL_PC_BASE[cur_pc] : default_delay_mag)
+      : ((cur_pc >= 0) ? gmem[g_base + 128 + cur_pc] : default_delay_mag);
     (art_mag < 0) ? (art_mag = default_delay_mag;);
     slider3 = -art_mag;
 
