@@ -1,19 +1,18 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="REAPER-Notator" commit="main">
   <category name="Notation">
-    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 3.3.9: Native Musical Notation &amp; Engraving Suite">
+    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 4.0: Native Musical Notation &amp; Engraving Suite">
       <metadata>
-        <description><![CDATA[REAPER Notator 3.3.9 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
+        <description><![CDATA[REAPER Notator 4.0 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="3.3.9" author="A-intheCode" time="2026-11-28T00:23:07Z">
+      <version name="4.0" author="A-intheCode" time="2026-11-28T01:40:52Z">
         <changelog><![CDATA[
-+ v3.3.9:
-  - Interactive Percussion Drum Map (Piano Keys + custom names)
-  - Double-click yellow inline key rename (Tab/Shift+Tab)
-  - Wider resizable Drum Map column (136-380 px, persisted)
-  - Centered Drum Map Manager (.txt Load/Save/Update/Rename/Delete)
-  - Full EN / DE / FR localization & updated PDF User Manual
++ v4.0:
+  - Critical Fix - Negative Delay scanning save error: unified data/articulation_delays.json storage (next to articulation_overlaps.json), automatic Self-Healing & Heal DB button, cross-instrument snapshot guard, Open Folder, 1-click Save Manual Offset to JSON & Bottom Bar Negative Delay Settings button
+  - [v3.3.9] Interactive Percussion Drum Map: Piano Keys beside MIDI numbers, double-click yellow inline key rename (Tab/Shift+Tab), wider resizable sidebar (136-380 px) & centered multilingual Drum Map Manager (.txt Load/Save/Update/Rename/Delete)
+  - [v3.3.8] Opt-in Score Validator & Live Note Collision Check/Prevention: right-side issue drawer, red overflow bar blocks (Canvas & Piano Roll), dynamics/hairpin checks, 1-click auto-fixes & pulsing red glow on blocking notes
+  - [v3.3.7] Dynamics & Hairpins Multi-Selection, Group Move & Lossless Copy/Paste + Core Stability Fixes (Tempo Map sync, clean Slur/Unslur removal & resize-safe Hairpin clearance)
         ]]></changelog>
         <source main="main">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/reaper_native_notator.lua</source>
         <source file="notator_3_core.bin">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/notator_3_core.bin</source>
@@ -22,7 +21,6 @@
         <source file="Bravura.otf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/Bravura.otf</source>
         <source file="patterns.zip">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/patterns.zip</source>
         <source file="modules/bin/notator_timer_x64.dll">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/modules/bin/notator_timer_x64.dll</source>
-        <source file="data/articulation_delays.json">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/articulation_delays.json</source>
         <source file="data/icons/ReaperNotator_UI_Badge_1x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_Badge_1x.png</source>
         <source file="data/icons/ReaperNotator_UI_Badge_125x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_Badge_125x.png</source>
         <source file="data/icons/ReaperNotator_UI_Badge_150x.png">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/data/icons/ReaperNotator_UI_Badge_150x.png</source>

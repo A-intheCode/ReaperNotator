@@ -1,22 +1,23 @@
-# REAPER Notator 3.3.9 (Exclusive Release)
+# REAPER Notator 4.0 (Exclusive Release)
 
 [![License: Proprietary](https://img.shields.io/badge/License-Proprietary%20(All%20Rights%20Reserved)-red.svg)](LICENSE)
-[![Version: 3.3.9](https://img.shields.io/badge/Version-3.3.9-gold.svg)](#)
+[![Version: 4.0](https://img.shields.io/badge/Version-4.0-gold.svg)](#)
 [![REAPER](https://img.shields.io/badge/REAPER-v7.0+-orange.svg)](https://www.reaper.fm/)
 [![ReaImGui](https://img.shields.io/badge/ReaImGui-v0.10%2B%20Required-brightgreen.svg)](https://github.com/cfillion/reaimgui)
 [![Reaticulate](https://img.shields.io/badge/Reaticulate-Required-blueviolet.svg)](https://reaticulate.com/)
 
-> **REAPER Notator 3.3.9** is a native, professional music notation, score editing, and engraving suite built directly for Cockos REAPER using ReaImGui and standard SMuFL vector glyphs.
+> **REAPER Notator 4.0** is a native, professional music notation, score editing, and engraving suite built directly for Cockos REAPER using ReaImGui and standard SMuFL vector glyphs.
 
 > [!NOTE]
 > **Platform Compatibility — Master Acoustic Studio (`Notator Acoustic Master` VST3):**
-> - **REAPER Notator 3.3.9 (Score Editing, Engraving, Playback & Recording)** runs natively across **Windows, macOS, and Linux** (`REAPER v7.0+`, `ReaImGui v0.10+`, `Reaticulate`).
+> - **REAPER Notator 4.0 (Score Editing, Engraving, Playback & Recording)** runs natively across **Windows, macOS, and Linux** (`REAPER v7.0+`, `ReaImGui v0.10+`, `Reaticulate`).
 > - The built-in **Master Acoustic Studio (`Notator Acoustic Master` 64-bit VST3)** works **exclusively on Windows (x64) and macOS Universal2 (Intel & Apple Silicon)**. **Linux is not supported** (on Linux, the Mastering button in the Tools drawer is greyed out with the tooltip `"Linux not supported"`).
 
 ---
 
-## What's New in v3.3.9
+## What's New in v4.0
 
+- **Critical Fix — Negative Delay Scanning Save Error, Automatic Self-Healing & Bottom Bar Access (v4.0):** Calibrated articulation delays and manual overrides now save exclusively in REAPER-Notator's own `data/articulation_delays.json` (right next to `data/articulation_overlaps.json`, protected from ReaPack overwrites), backed by automatic Self-Healing (`🔧 Heal DB`) that repairs mismatched metadata, removes phantom articulations from other banks, blocks cross-instrument `.rpp` snapshot pollution, and recovers corrupt JSON files. Added **`⏱ Negative Delay Settings`** directly in the Bottom Bar between `🎼 MusicXML...` and `⚙ Settings & Shortcuts`, **`📂 Open Folder`**, and 1-click **`💾 Save to Active Articulation (JSON)`**.
 - **Interactive Percussion Drum Map, Inline Yellow Rename & `.txt` Manager (v3.3.9):** Percussion Clef staves now show MIDI note numbers beside Piano Keys (`C2`, `C3`, `D3`, ...) and custom drum names in a wider, drag-resizable sidebar (`136–380 px`, default `210 px`) with GM fallback suppression. Double-click any key row to highlight it yellow and rename inline (`Enter`/`Tab`/`Shift+Tab`), or open the parent-centered, multilingual (EN / DE / FR) **🥁 Drum Map Manager** to load, search, save, 1-click update, rename, and delete standard REAPER `MIDINoteNames/*.txt` maps.
 - **Score Validator & Strict Live Note Collision Prevention (v3.3.8):** Opt-in Score Validator (0% CPU overhead when OFF) with TopBar toggle, right-side jump-to-issue drawer, full red bar-overflow shading in both Score Canvas and Piano Roll, redundant/conflicting dynamics & implausible hairpin detection with 1-click auto-fixes, and real-time collision checking & prevention that strictly blocks colliding pitch/move/resize/drop edits across all voices/items while lighting up blocking noteheads, stems, and Piano Roll bars bright pulsing red.
 - **Dynamics Multi-Selection, Group Move & Lossless Copy/Paste + Core Stability Fixes:** `Ctrl`/`Shift+Click` or marquee-select dynamic marks (`f`, `ff`, `p`), hairpins (`<`, `>`), and dynamic texts (`cresc.`, `dim.`) together, move or nudge the whole group in sync, and copy/paste (`Ctrl+C`/`Ctrl+V`, including Filter Selection) with 100% hairpin preservation. Also resolves Tempo Map resets across restarts, Slur/Unslur stuck legato labels, crushed hairpin resizing, and ReaPack-proof Negative Delay persistence.
@@ -47,14 +48,14 @@
    ```text
    https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/index.xml
    ```
-4. Open `Extensions` → `ReaPack` → `Browse packages...`, search for `REAPER Notator 3.3.9`, right-click → **Install**, and click **Apply**.
+4. Open `Extensions` → `ReaPack` → `Browse packages...`, search for `REAPER Notator 4.0`, right-click → **Install**, and click **Apply**.
 5. Run `Script: reaper_native_notator.lua` from the REAPER Actions list (`?`).
 
 ---
 
 ## Documentation
 
-- 📖 **[Official User Manual & Function Reference (v3.3.9 PDF)](docs/reaper_notator_user_manual.pdf)**
+- 📖 **[Official User Manual & Function Reference (v4.0 PDF)](docs/reaper_notator_user_manual.pdf)**
 
 ---
 
@@ -62,11 +63,11 @@
 
 **Copyright © 2026 A-intheCode. All Rights Reserved.**
 
-This repository distributes the compiled/encrypted binary release of **REAPER Notator 3.3.9**. This software is **proprietary and closed-source** (not open-source). See the [LICENSE](LICENSE) file for the full binding End-User License Agreement.
+This repository distributes the compiled/encrypted binary release of **REAPER Notator 4.0**. This software is **proprietary and closed-source** (not open-source). See the [LICENSE](LICENSE) file for the full binding End-User License Agreement.
 
 > [!CAUTION]
 > **Strict Legal Notice (EN):**  
-> Any copying, reproduction, modification, reverse-engineering, decompilation, decryption, unpacking, distribution, redistribution, sublicensing, or commercial sale of **REAPER Notator 3.3.9** (in whole or in part) is **strictly prohibited** without an express prior written license agreement signed by the author (**A-intheCode**). Nothing in this notice restricts the standard platform rights granted under GitHub Terms of Service Section D.5 (viewing and cloning/forking within GitHub for personal inspection), which convey zero right to modify, decrypt, redistribute, or reuse the software outside this Agreement.
+> Any copying, reproduction, modification, reverse-engineering, decompilation, decryption, unpacking, distribution, redistribution, sublicensing, or commercial sale of **REAPER Notator 4.0** (in whole or in part) is **strictly prohibited** without an express prior written license agreement signed by the author (**A-intheCode**). Nothing in this notice restricts the standard platform rights granted under GitHub Terms of Service Section D.5 (viewing and cloning/forking within GitHub for personal inspection), which convey zero right to modify, decrypt, redistribute, or reuse the software outside this Agreement.
 >
 > **Strikter Rechtlicher Hinweis (DE):**  
-> Sämtliches Kopieren, Vervielfältigen, Modifizieren, Reverse-Engineering, Dekompilieren, Entschlüsseln, Entpacken, Weiterverbreiten, Unterlizenzieren oder Verkaufen von **REAPER Notator 3.3.9** (ganz oder teilweise) ist ohne ausdrückliche vorherige schriftliche Lizenzvereinbarung mit dem Autor (**A-intheCode**) **strikt untersagt**. Alle Rechte vorbehalten.
+> Sämtliches Kopieren, Vervielfältigen, Modifizieren, Reverse-Engineering, Dekompilieren, Entschlüsseln, Entpacken, Weiterverbreiten, Unterlizenzieren oder Verkaufen von **REAPER Notator 4.0** (ganz oder teilweise) ist ohne ausdrückliche vorherige schriftliche Lizenzvereinbarung mit dem Autor (**A-intheCode**) **strikt untersagt**. Alle Rechte vorbehalten.
