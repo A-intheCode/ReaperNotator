@@ -1,15 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <index version="1" name="REAPER-Notator" commit="main">
   <category name="Notation">
-    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 4.0: Native Musical Notation &amp; Engraving Suite">
+    <reapack name="reaper_native_notator.lua" type="script" desc="REAPER Notator 4.0.1: Native Musical Notation &amp; Engraving Suite">
       <metadata>
-        <description><![CDATA[REAPER Notator 4.0 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
+        <description><![CDATA[REAPER Notator 4.0.1 (Exclusive Edition) — Proprietary native musical notation, score editing, and engraving environment for Cockos REAPER. Requires ReaImGui v0.10+ and Reaticulate. Includes Master Acoustic Studio VST3 ('Notator Acoustic Master', supported on Windows x64 and macOS Universal2 only — Linux not supported). Copyright (C) 2026 A-intheCode. All Rights Reserved.]]></description>
         <link rel="website">https://github.com/A-intheCode/ReaperNotator</link>
       </metadata>
-      <version name="4.0" author="A-intheCode" time="2026-11-28T01:40:52Z">
+      <version name="4.0.1" author="A-intheCode" time="2026-11-28T11:23:01Z">
         <changelog><![CDATA[
-+ v4.0:
-  - Critical Fix - Negative Delay scanning save error: unified data/articulation_delays.json storage (next to articulation_overlaps.json), automatic Self-Healing & Heal DB button, cross-instrument snapshot guard, Open Folder, 1-click Save Manual Offset to JSON & Bottom Bar Negative Delay Settings button
++ v4.0.1:
+  - Stability updates, TAB right-click "String / Fret Assignment" menu, permanent global Smooth Line AA persistence & Synthesizer V Pro 2 fixes (automatic MIDI playback mute via Notator_SynthV_MIDI_Mute.jsfx, strict lyric/note overwrite & delete protection with confirmation dialog & 1-click Notes+Lyrics import — IMPORTANT: click 'Scripts -> Rescan' in Synthesizer V Studio Pro 2 after updating)
+  - [v4.0] Critical Fix - Negative Delay scanning save error: unified data/articulation_delays.json storage (next to articulation_overlaps.json), automatic Self-Healing & Heal DB button, cross-instrument snapshot guard, Open Folder, 1-click Save Manual Offset to JSON & Bottom Bar Negative Delay Settings button
   - [v3.3.9] Interactive Percussion Drum Map: Piano Keys beside MIDI numbers, double-click yellow inline key rename (Tab/Shift+Tab), wider resizable sidebar (136-380 px) & centered multilingual Drum Map Manager (.txt Load/Save/Update/Rename/Delete)
   - [v3.3.8] Opt-in Score Validator & Live Note Collision Check/Prevention: right-side issue drawer, red overflow bar blocks (Canvas & Piano Roll), dynamics/hairpin checks, 1-click auto-fixes & pulsing red glow on blocking notes
   - [v3.3.7] Dynamics & Hairpins Multi-Selection, Group Move & Lossless Copy/Paste + Core Stability Fixes (Tempo Map sync, clean Slur/Unslur removal & resize-safe Hairpin clearance)
@@ -38,6 +39,7 @@
         <source file="effects/notator_audition_router.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/notator_audition_router.jsfx</source>
         <source file="effects/Notator_Attack_Detector.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Attack_Detector.jsfx</source>
         <source file="effects/Notator_Articulation_Delay.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Articulation_Delay.jsfx</source>
+        <source file="effects/Notator_SynthV_MIDI_Mute.jsfx">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_SynthV_MIDI_Mute.jsfx</source>
         <source file="effects/Notator_Acoustic_Master.vst3">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Acoustic_Master.vst3</source>
         <source file="effects/Notator_Acoustic_Master_macOS.zip">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/effects/Notator_Acoustic_Master_macOS.zip</source>
         <source file="docs/reaper_notator_user_manual.pdf">https://raw.githubusercontent.com/A-intheCode/ReaperNotator/main/docs/reaper_notator_user_manual.pdf</source>

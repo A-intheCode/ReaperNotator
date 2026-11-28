@@ -1,0 +1,25 @@
+desc:REAPER Notator - Synthesizer V MIDI Playback Mute
+// VERSION: 1.00
+// Blocks REAPER track MIDI Note-On / Note-Off events from triggering Synthesizer V's
+// live MIDI preview synth while SynthV plays its own internal vocal timeline, keeping
+// all score MIDI notes 100% visible, unmuted, and lyric-bindable in REAPER-Notator.
+
+in_pin:none
+out_pin:none
+
+slider1:1<0,2,1{Off (Pass MIDI),Mute Always (Recommended),Mute During Playback Only}>MIDI Mute Mode
+
+@block
+mode = floor(slider1 + 0.5);
+is_playing = (play_state & 1) || (play_state & 4);
+block_notes = (mode == 1) || (mode == 2 && is_playing);
+
+while (midirecv(offset, msg1, msg2, msg3)) (
+  st = msg1 & $xF0;
+  is_note_msg = (st == $x90 || st == $x80 || st == $xA0);
+  (block_notes && is_note_msg) ? (
+    0;
+  ) : (
+    midisend(offset, msg1, msg2, msg3);
+  );
+);
